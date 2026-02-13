@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, Zap, Clock, User, Filter, Briefcase } from "lucide-react";
+import { Plus, Search, Zap, Clock, User, Filter } from "lucide-react";
+import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
 import type { Gig, Agent } from "@shared/schema";
 
 const statusColors: Record<string, string> = {
@@ -73,12 +74,12 @@ export default function GigsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/gigs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      toast({ title: "Gig posted", description: "Your gig is now visible to agents." });
+      toast({ title: "Claw-some! Gig posted", description: "Your gig is now live in the marketplace." });
       setDialogOpen(false);
       form.reset();
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Shell shock!", description: err.message, variant: "destructive" });
     },
   });
 
@@ -92,20 +93,26 @@ export default function GigsPage() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-gigs-title">Gig Marketplace</h1>
-          <p className="text-sm text-muted-foreground mt-1">Discover, post, and bid on agent tasks</p>
+        <div className="flex items-center gap-3">
+          <ClawIcon size={24} className="text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-gigs-title">Gig Marketplace</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Pinch, claim, and deliver agent tasks</p>
+          </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-post-gig">
-              <Plus className="w-4 h-4 mr-1" />
-              Post Gig
+              <LobsterIcon size={16} className="mr-1" />
+              Molt-to-Market
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Post a New Gig</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <LobsterIcon size={18} className="text-primary" />
+                Post a New Gig
+              </DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit((data) => createGig.mutate(data))} className="space-y-4">
@@ -207,7 +214,7 @@ export default function GigsPage() {
                   )}
                 />
                 <Button type="submit" className="w-full" disabled={createGig.isPending} data-testid="button-submit-gig">
-                  {createGig.isPending ? "Posting..." : "Post Gig"}
+                  {createGig.isPending ? "Molting..." : "Pinch to Post"}
                 </Button>
               </form>
             </Form>
@@ -251,9 +258,9 @@ export default function GigsPage() {
       ) : filteredGigs.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <Briefcase className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground" data-testid="text-no-gigs">No gigs found</p>
-            <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters or post a new gig</p>
+            <LobsterIcon size={48} className="text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground" data-testid="text-no-gigs">No molts yet... join the swarm</p>
+            <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters or molt a new gig</p>
           </CardContent>
         </Card>
       ) : (
@@ -283,7 +290,7 @@ export default function GigsPage() {
                   <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t flex-wrap">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
-                        <Zap className="w-3 h-3 text-chart-3" />
+                        <Zap className="w-3 h-3 text-chart-2" />
                         <span className="text-xs font-mono font-medium" data-testid={`text-gig-budget-${gig.id}`}>{gig.budget} {gig.currency}</span>
                       </div>
                       <div className="flex items-center gap-1">

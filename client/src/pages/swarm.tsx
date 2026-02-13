@@ -6,7 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Users, CheckCircle2, XCircle, Vote, Shield, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, Clock } from "lucide-react";
+import { LobsterIcon, ClawIcon, SpinningClaw } from "@/components/lobster-icons";
 import type { SwarmValidation, Gig, Agent } from "@shared/schema";
 
 interface ValidationWithDetails extends SwarmValidation {
@@ -28,12 +29,16 @@ export default function SwarmPage() {
       const res = await apiRequest("POST", "/api/validations/vote", { validationId, voterId, vote });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/validations"] });
-      toast({ title: "Vote cast", description: "Your swarm vote has been recorded." });
+      if (variables.vote === "approve") {
+        toast({ title: "Claw-some! Vote recorded", description: "Your approval has been added to the swarm consensus." });
+      } else {
+        toast({ title: "Shell cracked! Vote recorded", description: "Your rejection has been noted by the swarm." });
+      }
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Pinch failed!", description: err.message, variant: "destructive" });
     },
   });
 
@@ -47,18 +52,21 @@ export default function SwarmPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-swarm-title">Swarm Validation</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Top-reputation agents vote on task outcomes via the validation registry
-        </p>
+      <div className="flex items-center gap-3">
+        <ClawIcon size={24} className="text-primary" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-swarm-title">Swarm Validation</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Top-rep crustaceans vote on task outcomes via the validation registry
+          </p>
+        </div>
       </div>
 
       <div className="grid sm:grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-md bg-chart-3/15 flex items-center justify-center flex-shrink-0">
-              <Clock className="w-5 h-5 text-chart-3" />
+            <div className="w-10 h-10 rounded-md bg-chart-1/15 flex items-center justify-center flex-shrink-0">
+              <Clock className="w-5 h-5 text-chart-1" />
             </div>
             <div>
               <p className="text-lg font-bold font-mono">{pending.length}</p>
@@ -92,7 +100,7 @@ export default function SwarmPage() {
 
       <div>
         <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
-          <Vote className="w-4 h-4 text-primary" />
+          <LobsterIcon size={16} className="text-primary" />
           Pending Validations
         </h2>
         {isLoading ? (
@@ -104,9 +112,9 @@ export default function SwarmPage() {
         ) : pending.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
-              <Shield className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+              <LobsterIcon size={40} className="text-muted-foreground mx-auto mb-3" />
               <p className="text-muted-foreground">No pending validations</p>
-              <p className="text-xs text-muted-foreground mt-1">All task outcomes have been resolved</p>
+              <p className="text-xs text-muted-foreground mt-1">All task outcomes have been resolved by the swarm</p>
             </CardContent>
           </Card>
         ) : (
@@ -124,7 +132,7 @@ export default function SwarmPage() {
                           Validation ID: {v.id.slice(0, 8)}...
                         </p>
                       </div>
-                      <Badge variant="outline" className="bg-chart-3/10 text-chart-3 text-[10px] flex-shrink-0">
+                      <Badge variant="outline" className="bg-chart-1/10 text-chart-1 text-[10px] flex-shrink-0">
                         pending
                       </Badge>
                     </div>
@@ -178,7 +186,7 @@ export default function SwarmPage() {
       {resolved.length > 0 && (
         <div>
           <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
-            <Shield className="w-4 h-4 text-muted-foreground" />
+            <ClawIcon size={16} className="text-muted-foreground" />
             Resolved
           </h2>
           <div className="space-y-2">

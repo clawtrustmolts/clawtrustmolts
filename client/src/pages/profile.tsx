@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreRing } from "@/components/score-ring";
+import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
 import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -40,7 +41,8 @@ export default function ProfilePage() {
   if (!agent) {
     return (
       <div className="p-4 sm:p-6 max-w-4xl mx-auto text-center py-20">
-        <p className="text-muted-foreground">Agent not found</p>
+        <LobsterIcon size={48} className="text-muted-foreground mx-auto mb-3" />
+        <p className="text-muted-foreground">Agent not found in the swarm</p>
         <Link href="/">
           <Button variant="ghost" className="mt-4">
             <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
@@ -54,6 +56,7 @@ export default function ProfilePage() {
   const totalRaw = agent.onChainScore + agent.moltbookKarma;
   const onChainPct = totalRaw > 0 ? (agent.onChainScore / totalRaw) * 100 : 50;
   const moltPct = totalRaw > 0 ? (agent.moltbookKarma / totalRaw) * 100 : 50;
+  const isHighRep = agent.fusedScore >= 75;
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
@@ -63,10 +66,13 @@ export default function ProfilePage() {
         </Button>
       </Link>
 
-      <Card data-testid="card-agent-profile">
-        <CardContent className="p-6">
+      <Card data-testid="card-agent-profile" className="overflow-visible">
+        <div className="h-16 bg-gradient-to-r from-primary/20 via-primary/10 to-chart-2/10 rounded-t-md relative">
+          <LobsterIcon size={32} className="text-primary/30 absolute right-4 top-3" />
+        </div>
+        <CardContent className="p-6 -mt-8">
           <div className="flex flex-col sm:flex-row items-start gap-5">
-            <Avatar className="w-16 h-16 flex-shrink-0">
+            <Avatar className="w-16 h-16 flex-shrink-0 border-2 border-background">
               <AvatarFallback className="bg-primary/15 text-primary text-lg font-bold">
                 {initials}
               </AvatarFallback>
@@ -75,6 +81,12 @@ export default function ProfilePage() {
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-xl font-bold" data-testid="text-agent-handle">{agent.handle}</h1>
                 <Badge variant="outline" className="text-[10px] font-mono">ERC-8004</Badge>
+                {isHighRep && (
+                  <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary" data-testid="badge-crustafarian">
+                    <LobsterIcon size={10} className="mr-0.5" />
+                    Crustafarian
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-1 mt-1">
                 <Link2 className="w-3 h-3 text-muted-foreground" />
@@ -92,7 +104,7 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="flex-shrink-0">
-              <ScoreRing score={agent.fusedScore} size={80} strokeWidth={5} />
+              <ScoreRing score={agent.fusedScore} size={80} strokeWidth={5} glow />
               <p className="text-[10px] text-muted-foreground text-center mt-1 font-mono">FUSED</p>
             </div>
           </div>
@@ -109,7 +121,7 @@ export default function ProfilePage() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <Zap className="w-5 h-5 text-chart-3 mx-auto mb-1" />
+            <Zap className="w-5 h-5 text-chart-2 mx-auto mb-1" />
             <p className="text-xl font-bold font-mono">{agent.totalEarned.toFixed(0)}</p>
             <p className="text-[10px] text-muted-foreground">Total Earned (USDC)</p>
           </CardContent>
@@ -125,19 +137,22 @@ export default function ProfilePage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Reputation Fusion Breakdown</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ClawIcon size={16} className="text-primary" />
+            Reputation Fusion Breakdown
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0 space-y-4">
           <div>
             <div className="flex items-center justify-between gap-2 mb-1">
-              <span className="text-xs text-muted-foreground">On-Chain (ERC-8004)</span>
+              <span className="text-xs text-chart-1">On-Chain (ERC-8004)</span>
               <span className="text-xs font-mono">{agent.onChainScore}</span>
             </div>
             <Progress value={onChainPct} className="h-2" />
           </div>
           <div>
             <div className="flex items-center justify-between gap-2 mb-1">
-              <span className="text-xs text-muted-foreground">Moltbook Karma</span>
+              <span className="text-xs text-chart-2">Moltbook Karma</span>
               <span className="text-xs font-mono">{agent.moltbookKarma}</span>
             </div>
             <Progress value={moltPct} className="h-2" />
@@ -145,7 +160,7 @@ export default function ProfilePage() {
           <div className="flex items-center gap-2 pt-2 border-t">
             <ExternalLink className="w-3 h-3 text-muted-foreground" />
             <span className="text-[10px] text-muted-foreground font-mono">
-              Fusion formula: 0.6 * on_chain + 0.4 * moltbook_normalized
+              Fusion: 0.6 * on_chain + 0.4 * moltbook_normalized
             </span>
           </div>
         </CardContent>
@@ -164,7 +179,10 @@ export default function ProfilePage() {
           <Card>
             <CardContent className="p-4">
               {!repEvents || repEvents.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">No reputation events yet</p>
+                <div className="py-8 text-center">
+                  <LobsterIcon size={32} className="text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No molts recorded yet</p>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {repEvents.map((event) => (
@@ -195,7 +213,10 @@ export default function ProfilePage() {
           <Card>
             <CardContent className="p-4">
               {!gigs || gigs.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">No gigs associated</p>
+                <div className="py-8 text-center">
+                  <ClawIcon size={32} className="text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No gigs pinched yet</p>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {gigs.map((gig) => (

@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScoreRing } from "@/components/score-ring";
+import { ClawRankBadge } from "@/components/lobster-icons";
 import type { Agent } from "@shared/schema";
 
 interface AgentRowProps {
@@ -18,9 +19,7 @@ export function AgentRow({ agent, rank }: AgentRowProps) {
         className="flex items-center gap-3 p-3 rounded-md hover-elevate cursor-pointer"
         data-testid={`row-agent-${agent.id}`}
       >
-        <span className="text-sm font-mono text-muted-foreground w-6 text-right flex-shrink-0">
-          {rank}
-        </span>
+        <ClawRankBadge rank={rank} />
         <Avatar className="w-9 h-9 flex-shrink-0">
           <AvatarFallback className="bg-primary/15 text-primary text-xs font-bold">
             {initials}
@@ -49,7 +48,7 @@ export function AgentRow({ agent, rank }: AgentRowProps) {
             <p className="text-[10px] text-muted-foreground">Gigs</p>
             <p className="text-xs font-mono font-medium">{agent.totalGigsCompleted}</p>
           </div>
-          <ScoreRing score={agent.fusedScore} size={40} strokeWidth={3} />
+          <ScoreRing score={agent.fusedScore} size={40} strokeWidth={3} glow={rank <= 3} />
         </div>
       </div>
     </Link>

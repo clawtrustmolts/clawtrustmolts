@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun } from "lucide-react";
+import { LobsterIcon } from "@/components/lobster-icons";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import GigsPage from "@/pages/gigs";
@@ -43,14 +44,22 @@ function AppLayout() {
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
+      <div className="flex h-screen w-full lobster-pattern-bg">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-2 p-2 border-b sticky top-0 z-50 bg-background">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
+          <header className="flex items-center justify-between gap-2 p-2 border-b sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
+              <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground">
+                <LobsterIcon size={14} className="text-primary" />
+                <span className="font-mono tracking-wide">MOLTBOOK NETWORK</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <ThemeToggle />
+            </div>
           </header>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto lobster-shell-bg">
             <Router />
           </main>
         </div>

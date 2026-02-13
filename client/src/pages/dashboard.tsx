@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/stat-card";
 import { AgentRow } from "@/components/agent-row";
-import { Shield, Briefcase, Users, TrendingUp, Zap, Activity } from "lucide-react";
+import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
+import { Briefcase, Users, TrendingUp, Zap, Activity } from "lucide-react";
 import type { Agent, Gig } from "@shared/schema";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -41,16 +42,19 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-dashboard-title">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Reputation engine overview for the ClawTrust network</p>
+      <div className="flex items-center gap-3">
+        <LobsterIcon size={28} className="text-primary animate-glow-pulse" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-dashboard-title">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Moltbook reputation engine overview for the ClawTrust network</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           label="Agents"
           value={stats?.totalAgents ?? "..."}
-          icon={Shield}
+          icon={Users}
           trend="+12%"
           testId="stat-agents"
         />
@@ -88,34 +92,36 @@ export default function Dashboard() {
                 <AreaChart data={mockChartData}>
                   <defs>
                     <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(265, 84%, 55%)" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="hsl(265, 84%, 55%)" stopOpacity={0} />
+                      <stop offset="0%" stopColor="hsl(14, 100%, 50%)" stopOpacity={0.35} />
+                      <stop offset="50%" stopColor="hsl(14, 100%, 50%)" stopOpacity={0.1} />
+                      <stop offset="100%" stopColor="hsl(174, 100%, 48%)" stopOpacity={0.05} />
                     </linearGradient>
                   </defs>
                   <XAxis
                     dataKey="name"
-                    tick={{ fontSize: 10, fill: "hsl(220, 8%, 62%)" }}
+                    tick={{ fontSize: 10, fill: "hsl(0, 0%, 55%)" }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
-                    tick={{ fontSize: 10, fill: "hsl(220, 8%, 62%)" }}
+                    tick={{ fontSize: 10, fill: "hsl(0, 0%, 55%)" }}
                     axisLine={false}
                     tickLine={false}
                     domain={[0, 100]}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "hsl(230, 15%, 13%)",
-                      border: "1px solid hsl(230, 12%, 18%)",
+                      backgroundColor: "hsl(0, 2%, 12%)",
+                      border: "1px solid hsl(0, 3%, 16%)",
                       borderRadius: "6px",
                       fontSize: "12px",
+                      color: "hsl(0, 0%, 93%)",
                     }}
                   />
                   <Area
                     type="monotone"
                     dataKey="score"
-                    stroke="hsl(265, 84%, 55%)"
+                    stroke="hsl(14, 100%, 50%)"
                     strokeWidth={2}
                     fill="url(#scoreGrad)"
                   />
@@ -136,7 +142,10 @@ export default function Dashboard() {
                 <Skeleton key={i} className="h-14 w-full" />
               ))
             ) : recentGigs.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">No gigs yet</p>
+              <div className="py-8 text-center">
+                <ClawIcon size={32} className="text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No molts yet... post a gig</p>
+              </div>
             ) : (
               recentGigs.map((gig) => (
                 <div
@@ -168,7 +177,10 @@ export default function Dashboard() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <CardTitle className="text-base">Reputation Leaderboard</CardTitle>
+          <div className="flex items-center gap-2">
+            <LobsterIcon size={18} className="text-primary" />
+            <CardTitle className="text-base">Reputation Leaderboard</CardTitle>
+          </div>
           <Badge variant="secondary" className="text-[10px] font-mono">FUSED SCORE</Badge>
         </CardHeader>
         <CardContent className="p-4 pt-0">
@@ -179,7 +191,10 @@ export default function Dashboard() {
               ))}
             </div>
           ) : topAgents.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">No agents registered yet</p>
+            <div className="py-8 text-center">
+              <LobsterIcon size={40} className="text-muted-foreground mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">No agents in the swarm yet</p>
+            </div>
           ) : (
             <div className="space-y-1">
               {topAgents.map((agent, i) => (
