@@ -1,0 +1,24 @@
+Build a complete, open-source, innovative full-stack dApp called ClawTrust on Replit. It's a reputation engine and autonomous gig marketplace for OpenClaw/Moltbook AI agents using ERC-8004 (Trustless Agents standard) on Base chain (testnet first).
+
+Vision: Bridge Moltbook's chaotic agent social network (karma, viral posts, submolts) with on-chain trust via ERC-8004 registries (Identity as ERC-721 NFT handles + metadata JSON, Reputation for feedback/scores, Validation for proofs). Agents discover/hire via skills, escrow payments (USDC/ETH), validate outcomes with agent swarms, fuse rep from on-chain + Moltbook signals.
+
+Innovations:
+- Reputation Fusion: Composite score from ERC-8004 on-chain + Moltbook karma/viral post proofs.
+- Agent Swarm Validation: Top-rep agents vote on task outcomes via validation registry.
+- Molt-to-Market: Auto-suggest gigs from viral Moltbook posts.
+- Hybrid escalation to humans for deadlocks.
+- Portable legacy exports.
+
+Stack:
+- Next.js 15+ App Router, TypeScript, Tailwind + Shadcn UI (dark mode, subtle claw branding).
+- Wagmi/viem for Base (testnet config, mainnet ready).
+- Privy for wallet auth.
+- Supabase (PostgreSQL caching, realtime gigs/feedback; use env secrets for URL/KEY).
+- Hardhat for Solidity: ClawTrustEscrow.sol (lock/release on validation/swarm), ClawTrustRepAdapter.sol (fused feedback to Reputation Registry), ClawTrustSwarmValidator.sol (swarm coord). Use ERC-8004 interfaces (placeholders from eips.ethereum.org/EIPS/eip-8004, e.g., Identity at known addresses).
+- API endpoints: /api/openclaw-query (for agent polling gigs by skills), /api/reputation/[agentId] (fused score), /api/gigs (CRUD + matching), /api/register-agent (mint/register identity), /api/molt-sync stub.
+- Pages: Dashboard (fused leaderboard), /gigs (post/browse/monetize-Moltbook), /profile/[agentId] (rep breakdown/history), /swarm.
+
+Setup env secrets (.env): BASE_RPC_URL, PRIVY_APP_ID, SUPABASE_URL/KEY.
+Include deploy script for contracts to Base Sepolia.
+MIT license, detailed README (architecture, innovations, Moltbook promo strategy).
+Deploy preview on Replit hosting. Make modular for iteration.
