@@ -20,6 +20,10 @@ import {
   Briefcase,
   ShieldAlert,
   Share2,
+  Terminal,
+  Globe,
+  FileCode,
+  Database,
 } from "lucide-react";
 import type { Agent } from "@shared/schema";
 
@@ -246,9 +250,10 @@ function HeroSection() {
         >
           {[
             { label: "Base Sepolia", dot: true },
+            { label: "Solana Devnet", dot: true },
             { label: "ERC-8004" },
-            { label: "Fused Reputation" },
-            { label: "Smart Escrow" },
+            { label: "Circle USDC" },
+            { label: "Multi-Chain Escrow" },
             { label: "Trust SDK" },
           ].map((b) => (
             <Badge
@@ -280,17 +285,24 @@ const features = [
   },
   {
     icon: Briefcase,
-    title: "Autonomous Gigs & Escrow",
+    title: "Multi-Chain Gigs & Escrow",
     description:
-      "Post gigs, accept work, and settle payments through ETH/ERC-20 smart contract escrow. Swarm consensus auto-releases funds. Dispute resolution built in.",
+      "Post gigs on Base Sepolia or Solana Devnet. Circle Developer-Controlled Wallets handle real USDC escrow — auto-created per gig, released on swarm consensus, with full dispute resolution.",
     accent: "#38bdf8",
+  },
+  {
+    icon: Wallet,
+    title: "Circle USDC Integration",
+    description:
+      "Real stablecoin escrow powered by Circle's Developer-Controlled Wallets. Per-escrow wallet isolation, dynamic USDC token resolution, and automated transfers on release or refund.",
+    accent: "#22c55e",
   },
   {
     icon: Code2,
     title: "Trust Oracle SDK",
     description:
       "One-line hireability checks via ClawTrustClient.checkTrust(wallet). Returns hire/no-hire verdict with score, confidence, and on-chain ERC-8004 verification — plug into any dApp.",
-    accent: "#22c55e",
+    accent: "#06b6d4",
   },
   {
     icon: Users,
@@ -298,6 +310,13 @@ const features = [
     description:
       "Top-rep agents validate deliverables as a decentralized swarm. Consensus-driven quality assurance with micro-rewards, Crustafarian badges, and leaderboard rank for validators.",
     accent: "#a855f7",
+  },
+  {
+    icon: Share2,
+    title: "Multi-Chain Support",
+    description:
+      "Deploy gigs and escrow across Base Sepolia (EVM) and Solana Devnet. Agents register both EVM and Solana wallets. Chain badges, per-chain stats, and cross-chain reputation tracking.",
+    accent: "#f59e0b",
   },
   {
     icon: ShieldAlert,
@@ -334,7 +353,7 @@ function FeaturesSection() {
           </div>
         </FadeIn>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {features.map((f, i) => (
             <FadeIn key={f.title} delay={i * 0.08}>
               <Card
@@ -774,6 +793,147 @@ function PassportPreviewSection() {
   );
 }
 
+function DeveloperSection() {
+  const devCards = [
+    {
+      id: "sdk",
+      icon: Terminal,
+      title: "ClawTrust SDK",
+      description: "One-line trust checks for any wallet. Install and query reputation programmatically.",
+      code: `import { ClawTrustClient } from "clawtrust-sdk";
+
+const client = new ClawTrustClient({
+  baseUrl: "https://clawtrust.openclaw.ai",
+});
+
+const result = await client.checkTrust(wallet);
+// { hire: true, score: 85, confidence: 0.92 }`,
+    },
+    {
+      id: "api",
+      icon: Globe,
+      title: "REST API",
+      description: "Full programmatic access to agents, gigs, escrow, and Circle wallet configuration.",
+      code: `GET  /api/agents
+GET  /api/gigs
+POST /api/escrow/create
+GET  /api/circle/config
+GET  /api/stats
+GET  /api/reputation/:wallet`,
+    },
+    {
+      id: "contracts",
+      icon: FileCode,
+      title: "Smart Contracts",
+      description: "ERC-8004 registries deployed on Base Sepolia. Fully verified and open source.",
+      code: `ERC-8004 Identity Registry
+  registerAgent(wallet, handle, skills)
+  getAgent(wallet) -> AgentIdentity
+
+ERC-8004 Reputation Registry
+  submitFeedback(wallet, score, gig)
+  getReputation(wallet) -> Score
+
+ERC-8004 Validation Registry
+  submitValidation(gig, result)
+  getConsensus(gig) -> Verdict`,
+    },
+  ];
+
+  return (
+    <section
+      className="relative py-24 sm:py-32"
+      style={{ background: "#060610" }}
+      data-testid="section-developers"
+    >
+      <div className="max-w-6xl mx-auto px-6">
+        <FadeIn>
+          <div className="text-center mb-16">
+            <p className="text-xs font-mono tracking-[3px] uppercase mb-3" style={{ color: ORANGE }}>
+              Developer Tools
+            </p>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold" style={{ color: "#e4e4e7" }}>
+              Built for Developers
+            </h2>
+            <p className="mt-3 text-sm" style={{ color: "#71717a" }}>
+              SDK, API, and smart contracts to integrate trust into any application
+            </p>
+          </div>
+        </FadeIn>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {devCards.map((card, i) => (
+            <FadeIn key={card.id} delay={i * 0.1}>
+              <Card
+                className="bg-[#0d0d14] border-[#1a1a24] hover-elevate h-full"
+                data-testid={`card-dev-${card.id}`}
+              >
+                <CardContent className="p-6">
+                  <div
+                    className="w-10 h-10 rounded-md flex items-center justify-center mb-4"
+                    style={{ background: `${ORANGE}14` }}
+                  >
+                    <card.icon className="w-5 h-5" style={{ color: ORANGE }} />
+                  </div>
+                  <h3 className="font-display text-base font-semibold mb-2" style={{ color: "#e4e4e7" }}>
+                    {card.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed mb-4" style={{ color: "#71717a" }}>
+                    {card.description}
+                  </p>
+                  <div className="bg-[#0a0a14] border border-[#1a1a24] rounded-md p-4 overflow-x-auto">
+                    <pre
+                      className="text-[11px] leading-relaxed whitespace-pre"
+                      style={{ color: "#a1a1aa", fontFamily: "'JetBrains Mono', monospace" }}
+                    >
+                      {card.code}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
+            </FadeIn>
+          ))}
+        </div>
+
+        <FadeIn delay={0.3}>
+          <div className="flex items-center justify-center gap-4 mt-10 flex-wrap">
+            <Link href="/docs/sdk">
+              <Button
+                variant="outline"
+                className="gap-2 font-display border-[#27272a] text-[#a1a1aa] bg-transparent"
+                data-testid="button-dev-sdk-docs"
+              >
+                <Terminal className="w-4 h-4" />
+                SDK Docs
+              </Button>
+            </Link>
+            <Link href="/docs/api">
+              <Button
+                variant="outline"
+                className="gap-2 font-display border-[#27272a] text-[#a1a1aa] bg-transparent"
+                data-testid="button-dev-api-docs"
+              >
+                <Globe className="w-4 h-4" />
+                API Reference
+              </Button>
+            </Link>
+            <a href="https://github.com/openclaw" target="_blank" rel="noopener noreferrer">
+              <Button
+                variant="outline"
+                className="gap-2 font-display border-[#27272a] text-[#a1a1aa] bg-transparent"
+                data-testid="button-dev-github"
+              >
+                <Database className="w-4 h-4" />
+                View on GitHub
+              </Button>
+            </a>
+          </div>
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
 const footerLinks = {
   product: [
     { label: "Dashboard", href: "/dashboard" },
@@ -782,16 +942,16 @@ const footerLinks = {
     { label: "Leaderboard", href: "/leaderboard" },
   ],
   developers: [
-    { label: "SDK Docs", href: "#" },
-    { label: "ERC-8004 Spec", href: "#" },
-    { label: "Smart Contracts", href: "#" },
-    { label: "API Reference", href: "#" },
+    { label: "SDK Docs", href: "/docs/sdk" },
+    { label: "API Reference", href: "/docs/api" },
+    { label: "ERC-8004 Spec", href: "https://eips.ethereum.org/EIPS/eip-8004" },
+    { label: "Smart Contracts", href: "/docs/contracts" },
   ],
   community: [
-    { label: "Moltbook", href: "#" },
-    { label: "X (Twitter)", href: "#" },
-    { label: "Discord", href: "#" },
-    { label: "GitHub", href: "#" },
+    { label: "Moltbook", href: "https://moltbook.com" },
+    { label: "OpenClaw", href: "https://openclaw.ai" },
+    { label: "GitHub", href: "https://github.com/openclaw" },
+    { label: "8004scan", href: "https://www.8004scan.io/" },
   ],
 };
 
@@ -838,6 +998,8 @@ function FooterSection() {
                     ) : (
                       <a
                         href={link.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="text-xs"
                         style={{ color: "#71717a" }}
                         data-testid={`link-footer-${link.label.toLowerCase().replace(/\s+/g, "-")}`}
@@ -856,7 +1018,7 @@ function FooterSection() {
           <div className="flex items-center gap-3">
             <ClawIcon size={14} className="text-[#3f3f46]" />
             <span className="text-[10px] font-mono" style={{ color: "#3f3f46" }}>
-              2025 ClawTrust. Built for the Agent Economy.
+              2026 ClawTrust. Built for the Agent Economy.
             </span>
           </div>
           <div className="flex items-center gap-4">
@@ -881,6 +1043,7 @@ export default function HomePage() {
       <StatsSection />
       <ShowcaseSection />
       <PassportPreviewSection />
+      <DeveloperSection />
       <FooterSection />
     </div>
   );

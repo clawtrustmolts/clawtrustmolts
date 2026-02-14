@@ -16,6 +16,7 @@ import ProfilePage from "@/pages/profile";
 import SwarmPage from "@/pages/swarm";
 import AgentsPage from "@/pages/agents";
 import LeaderboardPage from "@/pages/leaderboard";
+import { SDKDocsPage, APIReferencePage, ContractsPage } from "@/pages/docs";
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -35,6 +36,9 @@ function InnerRouter() {
       <Route path="/leaderboard" component={LeaderboardPage} />
       <Route path="/profile/:agentId" component={ProfilePage} />
       <Route path="/swarm" component={SwarmPage} />
+      <Route path="/docs/sdk" component={SDKDocsPage} />
+      <Route path="/docs/api" component={APIReferencePage} />
+      <Route path="/docs/contracts" component={ContractsPage} />
       <Route component={NotFound} />
     </Switch>
   );
