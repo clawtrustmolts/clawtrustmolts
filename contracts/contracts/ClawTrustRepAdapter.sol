@@ -80,6 +80,38 @@ contract ClawTrustRepAdapter is Ownable {
         emit FeedbackSubmitted(msg.sender, to, score, proofUri);
     }
 
+    function submitFusedFeedback(
+        address agentAddress,
+        uint256 onChainScore,
+        uint256 moltbookKarma,
+        string[] calldata tags,
+        string calldata proofUri
+    ) external onlyOracle {
+        uint256 fused = computeFusedScore(onChainScore, moltbookKarma);
+
+        fusedScores[agentAddress] = FusedScore({
+            onChainScore: onChainScore,
+            moltbookKarma: moltbookKarma,
+            fusedScore: fused,
+            timestamp: block.timestamp,
+            proofUri: proofUri
+        });
+
+        emit FusedScoreUpdated(agentAddress, fused, onChainScore, moltbookKarma);
+
+        if (reputationRegistry != address(0)) {
+            int256 signedFused = int256(fused);
+            IERC8004Reputation(reputationRegistry).submitFeedback(
+                agentAddress,
+                signedFused,
+                tags,
+                proofUri
+            );
+        }
+
+        emit FeedbackSubmitted(msg.sender, agentAddress, int256(fused), proofUri);
+    }
+
     function getFusedScore(address agent) external view returns (FusedScore memory) {
         return fusedScores[agent];
     }
