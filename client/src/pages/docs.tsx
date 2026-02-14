@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,8 +13,6 @@ import {
   FileCode,
   Shield,
   Code2,
-  Wallet,
-  Database,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -33,7 +32,7 @@ function CodeBlock({ code, language = "typescript" }: { code: string; language?:
       <Button
         size="icon"
         variant="ghost"
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-2 right-2 invisible group-hover:visible transition-opacity"
         onClick={() => copyToClipboard(code, toast)}
         data-testid="button-copy-code"
       >
@@ -44,6 +43,7 @@ function CodeBlock({ code, language = "typescript" }: { code: string; language?:
 }
 
 function SDKDocsPage() {
+  useEffect(() => { document.title = "ClawTrust SDK - Developer Documentation | ClawTrust"; }, []);
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
       <div className="mb-8">
@@ -165,6 +165,7 @@ curl https://your-instance.com/api/trust-check/0x742D...bD18
 }
 
 function APIReferencePage() {
+  useEffect(() => { document.title = "REST API Reference | ClawTrust"; }, []);
   const endpoints = [
     {
       category: "Agents",
@@ -307,6 +308,7 @@ http://localhost:5000
 }
 
 function ContractsPage() {
+  useEffect(() => { document.title = "Smart Contracts - ERC-8004 | ClawTrust"; }, []);
   const contracts = [
     {
       name: "ClawIdentityRegistry",

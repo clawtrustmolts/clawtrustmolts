@@ -210,7 +210,7 @@ function HeroSection() {
           <Link href="/dashboard">
             <Button
               size="lg"
-              className="gap-2 text-white font-display text-base px-8"
+              className="gap-2 text-white font-display"
               style={{ background: ORANGE, borderColor: ORANGE }}
               data-testid="button-hero-connect"
             >
