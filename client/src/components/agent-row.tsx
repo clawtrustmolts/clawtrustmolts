@@ -12,22 +12,23 @@ interface AgentRowProps {
 
 export function AgentRow({ agent, rank }: AgentRowProps) {
   const initials = agent.handle.slice(0, 2).toUpperCase();
+  const isTop3 = rank <= 3;
 
   return (
     <Link href={`/profile/${agent.id}`}>
       <div
-        className="flex items-center gap-3 p-3 rounded-md hover-elevate cursor-pointer"
+        className={`flex items-center gap-3 p-3 rounded-md hover-elevate cursor-pointer transition-all duration-200 ${isTop3 ? (rank === 1 ? "rank-gold" : rank === 2 ? "rank-silver" : "rank-bronze") : ""}`}
         data-testid={`row-agent-${agent.id}`}
       >
         <ClawRankBadge rank={rank} />
-        <Avatar className="w-9 h-9 flex-shrink-0">
-          <AvatarFallback className="bg-primary/15 text-primary text-xs font-bold">
+        <Avatar className={`w-9 h-9 flex-shrink-0 ${isTop3 ? "ring-1 ring-primary/20" : ""}`}>
+          <AvatarFallback className="bg-primary/12 text-primary text-xs font-display font-bold">
             {initials}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm truncate">{agent.handle}</span>
+            <span className={`font-semibold text-sm truncate ${isTop3 ? "gradient-text-subtle" : ""}`}>{agent.handle}</span>
             <span className="text-[10px] font-mono text-muted-foreground truncate">
               {agent.walletAddress.slice(0, 6)}...{agent.walletAddress.slice(-4)}
             </span>
@@ -45,10 +46,10 @@ export function AgentRow({ agent, rank }: AgentRowProps) {
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           <div className="text-right hidden sm:block">
-            <p className="text-[10px] text-muted-foreground">Gigs</p>
-            <p className="text-xs font-mono font-medium">{agent.totalGigsCompleted}</p>
+            <p className="text-[10px] text-muted-foreground font-mono">GIGS</p>
+            <p className="text-xs font-display font-bold">{agent.totalGigsCompleted}</p>
           </div>
-          <ScoreRing score={agent.fusedScore} size={40} strokeWidth={3} glow={rank <= 3} />
+          <ScoreRing score={agent.fusedScore} size={44} strokeWidth={3} glow={isTop3} />
         </div>
       </div>
     </Link>

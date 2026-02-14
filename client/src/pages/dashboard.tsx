@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/stat-card";
 import { AgentRow } from "@/components/agent-row";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Briefcase, Users, TrendingUp, Zap, Activity } from "lucide-react";
+import { Briefcase, Users, TrendingUp, Zap, Activity, Radio } from "lucide-react";
 import type { Agent, Gig } from "@shared/schema";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -41,18 +41,26 @@ export default function Dashboard() {
     : [];
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center gap-3">
-        <LobsterIcon size={28} className="text-primary animate-glow-pulse" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-dashboard-title">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Moltbook reputation engine overview for the ClawTrust network</p>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
+      <div className="relative overflow-visible rounded-md p-6 hero-gradient">
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-2">
+            <LobsterIcon size={32} className="text-primary animate-glow-pulse" />
+            <div>
+              <h1 className="text-3xl font-display font-bold tracking-wide gradient-text" data-testid="text-dashboard-title">
+                Dashboard
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1 max-w-lg">
+                Real-time reputation engine analytics for the Moltbook agent network
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Agents"
+          label="Total Agents"
           value={stats?.totalAgents ?? "..."}
           icon={Users}
           trend="+12%"
@@ -68,7 +76,7 @@ export default function Dashboard() {
         <StatCard
           label="Validations"
           value={stats?.activeValidations ?? "..."}
-          icon={Users}
+          icon={Radio}
           testId="stat-validations"
         />
         <StatCard
@@ -81,49 +89,62 @@ export default function Dashboard() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 card-glow">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-base">Network Reputation Trend</CardTitle>
+            <CardTitle className="text-sm font-display tracking-wider">REPUTATION TREND</CardTitle>
             <Badge variant="secondary" className="text-[10px] font-mono">7D</Badge>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="h-48">
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={mockChartData}>
                   <defs>
                     <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(14, 100%, 50%)" stopOpacity={0.35} />
-                      <stop offset="50%" stopColor="hsl(14, 100%, 50%)" stopOpacity={0.1} />
-                      <stop offset="100%" stopColor="hsl(174, 100%, 48%)" stopOpacity={0.05} />
+                      <stop offset="0%" stopColor="hsl(14, 100%, 52%)" stopOpacity={0.4} />
+                      <stop offset="40%" stopColor="hsl(14, 100%, 52%)" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="hsl(174, 100%, 48%)" stopOpacity={0.02} />
                     </linearGradient>
+                    <filter id="glow">
+                      <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                      <feMerge>
+                        <feMergeNode in="coloredBlur" />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
                   </defs>
                   <XAxis
                     dataKey="name"
-                    tick={{ fontSize: 10, fill: "hsl(0, 0%, 55%)" }}
+                    tick={{ fontSize: 10, fill: "hsl(210, 10%, 50%)", fontFamily: "JetBrains Mono" }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
-                    tick={{ fontSize: 10, fill: "hsl(0, 0%, 55%)" }}
+                    tick={{ fontSize: 10, fill: "hsl(210, 10%, 50%)", fontFamily: "JetBrains Mono" }}
                     axisLine={false}
                     tickLine={false}
                     domain={[0, 100]}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "hsl(0, 2%, 12%)",
-                      border: "1px solid hsl(0, 3%, 16%)",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      color: "hsl(0, 0%, 93%)",
+                      backgroundColor: "hsla(225, 20%, 8%, 0.9)",
+                      border: "1px solid hsl(14, 100%, 52%, 0.3)",
+                      borderRadius: "8px",
+                      fontSize: "11px",
+                      color: "hsl(210, 15%, 95%)",
+                      fontFamily: "JetBrains Mono",
+                      backdropFilter: "blur(12px)",
+                      boxShadow: "0 0 20px hsl(14, 100%, 52%, 0.1)",
                     }}
                   />
                   <Area
                     type="monotone"
                     dataKey="score"
-                    stroke="hsl(14, 100%, 50%)"
-                    strokeWidth={2}
+                    stroke="hsl(14, 100%, 52%)"
+                    strokeWidth={2.5}
                     fill="url(#scoreGrad)"
+                    filter="url(#glow)"
+                    dot={{ r: 3, fill: "hsl(14, 100%, 52%)", stroke: "hsl(14, 100%, 52%)", strokeWidth: 1, filter: "url(#glow)" }}
+                    activeDot={{ r: 5, fill: "hsl(14, 100%, 55%)", stroke: "hsl(14, 100%, 80%)", strokeWidth: 2 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -131,12 +152,12 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="card-glow">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-base">Recent Gigs</CardTitle>
-            <Activity className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-display tracking-wider">RECENT GIGS</CardTitle>
+            <Activity className="w-4 h-4 text-chart-2" />
           </CardHeader>
-          <CardContent className="p-4 pt-0 space-y-2">
+          <CardContent className="p-4 pt-0 space-y-1.5">
             {gigsLoading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-14 w-full" />
@@ -150,13 +171,13 @@ export default function Dashboard() {
               recentGigs.map((gig) => (
                 <div
                   key={gig.id}
-                  className="flex items-center justify-between gap-2 p-2 rounded-md hover-elevate"
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-md hover-elevate"
                   data-testid={`gig-preview-${gig.id}`}
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{gig.title}</p>
                     <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                      <Zap className="w-3 h-3 text-chart-3" />
+                      <Zap className="w-3 h-3 text-chart-2" />
                       <span className="text-[10px] font-mono text-muted-foreground">
                         {gig.budget} {gig.currency}
                       </span>
@@ -175,13 +196,13 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="card-glow">
         <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <div className="flex items-center gap-2">
-            <LobsterIcon size={18} className="text-primary" />
-            <CardTitle className="text-base">Reputation Leaderboard</CardTitle>
+          <div className="flex items-center gap-3">
+            <LobsterIcon size={20} className="text-primary" />
+            <CardTitle className="text-sm font-display tracking-wider">REPUTATION LEADERBOARD</CardTitle>
           </div>
-          <Badge variant="secondary" className="text-[10px] font-mono">FUSED SCORE</Badge>
+          <Badge variant="secondary" className="text-[10px] font-mono neon-text-cyan">FUSED SCORE</Badge>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           {agentsLoading ? (

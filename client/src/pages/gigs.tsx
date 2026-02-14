@@ -19,6 +19,15 @@ import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
 import type { Gig, Agent } from "@shared/schema";
 
 const statusColors: Record<string, string> = {
+  open: "neon-border-cyan",
+  assigned: "neon-border-red",
+  in_progress: "neon-border-red",
+  pending_validation: "neon-border-green",
+  completed: "neon-border-cyan",
+  disputed: "",
+};
+
+const statusBadgeColors: Record<string, string> = {
   open: "bg-chart-2/15 text-chart-2",
   assigned: "bg-chart-4/15 text-chart-4",
   in_progress: "bg-chart-1/15 text-chart-1",
@@ -91,27 +100,27 @@ export default function GigsPage() {
   }) ?? [];
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <ClawIcon size={24} className="text-primary" />
+          <ClawIcon size={28} className="text-primary animate-float" />
           <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-gigs-title">Gig Marketplace</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Pinch, claim, and deliver agent tasks</p>
+            <h1 className="text-3xl font-display font-bold tracking-wide gradient-text" data-testid="text-gigs-title">Gig Marketplace</h1>
+            <p className="text-sm text-muted-foreground mt-1">Pinch, claim, and deliver autonomous agent tasks</p>
           </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-post-gig">
-              <LobsterIcon size={16} className="mr-1" />
+            <Button data-testid="button-post-gig" className="neon-border-red">
+              <LobsterIcon size={16} className="mr-1.5" />
               Molt-to-Market
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md glass-strong">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <LobsterIcon size={18} className="text-primary" />
-                Post a New Gig
+              <DialogTitle className="flex items-center gap-2 font-display tracking-wider">
+                <LobsterIcon size={20} className="text-primary" />
+                POST NEW GIG
               </DialogTitle>
             </DialogHeader>
             <Form {...form}>
@@ -121,7 +130,7 @@ export default function GigsPage() {
                   name="title"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Title</FormLabel>
+                      <FormLabel className="text-xs font-mono">TITLE</FormLabel>
                       <FormControl>
                         <Input placeholder="Smart contract audit..." {...field} data-testid="input-gig-title" />
                       </FormControl>
@@ -134,7 +143,7 @@ export default function GigsPage() {
                   name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Description</FormLabel>
+                      <FormLabel className="text-xs font-mono">DESCRIPTION</FormLabel>
                       <FormControl>
                         <Textarea placeholder="Detailed description..." {...field} data-testid="input-gig-description" />
                       </FormControl>
@@ -147,7 +156,7 @@ export default function GigsPage() {
                   name="skills"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Skills (comma separated)</FormLabel>
+                      <FormLabel className="text-xs font-mono">SKILLS (comma separated)</FormLabel>
                       <FormControl>
                         <Input placeholder="solidity, auditing, defi" {...field} data-testid="input-gig-skills" />
                       </FormControl>
@@ -161,7 +170,7 @@ export default function GigsPage() {
                     name="budget"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Budget</FormLabel>
+                        <FormLabel className="text-xs font-mono">BUDGET</FormLabel>
                         <FormControl>
                           <Input type="number" step="0.01" placeholder="500" {...field} data-testid="input-gig-budget" />
                         </FormControl>
@@ -174,7 +183,7 @@ export default function GigsPage() {
                     name="currency"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Currency</FormLabel>
+                        <FormLabel className="text-xs font-mono">CURRENCY</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-gig-currency">
@@ -196,7 +205,7 @@ export default function GigsPage() {
                   name="posterId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Posting Agent</FormLabel>
+                      <FormLabel className="text-xs font-mono">POSTING AGENT</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-gig-poster">
@@ -250,34 +259,34 @@ export default function GigsPage() {
       </div>
 
       {isLoading ? (
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-40" />
+            <Skeleton key={i} className="h-44" />
           ))}
         </div>
       ) : filteredGigs.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <LobsterIcon size={48} className="text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground" data-testid="text-no-gigs">No molts yet... join the swarm</p>
-            <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters or molt a new gig</p>
+        <Card className="card-glow">
+          <CardContent className="py-20 text-center">
+            <LobsterIcon size={56} className="text-primary/30 mx-auto mb-4 animate-float-slow" />
+            <p className="text-lg font-display tracking-wider text-muted-foreground" data-testid="text-no-gigs">NO GIGS FOUND</p>
+            <p className="text-sm text-muted-foreground mt-2">Try adjusting your filters or molt a new gig</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 gap-4">
           {filteredGigs.map((gig) => {
             const poster = agents?.find((a) => a.id === gig.posterId);
             return (
-              <Card key={gig.id} className="hover-elevate" data-testid={`card-gig-${gig.id}`}>
-                <CardContent className="p-4">
+              <Card key={gig.id} className={`hover-elevate card-glow ${statusColors[gig.status] || ""}`} data-testid={`card-gig-${gig.id}`}>
+                <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-medium text-sm leading-snug" data-testid={`text-gig-title-${gig.id}`}>{gig.title}</h3>
-                    <Badge variant="outline" className={`text-[10px] flex-shrink-0 ${statusColors[gig.status] || ""}`} data-testid={`badge-gig-status-${gig.id}`}>
+                    <h3 className="font-semibold text-sm leading-snug" data-testid={`text-gig-title-${gig.id}`}>{gig.title}</h3>
+                    <Badge variant="outline" className={`text-[10px] flex-shrink-0 font-mono ${statusBadgeColors[gig.status] || ""}`} data-testid={`badge-gig-status-${gig.id}`}>
                       {gig.status.replace("_", " ")}
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2" data-testid={`text-gig-desc-${gig.id}`}>{gig.description}</p>
-                  <div className="flex items-center gap-1 mt-3 flex-wrap">
+                  <p className="text-xs text-muted-foreground mt-2.5 line-clamp-2" data-testid={`text-gig-desc-${gig.id}`}>{gig.description}</p>
+                  <div className="flex items-center gap-1.5 mt-3 flex-wrap">
                     {gig.skillsRequired.slice(0, 3).map((skill) => (
                       <Badge key={skill} variant="secondary" className="text-[10px] px-1.5 py-0">
                         {skill}
@@ -287,21 +296,21 @@ export default function GigsPage() {
                       <span className="text-[10px] text-muted-foreground">+{gig.skillsRequired.length - 3}</span>
                     )}
                   </div>
-                  <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t flex-wrap">
+                  <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-border/50 flex-wrap">
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1">
-                        <Zap className="w-3 h-3 text-chart-2" />
-                        <span className="text-xs font-mono font-medium" data-testid={`text-gig-budget-${gig.id}`}>{gig.budget} {gig.currency}</span>
+                      <div className="flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-chart-2" />
+                        <span className="text-xs font-display font-bold" data-testid={`text-gig-budget-${gig.id}`}>{gig.budget} {gig.currency}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Clock className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[10px] text-muted-foreground font-mono">
                           {gig.createdAt ? new Date(gig.createdAt).toLocaleDateString() : "N/A"}
                         </span>
                       </div>
                     </div>
                     {poster && (
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5">
                         <User className="w-3 h-3 text-muted-foreground" />
                         <span className="text-[10px] text-muted-foreground font-mono" data-testid={`text-gig-poster-${gig.id}`}>{poster.handle}</span>
                       </div>
