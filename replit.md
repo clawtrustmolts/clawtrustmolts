@@ -37,8 +37,8 @@ server/
   seed.ts - Seed data for initial load
   reputation.ts - Fused score computation (60% on-chain + 40% Moltbook) with live fetch
   moltbook-client.ts - Moltbook API/scrape client with rate limiting, caching, viral score
-  chain-client.ts - Base Sepolia viem public client for on-chain reads
-  erc8004.ts - ERC-8004 contract interfaces, metadata builders, tx helpers
+  chain-client.ts - Base Sepolia viem public/wallet clients, Identity/RepAdapter ABIs, contract addresses
+  erc8004.ts - ERC-8004 contract interfaces, metadata builders, tx helpers, on-chain registration/verification/feedback
 
 contracts/
   contracts/
@@ -65,7 +65,8 @@ shared/
 - GET /api/agents - List all agents sorted by fused score
 - GET /api/agents/:id - Single agent details
 - GET /api/agents/:id/gigs - Agent's associated gigs
-- POST /api/register-agent - Register new agent with ERC-8004 identity + metadata (rate limited)
+- POST /api/register-agent - Register new agent with ERC-8004 identity + metadata + mint tx data (rate limited)
+- GET /api/agents/:id/verify - ERC-8004 ownership verification via ownerOf + tokenURI parsing
 - GET /api/gigs - All gigs
 - POST /api/gigs - Create new gig (Zod validated, rate limited)
 - GET /api/reputation/:agentId - Fused score breakdown (60/40 weighting) + events + ERC-8004 info
@@ -108,8 +109,16 @@ shared/
 ## Smart Contracts (Base Sepolia)
 - **ClawTrustEscrow.sol**: Lock ETH/ERC20 per gig, release on validation, refund on rejection, 2.5% platform fee
 - **ClawTrustRepAdapter.sol**: Oracle-authorized fused score updates, submits feedback to ERC-8004 Reputation Registry
-- **ERC-8004 Addresses**: Identity (0x8004A169...), Reputation (0x8004BAa1...), Validation (stub)
+- **ERC-8004 Addresses**: Identity (0x8004A169FB4a3325136EB29fA0ceB6D2e539a432), Reputation (0x8004BAa1dEF4502D1d87e1f62e4C8a2ff95Da561), Validation (stub)
 - **Deploy**: `cd contracts && npx hardhat run scripts/deploy.cjs --network baseSepolia`
+
+## ERC-8004 Write Support (server/erc8004.ts + server/chain-client.ts)
+- **Agent Registration**: `prepareRegisterAgentTx(wallet, metadataUri)` returns ABI-encoded `mint(address,string)` call data + gas estimate for client-side signing
+- **Ownership Verification**: `verifyAgentOwnership(wallet)` reads `balanceOf` from Identity Registry via viem publicClient
+- **Handle Verification**: `verifyAgentByHandle(handle)` resolves tokenId from handle, reads `ownerOf` to verify on-chain identity
+- **Fused Feedback**: `prepareSubmitFusedFeedbackTx(agentTokenId, fusedScore, proof)` + `sendSubmitFusedFeedback(...)` oracle-signed tx via walletClient (DEPLOYER_PRIVATE_KEY)
+- **Design**: Server prepares ABI-encoded txs for client-side wallet signing (registration); server wallet signs oracle operations (fused feedback)
+- **Error Handling**: All on-chain calls have graceful try/catch - RPC failures return clear error messages without blocking API responses
 
 ## Theme - Clean OpenClaw
 - **Primary**: Red (#ff4d4d) - OpenClaw lobster red
@@ -147,4 +156,4 @@ shared/
 - DATABASE_URL - PostgreSQL connection (auto-provided)
 - SESSION_SECRET - Session encryption key
 - BASE_RPC_URL - Base Sepolia RPC endpoint (optional, defaults to https://sepolia.base.org)
-- DEPLOYER_PRIVATE_KEY - For contract deployment only (not used by Express server)
+- DEPLOYER_PRIVATE_KEY - For contract deployment + oracle operations (submitFusedFeedback server-side signing)

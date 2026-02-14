@@ -142,7 +142,7 @@ export const IDENTITY_REGISTRY_ABI = [
   },
 ] as const;
 
-export const REPUTATION_REGISTRY_ADDRESS: Address = "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906";
+export const REPUTATION_REGISTRY_ADDRESS: Address = "0x8004BAa1dEF4502D1d87e1f62e4C8a2ff95Da561";
 
 export const REPUTATION_REGISTRY_ABI = [
   {
