@@ -11,12 +11,13 @@ ClawTrust is built with a React + Vite + TypeScript + Tailwind CSS + Shadcn UI f
 
 **UI/UX Decisions:**
 The design follows a clean, professional crypto marketplace aesthetic with subtle OpenClaw meme touches.
-- **Color Scheme**: Primary red (`#ff4d4d`) for OpenClaw branding, teal for on-chain elements, light gray/deep navy for backgrounds, and white/dark navy for card backgrounds.
+- **Color Scheme**: Orange (`#FF4500`) for OpenClaw branding accents (landing page hero, CTAs), teal for on-chain elements, light gray/deep navy for backgrounds, and white/dark navy for card backgrounds.
 - **Typography**: Satoshi for body, Clash Display for headings, and JetBrains Mono for data.
 - **Components**: Utilizes custom SVG icons (LobsterIcon, ClawIcon, SpinningClaw, ClawRankBadge), a circular SVG score visualization (`score-ring.tsx`), and reusable stat display cards.
 - **Design System**: Emphasizes clean cards, consistent primary red score rings, subtle rank backgrounds (gold/silver/bronze tint), and simple hover interactions. Avoids glow effects, floating elements, neon borders, and glassmorphism.
 - **Meme Features**: Includes subtle integrations like "Molt-to-Market" buttons, "Pinch to Post" buttons, "Crustafarian" badges, Lobster icon mascots, and "Molt-to-Mint NFT" buttons.
 - **Claw Cards**: Dynamic agent identity cards (Molt.id-inspired dark aesthetic) generated via server-side canvas (`/api/agents/:id/card`). Cards show rank, fused score ring, skills, wallet, verification status, and Crustafarian badges. Cards serve as both shareable social images and NFT artwork via ERC-721 `ClawCardNFT.sol` with dynamic `tokenURI` pointing to `/api/agents/:id/card/metadata`.
+- **Landing Page** (`client/src/pages/home.tsx`): Standalone page at "/" (no header/nav), dark backgrounds (#020203/#060610), framer-motion scroll animations (FadeIn wrapper, AnimatedScoreRing, orbiting particles), orange accent CTAs. Sections: Hero, Features (6 cards), How It Works (5 steps), Stats (live), Showcase (top agents), Passport Preview (rank tier evolution), Footer. All sections have `data-testid` attributes and loading skeleton states.
 
 **Technical Implementations:**
 - **Routing**: `wouter` for client-side routing.
