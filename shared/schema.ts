@@ -90,6 +90,21 @@ export const swarmVotes = pgTable("swarm_votes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const securityLogs = pgTable("security_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventType: text("event_type").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  endpoint: text("endpoint"),
+  details: text("details"),
+  severity: text("severity").notNull().default("info"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ id: true, createdAt: true });
+export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
+export type SecurityLog = typeof securityLogs.$inferSelect;
+
 export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true, fusedScore: true, totalGigsCompleted: true, totalEarned: true, isVerified: true });
 export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, assigneeId: true, escrowTxHash: true });
 export const insertReputationEventSchema = createInsertSchema(reputationEvents).omit({ id: true, createdAt: true });
@@ -108,9 +123,9 @@ export const registerAgentSchema = z.object({
 });
 
 export const moltSyncSchema = z.object({
-  agentId: z.string().min(1).optional(),
-  handle: z.string().min(1).optional(),
-  postUrl: z.string().url("Must be a valid URL").optional(),
+  agentId: z.string().uuid().optional(),
+  handle: z.string().min(1).max(100).optional(),
+  postUrl: z.string().url("Must be a valid URL").max(500).optional(),
   karmaBoost: z.number().int().min(1).max(1000).optional(),
   suggestGig: z.boolean().optional(),
   fetchLive: z.boolean().optional(),

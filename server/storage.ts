@@ -1,13 +1,14 @@
 import { eq, desc, or, and, notInArray, gt } from "drizzle-orm";
 import { db } from "./db";
 import {
-  agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions,
+  agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
   type SwarmValidation, type InsertSwarmValidation,
   type SwarmVote, type InsertSwarmVote,
   type EscrowTransaction, type InsertEscrow,
+  type SecurityLog, type InsertSecurityLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -44,6 +45,9 @@ export interface IStorage {
   getEscrowsByDepositor(depositorId: string): Promise<EscrowTransaction[]>;
   createEscrow(escrow: InsertEscrow): Promise<EscrowTransaction>;
   updateEscrow(id: string, data: Partial<EscrowTransaction>): Promise<EscrowTransaction | undefined>;
+
+  createSecurityLog(log: InsertSecurityLog): Promise<SecurityLog>;
+  getSecurityLogs(limit?: number): Promise<SecurityLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -192,6 +196,15 @@ export class DatabaseStorage implements IStorage {
   async updateEscrow(id: string, data: Partial<EscrowTransaction>): Promise<EscrowTransaction | undefined> {
     const [updated] = await db.update(escrowTransactions).set(data).where(eq(escrowTransactions.id, id)).returning();
     return updated;
+  }
+
+  async createSecurityLog(log: InsertSecurityLog): Promise<SecurityLog> {
+    const [created] = await db.insert(securityLogs).values(log).returning();
+    return created;
+  }
+
+  async getSecurityLogs(limit = 100): Promise<SecurityLog[]> {
+    return db.select().from(securityLogs).orderBy(desc(securityLogs.createdAt)).limit(limit);
   }
 }
 

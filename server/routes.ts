@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
 import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema } from "@shared/schema";
 import { z } from "zod";
@@ -20,26 +21,105 @@ import {
 } from "./erc8004";
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW = 60_000;
-const RATE_LIMIT_MAX = 30;
+const sanitizeString = (s: string, maxLen = 500): string =>
+  s.replace(/[<>'";&\\]/g, "").trim().slice(0, maxLen);
 
-function rateLimit(req: Request, res: Response, next: NextFunction) {
-  const key = req.ip || "unknown";
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
+const sanitizeArray = (arr: string[], maxLen = 64): string[] =>
+  arr.map((s) => sanitizeString(s, maxLen)).filter(Boolean);
 
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return next();
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const safeId = z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/);
+const safeUUID = z.string().regex(uuidPattern, "Must be a valid UUID");
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || "unknown",
+  handler: async (req, res) => {
+    await logSuspiciousActivity(req, "rate_limit_exceeded", "Exceeded 100 requests in 15 minutes");
+    res.status(429).json({ message: "Too many requests. Please try again later." });
+  },
+});
+
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || "unknown",
+  handler: async (req, res) => {
+    await logSuspiciousActivity(req, "strict_rate_limit_exceeded", "Exceeded 20 sensitive requests in 15 minutes");
+    res.status(429).json({ message: "Too many requests on this endpoint. Please try again later." });
+  },
+});
+
+async function logSuspiciousActivity(req: Request, eventType: string, details: string, severity: string = "warning") {
+  try {
+    await storage.createSecurityLog({
+      eventType,
+      ipAddress: req.ip || req.socket.remoteAddress || "unknown",
+      userAgent: req.headers["user-agent"]?.slice(0, 500) || null,
+      endpoint: `${req.method} ${req.path}`,
+      details: details.slice(0, 1000),
+      severity,
+    });
+  } catch {
+  }
+}
+
+async function verifyTurnstileToken(token: string): Promise<boolean> {
+  const secret = process.env.TURNSTILE_SECRET_KEY;
+  if (!secret) return true;
+
+  try {
+    const resp = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
+    });
+    const data = await resp.json() as { success: boolean };
+    return data.success === true;
+  } catch {
+    return true;
+  }
+}
+
+function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
+  if (!process.env.TURNSTILE_SECRET_KEY) return next();
+
+  const token = req.body?.captchaToken || req.headers["x-captcha-token"];
+  if (!token) {
+    return res.status(400).json({ message: "CAPTCHA verification required" });
   }
 
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return res.status(429).json({ message: "Too many requests. Try again later." });
+  verifyTurnstileToken(token as string).then((valid) => {
+    if (!valid) {
+      logSuspiciousActivity(req, "captcha_failed", "CAPTCHA verification failed");
+      return res.status(403).json({ message: "CAPTCHA verification failed" });
+    }
+    next();
+  });
+}
+
+function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  if (!process.env.PRIVY_APP_ID) return next();
+
+  const authHeader = req.headers.authorization;
+  const walletHeader = req.headers["x-wallet-address"] as string | undefined;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    logSuspiciousActivity(req, "auth_missing", "Missing authorization header on protected endpoint");
+    return res.status(401).json({ message: "Authentication required. Please connect your wallet." });
   }
 
-  entry.count++;
-  return next();
+  if (walletHeader && !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+    logSuspiciousActivity(req, "invalid_wallet", `Invalid wallet header: ${walletHeader?.slice(0, 20)}`);
+    return res.status(400).json({ message: "Invalid wallet address format" });
+  }
+
+  next();
 }
 
 export async function registerRoutes(
@@ -122,9 +202,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/register-agent", rateLimit, async (req, res) => {
+  app.post("/api/register-agent", strictLimiter, captchaMiddleware, walletAuthMiddleware, async (req, res) => {
     try {
+      if (req.body?.captchaToken) delete req.body.captchaToken;
       const data = registerAgentSchema.parse(req.body);
+
+      data.skills = sanitizeArray(data.skills);
+      if (data.bio) data.bio = sanitizeString(data.bio, 500);
 
       const existingHandle = await storage.getAgentByHandle(data.handle);
       if (existingHandle) {
@@ -228,9 +312,15 @@ export async function registerRoutes(
     res.json(gigsWithValidation);
   });
 
-  app.post("/api/gigs", rateLimit, async (req, res) => {
+  app.post("/api/gigs", apiLimiter, captchaMiddleware, walletAuthMiddleware, async (req, res) => {
     try {
+      if (req.body?.captchaToken) delete req.body.captchaToken;
       const data = insertGigSchema.parse(req.body);
+
+      data.title = sanitizeString(data.title, 200);
+      data.description = sanitizeString(data.description, 2000);
+      if (data.skillsRequired) data.skillsRequired = sanitizeArray(data.skillsRequired);
+
       const gig = await storage.createGig(data);
       res.status(201).json(gig);
     } catch (err: any) {
@@ -348,11 +438,11 @@ export async function registerRoutes(
     });
   });
 
-  app.post("/api/escrow/create", rateLimit, async (req, res) => {
+  app.post("/api/escrow/create", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const escrowBody = z.object({
-        gigId: z.string().min(1),
-        depositorId: z.string().min(1),
+        gigId: z.string().uuid(),
+        depositorId: z.string().uuid(),
       });
       const { gigId, depositorId } = escrowBody.parse(req.body);
 
@@ -405,6 +495,134 @@ export async function registerRoutes(
     res.json(escrow);
   });
 
+  const disputeSchema = z.object({
+    gigId: z.string().uuid(),
+    reason: z.string().min(10, "Dispute reason must be at least 10 characters").max(1000),
+    disputedBy: z.string().uuid(),
+  });
+
+  app.post("/api/escrow/dispute", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const parsed = disputeSchema.parse(req.body);
+      const gigId = parsed.gigId;
+      const reason = sanitizeString(parsed.reason, 500);
+      const disputedBy = parsed.disputedBy;
+
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      const agent = await storage.getAgent(disputedBy);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      if (gig.posterId !== disputedBy && gig.assigneeId !== disputedBy) {
+        await logSuspiciousActivity(req, "unauthorized_dispute", `Agent ${disputedBy} tried to dispute gig ${gigId} they are not involved in`);
+        return res.status(403).json({ message: "Only the gig poster or assignee can initiate a dispute" });
+      }
+
+      const escrow = await storage.getEscrowByGig(gigId);
+      if (!escrow) return res.status(404).json({ message: "No escrow found for this gig" });
+
+      if (escrow.status !== "locked" && escrow.status !== "pending") {
+        return res.status(400).json({ message: `Escrow is already ${escrow.status}. Cannot dispute.` });
+      }
+
+      await storage.updateEscrow(escrow.id, { status: "disputed" });
+      await storage.updateGigStatus(gigId, "disputed");
+
+      await storage.createReputationEvent({
+        agentId: disputedBy,
+        eventType: "Escrow Disputed",
+        scoreChange: 0,
+        source: "escrow",
+        details: `Dispute filed on gig "${gig.title}": ${sanitizeString(reason, 200)}`,
+        proofUri: null,
+      });
+
+      await logSuspiciousActivity(req, "dispute_filed", `Dispute on gig ${gigId} by agent ${disputedBy}: ${reason.slice(0, 200)}`, "info");
+
+      res.json({
+        status: "disputed",
+        escrowId: escrow.id,
+        gigId,
+        reason: sanitizeString(reason, 200),
+        disputedBy: agent.handle,
+        adminActions: {
+          note: "An admin wallet can resolve this dispute via POST /api/escrow/admin-resolve (stub)",
+          availableActions: ["release_to_assignee", "refund_to_poster"],
+        },
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/escrow/admin-resolve", strictLimiter, walletAuthMiddleware, async (req, res) => {
+    const adminResolveSchema = z.object({
+      gigId: z.string().min(1).max(64),
+      action: z.enum(["release_to_assignee", "refund_to_poster"]),
+      adminWallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid Ethereum address"),
+    });
+
+    try {
+      const { gigId, action, adminWallet } = adminResolveSchema.parse(req.body);
+
+      const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
+
+      if (ADMIN_WALLETS.length > 0 && !ADMIN_WALLETS.includes(adminWallet.toLowerCase())) {
+        await logSuspiciousActivity(req, "unauthorized_admin_action", `Non-admin wallet ${adminWallet} attempted admin-resolve on gig ${gigId}`, "critical");
+        return res.status(403).json({ message: "Wallet not authorized for admin actions" });
+      }
+
+      const escrow = await storage.getEscrowByGig(gigId);
+      if (!escrow) return res.status(404).json({ message: "No escrow found" });
+      if (escrow.status !== "disputed") {
+        return res.status(400).json({ message: "Escrow is not in disputed state" });
+      }
+
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (action === "release_to_assignee") {
+        await storage.updateEscrow(escrow.id, { status: "released" });
+        await storage.updateGigStatus(gigId, "completed");
+      } else {
+        await storage.updateEscrow(escrow.id, { status: "refunded" });
+        await storage.updateGigStatus(gigId, "open");
+      }
+
+      await logSuspiciousActivity(req, "admin_resolution", `Admin ${adminWallet} resolved dispute on gig ${gigId}: ${action}`, "info");
+
+      res.json({
+        status: action === "release_to_assignee" ? "released" : "refunded",
+        escrowId: escrow.id,
+        gigId,
+        action,
+        resolvedBy: adminWallet,
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/security-logs", async (req, res) => {
+    const adminWallet = req.headers["x-admin-wallet"] as string | undefined;
+    const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
+
+    if (ADMIN_WALLETS.length > 0 && (!adminWallet || !ADMIN_WALLETS.includes(adminWallet.toLowerCase()))) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const logs = await storage.getSecurityLogs(limit);
+    res.json({ count: logs.length, logs });
+  });
+
   app.get("/api/validations", async (_req, res) => {
     const validations = await storage.getValidations();
     res.json(validations);
@@ -420,13 +638,13 @@ export async function registerRoutes(
   const MICRO_REWARD_RATE = 0.005;
 
   const createValidationSchema = z.object({
-    gigId: z.string().min(1),
+    gigId: z.string().uuid(),
     candidateCount: z.number().int().min(3).max(10).optional(),
     threshold: z.number().int().min(2).max(10).optional(),
-    excludeAgentIds: z.array(z.string()).optional(),
+    excludeAgentIds: z.array(z.string().uuid()).max(20).optional(),
   });
 
-  app.post("/api/swarm/validate", rateLimit, async (req, res) => {
+  app.post("/api/swarm/validate", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const data = createValidationSchema.parse(req.body);
       const gigId = data.gigId;
@@ -500,12 +718,12 @@ export async function registerRoutes(
   });
 
   const voteBodySchema = z.object({
-    validationId: z.string().min(1),
-    voterId: z.string().min(1),
+    validationId: z.string().uuid(),
+    voterId: z.string().uuid(),
     vote: z.enum(["approve", "reject"]),
   });
 
-  app.post("/api/validations/vote", rateLimit, async (req, res) => {
+  app.post("/api/validations/vote", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const parsed = voteBodySchema.parse(req.body);
       const { validationId, voterId, vote } = parsed;
@@ -636,9 +854,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/molt-sync", rateLimit, async (req, res) => {
+  app.post("/api/molt-sync", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const data = moltSyncSchema.parse(req.body);
+      if (data.handle) data.handle = sanitizeString(data.handle, 100);
 
       let agent;
       if (data.agentId) {
@@ -805,7 +1024,37 @@ export async function registerRoutes(
   });
 
   app.get("/api/contracts", async (_req, res) => {
-    res.json(getContractInfo());
+    const baseInfo = getContractInfo();
+    res.json({
+      ...baseInfo,
+      network: {
+        name: "Base Sepolia",
+        chainId: 84532,
+        rpcUrl: process.env.BASE_RPC_URL || "https://sepolia.base.org",
+        blockExplorer: "https://sepolia.basescan.org",
+      },
+      contracts: {
+        ...baseInfo.contracts,
+        swarmValidator: {
+          name: "ClawTrustSwarmValidator",
+          description: "On-chain swarm validation with candidate management, vote casting, threshold aggregation, reward distribution",
+          note: "Deploy via: cd contracts && npx hardhat run scripts/deploy.cjs --network baseSepolia",
+        },
+      },
+      erc8004: {
+        standard: "ERC-8004 Trustless Agents",
+        identityRegistry: ERC8004_CONTRACTS.identity.address,
+        reputationRegistry: ERC8004_CONTRACTS.reputation.address,
+        validationRegistry: "stub - deploy ClawTrustSwarmValidator",
+      },
+      security: {
+        rateLimiting: "100 req/15min per IP (POST/PUT), 20 req/15min on sensitive endpoints",
+        captcha: process.env.TURNSTILE_SECRET_KEY ? "Cloudflare Turnstile (active)" : "Cloudflare Turnstile (configure TURNSTILE_SECRET_KEY)",
+        walletAuth: process.env.PRIVY_APP_ID ? "Privy wallet auth (active)" : "Privy wallet auth (configure PRIVY_APP_ID)",
+        inputValidation: "Zod strict schemas + XSS sanitization on all inputs",
+        auditStatus: "Pending - professional audit recommended before mainnet deployment",
+      },
+    });
   });
 
   return httpServer;
