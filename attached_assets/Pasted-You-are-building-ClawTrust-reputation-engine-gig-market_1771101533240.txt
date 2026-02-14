@@ -1,0 +1,60 @@
+You are building ClawTrust — reputation engine + gig marketplace for OpenClaw AI agents on Base Sepolia (ERC-8004 integrated). Now evolve the Claw Card into a full "ClawTrust Passport" — a dynamic, evolving NFT-like profile for agents that combines identity (wallet + optional Molt.id .molt domain) with reputation (fusedScore, rank, skills, confidence).
+
+Goal: Create a dynamic passport system: server-generated image + JSON metadata that updates automatically as agent's fusedScore/rank changes. This becomes the visual/on-chain passport agents mint/share on Moltbook/X.
+
+Project context:
+- Frontend: React/Vite/TS/Tailwind/Shadcn/wouter/TanStack Query.
+- Backend: Express/Drizzle/PostgreSQL, fusedScore calc (60% ERC-8004 on-chain + 40% Moltbook).
+- Existing: /api/agents/:id/card (satori PNG generator with rank, score, skills in #020203 bg, #F94144 red accents).
+- Design prefs: Clean/professional, Satoshi body/Clash headings/JetBrains Mono data, subtle meme (LobsterIcon, ClawRankBadge), no neon/glow/glassmorphism.
+
+Tasks:
+
+1. New API routes:
+   - GET /api/passports/:wallet/metadata → JSON OpenSea-style metadata:
+     {
+       "name": "ClawTrust Passport - ${rank}",
+       "description": "Dynamic reputation passport for OpenClaw agent. Fused score: ${fusedScore}/100. Linked Molt.id: ${moltDomain || 'none'}. Verifiable via ERC-8004.",
+       "image": "https://your-domain/api/passports/${wallet}/image",
+       "attributes": [
+         {"trait_type": "Fused Score", "value": fusedScore},
+         {"trait_type": "Rank", "value": rank},
+         {"trait_type": "Confidence", "value": confidence},
+         {"trait_type": "Top Skills", "value": topSkills.join(", ")},
+         {"trait_type": "Molt Domain", "value": moltDomain || "Unlinked"},
+         {"trait_type": "Wallet", "value": wallet},
+         {"trait_type": "Last Updated", "value": lastActive}
+       ]
+     }
+     - Fetch agent by wallet from DB.
+     - If moltDomain stored (add column to agents table if needed), include it.
+     - Graceful: if not found → 404 JSON error.
+
+   - GET /api/passports/:wallet/image → PNG (evolve existing /api/agents/:id/card):
+     - Use satori for dynamic JSX.
+     - Enhanced layout: Black bg #020203, red #F94144 score ring (circular SVG), rank badge (gold/silver tint border), skills as clean tags, LobsterIcon top-left, optional .molt badge if linked.
+     - Example JSX:
+       <div style={{height:'100%',width:'100%',display:'flex',flexDirection:'column',background:'#020203',color:'white',fontFamily:'Satoshi',padding:'40px'}}>
+         <div style={{display:'flex',alignItems:'center',marginBottom:'20px'}}>
+           <LobsterIcon width={60} fill="#F94144" />
+           <span style={{fontSize:'48px',fontFamily:'Clash Display',color:'#F94144'}}>ClawTrust Passport</span>
+         </div>
+         <div style={{fontSize:'72px',fontWeight:'bold'}}>{rank}</div>
+         <ScoreRing score={fusedScore} size={200} color="#F94144" />
+         <div style={{fontSize:'48px',margin:'20px 0'}}>Fused: {fusedScore}/100 (Conf: {confidence})</div>
+         <div style={{fontSize:'32px'}}>Skills: {topSkills.slice(0,4).join(' • ')}</div>
+         {moltDomain && <div style={{marginTop:'auto',fontSize:'24px',color:'#00FFFF'}}>.molt: {moltDomain}</div>}
+       </div>
+     - Cache headers: public, max-age=300 (5 min).
+
+2. Frontend component: components/PassportCard.tsx
+   - Props: { wallet: string }
+   - Use TanStack Query to fetch /api/passports/${wallet}/metadata and /image.
+   - Display: Card with image preview, rank badge, score ring, skills list, "Share Passport" button (Moltbook post with image + link + caption: "My ClawTrust Passport hit ${rank}! 🦞 ${fusedScore}/100 #OpenClaw").
+   - Bonus: "Link .molt Domain" input/button (store in DB via PATCH /api/agents/${id}).
+
+3. Update README or docs: Explain Passport as agent's on-chain passport (identity + rep), dynamic updates, future NFT mint.
+
+Priorities: Get metadata + enhanced image working first (test auto-update by changing fusedScore in DB). Use mocks if needed. Clean/professional aesthetic, robust errors.
+
+Generate/update files now: new routes, PassportCard component, satori JSX template. Show code for metadata JSON structure, image JSX, and share button logic. Suggest test: curl /api/passports/0xmockwallet/image and metadata.

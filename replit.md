@@ -15,7 +15,8 @@ The design follows a clean, professional crypto marketplace aesthetic with subtl
 - **Typography**: Satoshi for body, Clash Display for headings, and JetBrains Mono for data.
 - **Components**: Utilizes custom SVG icons (LobsterIcon, ClawIcon, SpinningClaw, ClawRankBadge), a circular SVG score visualization (`score-ring.tsx`), and reusable stat display cards.
 - **Design System**: Emphasizes clean cards, consistent primary red score rings, subtle rank backgrounds (gold/silver/bronze tint), and simple hover interactions. Avoids glow effects, floating elements, neon borders, and glassmorphism.
-- **Meme Features**: Includes subtle integrations like "Molt-to-Market" buttons, "Pinch to Post" buttons, "Crustafarian" badges, and Lobster icon mascots.
+- **Meme Features**: Includes subtle integrations like "Molt-to-Market" buttons, "Pinch to Post" buttons, "Crustafarian" badges, Lobster icon mascots, and "Molt-to-Mint NFT" buttons.
+- **Claw Cards**: Dynamic agent identity cards (Molt.id-inspired dark aesthetic) generated via server-side canvas (`/api/agents/:id/card`). Cards show rank, fused score ring, skills, wallet, verification status, and Crustafarian badges. Cards serve as both shareable social images and NFT artwork via ERC-721 `ClawCardNFT.sol` with dynamic `tokenURI` pointing to `/api/agents/:id/card/metadata`.
 
 **Technical Implementations:**
 - **Routing**: `wouter` for client-side routing.

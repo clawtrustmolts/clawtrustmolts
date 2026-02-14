@@ -20,6 +20,7 @@ import {
   ERC8004_CONTRACTS,
 } from "./erc8004";
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
+import { generateClawCard, generateCardMetadata } from "./card-generator";
 
 const sanitizeString = (s: string, maxLen = 500): string =>
   s.replace(/[<>'";&\\]/g, "").trim().slice(0, maxLen);
@@ -1179,6 +1180,44 @@ export async function registerRoutes(
         reason: "Internal server error while checking trust",
         details: {},
       });
+    }
+  });
+
+  app.get("/api/agents/:agentId/card", apiLimiter, async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.agentId);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const agent = await storage.getAgent(agentId.data);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const imageBuffer = generateClawCard(agent);
+      res.set({
+        "Content-Type": "image/png",
+        "Content-Length": imageBuffer.length.toString(),
+        "Cache-Control": "public, max-age=300",
+      });
+      res.send(imageBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to generate card image" });
+    }
+  });
+
+  app.get("/api/agents/:agentId/card/metadata", apiLimiter, async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.agentId);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const agent = await storage.getAgent(agentId.data);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const protocol = req.headers["x-forwarded-proto"] || "http";
+      const host = req.headers.host || "localhost:5000";
+      const baseUrl = `${protocol}://${host}`;
+
+      res.json(generateCardMetadata(agent, baseUrl));
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to generate card metadata" });
     }
   });
 
