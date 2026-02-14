@@ -13,8 +13,8 @@ export function ScoreRing({ score, size = 56, strokeWidth = 4, className = "", g
   const strokeDashoffset = circumference - (normalizedScore / 100) * circumference;
 
   const getColor = (s: number) => {
-    if (s >= 80) return { main: "hsl(174, 100%, 48%)", track: "hsl(174, 100%, 48%, 0.1)" };
-    if (s >= 60) return { main: "hsl(14, 100%, 52%)", track: "hsl(14, 100%, 52%, 0.1)" };
+    if (s >= 80) return { main: "hsl(170, 100%, 45%)", track: "hsl(170, 100%, 45%, 0.1)" };
+    if (s >= 60) return { main: "hsl(0, 100%, 65%)", track: "hsl(0, 100%, 65%, 0.1)" };
     if (s >= 40) return { main: "hsl(35, 90%, 55%)", track: "hsl(35, 90%, 55%, 0.1)" };
     return { main: "hsl(0, 72%, 50%)", track: "hsl(0, 72%, 50%, 0.1)" };
   };

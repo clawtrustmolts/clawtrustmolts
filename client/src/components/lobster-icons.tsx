@@ -34,8 +34,8 @@ export function LobsterIcon({ className = "", size = 24 }: IconProps) {
       />
       <path d="M4 18L2 14M6 20L3 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path d="M60 18L62 14M58 20L61 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="27" cy="14" r="2.5" fill="hsl(174, 100%, 48%)" opacity="0.9" />
-      <circle cx="37" cy="14" r="2.5" fill="hsl(174, 100%, 48%)" opacity="0.9" />
+      <circle cx="27" cy="14" r="2.5" fill="#00e5cc" opacity="0.9" />
+      <circle cx="37" cy="14" r="2.5" fill="#00e5cc" opacity="0.9" />
       <circle cx="27" cy="14" r="1" fill="white" opacity="0.8" />
       <circle cx="37" cy="14" r="1" fill="white" opacity="0.8" />
       <path
@@ -110,8 +110,8 @@ export function SpinningClaw({ className = "", size = 32 }: IconProps) {
           strokeLinecap="round"
           opacity="0.6"
         />
-        <circle cx="13" cy="10" r="1.5" fill="hsl(174, 100%, 48%)" />
-        <circle cx="19" cy="10" r="1.5" fill="hsl(174, 100%, 48%)" />
+        <circle cx="13" cy="10" r="1.5" fill="#00e5cc" />
+        <circle cx="19" cy="10" r="1.5" fill="#00e5cc" />
       </svg>
     </div>
   );

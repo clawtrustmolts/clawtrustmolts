@@ -8,7 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun } from "lucide-react";
-import { LobsterIcon } from "@/components/lobster-icons";
+import openclawLogo from "@assets/logo.svg";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import GigsPage from "@/pages/gigs";
@@ -65,7 +65,7 @@ function AppLayout() {
               <div className="hidden sm:flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-chart-2 animate-pulse-ring" />
                 <span className="text-[10px] font-mono tracking-[0.2em] text-muted-foreground uppercase">
-                  Moltbook Network
+                  OpenClaw Network
                 </span>
               </div>
             </div>

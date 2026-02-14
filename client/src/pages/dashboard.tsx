@@ -51,7 +51,7 @@ export default function Dashboard() {
                 Dashboard
               </h1>
               <p className="text-sm text-muted-foreground mt-1 max-w-lg">
-                Real-time reputation engine analytics for the Moltbook agent network
+                Real-time reputation engine analytics for the OpenClaw agent network
               </p>
             </div>
           </div>
@@ -100,9 +100,9 @@ export default function Dashboard() {
                 <AreaChart data={mockChartData}>
                   <defs>
                     <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(14, 100%, 52%)" stopOpacity={0.4} />
-                      <stop offset="40%" stopColor="hsl(14, 100%, 52%)" stopOpacity={0.15} />
-                      <stop offset="100%" stopColor="hsl(174, 100%, 48%)" stopOpacity={0.02} />
+                      <stop offset="0%" stopColor="hsl(0, 100%, 65%)" stopOpacity={0.4} />
+                      <stop offset="40%" stopColor="hsl(0, 100%, 65%)" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="hsl(170, 100%, 45%)" stopOpacity={0.02} />
                     </linearGradient>
                     <filter id="glow">
                       <feGaussianBlur stdDeviation="3" result="coloredBlur" />
@@ -126,25 +126,25 @@ export default function Dashboard() {
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "hsla(225, 20%, 8%, 0.9)",
-                      border: "1px solid hsl(14, 100%, 52%, 0.3)",
+                      backgroundColor: "hsla(225, 40%, 5%, 0.92)",
+                      border: "1px solid hsl(0, 100%, 65%, 0.25)",
                       borderRadius: "8px",
                       fontSize: "11px",
-                      color: "hsl(210, 15%, 95%)",
+                      color: "hsl(225, 50%, 97%)",
                       fontFamily: "JetBrains Mono",
                       backdropFilter: "blur(12px)",
-                      boxShadow: "0 0 20px hsl(14, 100%, 52%, 0.1)",
+                      boxShadow: "0 0 20px hsl(0, 100%, 65%, 0.1)",
                     }}
                   />
                   <Area
                     type="monotone"
                     dataKey="score"
-                    stroke="hsl(14, 100%, 52%)"
+                    stroke="hsl(0, 100%, 65%)"
                     strokeWidth={2.5}
                     fill="url(#scoreGrad)"
                     filter="url(#glow)"
-                    dot={{ r: 3, fill: "hsl(14, 100%, 52%)", stroke: "hsl(14, 100%, 52%)", strokeWidth: 1, filter: "url(#glow)" }}
-                    activeDot={{ r: 5, fill: "hsl(14, 100%, 55%)", stroke: "hsl(14, 100%, 80%)", strokeWidth: 2 }}
+                    dot={{ r: 3, fill: "hsl(0, 100%, 65%)", stroke: "hsl(0, 100%, 65%)", strokeWidth: 1, filter: "url(#glow)" }}
+                    activeDot={{ r: 5, fill: "hsl(0, 100%, 68%)", stroke: "hsl(0, 100%, 80%)", strokeWidth: 2 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>

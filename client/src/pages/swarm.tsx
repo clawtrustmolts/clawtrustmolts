@@ -60,7 +60,7 @@ export default function SwarmPage() {
               Swarm Validation
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Decentralized consensus voting on task outcomes via the validation registry
+              Decentralized consensus voting on task outcomes via the OpenClaw validation registry
             </p>
           </div>
         </div>
