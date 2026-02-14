@@ -36,7 +36,7 @@ const apiLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || "unknown",
+  validate: { xForwardedForHeader: false },
   handler: async (req, res) => {
     await logSuspiciousActivity(req, "rate_limit_exceeded", "Exceeded 100 requests in 15 minutes");
     res.status(429).json({ message: "Too many requests. Please try again later." });
@@ -48,7 +48,7 @@ const strictLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || "unknown",
+  validate: { xForwardedForHeader: false },
   handler: async (req, res) => {
     await logSuspiciousActivity(req, "strict_rate_limit_exceeded", "Exceeded 20 sensitive requests in 15 minutes");
     res.status(429).json({ message: "Too many requests on this endpoint. Please try again later." });
@@ -1054,6 +1054,89 @@ export async function registerRoutes(
       count: matching.length,
       gigs: matching,
     });
+  });
+
+  app.get("/api/trust-check/:wallet", apiLimiter, async (req, res) => {
+    try {
+      const wallet = (req.params.wallet as string).toLowerCase().trim();
+
+      if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+        return res.status(400).json({ message: "Invalid wallet address format" });
+      }
+
+      let agent = await storage.getAgentByWallet(wallet);
+      if (!agent) {
+        const allAgents = await storage.getAgents();
+        agent = allAgents.find((a) => a.walletAddress.toLowerCase() === wallet);
+      }
+      if (!agent) {
+        return res.status(404).json({
+          hireable: false,
+          score: 0,
+          reason: "Agent not found",
+          details: {},
+        });
+      }
+
+      const escrows = await storage.getEscrowTransactions();
+      const agentGigs = await storage.getGigsByAgent(agent.id);
+      const agentGigIds = new Set(agentGigs.map((g) => g.id));
+      const hasActiveDisputes = escrows.some(
+        (e) => e.status === "disputed" && agentGigIds.has(e.gigId),
+      );
+
+      const lastActive = agent.registeredAt || new Date();
+      const daysSinceActive = Math.floor(
+        (Date.now() - new Date(lastActive).getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      let effectiveScore = agent.fusedScore;
+      if (daysSinceActive > 30) {
+        effectiveScore = agent.fusedScore * 0.8;
+      }
+      effectiveScore = Math.round(effectiveScore * 10) / 10;
+
+      const getRank = (score: number): string => {
+        if (score >= 90) return "Diamond Claw";
+        if (score >= 70) return "Gold Shell";
+        if (score >= 50) return "Silver Molt";
+        if (score >= 30) return "Bronze Pinch";
+        return "Hatchling";
+      };
+
+      const hireable = effectiveScore >= 40 && !hasActiveDisputes;
+
+      let reason: string;
+      if (hireable) {
+        reason = "Meets threshold (fused >= 40, no disputes, recently active)";
+      } else {
+        const reasons: string[] = [];
+        if (effectiveScore < 40) reasons.push(`score too low (${effectiveScore})`);
+        if (hasActiveDisputes) reasons.push("has active disputes");
+        if (daysSinceActive > 30) reasons.push(`inactive for ${daysSinceActive} days (score decayed)`);
+        reason = `Not hireable: ${reasons.join(", ")}`;
+      }
+
+      res.json({
+        hireable,
+        score: effectiveScore,
+        reason,
+        details: {
+          wallet: agent.walletAddress,
+          fusedScore: agent.fusedScore,
+          hasActiveDisputes,
+          lastActive: lastActive instanceof Date ? lastActive.toISOString() : String(lastActive),
+          rank: getRank(effectiveScore),
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        hireable: false,
+        score: 0,
+        reason: "Internal server error while checking trust",
+        details: {},
+      });
+    }
   });
 
   app.get("/api/contracts", async (_req, res) => {

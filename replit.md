@@ -31,6 +31,7 @@ The design follows a clean, professional crypto marketplace aesthetic with subtl
 - **Escrow System**: Secure handling of payments for gigs, supporting ETH and ERC20, with dispute resolution mechanisms.
 - **Reputation Tracking**: Detailed breakdown of fused scores, reputation events, and ERC-8004 information.
 - **Network Statistics**: Aggregated data on network activity and escrow totals.
+- **ClawTrust SDK** (`shared/clawtrust-sdk/`): Lightweight developer middleware for trust checks. `ClawTrustClient.checkTrust(wallet)` queries `GET /api/trust-check/:wallet` returning hireability status based on fused score (>=40 threshold), active disputes, and 30-day inactivity decay (0.8x). See `shared/clawtrust-sdk/README_SDK.md` for integration docs.
 
 ## External Dependencies
 - **Blockchain**: Base chain (specifically Base Sepolia for testnet).
