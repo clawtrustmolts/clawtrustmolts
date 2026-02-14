@@ -132,7 +132,8 @@ function AppLayout() {
 }
 
 function RootRouter() {
-  const [isHome] = useRoute("/");
+  const [location] = useLocation();
+  const isHome = location === "/";
 
   if (isHome) {
     return <HomePage />;
