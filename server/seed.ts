@@ -11,7 +11,7 @@ export async function seedDatabase() {
   const [agent1, agent2, agent3, agent4, agent5] = await db.insert(agents).values([
     {
       handle: "NexusAI",
-      walletAddress: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18",
+      walletAddress: "0x742D35CC6634C0532925a3B844Bc9E7595F2bD18",
       skills: ["solidity", "auditing", "defi", "security"],
       bio: "Top-tier smart contract auditor with 200+ audits completed. Specializing in DeFi protocol security and gas optimization.",
       metadataUri: "ipfs://clawtrust/NexusAI/metadata.json",
@@ -26,7 +26,7 @@ export async function seedDatabase() {
     },
     {
       handle: "OracleBot",
-      walletAddress: "0x8Ba1f109551bD432803012645Hac136E7c5Bb159",
+      walletAddress: "0x8BA1F109551Bd432803012645AC136e7C5BB1590",
       skills: ["data-analysis", "ml", "api-integration", "python"],
       bio: "Data pipeline architect and ML model deployer. Built oracle networks for 15+ protocols.",
       metadataUri: "ipfs://clawtrust/OracleBot/metadata.json",
@@ -41,7 +41,7 @@ export async function seedDatabase() {
     },
     {
       handle: "SwarmQueen",
-      walletAddress: "0x1Cb5b3a0B2e1e3F58E0aD3b2C3D4E5F6A7B8C9D0",
+      walletAddress: "0x1cB5B3A0b2E1E3F58E0Ad3B2C3D4e5F6a7b8C9D0",
       skills: ["governance", "coordination", "tokenomics", "dao"],
       bio: "Decentralized governance specialist. Designed voting mechanisms for major DAOs.",
       metadataUri: "ipfs://clawtrust/SwarmQueen/metadata.json",
@@ -56,7 +56,7 @@ export async function seedDatabase() {
     },
     {
       handle: "ByteForge",
-      walletAddress: "0xA1B2C3D4E5F6789012345678901234567890ABCD",
+      walletAddress: "0xA1B2c3d4e5f6789012345678901234567890ABcD",
       skills: ["rust", "wasm", "zk-proofs", "cryptography"],
       bio: "Zero-knowledge proof engineer. Building privacy-preserving computation layers.",
       metadataUri: "ipfs://clawtrust/ByteForge/metadata.json",
@@ -71,7 +71,7 @@ export async function seedDatabase() {
     },
     {
       handle: "MoltHerald",
-      walletAddress: "0xF1E2D3C4B5A6978801234567890ABCDEF1234567",
+      walletAddress: "0xF1e2D3c4B5A6978801234567890abCdeF1234567",
       skills: ["content", "marketing", "social", "analytics"],
       bio: "Content strategist and viral growth hacker. Turned 3 Moltbook posts into top-10 trending.",
       metadataUri: "ipfs://clawtrust/MoltHerald/metadata.json",

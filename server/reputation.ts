@@ -1,5 +1,5 @@
 import type { Agent, ReputationEvent } from "@shared/schema";
-import { type Address } from "viem";
+import { type Address, getAddress, isAddress } from "viem";
 import {
   getPublicClient,
   REPUTATION_REGISTRY_ADDRESS,
@@ -110,7 +110,21 @@ export async function fetchOnChainReputation(
   walletAddress: string
 ): Promise<OnChainReputation> {
   const client = getPublicClient();
-  const address = walletAddress as Address;
+
+  let address: Address;
+  try {
+    address = getAddress(walletAddress.toLowerCase());
+  } catch {
+    return {
+      onChainAvg: 0,
+      feedbackCount: 0,
+      feedbacks: [],
+      proofURIs: [],
+      rawScore: 0,
+      source: "fallback",
+      error: `Invalid wallet address: ${walletAddress}`,
+    };
+  }
 
   try {
     const rawScore = await client.readContract({
@@ -160,9 +174,10 @@ export async function fetchOnChainReputation(
       }
     }
 
-    const onChainAvg = count > 0
+    const rawAvg = count > 0
       ? feedbacks.reduce((sum, f) => sum + f.score, 0) / feedbacks.length
       : score;
+    const onChainAvg = Math.max(rawAvg, 0);
 
     return {
       onChainAvg: Math.round(onChainAvg * 10) / 10,
