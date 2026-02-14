@@ -24,9 +24,10 @@ export default function ProfilePage() {
     queryKey: ["/api/agents", params.agentId, "gigs"],
   });
 
-  const { data: repEvents } = useQuery<ReputationEvent[]>({
+  const { data: repData } = useQuery<{ events: ReputationEvent[] }>({
     queryKey: ["/api/reputation", params.agentId],
   });
+  const repEvents = repData?.events;
 
   if (agentLoading) {
     return (

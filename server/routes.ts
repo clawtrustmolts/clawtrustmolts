@@ -3,8 +3,21 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema } from "@shared/schema";
 import { z } from "zod";
+import { type Address } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation } from "./reputation";
-import { buildIdentityMetadata, prepareEscrowTxData, getContractInfo, buildReputationFeedback } from "./erc8004";
+import {
+  buildIdentityMetadata,
+  prepareEscrowTxData,
+  getContractInfo,
+  buildReputationFeedback,
+  prepareRegisterAgentTx,
+  verifyAgentOwnership,
+  verifyAgentByHandle,
+  prepareSubmitFusedFeedbackTx,
+  sendSubmitFusedFeedback,
+  checkRepAdapterFusedScore,
+  ERC8004_CONTRACTS,
+} from "./erc8004";
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -50,6 +63,65 @@ export async function registerRoutes(
     res.json(gigs);
   });
 
+  app.get("/api/agents/:id/verify", async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      let verification: any = null;
+
+      if (agent.erc8004TokenId) {
+        verification = await verifyAgentOwnership({
+          walletAddress: agent.walletAddress as Address,
+          tokenId: agent.erc8004TokenId,
+        });
+      } else {
+        const handleResult = await verifyAgentByHandle(agent.handle);
+        verification = handleResult;
+
+        if (handleResult.tokenIdFound) {
+          await storage.updateAgent(agent.id, {
+            erc8004TokenId: handleResult.tokenIdFound,
+            isVerified: handleResult.isRegistered,
+          });
+        }
+      }
+
+      if (verification?.isOwner || verification?.isRegistered) {
+        if (!agent.isVerified) {
+          await storage.updateAgent(agent.id, { isVerified: true });
+        }
+      }
+
+      let repAdapterScore = null;
+      try {
+        repAdapterScore = await checkRepAdapterFusedScore(agent.walletAddress as Address);
+      } catch {
+      }
+
+      res.json({
+        agent: {
+          id: agent.id,
+          handle: agent.handle,
+          walletAddress: agent.walletAddress,
+          erc8004TokenId: agent.erc8004TokenId,
+          isVerified: agent.isVerified || verification?.isOwner || verification?.isRegistered || false,
+        },
+        verification,
+        repAdapterScore,
+        contracts: {
+          identityRegistry: ERC8004_CONTRACTS.identity.address,
+          reputationRegistry: ERC8004_CONTRACTS.reputation.address,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        message: "Verification check failed",
+        error: err.message?.substring(0, 300),
+      });
+    }
+  });
+
   app.post("/api/register-agent", rateLimit, async (req, res) => {
     try {
       const data = registerAgentSchema.parse(req.body);
@@ -70,9 +142,16 @@ export async function registerRoutes(
         skills: data.skills,
         bio: data.bio || undefined,
         moltbookLink: data.moltbookLink || undefined,
+        x402Support: true,
       });
 
       const metadataUri = data.metadataUri || `ipfs://clawtrust/${data.handle}/metadata.json`;
+
+      const mintTx = await prepareRegisterAgentTx({
+        handle: data.handle,
+        metadataUri,
+        skills: data.skills,
+      });
 
       const agent = await storage.createAgent({
         handle: data.handle,
@@ -105,10 +184,19 @@ export async function registerRoutes(
         agent: updatedAgent,
         metadata,
         erc8004: {
-          identityRegistry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+          identityRegistry: ERC8004_CONTRACTS.identity.address,
           metadataUri,
           status: "pending_mint",
-          note: "Submit wallet transaction to mint ERC-8004 identity NFT on Base Sepolia",
+          note: "Sign and submit the mint transaction to register ERC-8004 identity NFT on Base Sepolia",
+        },
+        mintTransaction: {
+          to: mintTx.to,
+          data: mintTx.data,
+          value: mintTx.value,
+          chainId: mintTx.chainId,
+          description: mintTx.description,
+          gasEstimate: mintTx.gasEstimate,
+          error: mintTx.error,
         },
       });
     } catch (err: any) {
@@ -189,6 +277,36 @@ export async function registerRoutes(
           error: "Failed to reach on-chain registry",
         };
 
+    let onChainVerification = null;
+    try {
+      if (agent.erc8004TokenId) {
+        onChainVerification = await verifyAgentOwnership({
+          walletAddress: agent.walletAddress as Address,
+          tokenId: agent.erc8004TokenId,
+        });
+        if (onChainVerification.isOwner && !agent.isVerified) {
+          await storage.updateAgent(agent.id, { isVerified: true });
+        }
+      } else {
+        const handleCheck = await verifyAgentByHandle(agent.handle);
+        if (handleCheck.tokenIdFound) {
+          onChainVerification = handleCheck;
+          await storage.updateAgent(agent.id, {
+            erc8004TokenId: handleCheck.tokenIdFound,
+            isVerified: handleCheck.isRegistered,
+          });
+        }
+      }
+    } catch (err: any) {
+      onChainVerification = { error: `Verification check failed: ${err.message?.substring(0, 200)}` };
+    }
+
+    let repAdapterScore = null;
+    try {
+      repAdapterScore = await checkRepAdapterFusedScore(agent.walletAddress as Address);
+    } catch {
+    }
+
     res.json({
       agent: {
         id: agent.id,
@@ -204,10 +322,12 @@ export async function registerRoutes(
       liveFusion: fusedResult,
       events,
       erc8004: {
-        identityRegistry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
-        reputationRegistry: "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+        identityRegistry: ERC8004_CONTRACTS.identity.address,
+        reputationRegistry: ERC8004_CONTRACTS.reputation.address,
         tokenId: agent.erc8004TokenId,
         isVerified: agent.isVerified,
+        onChainVerification,
+        repAdapterScore,
       },
     });
   });
