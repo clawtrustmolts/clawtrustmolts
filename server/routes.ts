@@ -1073,6 +1073,7 @@ export async function registerRoutes(
         return res.status(404).json({
           hireable: false,
           score: 0,
+          confidence: 0,
           reason: "Agent not found",
           details: {},
         });
@@ -1104,6 +1105,39 @@ export async function registerRoutes(
         return "Hatchling";
       };
 
+      let onChainVerified: boolean | undefined;
+      let onChainRepScore: number | undefined;
+      let confidence = 0.8;
+
+      const verifyOnChain = req.query.verifyOnChain === "true";
+      if (verifyOnChain) {
+        try {
+          const repResult = await checkRepAdapterFusedScore(agent.walletAddress as Address);
+          if (repResult && !repResult.error) {
+            onChainRepScore = repResult.fusedScore;
+            const scoreDiff = Math.abs(onChainRepScore - agent.fusedScore);
+            onChainVerified = scoreDiff <= 10;
+            if (onChainVerified) {
+              confidence += 0.1;
+            } else {
+              confidence *= 0.7;
+            }
+          } else {
+            onChainVerified = undefined;
+            confidence -= 0.05;
+          }
+        } catch {
+          onChainVerified = undefined;
+          confidence -= 0.05;
+        }
+      }
+
+      if (daysSinceActive > 15) confidence -= 0.2;
+      if (agent.isVerified) confidence += 0.05;
+      if (hasActiveDisputes) confidence -= 0.15;
+      if (agent.totalGigsCompleted > 5) confidence += 0.05;
+      confidence = Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100;
+
       const hireable = effectiveScore >= 40 && !hasActiveDisputes;
 
       let reason: string;
@@ -1117,22 +1151,31 @@ export async function registerRoutes(
         reason = `Not hireable: ${reasons.join(", ")}`;
       }
 
+      const disputeSummaryUrl = hasActiveDisputes
+        ? `/disputes?wallet=${encodeURIComponent(agent.walletAddress)}`
+        : undefined;
+
       res.json({
         hireable,
         score: effectiveScore,
+        confidence,
         reason,
+        onChainVerified,
         details: {
           wallet: agent.walletAddress,
           fusedScore: agent.fusedScore,
           hasActiveDisputes,
           lastActive: lastActive instanceof Date ? lastActive.toISOString() : String(lastActive),
           rank: getRank(effectiveScore),
+          onChainRepScore,
+          disputeSummaryUrl,
         },
       });
     } catch (err: any) {
       res.status(500).json({
         hireable: false,
         score: 0,
+        confidence: 0,
         reason: "Internal server error while checking trust",
         details: {},
       });
