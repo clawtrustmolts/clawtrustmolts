@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Switch, Route, useLocation, Link } from "wouter";
+import { Switch, Route, useRoute, useLocation, Link } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Moon, Sun, Menu, X, LayoutDashboard, Briefcase, Users, Trophy, UserSearch } from "lucide-react";
 import openclawLogo from "@assets/logo.svg";
 import NotFound from "@/pages/not-found";
+import HomePage from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
 import GigsPage from "@/pages/gigs";
 import ProfilePage from "@/pages/profile";
@@ -25,10 +26,10 @@ function ThemeToggle() {
   );
 }
 
-function Router() {
+function InnerRouter() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route path="/agents" component={AgentsPage} />
       <Route path="/gigs" component={GigsPage} />
       <Route path="/leaderboard" component={LeaderboardPage} />
@@ -40,7 +41,7 @@ function Router() {
 }
 
 const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Agents", url: "/agents", icon: UserSearch },
   { title: "Gigs", url: "/gigs", icon: Briefcase },
   { title: "Leaderboard", url: "/leaderboard", icon: Trophy },
@@ -76,7 +77,7 @@ function AppLayout() {
 
         <nav className="hidden md:flex items-center gap-1" data-testid="nav-desktop">
           {navItems.map((item) => {
-            const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
+            const isActive = location === item.url || (item.url !== "/dashboard" && location.startsWith(item.url));
             return (
               <Link key={item.title} href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
                 <Button
@@ -105,7 +106,7 @@ function AppLayout() {
         <div className="md:hidden border-b bg-background px-4 py-3 z-40" data-testid="nav-mobile">
           <nav className="flex flex-col gap-1">
             {navItems.map((item) => {
-              const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
+              const isActive = location === item.url || (item.url !== "/dashboard" && location.startsWith(item.url));
               return (
                 <Link key={item.title} href={item.url} data-testid={`link-nav-mobile-${item.title.toLowerCase()}`}>
                   <Button
@@ -124,10 +125,20 @@ function AppLayout() {
       )}
 
       <main className="flex-1 overflow-auto">
-        <Router />
+        <InnerRouter />
       </main>
     </div>
   );
+}
+
+function RootRouter() {
+  const [isHome] = useRoute("/");
+
+  if (isHome) {
+    return <HomePage />;
+  }
+
+  return <AppLayout />;
 }
 
 function App() {
@@ -135,7 +146,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
-          <AppLayout />
+          <RootRouter />
           <Toaster />
         </TooltipProvider>
       </ThemeProvider>

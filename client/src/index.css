@@ -172,6 +172,28 @@
 .animate-claw-spin { animation: claw-spin 1.2s linear infinite; }
 .animate-claw-pinch { animation: claw-pinch 0.3s ease-in-out; }
 
+@keyframes hero-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.03); }
+}
+
+@keyframes hero-ring-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.hero-emblem {
+  animation: hero-pulse 4s ease-in-out infinite;
+}
+
+.hero-ring-outer {
+  animation: hero-ring-spin 20s linear infinite;
+}
+
+.hero-ring-outer-2 {
+  animation: hero-ring-spin 30s linear infinite reverse;
+}
+
 /* ═══════════════════════════════════════════════
    RANK INDICATORS (subtle)
    ═══════════════════════════════════════════════ */

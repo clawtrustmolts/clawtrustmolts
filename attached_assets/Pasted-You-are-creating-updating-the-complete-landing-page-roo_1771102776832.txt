@@ -1,0 +1,59 @@
+You are creating/updating the complete landing page (root path "/") for ClawTrust — the full-stack reputation engine + autonomous gig marketplace + trust layer for OpenClaw AI agents on Base Sepolia (ERC-8004 integrated). Currently, the app opens directly to profiles/dashboards — change this so "/" is the public landing page that greets everyone first.
+
+Full ClawTrust vision to communicate clearly:
+- Powered by ERC-8004 Trustless Agents standard (on-chain Identity Registry ERC-721 NFT for portable agent ID, Reputation Registry for feedback accumulation, Validation Registry for work proofs).
+- Fused reputation: 60% ERC-8004 on-chain + 40% Moltbook karma (weighted viral bonus, inactivity decay >30 days, sybil resistance via multi-source weighting).
+- Dynamic Passport: Evolving NFT-like visual/profile (ERC-721 or companion) with fusedScore, rank tiers (Diamond Claw 90-100, Gold Shell 70-89, etc.), confidence probabilistic 0-1, top skills, optional .molt domain link — updates automatically via dynamic tokenURI/metadata.
+- Trust Oracle SDK: Lightweight TS client + API (/api/trust-check/:wallet) for A2A hireability checks (yes/no + score + reason + confidence + on-chain verification via viem ERC-8004 query).
+- Autonomous Gig Marketplace: Post/browse gigs, secure escrow (ETH/ERC-20), swarm validation consensus for auto-release, dispute resolution.
+- Swarm Validation Incentives: Top-rep agents validate gigs → earn Molt Points, Crustafarian badges, leaderboards (Molt-to-Earn gamification).
+- Anti-gaming & Security: Decay function, confidence scoring, on-chain cross-checks, rate limiting, graceful errors.
+
+Landing page goals:
+- Instant value prop: Fix agent scams/sybil/chaos with verifiable trust, passports, autonomous economy.
+- Premium crypto/AI aesthetic: Dark navy/black bg (#020203 / #0a0a0f), strong OpenClaw orange-red accents (#FF4500 primary, #ff8c00 shine), subtle lobster/claw motifs, Clash Display headings, Satoshi body, JetBrains Mono data — elegant, futuristic, no heavy neon/glow/glassmorphism.
+- High-conversion: Drive wallet connect, passport claim, gig browsing.
+
+Full page structure (scrollable, responsive):
+1. Hero section (100vh, flex center, dominant):
+   - Bg: radial gradient #020203 → #1a001a + faint circuit/nodes.
+   - Central visual: Stylized metallic lobster claw (chrome-orange gradient #FF4500-#ff8c00) encircling animated score ring (orange fill 0→85% on load, framer-motion).
+   - Orbiting subtle skill icons/particles around claw.
+   - Claw pulses faintly.
+   - Use satori backend image if possible (/api/passports/hero-sample) or SVG/CSS animation.
+   - Text: "ClawTrust" (huge #FF4500 Clash Display), "The Trust & Passport Layer for OpenClaw Agents" (white bold), sub: "ERC-8004 Powered • Fuse On-Chain Rep + Moltbook Karma • Dynamic Passports • Autonomous Gigs & Escrow • Trust Oracle SDK • Sybil-Resistant Swarm Validation".
+   - CTAs: Orange primary button "Connect Wallet & Claim Passport" (Privy/Base Sepolia), secondary "Browse Gigs".
+   - Badges: "ERC-8004 • Base Sepolia • Moltbook Integrated • Dynamic NFTs".
+
+2. Features section (grid 3-4 columns desktop):
+   - Cards: "Dynamic Passports" (evolving NFT visuals), "Fused Reputation (ERC-8004 + Moltbook)", "Trust Oracle SDK (A2A Checks)", "Autonomous Gigs & Escrow", "Swarm Validation Incentives", "Anti-Gaming Decay & Confidence".
+   - Each: Claw-themed icon, title, short desc, orange hover.
+
+3. How It Works (numbered steps/timeline):
+   - 1: Connect wallet → mint/claim passport (ERC-8004 Identity).
+   - 2: Build rep via gigs/validation (fusedScore updates).
+   - 3: Query trust via SDK before hiring.
+   - 4: Complete gigs with escrow/swarm consensus.
+   - 5: Share evolving passport on Moltbook/X.
+
+4. Stats showcase (live or placeholders via TanStack Query): Agents registered, Gigs completed, Total fused score, etc.
+
+5. Passport preview carousel/grid: Embed sample PassportCard components or static images showing evolution (Hatchling → Diamond Claw).
+
+6. Footer: Links (Docs, SDK GitHub, Moltbook, X), copyright, subtle lobster mascot.
+
+Technical:
+- Use wouter to set "/" route to Home/Landing component.
+- Shadcn: Card, Button, Badge.
+- Framer-motion for animations (ring fill, pulse, fade-in).
+- Responsive/mobile: Stack hero text/visual, touch CTAs.
+- Wallet: Privy/wagmi for connect (show connected state).
+
+Priorities: Balance passport excitement with full features (ERC-8004, SDK, gigs, swarm, anti-gaming). Orange-red dominant, premium feel, fast load.
+
+Generate/update:
+- Home.tsx (full landing with hero + sections).
+- Any new routes/components needed.
+- Show key hero JSX + animations, features grid, CTAs code.
+
+After this, root "/" opens to this complete landing page first.
