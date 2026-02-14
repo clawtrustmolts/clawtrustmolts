@@ -6,13 +6,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Menu, X, LayoutDashboard, Briefcase, Users } from "lucide-react";
+import { Moon, Sun, Menu, X, LayoutDashboard, Briefcase, Users, Trophy, UserSearch } from "lucide-react";
 import openclawLogo from "@assets/logo.svg";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import GigsPage from "@/pages/gigs";
 import ProfilePage from "@/pages/profile";
 import SwarmPage from "@/pages/swarm";
+import AgentsPage from "@/pages/agents";
+import LeaderboardPage from "@/pages/leaderboard";
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -27,7 +29,9 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/agents" component={AgentsPage} />
       <Route path="/gigs" component={GigsPage} />
+      <Route path="/leaderboard" component={LeaderboardPage} />
       <Route path="/profile/:agentId" component={ProfilePage} />
       <Route path="/swarm" component={SwarmPage} />
       <Route component={NotFound} />
@@ -37,7 +41,9 @@ function Router() {
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Agents", url: "/agents", icon: UserSearch },
   { title: "Gigs", url: "/gigs", icon: Briefcase },
+  { title: "Leaderboard", url: "/leaderboard", icon: Trophy },
   { title: "Swarm", url: "/swarm", icon: Users },
 ];
 

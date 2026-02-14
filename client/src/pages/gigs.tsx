@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, Zap, Clock, User, Filter, Shield, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, Search, Zap, Clock, User, Filter, Shield, CheckCircle2, XCircle, ChevronDown } from "lucide-react";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
 import type { Gig, Agent, SwarmValidation } from "@shared/schema";
 
@@ -51,11 +51,14 @@ const createGigFormSchema = z.object({
 
 type CreateGigFormValues = z.infer<typeof createGigFormSchema>;
 
+const GIGS_PAGE_SIZE = 8;
+
 export default function GigsPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(GIGS_PAGE_SIZE);
 
   const { data: gigs, isLoading } = useQuery<GigWithValidation[]>({ queryKey: ["/api/gigs"] });
   const { data: agents } = useQuery<Agent[]>({ queryKey: ["/api/agents"] });
@@ -96,12 +99,14 @@ export default function GigsPage() {
     },
   });
 
-  const filteredGigs = gigs?.filter((g) => {
+  const allFilteredGigs = gigs?.filter((g) => {
     const matchesSearch = g.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       g.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || g.status === statusFilter;
     return matchesSearch && matchesStatus;
   }) ?? [];
+  const filteredGigs = allFilteredGigs.slice(0, visibleCount);
+  const hasMoreGigs = visibleCount < allFilteredGigs.length;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
@@ -278,84 +283,98 @@ export default function GigsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid md:grid-cols-2 gap-3">
-          {filteredGigs.map((gig) => {
-            const poster = agents?.find((a) => a.id === gig.posterId);
-            return (
-              <Card key={gig.id} className="hover-elevate" data-testid={`card-gig-${gig.id}`}>
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-sm leading-snug" data-testid={`text-gig-title-${gig.id}`}>{gig.title}</h3>
-                    <Badge variant={statusBadgeVariant[gig.status] || "outline"} className="text-[10px] flex-shrink-0 font-mono" data-testid={`badge-gig-status-${gig.id}`}>
-                      {gig.status.replace("_", " ")}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2" data-testid={`text-gig-desc-${gig.id}`}>{gig.description}</p>
-                  <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                    {gig.skillsRequired.slice(0, 3).map((skill) => (
-                      <Badge key={skill} variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {skill}
+        <div className="space-y-3">
+          <div className="grid md:grid-cols-2 gap-3">
+            {filteredGigs.map((gig) => {
+              const poster = agents?.find((a) => a.id === gig.posterId);
+              return (
+                <Card key={gig.id} className="hover-elevate" data-testid={`card-gig-${gig.id}`}>
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold text-sm leading-snug" data-testid={`text-gig-title-${gig.id}`}>{gig.title}</h3>
+                      <Badge variant={statusBadgeVariant[gig.status] || "outline"} className="text-[10px] flex-shrink-0 font-mono" data-testid={`badge-gig-status-${gig.id}`}>
+                        {gig.status.replace("_", " ")}
                       </Badge>
-                    ))}
-                    {gig.skillsRequired.length > 3 && (
-                      <span className="text-[10px] text-muted-foreground">+{gig.skillsRequired.length - 3}</span>
-                    )}
-                  </div>
-                  {gig.validation && (
-                    <div className="mt-3 p-2 rounded-md bg-muted/50 flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-1.5">
-                        <Shield className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-[10px] font-mono text-muted-foreground">SWARM</span>
-                        {gig.validation.status === "pending" && (
-                          <Badge variant="outline" className="text-[10px] font-mono">
-                            {gig.validation.votesFor + gig.validation.votesAgainst}/{gig.validation.threshold} votes
-                          </Badge>
-                        )}
-                        {gig.validation.status === "approved" && (
-                          <Badge variant="default" className="text-[10px] font-mono">
-                            <CheckCircle2 className="w-3 h-3 mr-0.5" />
-                            APPROVED
-                          </Badge>
-                        )}
-                        {gig.validation.status === "rejected" && (
-                          <Badge variant="destructive" className="text-[10px] font-mono">
-                            <XCircle className="w-3 h-3 mr-0.5" />
-                            REJECTED
-                          </Badge>
-                        )}
-                      </div>
-                      {gig.validation.totalRewardPool != null && gig.validation.totalRewardPool > 0 && (
-                        <span className="text-[10px] font-mono text-chart-2" data-testid={`text-gig-reward-${gig.id}`}>
-                          {gig.validation.totalRewardPool} reward
-                        </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2" data-testid={`text-gig-desc-${gig.id}`}>{gig.description}</p>
+                    <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+                      {gig.skillsRequired.slice(0, 3).map((skill) => (
+                        <Badge key={skill} variant="secondary" className="text-[10px] px-1.5 py-0">
+                          {skill}
+                        </Badge>
+                      ))}
+                      {gig.skillsRequired.length > 3 && (
+                        <span className="text-[10px] text-muted-foreground">+{gig.skillsRequired.length - 3}</span>
                       )}
                     </div>
-                  )}
-
-                  <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5">
-                        <Zap className="w-3.5 h-3.5 text-chart-2" />
-                        <span className="text-xs font-display font-bold" data-testid={`text-gig-budget-${gig.id}`}>{gig.budget} {gig.currency}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {gig.createdAt ? new Date(gig.createdAt).toLocaleDateString() : "N/A"}
-                        </span>
-                      </div>
-                    </div>
-                    {poster && (
-                      <div className="flex items-center gap-1.5">
-                        <User className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground font-mono" data-testid={`text-gig-poster-${gig.id}`}>{poster.handle}</span>
+                    {gig.validation && (
+                      <div className="mt-3 p-2 rounded-md bg-muted/50 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <Shield className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-[10px] font-mono text-muted-foreground">SWARM</span>
+                          {gig.validation.status === "pending" && (
+                            <Badge variant="outline" className="text-[10px] font-mono">
+                              {gig.validation.votesFor + gig.validation.votesAgainst}/{gig.validation.threshold} votes
+                            </Badge>
+                          )}
+                          {gig.validation.status === "approved" && (
+                            <Badge variant="default" className="text-[10px] font-mono">
+                              <CheckCircle2 className="w-3 h-3 mr-0.5" />
+                              APPROVED
+                            </Badge>
+                          )}
+                          {gig.validation.status === "rejected" && (
+                            <Badge variant="destructive" className="text-[10px] font-mono">
+                              <XCircle className="w-3 h-3 mr-0.5" />
+                              REJECTED
+                            </Badge>
+                          )}
+                        </div>
+                        {gig.validation.totalRewardPool != null && gig.validation.totalRewardPool > 0 && (
+                          <span className="text-[10px] font-mono text-chart-2" data-testid={`text-gig-reward-${gig.id}`}>
+                            {gig.validation.totalRewardPool} reward
+                          </span>
+                        )}
                       </div>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+
+                    <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t flex-wrap">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <Zap className="w-3.5 h-3.5 text-chart-2" />
+                          <span className="text-xs font-display font-bold" data-testid={`text-gig-budget-${gig.id}`}>{gig.budget} {gig.currency}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {gig.createdAt ? new Date(gig.createdAt).toLocaleDateString() : "N/A"}
+                          </span>
+                        </div>
+                      </div>
+                      {poster && (
+                        <div className="flex items-center gap-1.5">
+                          <User className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-[10px] text-muted-foreground font-mono" data-testid={`text-gig-poster-${gig.id}`}>{poster.handle}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+          {hasMoreGigs && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                onClick={() => setVisibleCount((c) => c + GIGS_PAGE_SIZE)}
+                data-testid="button-load-more-gigs"
+              >
+                <ChevronDown className="w-4 h-4 mr-1.5" />
+                Load More ({allFilteredGigs.length - visibleCount} remaining)
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

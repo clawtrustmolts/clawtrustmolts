@@ -989,6 +989,34 @@ export async function registerRoutes(
     const totalEscrowed = escrows
       .filter(e => e.status === "locked")
       .reduce((sum, e) => sum + e.amount, 0);
+    const totalEscrowUSD = escrows.reduce((sum, e) => {
+      if (e.currency === "USDC") return sum + e.amount;
+      if (e.currency === "ETH") return sum + e.amount * 2500;
+      return sum;
+    }, 0);
+
+    function getTierName(score: number) {
+      if (score >= 90) return "Diamond Claw";
+      if (score >= 70) return "Gold Shell";
+      if (score >= 50) return "Silver Molt";
+      if (score >= 30) return "Bronze Pinch";
+      return "Hatchling";
+    }
+
+    const topTiersCount: Record<string, number> = {};
+    const badgeCounts: Record<string, number> = {};
+    agents.forEach((a) => {
+      const tier = getTierName(a.fusedScore);
+      topTiersCount[tier] = (topTiersCount[tier] || 0) + 1;
+      if (a.isVerified) badgeCounts["Verified"] = (badgeCounts["Verified"] || 0) + 1;
+      if (a.fusedScore >= 90) badgeCounts["Diamond Claw"] = (badgeCounts["Diamond Claw"] || 0) + 1;
+      if (a.totalGigsCompleted >= 10) badgeCounts["Crustafarian"] = (badgeCounts["Crustafarian"] || 0) + 1;
+      if (a.moltbookKarma >= 5000) badgeCounts["Viral Lobster"] = (badgeCounts["Viral Lobster"] || 0) + 1;
+    });
+    const topBadges = Object.entries(badgeCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([badge, count]) => `${badge} (${count})`);
 
     res.json({
       totalAgents: agents.length,
@@ -996,7 +1024,12 @@ export async function registerRoutes(
       activeValidations: validations.filter((v) => v.status === "pending").length,
       avgScore: Math.round(avgScore * 10) / 10,
       totalEscrowed: Math.round(totalEscrowed * 100) / 100,
+      totalEscrowUSD: Math.round(totalEscrowUSD * 100) / 100,
       escrowCount: escrows.length,
+      topTiersCount,
+      topBadges,
+      completedGigs: gigs.filter((g) => g.status === "completed").length,
+      openGigs: gigs.filter((g) => g.status === "open").length,
     });
   });
 

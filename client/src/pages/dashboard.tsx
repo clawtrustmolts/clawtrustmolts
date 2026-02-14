@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/stat-card";
 import { AgentRow } from "@/components/agent-row";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Briefcase, Users, TrendingUp, Zap, Activity, Radio } from "lucide-react";
+import { Briefcase, Users, TrendingUp, Zap, Activity, Radio, DollarSign, Trophy } from "lucide-react";
 import type { Agent, Gig } from "@shared/schema";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -28,7 +28,17 @@ export default function Dashboard() {
     queryKey: ["/api/gigs"],
   });
 
-  const { data: stats } = useQuery<{ totalAgents: number; totalGigs: number; activeValidations: number; avgScore: number }>({
+  const { data: stats } = useQuery<{
+    totalAgents: number;
+    totalGigs: number;
+    activeValidations: number;
+    avgScore: number;
+    totalEscrowUSD: number;
+    topTiersCount: Record<string, number>;
+    topBadges: string[];
+    completedGigs: number;
+    openGigs: number;
+  }>({
     queryKey: ["/api/stats"],
   });
 
@@ -59,30 +69,40 @@ export default function Dashboard() {
           label="Total Agents"
           value={stats?.totalAgents ?? "..."}
           icon={Users}
-          trend="+12%"
           testId="stat-agents"
         />
         <StatCard
           label="Active Gigs"
           value={stats?.totalGigs ?? "..."}
           icon={Briefcase}
-          trend="+8%"
+          trend={stats?.openGigs ? `${stats.openGigs} open` : undefined}
           testId="stat-gigs"
         />
         <StatCard
-          label="Validations"
-          value={stats?.activeValidations ?? "..."}
-          icon={Radio}
-          testId="stat-validations"
+          label="Escrow Value"
+          value={stats?.totalEscrowUSD ? `$${stats.totalEscrowUSD.toLocaleString()}` : "..."}
+          icon={DollarSign}
+          testId="stat-escrow"
         />
         <StatCard
           label="Avg Score"
           value={stats?.avgScore ? stats.avgScore.toFixed(1) : "..."}
           icon={TrendingUp}
-          trend="+5.2"
           testId="stat-avg-score"
         />
       </div>
+
+      {stats?.topBadges && stats.topBadges.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Trophy className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-[10px] font-mono text-muted-foreground mr-1">TOP BADGES:</span>
+          {stats.topBadges.map((badge) => (
+            <Badge key={badge} variant="secondary" className="text-[10px] font-mono">
+              {badge}
+            </Badge>
+          ))}
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-3">
         <Card className="lg:col-span-2">
