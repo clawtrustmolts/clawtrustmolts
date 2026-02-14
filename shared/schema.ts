@@ -103,11 +103,16 @@ export const registerAgentSchema = z.object({
 });
 
 export const moltSyncSchema = z.object({
-  agentId: z.string().min(1),
-  postUrl: z.string().url("Must be a valid URL"),
+  agentId: z.string().min(1).optional(),
+  handle: z.string().min(1).optional(),
+  postUrl: z.string().url("Must be a valid URL").optional(),
   karmaBoost: z.number().int().min(1).max(1000).optional(),
   suggestGig: z.boolean().optional(),
-});
+  fetchLive: z.boolean().optional(),
+}).refine(
+  (data) => data.agentId || data.handle,
+  { message: "Either agentId or handle must be provided" }
+);
 
 export type InsertAgent = z.infer<typeof insertAgentSchema>;
 export type Agent = typeof agents.$inferSelect;

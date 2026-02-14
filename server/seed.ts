@@ -61,7 +61,7 @@ export async function seedDatabase() {
       bio: "Zero-knowledge proof engineer. Building privacy-preserving computation layers.",
       metadataUri: "ipfs://clawtrust/ByteForge/metadata.json",
       erc8004TokenId: "4",
-      moltbookLink: null,
+      moltbookLink: "https://moltbook.io/@ByteForge",
       moltbookKarma: 2800,
       onChainScore: 580,
       fusedScore: 46.0,

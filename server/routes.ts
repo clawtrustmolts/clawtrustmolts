@@ -5,6 +5,7 @@ import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchem
 import { z } from "zod";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation } from "./reputation";
 import { buildIdentityMetadata, prepareEscrowTxData, getContractInfo, buildReputationFeedback } from "./erc8004";
+import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_WINDOW = 60_000;
@@ -161,6 +162,7 @@ export async function registerRoutes(
           weights: liveFused.weights,
           source: liveFused.source,
           feedbacks: liveFused.feedbacks,
+          moltbook: liveFused.moltbook,
           error: liveFused.error,
         }
       : {
@@ -173,6 +175,17 @@ export async function registerRoutes(
           weights: dbBreakdown.weights,
           source: "fallback" as const,
           feedbacks: [],
+          moltbook: {
+            rawKarma: agent.moltbookKarma,
+            viralBonus: 0,
+            normalized: dbBreakdown.moltbookNormalized,
+            source: "db_fallback" as const,
+            postCount: 0,
+            followers: 0,
+            topPostCount: 0,
+            viralScore: { viralBonus: 0, totalInteractions: 0, weightedScore: 0, postCount: 0 },
+            error: "Failed to reach on-chain registry and Moltbook",
+          },
           error: "Failed to reach on-chain registry",
         };
 
@@ -181,6 +194,7 @@ export async function registerRoutes(
         id: agent.id,
         handle: agent.handle,
         walletAddress: agent.walletAddress,
+        moltbookLink: agent.moltbookLink,
       },
       fusedScore: fusedResult.fusedScore,
       onChainAvg: fusedResult.onChainAvg,
@@ -325,17 +339,53 @@ export async function registerRoutes(
     try {
       const data = moltSyncSchema.parse(req.body);
 
-      const agent = await storage.getAgent(data.agentId);
+      let agent;
+      if (data.agentId) {
+        agent = await storage.getAgent(data.agentId);
+      } else if (data.handle) {
+        agent = await storage.getAgentByHandle(data.handle);
+      }
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
-      const karmaBoost = data.karmaBoost || 50;
-      const newKarma = agent.moltbookKarma + karmaBoost;
-      const newFused = computeFusedScore(agent.onChainScore, newKarma);
+      let moltbookKarma = agent.moltbookKarma;
+      let viralScore = { viralBonus: 0, totalInteractions: 0, weightedScore: 0, postCount: 0 };
+      let postData = null;
+      let moltbookLive = null;
+      let fetchSource: "api" | "scrape" | "cached" | "manual" = "manual";
+
+      if (data.fetchLive !== false) {
+        if (data.postUrl) {
+          const postResult = await fetchPostData(data.postUrl);
+          postData = postResult;
+          if (postResult.post) {
+            viralScore = computeViralScore([postResult.post]);
+          }
+          if (postResult.karma > 0) {
+            moltbookKarma = postResult.karma;
+            fetchSource = postResult.source === "unavailable" ? "manual" : postResult.source;
+          }
+        }
+
+        const liveData = await fetchMoltbookData(agent.handle, agent.moltbookLink);
+        moltbookLive = liveData;
+        if (liveData.karma > 0) {
+          moltbookKarma = liveData.karma;
+          fetchSource = liveData.source;
+          if (liveData.topPosts.length > 0) {
+            viralScore = computeViralScore(liveData.topPosts);
+          }
+        }
+      }
+
+      const karmaBoost = data.karmaBoost || Math.max(Math.round(viralScore.viralBonus * 10), 50);
+      const effectiveKarma = Math.max(moltbookKarma, agent.moltbookKarma + karmaBoost);
+      const moltNormalized = normalizeMoltbookScore(effectiveKarma, viralScore.viralBonus);
+      const newFused = computeFusedScore(agent.onChainScore, effectiveKarma);
 
       await storage.updateAgent(agent.id, {
-        moltbookKarma: newKarma,
+        moltbookKarma: effectiveKarma,
         fusedScore: newFused,
-        moltbookLink: data.postUrl,
+        moltbookLink: data.postUrl || agent.moltbookLink,
       });
 
       await storage.createReputationEvent({
@@ -343,18 +393,26 @@ export async function registerRoutes(
         eventType: "Moltbook Sync",
         scoreChange: karmaBoost,
         source: "moltbook",
-        details: `Synced Moltbook post: ${data.postUrl}`,
-        proofUri: data.postUrl,
+        details: data.postUrl
+          ? `Synced Moltbook post: ${data.postUrl} (source: ${fetchSource}, viral bonus: ${viralScore.viralBonus})`
+          : `Moltbook karma sync for ${agent.handle} (source: ${fetchSource})`,
+        proofUri: data.postUrl || null,
       });
 
       let suggestedGig = null;
       if (data.suggestGig) {
+        const budget = Math.min(
+          Math.max(viralScore.totalInteractions * 2, karmaBoost * 10),
+          5000
+        );
         suggestedGig = {
           suggestion: "Molt-to-Market",
           title: `Monetize Moltbook Post by ${agent.handle}`,
-          description: `Turn viral Moltbook content into a paid gig opportunity. Source: ${data.postUrl}`,
+          description: data.postUrl
+            ? `Turn viral Moltbook content into a paid gig opportunity. Source: ${data.postUrl}`
+            : `Create a gig from ${agent.handle}'s Moltbook presence (${effectiveKarma} karma)`,
           skills: agent.skills,
-          estimatedBudget: Math.min(karmaBoost * 10, 5000),
+          estimatedBudget: budget,
           currency: "USDC",
         };
       }
@@ -364,13 +422,33 @@ export async function registerRoutes(
           id: agent.id,
           handle: agent.handle,
           previousKarma: agent.moltbookKarma,
-          newKarma,
+          newKarma: effectiveKarma,
           previousFusedScore: agent.fusedScore,
           newFusedScore: newFused,
+          moltbookLink: data.postUrl || agent.moltbookLink,
         },
-        karmaBoost,
+        repBoost: karmaBoost,
+        viralScore,
+        moltbookNormalized: moltNormalized,
+        fetchSource,
+        postData: postData ? {
+          found: !!postData.post,
+          source: postData.source,
+          interactions: postData.post
+            ? postData.post.likes + postData.post.comments + postData.post.shares
+            : 0,
+          error: postData.error,
+        } : null,
+        moltbookProfile: moltbookLive ? {
+          karma: moltbookLive.karma,
+          postCount: moltbookLive.postCount,
+          followers: moltbookLive.followers,
+          source: moltbookLive.source,
+          error: moltbookLive.error,
+        } : null,
         repEvent: "Moltbook Sync logged",
         suggestedGig,
+        rateLimitStatus: getMoltbookRateLimitStatus(),
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {

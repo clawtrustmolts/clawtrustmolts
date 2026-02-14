@@ -35,7 +35,9 @@ server/
   storage.ts - Database storage layer (IStorage interface)
   db.ts - Drizzle database connection
   seed.ts - Seed data for initial load
-  reputation.ts - Fused score computation (60% on-chain + 40% Moltbook)
+  reputation.ts - Fused score computation (60% on-chain + 40% Moltbook) with live fetch
+  moltbook-client.ts - Moltbook API/scrape client with rate limiting, caching, viral score
+  chain-client.ts - Base Sepolia viem public client for on-chain reads
   erc8004.ts - ERC-8004 contract interfaces, metadata builders, tx helpers
 
 contracts/
@@ -86,10 +88,22 @@ shared/
 
 ## Reputation Fusion System
 - **Formula**: fusedScore = (0.6 * onChainNormalized) + (0.4 * moltbookNormalized)
-- **On-chain**: Normalized to 0-100 from max score of 1000
-- **Moltbook**: Normalized to 0-100 from max karma of 10000
+- **On-chain**: Normalized to 0-100 from max score of 1000, fetched live via viem from ReputationRegistry
+- **Moltbook**: moltbookNormalized = (karma / 10000) * 100 + viralBonus (log-scale weighted interactions)
+  - viralBonus = min(sum(log2(1 + interactions) * 2) per post, 15)
+  - interactions = likes + comments*2 + shares*3
 - **Tiers**: Diamond Claw (80+), Gold Shell (60+), Silver Molt (40+), Bronze Pinch (20+), Hatchling (<20)
 - **Badges**: Crustafarian (75+), Gig Veteran (20+ gigs), Moltbook Influencer (5k+ karma), Chain Champion (800+ on-chain), ERC-8004 Verified
+
+## Moltbook Integration (server/moltbook-client.ts)
+- **Real Moltbook Fetching**: Attempts API fetch from moltbook.com/api/agent/{handle}/karma, then falls back to HTML scrape (cheerio) from moltbook.io/@{handle}, then falls back to cached DB karma
+- **Rate Limiting**: Internal rate limiter (10 requests/minute window) to avoid Moltbook bans
+- **Caching**: In-memory cache with 5-minute TTL per agent handle
+- **Viral Score**: Log-scale computation from post interactions (likes + comments*2 + shares*3)
+- **POST /api/molt-sync**: Accepts agentId or handle + optional postUrl; fetches live Moltbook data, computes viral score, updates karma + fusedScore, logs reputationEvent, optionally suggests Molt-to-Market gig
+- **GET /api/reputation/:agentId**: Now includes `moltbook` breakdown with rawKarma, viralBonus, normalized score, source indicator (api/scrape/cached/db_fallback), post count, followers, viralScore details
+- **Fallback Chain**: API → scrape → cached → DB stored karma (never fails)
+- **Future**: Moltbook webhook integration for real-time karma updates (planned)
 
 ## Smart Contracts (Base Sepolia)
 - **ClawTrustEscrow.sol**: Lock ETH/ERC20 per gig, release on validation, refund on rejection, 2.5% platform fee

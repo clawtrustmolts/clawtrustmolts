@@ -5,6 +5,15 @@ import {
   REPUTATION_REGISTRY_ADDRESS,
   REPUTATION_REGISTRY_ABI,
 } from "./chain-client";
+import {
+  fetchMoltbookData,
+  computeViralScore,
+  normalizeMoltbookScore,
+  type MoltbookAgentData,
+  type MoltbookNormalized,
+  type MoltbookViralScore,
+} from "./moltbook-client";
+export type { MoltbookViralScore };
 
 const ON_CHAIN_WEIGHT = 0.6;
 const MOLTBOOK_WEIGHT = 0.4;
@@ -40,6 +49,17 @@ export interface FusedReputationResult {
   weights: { onChain: number; moltbook: number };
   source: "live" | "fallback";
   feedbacks: OnChainFeedback[];
+  moltbook: {
+    rawKarma: number;
+    viralBonus: number;
+    normalized: number;
+    source: "api" | "scrape" | "cached" | "db_fallback";
+    postCount: number;
+    followers: number;
+    topPostCount: number;
+    viralScore: MoltbookViralScore;
+    error?: string;
+  };
   error?: string;
 }
 
@@ -203,8 +223,56 @@ export async function fetchOnChainReputation(
   }
 }
 
-function getMoltWeightStub(moltbookKarma: number): number {
-  return Math.min(moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
+export interface MoltbookReputationResult extends MoltbookNormalized {
+  agentData: MoltbookAgentData | null;
+  viralScore: MoltbookViralScore;
+}
+
+export async function fetchMoltbookReputation(
+  agent: Agent
+): Promise<MoltbookReputationResult> {
+  try {
+    const moltData = await fetchMoltbookData(agent.handle, agent.moltbookLink);
+
+    if (moltData.error && moltData.karma === 0) {
+      console.log(`[reputation] Moltbook unavailable for ${agent.handle}, using DB karma: ${agent.moltbookKarma}`);
+      const dbNormalized = Math.min(agent.moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
+      return {
+        moltbookNormalized: Math.round(dbNormalized * 10) / 10,
+        rawKarma: agent.moltbookKarma,
+        viralBonus: 0,
+        source: "db_fallback",
+        error: moltData.error,
+        agentData: moltData,
+        viralScore: { viralBonus: 0, totalInteractions: 0, weightedScore: 0, postCount: 0 },
+      };
+    }
+
+    const karma = moltData.karma > 0 ? moltData.karma : agent.moltbookKarma;
+    const viralResult = computeViralScore(moltData.topPosts);
+    const normalized = normalizeMoltbookScore(karma, viralResult.viralBonus);
+
+    return {
+      moltbookNormalized: normalized,
+      rawKarma: karma,
+      viralBonus: viralResult.viralBonus,
+      source: moltData.source,
+      agentData: moltData,
+      viralScore: viralResult,
+    };
+  } catch (err: any) {
+    console.warn(`[reputation] Moltbook fetch error for ${agent.handle}: ${err.message}`);
+    const dbNormalized = Math.min(agent.moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
+    return {
+      moltbookNormalized: Math.round(dbNormalized * 10) / 10,
+      rawKarma: agent.moltbookKarma,
+      viralBonus: 0,
+      source: "db_fallback",
+      error: err.message,
+      agentData: null,
+      viralScore: { viralBonus: 0, totalInteractions: 0, weightedScore: 0, postCount: 0 },
+    };
+  }
 }
 
 function getTier(fusedScore: number): string {
@@ -215,11 +283,11 @@ function getTier(fusedScore: number): string {
   return "Hatchling";
 }
 
-function getBadges(agent: Agent, fusedScore: number): string[] {
+function getBadges(agent: Agent, fusedScore: number, rawKarma: number): string[] {
   const badges: string[] = [];
   if (fusedScore >= 75) badges.push("Crustafarian");
   if (agent.totalGigsCompleted >= 20) badges.push("Gig Veteran");
-  if (agent.moltbookKarma >= 5000) badges.push("Moltbook Influencer");
+  if (rawKarma >= 5000) badges.push("Moltbook Influencer");
   if (agent.onChainScore >= 800) badges.push("Chain Champion");
   if (agent.isVerified) badges.push("ERC-8004 Verified");
   return badges;
@@ -228,7 +296,10 @@ function getBadges(agent: Agent, fusedScore: number): string[] {
 export async function computeLiveFusedReputation(
   agent: Agent
 ): Promise<FusedReputationResult> {
-  const onChain = await fetchOnChainReputation(agent.walletAddress);
+  const [onChain, moltResult] = await Promise.all([
+    fetchOnChainReputation(agent.walletAddress),
+    fetchMoltbookReputation(agent),
+  ]);
 
   let onChainAvg: number;
   if (onChain.source === "live") {
@@ -238,11 +309,13 @@ export async function computeLiveFusedReputation(
   }
 
   const normalizedOnChain = Math.min(Math.max(onChainAvg, 0), 100);
-  const moltWeight = getMoltWeightStub(agent.moltbookKarma);
+  const moltWeight = moltResult.moltbookNormalized;
 
   const fusedScore = Math.round(
     ((ON_CHAIN_WEIGHT * normalizedOnChain) + (MOLTBOOK_WEIGHT * moltWeight)) * 10
   ) / 10;
+
+  const moltbookDetail = moltResult.agentData;
 
   return {
     fusedScore,
@@ -250,10 +323,21 @@ export async function computeLiveFusedReputation(
     moltWeight: Math.round(moltWeight * 10) / 10,
     proofURIs: onChain.proofURIs,
     tier: getTier(fusedScore),
-    badges: getBadges(agent, fusedScore),
+    badges: getBadges(agent, fusedScore, moltResult.rawKarma),
     weights: { onChain: ON_CHAIN_WEIGHT, moltbook: MOLTBOOK_WEIGHT },
     source: onChain.source,
     feedbacks: onChain.feedbacks,
+    moltbook: {
+      rawKarma: moltResult.rawKarma,
+      viralBonus: moltResult.viralBonus,
+      normalized: moltWeight,
+      source: moltResult.source,
+      postCount: moltbookDetail?.postCount ?? 0,
+      followers: moltbookDetail?.followers ?? 0,
+      topPostCount: moltbookDetail?.topPosts?.length ?? 0,
+      viralScore: moltResult.viralScore,
+      error: moltResult.error,
+    },
     error: onChain.error,
   };
 }
