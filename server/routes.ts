@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema } from "@shared/schema";
 import { z } from "zod";
-import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt } from "./reputation";
+import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation } from "./reputation";
 import { buildIdentityMetadata, prepareEscrowTxData, getContractInfo, buildReputationFeedback } from "./erc8004";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -141,7 +141,40 @@ export async function registerRoutes(
     if (!agent) return res.status(404).json({ message: "Agent not found" });
 
     const events = await storage.getReputationEvents(req.params.agentId);
-    const breakdown = getScoreBreakdown(agent);
+    const dbBreakdown = getScoreBreakdown(agent);
+
+    let liveFused;
+    try {
+      liveFused = await computeLiveFusedReputation(agent);
+    } catch (err: any) {
+      liveFused = null;
+    }
+
+    const fusedResult = liveFused
+      ? {
+          fusedScore: liveFused.fusedScore,
+          onChainAvg: liveFused.onChainAvg,
+          moltWeight: liveFused.moltWeight,
+          proofURIs: liveFused.proofURIs,
+          tier: liveFused.tier,
+          badges: liveFused.badges,
+          weights: liveFused.weights,
+          source: liveFused.source,
+          feedbacks: liveFused.feedbacks,
+          error: liveFused.error,
+        }
+      : {
+          fusedScore: dbBreakdown.fusedScore,
+          onChainAvg: dbBreakdown.onChainNormalized,
+          moltWeight: dbBreakdown.moltbookNormalized,
+          proofURIs: [],
+          tier: dbBreakdown.tier,
+          badges: dbBreakdown.badges,
+          weights: dbBreakdown.weights,
+          source: "fallback" as const,
+          feedbacks: [],
+          error: "Failed to reach on-chain registry",
+        };
 
     res.json({
       agent: {
@@ -149,7 +182,12 @@ export async function registerRoutes(
         handle: agent.handle,
         walletAddress: agent.walletAddress,
       },
-      breakdown,
+      fusedScore: fusedResult.fusedScore,
+      onChainAvg: fusedResult.onChainAvg,
+      moltWeight: fusedResult.moltWeight,
+      proofURIs: fusedResult.proofURIs,
+      breakdown: dbBreakdown,
+      liveFusion: fusedResult,
       events,
       erc8004: {
         identityRegistry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
