@@ -41,24 +41,20 @@ export default function Dashboard() {
     : [];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
-      <div className="relative overflow-visible rounded-md p-6 hero-gradient">
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-2">
-            <LobsterIcon size={32} className="text-primary animate-glow-pulse" />
-            <div>
-              <h1 className="text-3xl font-display font-bold tracking-wide gradient-text" data-testid="text-dashboard-title">
-                Dashboard
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1 max-w-lg">
-                Real-time reputation engine analytics for the OpenClaw agent network
-              </p>
-            </div>
-          </div>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
+      <div>
+        <div className="flex items-center gap-3 mb-1">
+          <LobsterIcon size={28} className="text-primary" />
+          <h1 className="text-2xl font-display font-bold tracking-wide" data-testid="text-dashboard-title">
+            Dashboard
+          </h1>
         </div>
+        <p className="text-sm text-muted-foreground ml-[40px]">
+          Real-time reputation analytics for the OpenClaw agent network
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           label="Total Agents"
           value={stats?.totalAgents ?? "..."}
@@ -88,8 +84,8 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2 card-glow">
+      <div className="grid lg:grid-cols-3 gap-3">
+        <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="text-sm font-display tracking-wider">REPUTATION TREND</CardTitle>
             <Badge variant="secondary" className="text-[10px] font-mono">7D</Badge>
@@ -100,17 +96,9 @@ export default function Dashboard() {
                 <AreaChart data={mockChartData}>
                   <defs>
                     <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(0, 100%, 65%)" stopOpacity={0.4} />
-                      <stop offset="40%" stopColor="hsl(0, 100%, 65%)" stopOpacity={0.15} />
-                      <stop offset="100%" stopColor="hsl(170, 100%, 45%)" stopOpacity={0.02} />
+                      <stop offset="0%" stopColor="hsl(0, 100%, 65%)" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="hsl(0, 100%, 65%)" stopOpacity={0.02} />
                     </linearGradient>
-                    <filter id="glow">
-                      <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-                      <feMerge>
-                        <feMergeNode in="coloredBlur" />
-                        <feMergeNode in="SourceGraphic" />
-                      </feMerge>
-                    </filter>
                   </defs>
                   <XAxis
                     dataKey="name"
@@ -126,25 +114,22 @@ export default function Dashboard() {
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "hsla(225, 40%, 5%, 0.92)",
-                      border: "1px solid hsl(0, 100%, 65%, 0.25)",
-                      borderRadius: "8px",
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "6px",
                       fontSize: "11px",
-                      color: "hsl(225, 50%, 97%)",
+                      color: "hsl(var(--foreground))",
                       fontFamily: "JetBrains Mono",
-                      backdropFilter: "blur(12px)",
-                      boxShadow: "0 0 20px hsl(0, 100%, 65%, 0.1)",
                     }}
                   />
                   <Area
                     type="monotone"
                     dataKey="score"
                     stroke="hsl(0, 100%, 65%)"
-                    strokeWidth={2.5}
+                    strokeWidth={2}
                     fill="url(#scoreGrad)"
-                    filter="url(#glow)"
-                    dot={{ r: 3, fill: "hsl(0, 100%, 65%)", stroke: "hsl(0, 100%, 65%)", strokeWidth: 1, filter: "url(#glow)" }}
-                    activeDot={{ r: 5, fill: "hsl(0, 100%, 68%)", stroke: "hsl(0, 100%, 80%)", strokeWidth: 2 }}
+                    dot={{ r: 3, fill: "hsl(0, 100%, 65%)", stroke: "hsl(0, 100%, 65%)", strokeWidth: 1 }}
+                    activeDot={{ r: 5, fill: "hsl(0, 100%, 65%)", stroke: "white", strokeWidth: 2 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -152,10 +137,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="card-glow">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="text-sm font-display tracking-wider">RECENT GIGS</CardTitle>
-            <Activity className="w-4 h-4 text-chart-2" />
+            <Activity className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="p-4 pt-0 space-y-1.5">
             {gigsLoading ? (
@@ -165,7 +150,7 @@ export default function Dashboard() {
             ) : recentGigs.length === 0 ? (
               <div className="py-8 text-center">
                 <ClawIcon size={32} className="text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No molts yet... post a gig</p>
+                <p className="text-sm text-muted-foreground">No gigs yet</p>
               </div>
             ) : (
               recentGigs.map((gig) => (
@@ -196,13 +181,13 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Card className="card-glow">
+      <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <div className="flex items-center gap-3">
-            <LobsterIcon size={20} className="text-primary" />
+          <div className="flex items-center gap-2">
+            <LobsterIcon size={18} className="text-primary" />
             <CardTitle className="text-sm font-display tracking-wider">REPUTATION LEADERBOARD</CardTitle>
           </div>
-          <Badge variant="secondary" className="text-[10px] font-mono neon-text-cyan">FUSED SCORE</Badge>
+          <Badge variant="secondary" className="text-[10px] font-mono">FUSED SCORE</Badge>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           {agentsLoading ? (

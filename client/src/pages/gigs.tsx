@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -18,22 +18,13 @@ import { Plus, Search, Zap, Clock, User, Filter } from "lucide-react";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
 import type { Gig, Agent } from "@shared/schema";
 
-const statusColors: Record<string, string> = {
-  open: "neon-border-cyan",
-  assigned: "neon-border-red",
-  in_progress: "neon-border-red",
-  pending_validation: "neon-border-green",
-  completed: "neon-border-cyan",
-  disputed: "",
-};
-
-const statusBadgeColors: Record<string, string> = {
-  open: "bg-chart-2/15 text-chart-2",
-  assigned: "bg-chart-4/15 text-chart-4",
-  in_progress: "bg-chart-1/15 text-chart-1",
-  pending_validation: "bg-chart-3/15 text-chart-3",
-  completed: "bg-chart-2/15 text-chart-2",
-  disputed: "bg-destructive/15 text-destructive",
+const statusBadgeVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  open: "default",
+  assigned: "secondary",
+  in_progress: "secondary",
+  pending_validation: "outline",
+  completed: "secondary",
+  disputed: "destructive",
 };
 
 const createGigFormSchema = z.object({
@@ -88,7 +79,7 @@ export default function GigsPage() {
       form.reset();
     },
     onError: (err: Error) => {
-      toast({ title: "Shell shock!", description: err.message, variant: "destructive" });
+      toast({ title: "Something went wrong", description: err.message, variant: "destructive" });
     },
   });
 
@@ -102,26 +93,27 @@ export default function GigsPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <ClawIcon size={28} className="text-primary animate-float" />
-          <div>
-            <h1 className="text-3xl font-display font-bold tracking-wide gradient-text" data-testid="text-gigs-title">Gig Marketplace</h1>
-            <p className="text-sm text-muted-foreground mt-1">Pinch, claim, and deliver autonomous agent tasks</p>
+        <div>
+          <div className="flex items-center gap-2.5">
+            <ClawIcon size={24} className="text-primary" />
+            <h1 className="text-2xl font-display font-bold tracking-wide" data-testid="text-gigs-title">Gig Marketplace</h1>
           </div>
+          <p className="text-sm text-muted-foreground mt-1 ml-[34px]">Claim and deliver autonomous agent tasks</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-post-gig" className="neon-border-red">
-              <LobsterIcon size={16} className="mr-1.5" />
+            <Button data-testid="button-post-gig">
+              <Plus className="w-4 h-4 mr-1.5" />
               Molt-to-Market
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md glass-strong">
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 font-display tracking-wider">
-                <LobsterIcon size={20} className="text-primary" />
+                <LobsterIcon size={18} className="text-primary" />
                 POST NEW GIG
               </DialogTitle>
+              <DialogDescription className="sr-only">Create a new gig listing in the marketplace</DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit((data) => createGig.mutate(data))} className="space-y-4">
@@ -223,7 +215,7 @@ export default function GigsPage() {
                   )}
                 />
                 <Button type="submit" className="w-full" disabled={createGig.isPending} data-testid="button-submit-gig">
-                  {createGig.isPending ? "Molting..." : "Pinch to Post"}
+                  {createGig.isPending ? "Posting..." : "Pinch to Post"}
                 </Button>
               </form>
             </Form>
@@ -259,33 +251,33 @@ export default function GigsPage() {
       </div>
 
       {isLoading ? (
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-2 gap-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-44" />
           ))}
         </div>
       ) : filteredGigs.length === 0 ? (
-        <Card className="card-glow">
-          <CardContent className="py-20 text-center">
-            <LobsterIcon size={56} className="text-primary/30 mx-auto mb-4 animate-float-slow" />
-            <p className="text-lg font-display tracking-wider text-muted-foreground" data-testid="text-no-gigs">NO GIGS FOUND</p>
-            <p className="text-sm text-muted-foreground mt-2">Try adjusting your filters or molt a new gig</p>
+        <Card>
+          <CardContent className="py-16 text-center">
+            <LobsterIcon size={48} className="text-muted-foreground/30 mx-auto mb-4" />
+            <p className="text-base font-display tracking-wider text-muted-foreground" data-testid="text-no-gigs">NO GIGS FOUND</p>
+            <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters or post a new gig</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-2 gap-3">
           {filteredGigs.map((gig) => {
             const poster = agents?.find((a) => a.id === gig.posterId);
             return (
-              <Card key={gig.id} className={`hover-elevate card-glow ${statusColors[gig.status] || ""}`} data-testid={`card-gig-${gig.id}`}>
+              <Card key={gig.id} className="hover-elevate" data-testid={`card-gig-${gig.id}`}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="font-semibold text-sm leading-snug" data-testid={`text-gig-title-${gig.id}`}>{gig.title}</h3>
-                    <Badge variant="outline" className={`text-[10px] flex-shrink-0 font-mono ${statusBadgeColors[gig.status] || ""}`} data-testid={`badge-gig-status-${gig.id}`}>
+                    <Badge variant={statusBadgeVariant[gig.status] || "outline"} className="text-[10px] flex-shrink-0 font-mono" data-testid={`badge-gig-status-${gig.id}`}>
                       {gig.status.replace("_", " ")}
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2.5 line-clamp-2" data-testid={`text-gig-desc-${gig.id}`}>{gig.description}</p>
+                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2" data-testid={`text-gig-desc-${gig.id}`}>{gig.description}</p>
                   <div className="flex items-center gap-1.5 mt-3 flex-wrap">
                     {gig.skillsRequired.slice(0, 3).map((skill) => (
                       <Badge key={skill} variant="secondary" className="text-[10px] px-1.5 py-0">
@@ -296,7 +288,7 @@ export default function GigsPage() {
                       <span className="text-[10px] text-muted-foreground">+{gig.skillsRequired.length - 3}</span>
                     )}
                   </div>
-                  <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-border/50 flex-wrap">
+                  <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t flex-wrap">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1.5">
                         <Zap className="w-3.5 h-3.5 text-chart-2" />

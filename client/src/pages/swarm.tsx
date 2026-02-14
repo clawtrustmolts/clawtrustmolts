@@ -1,13 +1,13 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckCircle2, XCircle, Clock, Radio, Shield } from "lucide-react";
-import { LobsterIcon, ClawIcon, SpinningClaw } from "@/components/lobster-icons";
+import { CheckCircle2, XCircle, Clock, Shield } from "lucide-react";
+import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
 import type { SwarmValidation, Gig, Agent } from "@shared/schema";
 
 interface ValidationWithDetails extends SwarmValidation {
@@ -32,13 +32,13 @@ export default function SwarmPage() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/validations"] });
       if (variables.vote === "approve") {
-        toast({ title: "Claw-some! Vote recorded", description: "Your approval has been added to the swarm consensus." });
+        toast({ title: "Vote recorded", description: "Your approval has been added to the swarm consensus." });
       } else {
-        toast({ title: "Shell cracked! Vote recorded", description: "Your rejection has been noted by the swarm." });
+        toast({ title: "Vote recorded", description: "Your rejection has been noted by the swarm." });
       }
     },
     onError: (err: Error) => {
-      toast({ title: "Pinch failed!", description: err.message, variant: "destructive" });
+      toast({ title: "Vote failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -51,26 +51,24 @@ export default function SwarmPage() {
   const resolved = validationsWithGigs.filter((v) => v.status !== "pending");
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-5xl mx-auto">
-      <div className="relative overflow-visible rounded-md p-6 hero-gradient">
-        <div className="relative z-10 flex items-center gap-3">
-          <ClawIcon size={32} className="text-primary animate-float" />
-          <div>
-            <h1 className="text-3xl font-display font-bold tracking-wide gradient-text" data-testid="text-swarm-title">
-              Swarm Validation
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Decentralized consensus voting on task outcomes via the OpenClaw validation registry
-            </p>
-          </div>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl mx-auto">
+      <div>
+        <div className="flex items-center gap-2.5">
+          <ClawIcon size={24} className="text-primary" />
+          <h1 className="text-2xl font-display font-bold tracking-wide" data-testid="text-swarm-title">
+            Swarm Validation
+          </h1>
         </div>
+        <p className="text-sm text-muted-foreground mt-1 ml-[34px]">
+          Decentralized consensus voting via the OpenClaw validation registry
+        </p>
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-4">
-        <Card className="card-glow">
+      <div className="grid sm:grid-cols-3 gap-3">
+        <Card>
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-md bg-chart-1/10 neon-border-red flex items-center justify-center flex-shrink-0">
-              <Clock className="w-5 h-5 text-chart-1" />
+            <div className="w-11 h-11 rounded-md bg-primary/8 flex items-center justify-center flex-shrink-0">
+              <Clock className="w-5 h-5 text-primary" />
             </div>
             <div>
               <p className="text-2xl font-display font-bold">{pending.length}</p>
@@ -78,9 +76,9 @@ export default function SwarmPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="card-glow">
+        <Card>
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-md bg-chart-2/10 neon-border-cyan flex items-center justify-center flex-shrink-0">
+            <div className="w-11 h-11 rounded-md bg-chart-2/8 flex items-center justify-center flex-shrink-0">
               <CheckCircle2 className="w-5 h-5 text-chart-2" />
             </div>
             <div>
@@ -89,9 +87,9 @@ export default function SwarmPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="card-glow">
+        <Card>
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-md bg-destructive/10 flex items-center justify-center flex-shrink-0">
+            <div className="w-11 h-11 rounded-md bg-destructive/8 flex items-center justify-center flex-shrink-0">
               <XCircle className="w-5 h-5 text-destructive" />
             </div>
             <div>
@@ -104,7 +102,7 @@ export default function SwarmPage() {
 
       <div>
         <h2 className="text-sm font-display font-bold tracking-wider mb-4 flex items-center gap-2">
-          <LobsterIcon size={18} className="text-primary" />
+          <LobsterIcon size={16} className="text-primary" />
           PENDING VALIDATIONS
         </h2>
         {isLoading ? (
@@ -114,20 +112,20 @@ export default function SwarmPage() {
             ))}
           </div>
         ) : pending.length === 0 ? (
-          <Card className="card-glow">
+          <Card>
             <CardContent className="py-16 text-center">
-              <LobsterIcon size={48} className="text-primary/20 mx-auto mb-4 animate-float-slow" />
+              <LobsterIcon size={40} className="text-muted-foreground/30 mx-auto mb-4" />
               <p className="font-display tracking-wider text-muted-foreground">NO PENDING VALIDATIONS</p>
-              <p className="text-xs text-muted-foreground mt-2">All task outcomes have been resolved by the swarm</p>
+              <p className="text-xs text-muted-foreground mt-2">All task outcomes have been resolved</p>
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {pending.map((v) => {
               const totalVotes = v.votesFor + v.votesAgainst;
               const approvalPct = totalVotes > 0 ? (v.votesFor / totalVotes) * 100 : 0;
               return (
-                <Card key={v.id} data-testid={`card-validation-${v.id}`} className="card-glow">
+                <Card key={v.id} data-testid={`card-validation-${v.id}`}>
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="min-w-0 flex-1">
@@ -136,7 +134,7 @@ export default function SwarmPage() {
                           ID: {v.id.slice(0, 8)}...
                         </p>
                       </div>
-                      <Badge variant="outline" className="bg-chart-1/10 text-chart-1 text-[10px] flex-shrink-0 font-mono neon-border-red">
+                      <Badge variant="outline" className="text-[10px] flex-shrink-0 font-mono">
                         PENDING
                       </Badge>
                     </div>
@@ -145,13 +143,13 @@ export default function SwarmPage() {
                         <span className="text-[10px] text-muted-foreground font-mono">
                           {v.votesFor} approve / {v.votesAgainst} reject
                         </span>
-                        <span className="text-[10px] font-display font-bold neon-text-cyan">
+                        <span className="text-[10px] font-display font-bold text-chart-2">
                           {totalVotes}/{v.threshold}
                         </span>
                       </div>
                       <Progress value={approvalPct} className="h-1.5" />
                     </div>
-                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/50 flex-wrap">
+                    <div className="flex items-center gap-2 mt-4 pt-3 border-t flex-wrap">
                       {agents && agents.length > 0 && (
                         <>
                           <Button

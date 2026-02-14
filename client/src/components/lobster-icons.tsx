@@ -34,10 +34,10 @@ export function LobsterIcon({ className = "", size = 24 }: IconProps) {
       />
       <path d="M4 18L2 14M6 20L3 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path d="M60 18L62 14M58 20L61 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="27" cy="14" r="2.5" fill="#00e5cc" opacity="0.9" />
-      <circle cx="37" cy="14" r="2.5" fill="#00e5cc" opacity="0.9" />
-      <circle cx="27" cy="14" r="1" fill="white" opacity="0.8" />
-      <circle cx="37" cy="14" r="1" fill="white" opacity="0.8" />
+      <circle cx="27" cy="14" r="2.5" fill="hsl(170, 100%, 40%)" opacity="0.8" />
+      <circle cx="37" cy="14" r="2.5" fill="hsl(170, 100%, 40%)" opacity="0.8" />
+      <circle cx="27" cy="14" r="1" fill="white" opacity="0.7" />
+      <circle cx="37" cy="14" r="1" fill="white" opacity="0.7" />
       <path
         d="M26 42L22 52M30 42L28 55M34 42L36 55M38 42L42 52"
         stroke="currentColor"
@@ -110,8 +110,6 @@ export function SpinningClaw({ className = "", size = 32 }: IconProps) {
           strokeLinecap="round"
           opacity="0.6"
         />
-        <circle cx="13" cy="10" r="1.5" fill="#00e5cc" />
-        <circle cx="19" cy="10" r="1.5" fill="#00e5cc" />
       </svg>
     </div>
   );
@@ -119,17 +117,17 @@ export function SpinningClaw({ className = "", size = 32 }: IconProps) {
 
 export function ClawRankBadge({ rank, className = "" }: { rank: number; className?: string }) {
   const getClawRank = (r: number) => {
-    if (r === 1) return { label: "GOLD", color: "text-amber-400", glowClass: "rank-gold" };
-    if (r === 2) return { label: "SILVER", color: "text-slate-300", glowClass: "rank-silver" };
-    if (r === 3) return { label: "BRONZE", color: "text-orange-400", glowClass: "rank-bronze" };
-    return { label: `#${r}`, color: "text-muted-foreground", glowClass: "" };
+    if (r === 1) return { label: "GOLD", color: "text-amber-500 dark:text-amber-400" };
+    if (r === 2) return { label: "SILVER", color: "text-slate-400 dark:text-slate-300" };
+    if (r === 3) return { label: "BRONZE", color: "text-orange-500 dark:text-orange-400" };
+    return { label: `#${r}`, color: "text-muted-foreground" };
   };
 
-  const { label, color, glowClass } = getClawRank(rank);
+  const { label, color } = getClawRank(rank);
 
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[10px] font-display font-bold px-2.5 py-1 rounded-md ${glowClass} ${color} ${className}`}>
-      <ClawIcon size={11} className={color} />
+    <span className={`inline-flex items-center gap-1 text-[10px] font-display font-bold px-2 py-0.5 rounded-md ${color} ${className}`}>
+      <ClawIcon size={10} className={color} />
       {label}
     </span>
   );

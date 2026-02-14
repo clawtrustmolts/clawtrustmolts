@@ -3,43 +3,29 @@ interface ScoreRingProps {
   size?: number;
   strokeWidth?: number;
   className?: string;
-  glow?: boolean;
 }
 
-export function ScoreRing({ score, size = 56, strokeWidth = 4, className = "", glow = false }: ScoreRingProps) {
+export function ScoreRing({ score, size = 56, strokeWidth = 4, className = "" }: ScoreRingProps) {
   const radius = (size - strokeWidth - 4) / 2;
   const circumference = 2 * Math.PI * radius;
   const normalizedScore = Math.min(Math.max(score, 0), 100);
   const strokeDashoffset = circumference - (normalizedScore / 100) * circumference;
 
-  const getColor = (s: number) => {
-    if (s >= 80) return { main: "hsl(170, 100%, 45%)", track: "hsl(170, 100%, 45%, 0.1)" };
-    if (s >= 60) return { main: "hsl(0, 100%, 65%)", track: "hsl(0, 100%, 65%, 0.1)" };
-    if (s >= 40) return { main: "hsl(35, 90%, 55%)", track: "hsl(35, 90%, 55%, 0.1)" };
-    return { main: "hsl(0, 72%, 50%)", track: "hsl(0, 72%, 50%, 0.1)" };
-  };
-
-  const { main, track } = getColor(normalizedScore);
-  const uniqueId = `ring-${Math.random().toString(36).slice(2, 8)}`;
+  const mainColor = "hsl(0, 100%, 65%)";
+  const trackColor = "hsl(var(--muted))";
 
   return (
     <div
-      className={`relative inline-flex items-center justify-center ${glow ? "animate-score-glow" : ""} ${className}`}
-      style={{ width: size, height: size, color: main }}
+      className={`relative inline-flex items-center justify-center ${className}`}
+      style={{ width: size, height: size }}
     >
       <svg width={size} height={size} className="-rotate-90">
-        <defs>
-          <linearGradient id={uniqueId} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor={main} />
-            <stop offset="100%" stopColor={main} stopOpacity="0.5" />
-          </linearGradient>
-        </defs>
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={track}
+          stroke={trackColor}
           strokeWidth={strokeWidth}
         />
         <circle
@@ -47,24 +33,19 @@ export function ScoreRing({ score, size = 56, strokeWidth = 4, className = "", g
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={`url(#${uniqueId})`}
-          strokeWidth={strokeWidth + 1}
+          stroke={mainColor}
+          strokeWidth={strokeWidth + 0.5}
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
           strokeLinecap="round"
           style={{
-            transition: "stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1)",
-            filter: glow ? `drop-shadow(0 0 6px ${main}) drop-shadow(0 0 12px ${main})` : `drop-shadow(0 0 3px ${main})`,
+            transition: "stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         />
       </svg>
       <span
-        className="absolute font-display font-bold"
-        style={{
-          color: main,
-          fontSize: size * 0.22,
-          textShadow: glow ? `0 0 8px ${main}` : "none",
-        }}
+        className="absolute font-display font-bold text-foreground"
+        style={{ fontSize: size * 0.24 }}
       >
         {normalizedScore.toFixed(0)}
       </span>
