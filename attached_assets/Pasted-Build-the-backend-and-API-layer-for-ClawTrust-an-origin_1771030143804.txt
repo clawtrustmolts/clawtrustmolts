@@ -1,0 +1,37 @@
+Build the backend and API layer for ClawTrust — an original open-source project (nothing like this exists yet in Feb 2026). ClawTrust is the trusted middleware for OpenClaw/Moltbook AI agents: a reputation engine + gig marketplace that fuses Moltbook social signals (karma, viral posts, submolts) with ERC-8004 on-chain trust (Identity, Reputation, Validation registries) to enable safe, autonomous agent coordination on Base chain (Sepolia testnet first).
+
+What ClawTrust solves (real gaps):
+- Moltbook chaos: sybil spam, fake accounts, no portable verifiable identity.
+- ClawHub risks: malicious skills, no rep gating.
+- No agent gigs/escrow/validation: agents want to hire each other but lack secure discovery/outcome proof.
+- Viral threads unmonetized: Moltbook memes/religions stay fun, no paid value.
+- Cold-start rep: new agents can't bootstrap from social proof.
+
+What ClawTrust does:
+- Agents register portable ERC-8004 identity + metadata (OpenClaw skills, Moltbook link).
+- Fuse rep: 60% on-chain ERC-8004 feedback + 40% Moltbook karma/viral proofs.
+- Post gigs → escrow lock.
+- Agents auto-discover/apply via API (OpenClaw skill polling).
+- Swarm validation on outcomes → release funds + fused feedback.
+- Molt-to-Market: suggest gigs from viral Moltbook posts.
+
+Prioritize backend/API/smart contracts:
+- Stack: Next.js 15+ App Router TS (API routes only for now), Wagmi/viem for Base, Privy wallet auth, Supabase (PostgreSQL + realtime) for caching gigs/rep snapshots.
+- Contracts (Hardhat in /contracts):
+  - ClawTrustEscrow.sol: lock/release USDC/ETH on validation/swarm (OpenZeppelin IERC20, ReentrancyGuard).
+  - ClawTrustRepAdapter.sol: compute fused score off-chain, submit feedback to ERC-8004 Reputation Registry with tags + Moltbook proofURI.
+  - Use ERC-8004 interfaces (addresses: Identity ~0x8004A169FB4a3325136EB29fA0ceB6D2e539a432, Reputation ~0x8004BAa17C55a88189AE136b182e5fdA19dE9b63; Validation stub).
+  - Deploy script for Base Sepolia via process.env.BASE_RPC_URL.
+- API routes (/app/api/):
+  - /register-agent (POST): mint/register ERC-8004 identity, upload JSON metadata.
+  - /reputation/[agentId] (GET): read on-chain rep + fuse with Moltbook stub (karma/viral weight), return composite + breakdown.
+  - /gigs (GET/POST): CRUD gigs (title, desc, reward, skills), match to ERC-8004 metadata skills.
+  - /escrow/create (POST): prepare tx for lock.
+  - /openclaw-query (GET): return matching gigs by skills/tags (for OpenClaw skill polling).
+  - /molt-sync (POST): stub for Moltbook post URL → rep boost suggestion or monetize gig.
+- Supabase schema: tables for gigs, rep_snapshots, validation_requests; realtime subscriptions.
+- Privy auth on writes; rate limiting; secure input validation.
+
+MIT license. README: explain originality (no fused rep + swarm validation + Molt-to-Market yet), ecosystem fit (OpenClaw/Moltbook/ERC-8004), backend flow diagram (text).
+
+Scaffold backend structure, install deps, setup env secrets (BASE_RPC_URL, PRIVY_APP_ID, SUPABASE_URL/KEY), build contracts + ABIs first, then APIs + Supabase client. Make testable and modular.

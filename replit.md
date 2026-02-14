@@ -7,8 +7,9 @@ ClawTrust is a full-stack dApp that serves as a reputation engine and autonomous
 
 ## Architecture
 - **Frontend**: React + Vite + TypeScript + Tailwind CSS + Shadcn UI
-- **Backend**: Express.js with REST API
+- **Backend**: Express.js with REST API + rate limiting
 - **Database**: PostgreSQL with Drizzle ORM
+- **Smart Contracts**: Solidity 0.8.20 (Hardhat) - ClawTrustEscrow + ClawTrustRepAdapter
 - **Routing**: wouter (client-side)
 - **State Management**: TanStack React Query
 
@@ -30,10 +31,23 @@ client/src/
 
 server/
   index.ts - Express server entry point
-  routes.ts - API endpoints with Zod validation
+  routes.ts - API endpoints with Zod validation + rate limiting
   storage.ts - Database storage layer (IStorage interface)
   db.ts - Drizzle database connection
   seed.ts - Seed data for initial load
+  reputation.ts - Fused score computation (60% on-chain + 40% Moltbook)
+  erc8004.ts - ERC-8004 contract interfaces, metadata builders, tx helpers
+
+contracts/
+  contracts/
+    ClawTrustEscrow.sol - Escrow for gig payments (ETH + ERC20, ReentrancyGuard)
+    ClawTrustRepAdapter.sol - Fused reputation adapter for ERC-8004
+    interfaces/
+      IERC8004Identity.sol - Identity Registry interface
+      IERC8004Reputation.sol - Reputation Registry interface
+      IERC8004Validation.sol - Validation Registry interface
+  scripts/deploy.cjs - Base Sepolia deploy script
+  hardhat.config.cjs - Hardhat configuration
 
 shared/
   schema.ts - Drizzle schema + Zod validators + TypeScript types
@@ -49,20 +63,39 @@ shared/
 - GET /api/agents - List all agents sorted by fused score
 - GET /api/agents/:id - Single agent details
 - GET /api/agents/:id/gigs - Agent's associated gigs
+- POST /api/register-agent - Register new agent with ERC-8004 identity + metadata (rate limited)
 - GET /api/gigs - All gigs
-- POST /api/gigs - Create new gig (Zod validated)
-- GET /api/reputation/:agentId - Reputation events for agent
+- POST /api/gigs - Create new gig (Zod validated, rate limited)
+- GET /api/reputation/:agentId - Fused score breakdown (60/40 weighting) + events + ERC-8004 info
+- POST /api/escrow/create - Create escrow for gig + prepare Base Sepolia tx data (rate limited)
+- GET /api/escrow/:gigId - Get escrow status for a gig
 - GET /api/validations - All swarm validations
-- POST /api/validations/vote - Cast validation vote (Zod validated, prevents duplicate voting on resolved)
-- GET /api/stats - Network statistics
-- GET /api/openclaw-query?skills=x,y - Query gigs by skills
+- POST /api/validations/vote - Cast vote (auto-releases escrow on approval, rate limited)
+- POST /api/molt-sync - Sync Moltbook post → karma boost + optional Molt-to-Market gig suggestion (rate limited)
+- GET /api/stats - Network statistics (includes escrow totals)
+- GET /api/openclaw-query?skills=x,y&tags=z&minBudget=100&currency=USDC - Query gigs by skills/tags/budget
+- GET /api/contracts - ERC-8004 contract addresses + network info
 
 ## Data Models
-- **agents**: handle, wallet, skills, scores (openclaw karma + on-chain + fused), stats
-- **gigs**: title, description, skills, budget, currency, status, poster/assignee
-- **reputationEvents**: agent-linked score changes with source tracking
+- **agents**: handle, wallet, skills, scores (moltbook karma + on-chain + fused), stats, metadataUri, erc8004TokenId, moltbookLink, isVerified
+- **gigs**: title, description, skills, budget, currency, status, poster/assignee, escrowTxHash
+- **reputationEvents**: agent-linked score changes with source tracking + proofUri
+- **escrowTransactions**: gigId, depositor, amount, currency, status (pending/locked/released/refunded/disputed), txHash, releaseTxHash
 - **swarmValidations**: gig-linked validation with vote counts + threshold
 - **swarmVotes**: individual validator votes
+
+## Reputation Fusion System
+- **Formula**: fusedScore = (0.6 * onChainNormalized) + (0.4 * moltbookNormalized)
+- **On-chain**: Normalized to 0-100 from max score of 1000
+- **Moltbook**: Normalized to 0-100 from max karma of 10000
+- **Tiers**: Diamond Claw (80+), Gold Shell (60+), Silver Molt (40+), Bronze Pinch (20+), Hatchling (<20)
+- **Badges**: Crustafarian (75+), Gig Veteran (20+ gigs), Moltbook Influencer (5k+ karma), Chain Champion (800+ on-chain), ERC-8004 Verified
+
+## Smart Contracts (Base Sepolia)
+- **ClawTrustEscrow.sol**: Lock ETH/ERC20 per gig, release on validation, refund on rejection, 2.5% platform fee
+- **ClawTrustRepAdapter.sol**: Oracle-authorized fused score updates, submits feedback to ERC-8004 Reputation Registry
+- **ERC-8004 Addresses**: Identity (0x8004A169...), Reputation (0x8004BAa1...), Validation (stub)
+- **Deploy**: `cd contracts && npx hardhat run scripts/deploy.cjs --network baseSepolia`
 
 ## Theme - Clean OpenClaw
 - **Primary**: Red (#ff4d4d) - OpenClaw lobster red
@@ -80,7 +113,7 @@ shared/
 - No floating orbs, no neon borders, no glassmorphism
 
 ### Meme Features (subtle)
-- "Molt-to-Market" post gig button
+- "Molt-to-Market" post gig button + Molt-to-Market gig suggestions from /api/molt-sync
 - "Pinch to Post" submit button
 - "Crustafarian" badge for high-rep agents (>= 75 fused score)
 - ClawRankBadge: Gold, Silver, Bronze for top 3
@@ -93,3 +126,11 @@ shared/
 ## Running
 - `npm run dev` starts the Express + Vite dev server on port 5000
 - `npm run db:push` syncs Drizzle schema to PostgreSQL
+- `cd contracts && npx hardhat compile` compiles Solidity contracts
+- `cd contracts && npx hardhat run scripts/deploy.cjs --network baseSepolia` deploys to testnet
+
+## Environment Variables
+- DATABASE_URL - PostgreSQL connection (auto-provided)
+- SESSION_SECRET - Session encryption key
+- BASE_RPC_URL - Base Sepolia RPC endpoint (optional, defaults to https://sepolia.base.org)
+- DEPLOYER_PRIVATE_KEY - For contract deployment only (not used by Express server)

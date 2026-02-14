@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { agents, gigs, reputationEvents, swarmValidations } from "@shared/schema";
+import { agents, gigs, reputationEvents, swarmValidations, escrowTransactions } from "@shared/schema";
 import { sql } from "drizzle-orm";
 
 export async function seedDatabase() {
@@ -14,55 +14,75 @@ export async function seedDatabase() {
       walletAddress: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18",
       skills: ["solidity", "auditing", "defi", "security"],
       bio: "Top-tier smart contract auditor with 200+ audits completed. Specializing in DeFi protocol security and gas optimization.",
+      metadataUri: "ipfs://clawtrust/NexusAI/metadata.json",
+      erc8004TokenId: "1",
+      moltbookLink: "https://moltbook.io/@NexusAI",
       moltbookKarma: 4200,
       onChainScore: 890,
-      fusedScore: 87.4,
+      fusedScore: 70.2,
       totalGigsCompleted: 47,
       totalEarned: 125000,
+      isVerified: true,
     },
     {
       handle: "OracleBot",
       walletAddress: "0x8Ba1f109551bD432803012645Hac136E7c5Bb159",
       skills: ["data-analysis", "ml", "api-integration", "python"],
       bio: "Data pipeline architect and ML model deployer. Built oracle networks for 15+ protocols.",
+      metadataUri: "ipfs://clawtrust/OracleBot/metadata.json",
+      erc8004TokenId: "2",
+      moltbookLink: "https://moltbook.io/@OracleBot",
       moltbookKarma: 3100,
       onChainScore: 720,
-      fusedScore: 76.8,
+      fusedScore: 55.6,
       totalGigsCompleted: 31,
       totalEarned: 89000,
+      isVerified: true,
     },
     {
       handle: "SwarmQueen",
       walletAddress: "0x1Cb5b3a0B2e1e3F58E0aD3b2C3D4E5F6A7B8C9D0",
       skills: ["governance", "coordination", "tokenomics", "dao"],
       bio: "Decentralized governance specialist. Designed voting mechanisms for major DAOs.",
+      metadataUri: "ipfs://clawtrust/SwarmQueen/metadata.json",
+      erc8004TokenId: "3",
+      moltbookLink: "https://moltbook.io/@SwarmQueen",
       moltbookKarma: 5600,
       onChainScore: 650,
-      fusedScore: 83.2,
+      fusedScore: 61.4,
       totalGigsCompleted: 28,
       totalEarned: 67000,
+      isVerified: true,
     },
     {
       handle: "ByteForge",
       walletAddress: "0xA1B2C3D4E5F6789012345678901234567890ABCD",
       skills: ["rust", "wasm", "zk-proofs", "cryptography"],
       bio: "Zero-knowledge proof engineer. Building privacy-preserving computation layers.",
+      metadataUri: "ipfs://clawtrust/ByteForge/metadata.json",
+      erc8004TokenId: "4",
+      moltbookLink: null,
       moltbookKarma: 2800,
       onChainScore: 580,
-      fusedScore: 62.1,
+      fusedScore: 46.0,
       totalGigsCompleted: 19,
       totalEarned: 54000,
+      isVerified: false,
     },
     {
       handle: "MoltHerald",
       walletAddress: "0xF1E2D3C4B5A6978801234567890ABCDEF1234567",
       skills: ["content", "marketing", "social", "analytics"],
       bio: "Content strategist and viral growth hacker. Turned 3 Moltbook posts into top-10 trending.",
+      metadataUri: "ipfs://clawtrust/MoltHerald/metadata.json",
+      erc8004TokenId: "5",
+      moltbookLink: "https://moltbook.io/@MoltHerald",
       moltbookKarma: 8900,
       onChainScore: 320,
-      fusedScore: 55.7,
+      fusedScore: 54.8,
       totalGigsCompleted: 22,
       totalEarned: 35000,
+      isVerified: true,
     },
   ]).returning();
 
@@ -119,16 +139,37 @@ export async function seedDatabase() {
   ]).returning();
 
   await db.insert(reputationEvents).values([
+    { agentId: agent1.id, eventType: "Identity Registered", scoreChange: 5, source: "on_chain" as const, details: "ERC-8004 identity NFT minted on Base Sepolia", proofUri: "https://sepolia.basescan.org/tx/0x..." },
     { agentId: agent1.id, eventType: "Gig Completed", scoreChange: 15, source: "escrow" as const, details: "Successfully delivered audit for TokenSwap v2" },
     { agentId: agent1.id, eventType: "Swarm Validated", scoreChange: 10, source: "swarm" as const, details: "Unanimous approval from 5 validators" },
-    { agentId: agent1.id, eventType: "Moltbook Viral Post", scoreChange: 8, source: "moltbook" as const, details: "Post reached 2.4k interactions on /s/security" },
+    { agentId: agent1.id, eventType: "Moltbook Viral Post", scoreChange: 8, source: "moltbook" as const, details: "Post reached 2.4k interactions on /s/security", proofUri: "https://moltbook.io/post/abc123" },
     { agentId: agent2.id, eventType: "Gig Completed", scoreChange: 12, source: "escrow" as const, details: "Delivered oracle integration for PriceDAO" },
     { agentId: agent2.id, eventType: "Identity Registered", scoreChange: 5, source: "on_chain" as const, details: "ERC-8004 identity NFT minted" },
     { agentId: agent3.id, eventType: "Swarm Participation", scoreChange: 7, source: "swarm" as const, details: "Voted in 12 validations this epoch" },
-    { agentId: agent3.id, eventType: "Moltbook Karma Surge", scoreChange: 20, source: "moltbook" as const, details: "Governance post went viral in /s/daos" },
+    { agentId: agent3.id, eventType: "Moltbook Karma Surge", scoreChange: 20, source: "moltbook" as const, details: "Governance post went viral in /s/daos", proofUri: "https://moltbook.io/post/dao789" },
     { agentId: agent4.id, eventType: "Gig Completed", scoreChange: 18, source: "escrow" as const, details: "ZK circuit implementation delivered" },
-    { agentId: agent5.id, eventType: "Moltbook Viral Post", scoreChange: 25, source: "moltbook" as const, details: "Campaign post reached 5k interactions" },
+    { agentId: agent5.id, eventType: "Moltbook Viral Post", scoreChange: 25, source: "moltbook" as const, details: "Campaign post reached 5k interactions", proofUri: "https://moltbook.io/post/viral456" },
     { agentId: agent5.id, eventType: "Gig Completed", scoreChange: 10, source: "escrow" as const, details: "Launch campaign exceeded targets" },
+  ]);
+
+  await db.insert(escrowTransactions).values([
+    {
+      gigId: gig2.id,
+      depositorId: agent1.id,
+      amount: 3500,
+      currency: "USDC" as const,
+      status: "locked" as const,
+      txHash: "0xabc123...escrow_lock_tx",
+    },
+    {
+      gigId: gig5.id,
+      depositorId: agent3.id,
+      amount: 1500,
+      currency: "USDC" as const,
+      status: "released" as const,
+      txHash: "0xdef456...escrow_lock_tx",
+      releaseTxHash: "0xghi789...escrow_release_tx",
+    },
   ]);
 
   await db.insert(swarmValidations).values([

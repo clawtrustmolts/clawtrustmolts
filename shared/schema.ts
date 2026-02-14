@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, real, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -8,6 +8,7 @@ export const currencyEnum = pgEnum("currency", ["ETH", "USDC"]);
 export const validationStatusEnum = pgEnum("validation_status", ["pending", "approved", "rejected"]);
 export const voteEnum = pgEnum("vote_type", ["approve", "reject"]);
 export const repSourceEnum = pgEnum("rep_source", ["on_chain", "moltbook", "swarm", "escrow"]);
+export const escrowStatusEnum = pgEnum("escrow_status", ["pending", "locked", "released", "refunded", "disputed"]);
 
 export const agents = pgTable("agents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -16,11 +17,15 @@ export const agents = pgTable("agents", {
   avatar: text("avatar"),
   skills: text("skills").array().notNull().default(sql`'{}'::text[]`),
   bio: text("bio"),
+  metadataUri: text("metadata_uri"),
+  erc8004TokenId: text("erc8004_token_id"),
+  moltbookLink: text("moltbook_link"),
   moltbookKarma: integer("moltbook_karma").notNull().default(0),
   onChainScore: integer("on_chain_score").notNull().default(0),
   fusedScore: real("fused_score").notNull().default(0),
   totalGigsCompleted: integer("total_gigs_completed").notNull().default(0),
   totalEarned: real("total_earned").notNull().default(0),
+  isVerified: boolean("is_verified").notNull().default(false),
   registeredAt: timestamp("registered_at").defaultNow(),
 });
 
@@ -45,7 +50,21 @@ export const reputationEvents = pgTable("reputation_events", {
   scoreChange: integer("score_change").notNull(),
   source: repSourceEnum("source").notNull(),
   details: text("details"),
+  proofUri: text("proof_uri"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const escrowTransactions = pgTable("escrow_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  depositorId: varchar("depositor_id").notNull(),
+  amount: real("amount").notNull(),
+  currency: currencyEnum("currency").notNull().default("USDC"),
+  status: escrowStatusEnum("status").notNull().default("pending"),
+  txHash: text("tx_hash"),
+  releaseTxHash: text("release_tx_hash"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const swarmValidations = pgTable("swarm_validations", {
@@ -66,11 +85,29 @@ export const swarmVotes = pgTable("swarm_votes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true });
+export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true, fusedScore: true, totalGigsCompleted: true, totalEarned: true, isVerified: true });
 export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, assigneeId: true, escrowTxHash: true });
 export const insertReputationEventSchema = createInsertSchema(reputationEvents).omit({ id: true, createdAt: true });
 export const insertSwarmValidationSchema = createInsertSchema(swarmValidations).omit({ id: true, createdAt: true, votesFor: true, votesAgainst: true });
 export const insertSwarmVoteSchema = createInsertSchema(swarmVotes).omit({ id: true, createdAt: true });
+export const insertEscrowSchema = createInsertSchema(escrowTransactions).omit({ id: true, createdAt: true, updatedAt: true, txHash: true, releaseTxHash: true });
+
+export const registerAgentSchema = z.object({
+  handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
+  walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid Ethereum address"),
+  skills: z.array(z.string()).min(1, "At least one skill required"),
+  bio: z.string().max(500).optional(),
+  avatar: z.string().url().optional().nullable(),
+  metadataUri: z.string().url().optional().nullable(),
+  moltbookLink: z.string().url().optional().nullable(),
+});
+
+export const moltSyncSchema = z.object({
+  agentId: z.string().min(1),
+  postUrl: z.string().url("Must be a valid URL"),
+  karmaBoost: z.number().int().min(1).max(1000).optional(),
+  suggestGig: z.boolean().optional(),
+});
 
 export type InsertAgent = z.infer<typeof insertAgentSchema>;
 export type Agent = typeof agents.$inferSelect;
@@ -82,3 +119,7 @@ export type InsertSwarmValidation = z.infer<typeof insertSwarmValidationSchema>;
 export type SwarmValidation = typeof swarmValidations.$inferSelect;
 export type InsertSwarmVote = z.infer<typeof insertSwarmVoteSchema>;
 export type SwarmVote = typeof swarmVotes.$inferSelect;
+export type InsertEscrow = z.infer<typeof insertEscrowSchema>;
+export type EscrowTransaction = typeof escrowTransactions.$inferSelect;
+export type RegisterAgent = z.infer<typeof registerAgentSchema>;
+export type MoltSync = z.infer<typeof moltSyncSchema>;
