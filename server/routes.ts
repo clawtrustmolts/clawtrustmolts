@@ -21,6 +21,7 @@ import {
 } from "./erc8004";
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
+import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
 
 const sanitizeString = (s: string, maxLen = 500): string =>
   s.replace(/[<>'";&\\]/g, "").trim().slice(0, maxLen);
@@ -1218,6 +1219,71 @@ export async function registerRoutes(
       res.json(generateCardMetadata(agent, baseUrl));
     } catch (err: any) {
       res.status(500).json({ message: "Failed to generate card metadata" });
+    }
+  });
+
+  const safeWallet = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid Ethereum address");
+
+  app.get("/api/passports/:wallet/metadata", apiLimiter, async (req, res) => {
+    try {
+      const walletParse = safeWallet.safeParse(req.params.wallet);
+      if (!walletParse.success) return res.status(400).json({ message: "Invalid wallet address" });
+
+      const agent = await storage.getAgentByWallet(walletParse.data);
+      if (!agent) return res.status(404).json({ message: "Agent not found for this wallet" });
+
+      const protocol = req.headers["x-forwarded-proto"] || "http";
+      const host = req.headers.host || "localhost:5000";
+      const baseUrl = `${protocol}://${host}`;
+
+      res.json(generatePassportMetadata(agent, baseUrl));
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to generate passport metadata" });
+    }
+  });
+
+  app.get("/api/passports/:wallet/image", apiLimiter, async (req, res) => {
+    try {
+      const walletParse = safeWallet.safeParse(req.params.wallet);
+      if (!walletParse.success) return res.status(400).json({ message: "Invalid wallet address" });
+
+      const agent = await storage.getAgentByWallet(walletParse.data);
+      if (!agent) return res.status(404).json({ message: "Agent not found for this wallet" });
+
+      const imageBuffer = await generatePassportImage(agent);
+      res.set({
+        "Content-Type": "image/png",
+        "Content-Length": imageBuffer.length.toString(),
+        "Cache-Control": "public, max-age=300",
+      });
+      res.send(imageBuffer);
+    } catch (err: any) {
+      console.error("[passport] Image generation error:", err.message, err.stack?.slice(0, 500));
+      res.status(500).json({ message: "Failed to generate passport image" });
+    }
+  });
+
+  const linkMoltDomainSchema = z.object({
+    moltDomain: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+\.molt$/, "Must be a valid .molt domain (e.g. myname.molt)").nullable(),
+  });
+
+  app.patch("/api/agents/:id/molt-domain", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.id);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const agent = await storage.getAgent(agentId.data);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const parsed = linkMoltDomainSchema.parse(req.body);
+      const updated = await storage.updateAgent(agent.id, { moltDomain: parsed.moltDomain });
+
+      res.json({ agent: updated, message: parsed.moltDomain ? `Linked ${parsed.moltDomain}` : "Molt domain unlinked" });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
     }
   });
 

@@ -8,17 +8,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScoreRing } from "@/components/score-ring";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink, Shield, Share2, Download, Copy, Check, Image, Gem } from "lucide-react";
+import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { PassportCard } from "@/components/passport-card";
 import type { Agent, Gig, ReputationEvent } from "@shared/schema";
 
 export default function ProfilePage() {
   const params = useParams<{ agentId: string }>();
-  const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
 
   const { data: agent, isLoading: agentLoading } = useQuery<Agent>({
     queryKey: ["/api/agents", params.agentId],
@@ -32,40 +29,6 @@ export default function ProfilePage() {
     queryKey: ["/api/reputation", params.agentId],
   });
   const repEvents = repData?.events;
-
-  const handleCopyCardLink = () => {
-    const cardUrl = `${window.location.origin}/api/agents/${params.agentId}/card`;
-    navigator.clipboard.writeText(cardUrl).then(() => {
-      setCopied(true);
-      toast({ title: "Card link copied", description: "Share this link to show your Claw Card" });
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  const handleDownloadCard = () => {
-    const link = document.createElement("a");
-    link.href = `/api/agents/${params.agentId}/card`;
-    link.download = `clawtrust-${agent?.handle || "card"}.png`;
-    link.click();
-    toast({ title: "Downloading Claw Card", description: "Your card image is being downloaded" });
-  };
-
-  const handleShareToMoltbook = () => {
-    if (!agent) return;
-    const tier = getTier(agent.fusedScore);
-    const text = `${agent.handle} | ${tier} | Fused Score: ${agent.fusedScore.toFixed(1)} | ${agent.skills.slice(0, 3).join(", ")} | ClawTrust Verified Agent`;
-    const url = `${window.location.origin}/profile/${agent.id}`;
-    const shareUrl = `https://moltbook.com/compose?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-    window.open(shareUrl, "_blank");
-  };
-
-  const handleShareToX = () => {
-    if (!agent) return;
-    const tier = getTier(agent.fusedScore);
-    const text = `${agent.handle} | ${tier} | Fused Score: ${agent.fusedScore.toFixed(1)}\n\nVerified on @ClawTrust with ERC-8004 reputation fusion.\n\n${window.location.origin}/profile/${agent.id}`;
-    const shareUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`;
-    window.open(shareUrl, "_blank");
-  };
 
   if (agentLoading) {
     return (
@@ -149,59 +112,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card data-testid="card-claw-card-preview">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-display tracking-wider flex items-center gap-2">
-            <Image className="w-4 h-4 text-primary" />
-            CLAW CARD
-            <Badge variant="outline" className="text-[9px] font-mono text-[#F94144] border-[#F94144]/30 ml-1">NFT-READY</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-5 pt-0">
-          <div className="flex flex-col sm:flex-row items-start gap-4">
-            <div className="w-full sm:w-auto flex-shrink-0 rounded-md overflow-hidden border border-[#1a1a1f]">
-              <img
-                src={`/api/agents/${agent.id}/card`}
-                alt={`${agent.handle} Claw Card`}
-                className="w-full sm:w-[300px] h-auto"
-                data-testid="img-claw-card"
-              />
-            </div>
-            <div className="flex flex-col gap-2 w-full sm:w-auto">
-              <p className="text-xs text-muted-foreground mb-1">
-                Share your Claw Card to flex your reputation. This card updates dynamically as your score changes.
-              </p>
-              <Button variant="default" size="sm" onClick={handleShareToMoltbook} data-testid="button-share-moltbook" className="gap-1.5">
-                <Share2 className="w-3.5 h-3.5" />
-                Pinch to Post
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleShareToX} data-testid="button-share-x" className="gap-1.5">
-                <ExternalLink className="w-3.5 h-3.5" />
-                Share to X
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleDownloadCard} data-testid="button-download-card" className="gap-1.5">
-                <Download className="w-3.5 h-3.5" />
-                Download Card
-              </Button>
-              <Button variant="ghost" size="sm" onClick={handleCopyCardLink} data-testid="button-copy-card-link" className="gap-1.5">
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? "Copied" : "Copy Card Link"}
-              </Button>
-              <div className="pt-2 border-t border-border mt-2">
-                <Button variant="outline" size="sm" className="gap-1.5 w-full" data-testid="button-mint-nft" onClick={() => {
-                  toast({ title: "Connect Wallet", description: "Connect your wallet to mint your Claw Card as an ERC-721 NFT on Base Sepolia. Soulbound option available." });
-                }}>
-                  <Gem className="w-3.5 h-3.5" />
-                  Molt-to-Mint NFT
-                </Button>
-                <p className="text-[9px] text-muted-foreground mt-1.5 text-center font-mono">
-                  ERC-721 on Base Sepolia | Dynamic metadata | Soulbound optional
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <PassportCard agent={agent} />
 
       <div className="grid sm:grid-cols-3 gap-3">
         <Card>

@@ -26,6 +26,7 @@ export const agents = pgTable("agents", {
   totalGigsCompleted: integer("total_gigs_completed").notNull().default(0),
   totalEarned: real("total_earned").notNull().default(0),
   isVerified: boolean("is_verified").notNull().default(false),
+  moltDomain: text("molt_domain"),
   registeredAt: timestamp("registered_at").defaultNow(),
 });
 
