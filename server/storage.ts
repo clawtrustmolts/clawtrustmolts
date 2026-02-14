@@ -1,4 +1,4 @@
-import { eq, desc, or, and } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, gt } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions,
@@ -17,6 +17,7 @@ export interface IStorage {
   getAgentByWallet(walletAddress: string): Promise<Agent | undefined>;
   createAgent(agent: InsertAgent): Promise<Agent>;
   updateAgent(id: string, data: Partial<Agent>): Promise<Agent | undefined>;
+  getTopAgentsByFusedScore(limit: number, excludeIds?: string[]): Promise<Agent[]>;
 
   getGigs(): Promise<Gig[]>;
   getGig(id: string): Promise<Gig | undefined>;
@@ -33,7 +34,10 @@ export interface IStorage {
   getValidationByGig(gigId: string): Promise<SwarmValidation | undefined>;
   createValidation(v: InsertSwarmValidation): Promise<SwarmValidation>;
   castVote(vote: InsertSwarmVote): Promise<SwarmVote>;
+  getVotesByValidation(validationId: string): Promise<SwarmVote[]>;
+  getVoteByVoterAndValidation(voterId: string, validationId: string): Promise<SwarmVote | undefined>;
   updateValidation(id: string, data: Partial<SwarmValidation>): Promise<SwarmValidation | undefined>;
+  updateVote(id: string, data: Partial<SwarmVote>): Promise<SwarmVote | undefined>;
 
   getEscrowTransactions(): Promise<EscrowTransaction[]>;
   getEscrowByGig(gigId: string): Promise<EscrowTransaction | undefined>;
@@ -70,6 +74,17 @@ export class DatabaseStorage implements IStorage {
   async updateAgent(id: string, data: Partial<Agent>): Promise<Agent | undefined> {
     const [updated] = await db.update(agents).set(data).where(eq(agents.id, id)).returning();
     return updated;
+  }
+
+  async getTopAgentsByFusedScore(limit: number, excludeIds: string[] = []): Promise<Agent[]> {
+    let query = db.select().from(agents).orderBy(desc(agents.fusedScore)).limit(limit);
+    if (excludeIds.length > 0) {
+      return db.select().from(agents)
+        .where(and(notInArray(agents.id, excludeIds), gt(agents.fusedScore, 0)))
+        .orderBy(desc(agents.fusedScore))
+        .limit(limit);
+    }
+    return db.select().from(agents).where(gt(agents.fusedScore, 0)).orderBy(desc(agents.fusedScore)).limit(limit);
   }
 
   async getGigs(): Promise<Gig[]> {
@@ -135,8 +150,24 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  async getVotesByValidation(validationId: string): Promise<SwarmVote[]> {
+    return db.select().from(swarmVotes).where(eq(swarmVotes.validationId, validationId)).orderBy(desc(swarmVotes.createdAt));
+  }
+
+  async getVoteByVoterAndValidation(voterId: string, validationId: string): Promise<SwarmVote | undefined> {
+    const [vote] = await db.select().from(swarmVotes).where(
+      and(eq(swarmVotes.voterId, voterId), eq(swarmVotes.validationId, validationId))
+    );
+    return vote;
+  }
+
   async updateValidation(id: string, data: Partial<SwarmValidation>): Promise<SwarmValidation | undefined> {
     const [updated] = await db.update(swarmValidations).set(data).where(eq(swarmValidations.id, id)).returning();
+    return updated;
+  }
+
+  async updateVote(id: string, data: Partial<SwarmVote>): Promise<SwarmVote | undefined> {
+    const [updated] = await db.update(swarmVotes).set(data).where(eq(swarmVotes.id, id)).returning();
     return updated;
   }
 

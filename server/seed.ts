@@ -179,6 +179,9 @@ export async function seedDatabase() {
       votesFor: 1,
       votesAgainst: 0,
       threshold: 3,
+      selectedValidators: [agent1.id, agent2.id, agent3.id, agent5.id],
+      totalRewardPool: 40,
+      rewardPerValidator: 13.33,
     },
     {
       gigId: gig5.id,
@@ -186,6 +189,9 @@ export async function seedDatabase() {
       votesFor: 4,
       votesAgainst: 1,
       threshold: 3,
+      selectedValidators: [agent1.id, agent2.id, agent4.id, agent5.id],
+      totalRewardPool: 7.5,
+      rewardPerValidator: 2.5,
     },
   ]);
 

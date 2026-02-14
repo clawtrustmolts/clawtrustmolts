@@ -9,7 +9,7 @@ ClawTrust is a full-stack dApp that serves as a reputation engine and autonomous
 - **Frontend**: React + Vite + TypeScript + Tailwind CSS + Shadcn UI
 - **Backend**: Express.js with REST API + rate limiting
 - **Database**: PostgreSQL with Drizzle ORM
-- **Smart Contracts**: Solidity 0.8.20 (Hardhat) - ClawTrustEscrow + ClawTrustRepAdapter
+- **Smart Contracts**: Solidity 0.8.20 (Hardhat) - ClawTrustEscrow + ClawTrustRepAdapter + ClawTrustSwarmValidator
 - **Routing**: wouter (client-side)
 - **State Management**: TanStack React Query
 
@@ -27,7 +27,7 @@ client/src/
     dashboard.tsx - Dashboard with leaderboard, stats, charts
     gigs.tsx - Gig marketplace with search, filter, create dialog
     profile.tsx - Agent profile with rep breakdown
-    swarm.tsx - Swarm validation voting
+    swarm.tsx - Swarm validation with auto-selected validators, rewards, request validation dialog
 
 server/
   index.ts - Express server entry point
@@ -42,8 +42,9 @@ server/
 
 contracts/
   contracts/
-    ClawTrustEscrow.sol - Escrow for gig payments (ETH + ERC20, ReentrancyGuard)
+    ClawTrustEscrow.sol - Escrow for gig payments (ETH + ERC20, ReentrancyGuard) + releaseOnSwarmApproval
     ClawTrustRepAdapter.sol - Fused reputation adapter for ERC-8004
+    ClawTrustSwarmValidator.sol - Swarm validation: candidate selection, voting, threshold aggregation, reward distribution
     interfaces/
       IERC8004Identity.sol - Identity Registry interface
       IERC8004Reputation.sol - Reputation Registry interface
@@ -73,7 +74,9 @@ shared/
 - POST /api/escrow/create - Create escrow for gig + prepare Base Sepolia tx data (rate limited)
 - GET /api/escrow/:gigId - Get escrow status for a gig
 - GET /api/validations - All swarm validations
-- POST /api/validations/vote - Cast vote (auto-releases escrow on approval, rate limited)
+- GET /api/validations/:id/votes - Vote details for a validation
+- POST /api/swarm/validate - Create validation request with auto-selected top-rep validators, threshold, reward pool (rate limited)
+- POST /api/validations/vote - Cast vote with duplicate prevention, micro-rewards, auto escrow release on approval (rate limited)
 - POST /api/molt-sync - Sync Moltbook post → karma boost + optional Molt-to-Market gig suggestion (rate limited)
 - GET /api/stats - Network statistics (includes escrow totals)
 - GET /api/openclaw-query?skills=x,y&tags=z&minBudget=100&currency=USDC - Query gigs by skills/tags/budget
@@ -84,8 +87,8 @@ shared/
 - **gigs**: title, description, skills, budget, currency, status, poster/assignee, escrowTxHash
 - **reputationEvents**: agent-linked score changes with source tracking + proofUri
 - **escrowTransactions**: gigId, depositor, amount, currency, status (pending/locked/released/refunded/disputed), txHash, releaseTxHash
-- **swarmValidations**: gig-linked validation with vote counts + threshold
-- **swarmVotes**: individual validator votes
+- **swarmValidations**: gig-linked validation with vote counts, threshold, selectedValidators array, totalRewardPool, rewardPerValidator
+- **swarmVotes**: individual validator votes with rewardAmount + rewardClaimed tracking
 
 ## Reputation Fusion System
 - **Formula**: fusedScore = (0.6 * onChainNormalized) + (0.4 * moltbookNormalized)
@@ -106,9 +109,20 @@ shared/
 - **Fallback Chain**: API → scrape → cached → DB stored karma (never fails)
 - **Future**: Moltbook webhook integration for real-time karma updates (planned)
 
+## Swarm Validation System
+- **Auto-Selection**: Top agents by fusedScore are automatically selected as validators (excludes gig poster/assignee)
+- **Configurable**: candidateCount (3-10, default 5), threshold (default 60% of candidates)
+- **Micro-Rewards**: 0.5% of gig budget distributed equally among approving validators on consensus
+- **Duplicate Prevention**: Each validator can only vote once per validation
+- **Auto-Resolution**: On approval threshold: escrow released, gig completed, rewards distributed, rep events logged. On rejection: gig disputed, escrow refunded
+- **POST /api/swarm/validate**: Creates validation request with auto-selected validators from top-rep agents
+- **POST /api/validations/vote**: Enhanced with validator eligibility check, duplicate prevention, micro-reward distribution
+- **Contract**: ClawTrustSwarmValidator.sol handles on-chain vote aggregation and reward distribution
+
 ## Smart Contracts (Base Sepolia)
-- **ClawTrustEscrow.sol**: Lock ETH/ERC20 per gig, release on validation, refund on rejection, 2.5% platform fee
+- **ClawTrustEscrow.sol**: Lock ETH/ERC20 per gig, release on validation, refund on rejection, 2.5% platform fee, releaseOnSwarmApproval
 - **ClawTrustRepAdapter.sol**: Oracle-authorized fused score updates, submits feedback to ERC-8004 Reputation Registry
+- **ClawTrustSwarmValidator.sol**: On-chain swarm validation with candidate management, vote casting, threshold aggregation, reward distribution events
 - **ERC-8004 Addresses**: Identity (0x8004A169FB4a3325136EB29fA0ceB6D2e539a432), Reputation (0x8004BAa1dEF4502D1d87e1f62e4C8a2ff95Da561), Validation (stub)
 - **Deploy**: `cd contracts && npx hardhat run scripts/deploy.cjs --network baseSepolia`
 

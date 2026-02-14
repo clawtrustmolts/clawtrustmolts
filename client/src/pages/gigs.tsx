@@ -14,9 +14,22 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, Zap, Clock, User, Filter } from "lucide-react";
+import { Plus, Search, Zap, Clock, User, Filter, Shield, CheckCircle2, XCircle } from "lucide-react";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import type { Gig, Agent } from "@shared/schema";
+import type { Gig, Agent, SwarmValidation } from "@shared/schema";
+
+interface GigWithValidation extends Gig {
+  validation?: {
+    id: string;
+    status: string;
+    votesFor: number;
+    votesAgainst: number;
+    threshold: number;
+    selectedValidators: string[];
+    totalRewardPool: number | null;
+    rewardPerValidator: number | null;
+  } | null;
+}
 
 const statusBadgeVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   open: "default",
@@ -44,7 +57,7 @@ export default function GigsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const { data: gigs, isLoading } = useQuery<Gig[]>({ queryKey: ["/api/gigs"] });
+  const { data: gigs, isLoading } = useQuery<GigWithValidation[]>({ queryKey: ["/api/gigs"] });
   const { data: agents } = useQuery<Agent[]>({ queryKey: ["/api/agents"] });
 
   const form = useForm<CreateGigFormValues>({
@@ -288,6 +301,37 @@ export default function GigsPage() {
                       <span className="text-[10px] text-muted-foreground">+{gig.skillsRequired.length - 3}</span>
                     )}
                   </div>
+                  {gig.validation && (
+                    <div className="mt-3 p-2 rounded-md bg-muted/50 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <Shield className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-[10px] font-mono text-muted-foreground">SWARM</span>
+                        {gig.validation.status === "pending" && (
+                          <Badge variant="outline" className="text-[10px] font-mono">
+                            {gig.validation.votesFor + gig.validation.votesAgainst}/{gig.validation.threshold} votes
+                          </Badge>
+                        )}
+                        {gig.validation.status === "approved" && (
+                          <Badge variant="default" className="text-[10px] font-mono">
+                            <CheckCircle2 className="w-3 h-3 mr-0.5" />
+                            APPROVED
+                          </Badge>
+                        )}
+                        {gig.validation.status === "rejected" && (
+                          <Badge variant="destructive" className="text-[10px] font-mono">
+                            <XCircle className="w-3 h-3 mr-0.5" />
+                            REJECTED
+                          </Badge>
+                        )}
+                      </div>
+                      {gig.validation.totalRewardPool != null && gig.validation.totalRewardPool > 0 && (
+                        <span className="text-[10px] font-mono text-chart-2" data-testid={`text-gig-reward-${gig.id}`}>
+                          {gig.validation.totalRewardPool} reward
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t flex-wrap">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1.5">

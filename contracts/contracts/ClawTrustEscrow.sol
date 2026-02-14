@@ -145,6 +145,42 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         return escrows[gigId];
     }
 
+    function releaseOnSwarmApproval(bytes32 gigId) external nonReentrant {
+        Escrow storage escrow = escrows[gigId];
+        require(escrowExists[gigId], "Escrow does not exist");
+        require(escrow.status == EscrowStatus.Locked, "Not locked");
+
+        require(validationRegistry != address(0), "Validation registry not set");
+
+        (uint256 votesFor, , uint256 threshold, , bool isApproved) =
+            ISwarmValidator(validationRegistry).aggregateVotes(gigId);
+
+        require(isApproved, "Swarm has not approved");
+        require(votesFor >= threshold, "Threshold not met");
+
+        escrow.status = EscrowStatus.Released;
+        escrow.resolvedAt = block.timestamp;
+
+        uint256 fee = (escrow.amount * platformFeeRate) / FEE_DENOMINATOR;
+        uint256 payout = escrow.amount - fee;
+
+        if (escrow.token == address(0)) {
+            (bool sent, ) = escrow.payee.call{value: payout}("");
+            require(sent, "ETH transfer failed");
+            if (fee > 0) {
+                (bool feeSent, ) = owner().call{value: fee}("");
+                require(feeSent, "Fee transfer failed");
+            }
+        } else {
+            IERC20(escrow.token).transfer(escrow.payee, payout);
+            if (fee > 0) {
+                IERC20(escrow.token).transfer(owner(), fee);
+            }
+        }
+
+        emit EscrowReleased(gigId, escrow.payee, payout);
+    }
+
     function setValidationRegistry(address _registry) external onlyOwner {
         validationRegistry = _registry;
     }
@@ -153,4 +189,14 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         require(_rate <= 1000, "Fee too high");
         platformFeeRate = _rate;
     }
+}
+
+interface ISwarmValidator {
+    function aggregateVotes(bytes32 gigId) external view returns (
+        uint256 votesFor,
+        uint256 votesAgainst,
+        uint256 threshold,
+        uint8 status,
+        bool isApproved
+    );
 }

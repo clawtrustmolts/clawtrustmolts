@@ -74,6 +74,9 @@ export const swarmValidations = pgTable("swarm_validations", {
   votesFor: integer("votes_for").notNull().default(0),
   votesAgainst: integer("votes_against").notNull().default(0),
   threshold: integer("threshold").notNull().default(3),
+  selectedValidators: text("selected_validators").array().notNull().default(sql`'{}'::text[]`),
+  totalRewardPool: real("total_reward_pool").notNull().default(0),
+  rewardPerValidator: real("reward_per_validator").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -82,6 +85,8 @@ export const swarmVotes = pgTable("swarm_votes", {
   validationId: varchar("validation_id").notNull(),
   voterId: varchar("voter_id").notNull(),
   vote: voteEnum("vote").notNull(),
+  rewardAmount: real("reward_amount").notNull().default(0),
+  rewardClaimed: boolean("reward_claimed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -89,7 +94,7 @@ export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, reg
 export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, assigneeId: true, escrowTxHash: true });
 export const insertReputationEventSchema = createInsertSchema(reputationEvents).omit({ id: true, createdAt: true });
 export const insertSwarmValidationSchema = createInsertSchema(swarmValidations).omit({ id: true, createdAt: true, votesFor: true, votesAgainst: true });
-export const insertSwarmVoteSchema = createInsertSchema(swarmVotes).omit({ id: true, createdAt: true });
+export const insertSwarmVoteSchema = createInsertSchema(swarmVotes).omit({ id: true, createdAt: true, rewardClaimed: true });
 export const insertEscrowSchema = createInsertSchema(escrowTransactions).omit({ id: true, createdAt: true, updatedAt: true, txHash: true, releaseTxHash: true });
 
 export const registerAgentSchema = z.object({

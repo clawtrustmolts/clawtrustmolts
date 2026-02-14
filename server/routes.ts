@@ -208,8 +208,24 @@ export async function registerRoutes(
   });
 
   app.get("/api/gigs", async (_req, res) => {
-    const gigs = await storage.getGigs();
-    res.json(gigs);
+    const allGigs = await storage.getGigs();
+    const validations = await storage.getValidations();
+    const validationMap = new Map(validations.map(v => [v.gigId, v]));
+
+    const gigsWithValidation = allGigs.map(g => ({
+      ...g,
+      validation: validationMap.get(g.id) ? {
+        id: validationMap.get(g.id)!.id,
+        status: validationMap.get(g.id)!.status,
+        votesFor: validationMap.get(g.id)!.votesFor,
+        votesAgainst: validationMap.get(g.id)!.votesAgainst,
+        threshold: validationMap.get(g.id)!.threshold,
+        selectedValidators: validationMap.get(g.id)!.selectedValidators,
+        totalRewardPool: validationMap.get(g.id)!.totalRewardPool,
+        rewardPerValidator: validationMap.get(g.id)!.rewardPerValidator,
+      } : null,
+    }));
+    res.json(gigsWithValidation);
   });
 
   app.post("/api/gigs", rateLimit, async (req, res) => {
@@ -394,6 +410,95 @@ export async function registerRoutes(
     res.json(validations);
   });
 
+  app.get("/api/validations/:id/votes", async (req, res) => {
+    const validation = await storage.getValidation(req.params.id);
+    if (!validation) return res.status(404).json({ message: "Validation not found" });
+    const votes = await storage.getVotesByValidation(req.params.id);
+    res.json({ validation, votes });
+  });
+
+  const MICRO_REWARD_RATE = 0.005;
+
+  const createValidationSchema = z.object({
+    gigId: z.string().min(1),
+    candidateCount: z.number().int().min(3).max(10).optional(),
+    threshold: z.number().int().min(2).max(10).optional(),
+    excludeAgentIds: z.array(z.string()).optional(),
+  });
+
+  app.post("/api/swarm/validate", rateLimit, async (req, res) => {
+    try {
+      const data = createValidationSchema.parse(req.body);
+      const gigId = data.gigId;
+      const candidateCount = data.candidateCount || 5;
+      const threshold = data.threshold || Math.ceil(candidateCount * 0.6);
+
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (gig.status !== "pending_validation" && gig.status !== "in_progress") {
+        return res.status(400).json({ message: `Gig status "${gig.status}" is not eligible for validation. Must be "pending_validation" or "in_progress".` });
+      }
+
+      const existingValidation = await storage.getValidationByGig(gigId);
+      if (existingValidation && existingValidation.status === "pending") {
+        return res.status(409).json({ message: "Active validation already exists for this gig", validation: existingValidation });
+      }
+
+      const excludeIds = [
+        ...(data.excludeAgentIds || []),
+        gig.posterId,
+        ...(gig.assigneeId ? [gig.assigneeId] : []),
+      ];
+      const topAgents = await storage.getTopAgentsByFusedScore(candidateCount, excludeIds);
+
+      if (topAgents.length < threshold) {
+        return res.status(400).json({
+          message: `Not enough eligible validators. Found ${topAgents.length}, need at least ${threshold}. Try reducing threshold or candidate count.`,
+        });
+      }
+
+      const selectedValidatorIds = topAgents.map(a => a.id);
+      const rewardPool = gig.budget * MICRO_REWARD_RATE;
+      const rewardPerValidator = rewardPool / threshold;
+
+      if (gig.status !== "pending_validation") {
+        await storage.updateGigStatus(gigId, "pending_validation");
+      }
+
+      const validation = await storage.createValidation({
+        gigId,
+        status: "pending",
+        threshold,
+        selectedValidators: selectedValidatorIds,
+        totalRewardPool: Math.round(rewardPool * 100) / 100,
+        rewardPerValidator: Math.round(rewardPerValidator * 100) / 100,
+      });
+
+      res.status(201).json({
+        validation,
+        selectedValidators: topAgents.map(a => ({
+          id: a.id,
+          handle: a.handle,
+          fusedScore: a.fusedScore,
+          walletAddress: a.walletAddress,
+        })),
+        rewards: {
+          totalPool: validation.totalRewardPool,
+          perValidator: validation.rewardPerValidator,
+          rate: `${MICRO_REWARD_RATE * 100}%`,
+          currency: gig.currency,
+        },
+        gig: { id: gig.id, title: gig.title, budget: gig.budget, currency: gig.currency },
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   const voteBodySchema = z.object({
     validationId: z.string().min(1),
     voterId: z.string().min(1),
@@ -412,7 +517,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Validation already resolved" });
       }
 
-      await storage.castVote({ validationId, voterId, vote });
+      if (validation.selectedValidators.length > 0 && !validation.selectedValidators.includes(voterId)) {
+        return res.status(403).json({ message: "You are not a selected validator for this gig" });
+      }
+
+      const existingVote = await storage.getVoteByVoterAndValidation(voterId, validationId);
+      if (existingVote) {
+        return res.status(409).json({ message: "You have already voted on this validation" });
+      }
+
+      const rewardAmount = validation.rewardPerValidator || 0;
+      await storage.castVote({ validationId, voterId, vote, rewardAmount });
 
       const newFor = vote === "approve" ? validation.votesFor + 1 : validation.votesFor;
       const newAgainst = vote === "reject" ? validation.votesAgainst + 1 : validation.votesAgainst;
@@ -427,26 +542,92 @@ export async function registerRoutes(
         status: newStatus,
       });
 
+      let escrowRelease = null;
+      let rewardsDistributed: { validatorId: string; amount: number }[] = [];
+
       if (newStatus === "approved") {
+        const gig = await storage.getGig(validation.gigId);
+
         const escrow = await storage.getEscrowByGig(validation.gigId);
         if (escrow && escrow.status === "locked") {
           await storage.updateEscrow(escrow.id, { status: "released" });
+          escrowRelease = { escrowId: escrow.id, amount: escrow.amount, currency: escrow.currency };
         }
 
+        if (gig) {
+          await storage.updateGigStatus(gig.id, "completed");
+
+          if (gig.assigneeId) {
+            await storage.createReputationEvent({
+              agentId: gig.assigneeId,
+              eventType: "Swarm Validated",
+              scoreChange: 10,
+              source: "swarm",
+              details: `Gig "${gig.title}" validated by swarm consensus (${newFor}/${validation.threshold})`,
+              proofUri: null,
+            });
+
+            const assignee = await storage.getAgent(gig.assigneeId);
+            if (assignee) {
+              await storage.updateAgent(gig.assigneeId, {
+                totalGigsCompleted: assignee.totalGigsCompleted + 1,
+                totalEarned: assignee.totalEarned + gig.budget,
+                onChainScore: Math.min(assignee.onChainScore + 10, 1000),
+                fusedScore: computeFusedScore(Math.min(assignee.onChainScore + 10, 1000), assignee.moltbookKarma),
+              });
+            }
+          }
+
+          const allVotes = await storage.getVotesByValidation(validationId);
+          const approveVotes = allVotes.filter(v => v.vote === "approve");
+          for (const v of approveVotes) {
+            const reward = validation.rewardPerValidator || 0;
+            if (reward > 0) {
+              await storage.updateVote(v.id, { rewardAmount: reward, rewardClaimed: true });
+
+              await storage.createReputationEvent({
+                agentId: v.voterId,
+                eventType: "Swarm Reward",
+                scoreChange: 2,
+                source: "swarm",
+                details: `Validator reward: ${reward} ${gig.currency} for approving "${gig.title}"`,
+                proofUri: null,
+              });
+
+              const voter = await storage.getAgent(v.voterId);
+              if (voter) {
+                await storage.updateAgent(v.voterId, {
+                  totalEarned: voter.totalEarned + reward,
+                  onChainScore: Math.min(voter.onChainScore + 2, 1000),
+                  fusedScore: computeFusedScore(Math.min(voter.onChainScore + 2, 1000), voter.moltbookKarma),
+                });
+              }
+
+              rewardsDistributed.push({ validatorId: v.voterId, amount: reward });
+            }
+          }
+        }
+      } else if (newStatus === "rejected") {
         const gig = await storage.getGig(validation.gigId);
-        if (gig && gig.assigneeId) {
-          await storage.createReputationEvent({
-            agentId: gig.assigneeId,
-            eventType: "Swarm Validated",
-            scoreChange: 10,
-            source: "swarm",
-            details: `Gig "${gig.title}" validated by swarm consensus`,
-            proofUri: null,
-          });
+        if (gig) {
+          await storage.updateGigStatus(gig.id, "disputed");
+
+          const escrow = await storage.getEscrowByGig(validation.gigId);
+          if (escrow && escrow.status === "locked") {
+            await storage.updateEscrow(escrow.id, { status: "refunded" });
+          }
         }
       }
 
-      res.json(updated);
+      res.json({
+        validation: updated,
+        vote: { voterId, vote, rewardAmount },
+        resolution: newStatus !== "pending" ? {
+          status: newStatus,
+          escrowRelease,
+          rewardsDistributed,
+        } : null,
+      });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
