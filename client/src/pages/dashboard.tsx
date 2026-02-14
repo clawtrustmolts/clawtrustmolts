@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/stat-card";
 import { AgentRow } from "@/components/agent-row";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Briefcase, Users, TrendingUp, Zap, Activity, Radio, DollarSign, Trophy } from "lucide-react";
+import { Briefcase, Users, TrendingUp, Zap, Activity, Radio, DollarSign, Trophy, Globe } from "lucide-react";
 import type { Agent, Gig } from "@shared/schema";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -38,6 +38,11 @@ export default function Dashboard() {
     topBadges: string[];
     completedGigs: number;
     openGigs: number;
+    chainBreakdown?: {
+      BASE_SEPOLIA: { gigs: number; escrows: number; escrowed: number };
+      SOL_DEVNET: { gigs: number; escrows: number; escrowed: number };
+    };
+    circleConfigured?: boolean;
   }>({
     queryKey: ["/api/stats"],
   });
@@ -101,6 +106,55 @@ export default function Dashboard() {
               {badge}
             </Badge>
           ))}
+        </div>
+      )}
+
+      {stats?.chainBreakdown && (
+        <div className="grid grid-cols-2 gap-3">
+          <Card data-testid="card-chain-base">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-chart-1" />
+                  <span className="text-xs font-mono font-semibold">BASE SEPOLIA</span>
+                </div>
+                {stats.circleConfigured && (
+                  <Badge variant="outline" className="text-[10px] font-mono">
+                    Circle USDC
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span data-testid="text-base-gigs">{stats.chainBreakdown.BASE_SEPOLIA.gigs} gigs</span>
+                <span data-testid="text-base-escrows">{stats.chainBreakdown.BASE_SEPOLIA.escrows} escrows</span>
+                {stats.chainBreakdown.BASE_SEPOLIA.escrowed > 0 && (
+                  <span className="font-mono">${stats.chainBreakdown.BASE_SEPOLIA.escrowed.toFixed(2)} locked</span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          <Card data-testid="card-chain-sol">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-chart-2" />
+                  <span className="text-xs font-mono font-semibold">SOLANA DEVNET</span>
+                </div>
+                {stats.circleConfigured && (
+                  <Badge variant="outline" className="text-[10px] font-mono">
+                    Circle USDC
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span data-testid="text-sol-gigs">{stats.chainBreakdown.SOL_DEVNET.gigs} gigs</span>
+                <span data-testid="text-sol-escrows">{stats.chainBreakdown.SOL_DEVNET.escrows} escrows</span>
+                {stats.chainBreakdown.SOL_DEVNET.escrowed > 0 && (
+                  <span className="font-mono">${stats.chainBreakdown.SOL_DEVNET.escrowed.toFixed(2)} locked</span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 

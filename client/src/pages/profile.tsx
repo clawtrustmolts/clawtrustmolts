@@ -91,8 +91,14 @@ export default function ProfilePage() {
               </div>
               <div className="flex items-center gap-1.5 mt-1.5">
                 <Link2 className="w-3 h-3 text-muted-foreground" />
-                <span className="text-[10px] font-mono text-muted-foreground">{agent.walletAddress}</span>
+                <span className="text-[10px] font-mono text-muted-foreground" data-testid="text-evm-wallet">{agent.walletAddress}</span>
               </div>
+              {agent.solanaAddress && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Link2 className="w-3 h-3 text-chart-2" />
+                  <span className="text-[10px] font-mono text-muted-foreground" data-testid="text-solana-wallet">SOL: {agent.solanaAddress}</span>
+                </div>
+              )}
               {agent.bio && (
                 <p className="text-sm text-muted-foreground mt-3">{agent.bio}</p>
               )}

@@ -22,6 +22,15 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
+import {
+  createEscrowWallet,
+  getWalletBalance,
+  transferUSDC,
+  getTransactionStatus,
+  isCircleConfigured,
+  SUPPORTED_CHAINS,
+  listWallets,
+} from "./circle-wallet";
 
 const sanitizeString = (s: string, maxLen = 500): string =>
   s.replace(/[<>'";&\\]/g, "").trim().slice(0, maxLen);
@@ -242,6 +251,7 @@ export async function registerRoutes(
       const agent = await storage.createAgent({
         handle: data.handle,
         walletAddress: data.walletAddress,
+        solanaAddress: data.solanaAddress || null,
         skills: data.skills,
         bio: data.bio || null,
         avatar: data.avatar || null,
@@ -463,13 +473,31 @@ export async function registerRoutes(
         return res.status(409).json({ message: "Escrow already exists for this gig" });
       }
 
+      const chain = gig.chain || "BASE_SEPOLIA";
+      let circleWallet = null;
+      let circleWalletId = null;
+
+      if (isCircleConfigured() && gig.currency === "USDC") {
+        try {
+          circleWallet = await createEscrowWallet(chain);
+          circleWalletId = circleWallet.walletId;
+        } catch (err: any) {
+          console.error("[Escrow] Circle wallet creation failed, falling back to on-chain:", err.message);
+        }
+      }
+
       const escrow = await storage.createEscrow({
         gigId,
         depositorId,
         amount: gig.budget,
         currency: gig.currency,
+        chain,
         status: "pending",
       });
+
+      if (circleWalletId) {
+        await storage.updateEscrow(escrow.id, { circleWalletId });
+      }
 
       const txData = prepareEscrowTxData({
         gigId,
@@ -479,9 +507,18 @@ export async function registerRoutes(
       });
 
       res.status(201).json({
-        escrow,
+        escrow: { ...escrow, circleWalletId },
         transaction: txData,
-        note: "Sign and submit this transaction on Base Sepolia to lock funds in escrow",
+        circle: circleWallet ? {
+          walletId: circleWallet.walletId,
+          depositAddress: circleWallet.address,
+          blockchain: circleWallet.blockchain,
+          note: `Send ${gig.budget} USDC to ${circleWallet.address} on ${chain === "SOL_DEVNET" ? "Solana Devnet" : "Base Sepolia"} to fund escrow`,
+        } : null,
+        chain,
+        note: circleWallet
+          ? `Circle escrow wallet created on ${chain === "SOL_DEVNET" ? "Solana Devnet" : "Base Sepolia"}. Send USDC to the deposit address to lock funds.`
+          : "Sign and submit this transaction on Base Sepolia to lock funds in escrow",
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -494,7 +531,26 @@ export async function registerRoutes(
   app.get("/api/escrow/:gigId", async (req, res) => {
     const escrow = await storage.getEscrowByGig(req.params.gigId);
     if (!escrow) return res.status(404).json({ message: "No escrow found for this gig" });
-    res.json(escrow);
+
+    let circleBalance = null;
+    if (escrow.circleWalletId && isCircleConfigured()) {
+      try {
+        circleBalance = await getWalletBalance(escrow.circleWalletId);
+      } catch {}
+    }
+
+    let circleTransactionStatus = null;
+    if (escrow.circleTransactionId && isCircleConfigured()) {
+      try {
+        circleTransactionStatus = await getTransactionStatus(escrow.circleTransactionId);
+      } catch {}
+    }
+
+    res.json({
+      ...escrow,
+      circleBalance,
+      circleTransactionStatus,
+    });
   });
 
   const disputeSchema = z.object({
@@ -587,11 +643,65 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
+      let circleTransfer = null;
+
       if (action === "release_to_assignee") {
-        await storage.updateEscrow(escrow.id, { status: "released" });
+        if (escrow.circleWalletId && isCircleConfigured() && gig.assigneeId) {
+          const assignee = await storage.getAgent(gig.assigneeId);
+          if (assignee) {
+            const destAddress = escrow.chain === "SOL_DEVNET"
+              ? assignee.solanaAddress || assignee.walletAddress
+              : assignee.walletAddress;
+            try {
+              circleTransfer = await transferUSDC({
+                sourceWalletId: escrow.circleWalletId,
+                destinationAddress: destAddress,
+                amount: escrow.amount.toString(),
+                chain: escrow.chain || "BASE_SEPOLIA",
+              });
+              await storage.updateEscrow(escrow.id, {
+                status: "released",
+                circleTransactionId: circleTransfer.transactionId,
+              });
+            } catch (err: any) {
+              console.error("[Escrow] Circle transfer failed:", err.message);
+              await storage.updateEscrow(escrow.id, { status: "released" });
+            }
+          } else {
+            await storage.updateEscrow(escrow.id, { status: "released" });
+          }
+        } else {
+          await storage.updateEscrow(escrow.id, { status: "released" });
+        }
         await storage.updateGigStatus(gigId, "completed");
       } else {
-        await storage.updateEscrow(escrow.id, { status: "refunded" });
+        if (escrow.circleWalletId && isCircleConfigured()) {
+          const depositor = await storage.getAgent(escrow.depositorId);
+          if (depositor) {
+            const destAddress = escrow.chain === "SOL_DEVNET"
+              ? depositor.solanaAddress || depositor.walletAddress
+              : depositor.walletAddress;
+            try {
+              circleTransfer = await transferUSDC({
+                sourceWalletId: escrow.circleWalletId,
+                destinationAddress: destAddress,
+                amount: escrow.amount.toString(),
+                chain: escrow.chain || "BASE_SEPOLIA",
+              });
+              await storage.updateEscrow(escrow.id, {
+                status: "refunded",
+                circleTransactionId: circleTransfer.transactionId,
+              });
+            } catch (err: any) {
+              console.error("[Escrow] Circle refund failed:", err.message);
+              await storage.updateEscrow(escrow.id, { status: "refunded" });
+            }
+          } else {
+            await storage.updateEscrow(escrow.id, { status: "refunded" });
+          }
+        } else {
+          await storage.updateEscrow(escrow.id, { status: "refunded" });
+        }
         await storage.updateGigStatus(gigId, "open");
       }
 
@@ -603,12 +713,138 @@ export async function registerRoutes(
         gigId,
         action,
         resolvedBy: adminWallet,
+        circleTransfer,
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
       }
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/circle/config", async (_req, res) => {
+    res.json({
+      configured: isCircleConfigured(),
+      supportedChains: SUPPORTED_CHAINS,
+      defaultChain: "BASE_SEPOLIA",
+    });
+  });
+
+  app.get("/api/circle/escrow/:gigId/balance", async (req, res) => {
+    const escrow = await storage.getEscrowByGig(req.params.gigId);
+    if (!escrow) return res.status(404).json({ message: "No escrow found" });
+    if (!escrow.circleWalletId) return res.json({ balances: [], note: "No Circle wallet for this escrow" });
+
+    try {
+      const balance = await getWalletBalance(escrow.circleWalletId);
+      res.json(balance);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to get balance", error: err.message });
+    }
+  });
+
+  app.post("/api/escrow/release", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const releaseSchema = z.object({
+        gigId: z.string().uuid(),
+        releaserId: z.string().uuid(),
+      });
+      const { gigId, releaserId } = releaseSchema.parse(req.body);
+
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (gig.posterId !== releaserId) {
+        return res.status(403).json({ message: "Only the gig poster can release escrow" });
+      }
+      if (!gig.assigneeId) {
+        return res.status(400).json({ message: "Gig has no assignee to release funds to" });
+      }
+
+      const escrow = await storage.getEscrowByGig(gigId);
+      if (!escrow) return res.status(404).json({ message: "No escrow found" });
+      if (escrow.status !== "locked" && escrow.status !== "pending") {
+        return res.status(400).json({ message: `Escrow is ${escrow.status}, cannot release` });
+      }
+
+      let circleTransfer = null;
+      if (escrow.circleWalletId && isCircleConfigured()) {
+        const assignee = await storage.getAgent(gig.assigneeId);
+        if (assignee) {
+          const destAddress = escrow.chain === "SOL_DEVNET"
+            ? assignee.solanaAddress || assignee.walletAddress
+            : assignee.walletAddress;
+          try {
+            circleTransfer = await transferUSDC({
+              sourceWalletId: escrow.circleWalletId,
+              destinationAddress: destAddress,
+              amount: escrow.amount.toString(),
+              chain: escrow.chain || "BASE_SEPOLIA",
+            });
+          } catch (err: any) {
+            console.error("[Escrow] Circle release failed:", err.message);
+          }
+        }
+      }
+
+      await storage.updateEscrow(escrow.id, {
+        status: "released",
+        circleTransactionId: circleTransfer?.transactionId || null,
+      });
+      await storage.updateGigStatus(gigId, "completed");
+
+      const assignee = await storage.getAgent(gig.assigneeId);
+      if (assignee) {
+        await storage.createReputationEvent({
+          agentId: gig.assigneeId,
+          eventType: "Gig Completed",
+          scoreChange: 10,
+          source: "escrow",
+          details: `Completed gig "${gig.title}" - ${escrow.amount} ${escrow.currency} released`,
+          proofUri: null,
+        });
+        await storage.updateAgent(gig.assigneeId, {
+          totalGigsCompleted: (assignee.totalGigsCompleted || 0) + 1,
+          totalEarned: (assignee.totalEarned || 0) + escrow.amount,
+        });
+      }
+
+      res.json({
+        status: "released",
+        escrowId: escrow.id,
+        gigId,
+        circleTransfer,
+        chain: escrow.chain,
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/circle/transaction/:transactionId", async (req, res) => {
+    if (!isCircleConfigured()) {
+      return res.status(503).json({ message: "Circle is not configured" });
+    }
+    try {
+      const status = await getTransactionStatus(req.params.transactionId);
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to get transaction status", error: err.message });
+    }
+  });
+
+  app.get("/api/circle/wallets", async (_req, res) => {
+    if (!isCircleConfigured()) {
+      return res.json({ wallets: [], configured: false });
+    }
+    try {
+      const wallets = await listWallets();
+      res.json({ wallets, configured: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to list wallets", error: err.message });
     }
   });
 
@@ -770,8 +1006,37 @@ export async function registerRoutes(
 
         const escrow = await storage.getEscrowByGig(validation.gigId);
         if (escrow && escrow.status === "locked") {
-          await storage.updateEscrow(escrow.id, { status: "released" });
-          escrowRelease = { escrowId: escrow.id, amount: escrow.amount, currency: escrow.currency };
+          let circleTransferId = null;
+          if (escrow.circleWalletId && isCircleConfigured() && gig?.assigneeId) {
+            const assignee = await storage.getAgent(gig.assigneeId);
+            if (assignee) {
+              const destAddress = escrow.chain === "SOL_DEVNET"
+                ? assignee.solanaAddress || assignee.walletAddress
+                : assignee.walletAddress;
+              try {
+                const transfer = await transferUSDC({
+                  sourceWalletId: escrow.circleWalletId,
+                  destinationAddress: destAddress,
+                  amount: escrow.amount.toString(),
+                  chain: escrow.chain || "BASE_SEPOLIA",
+                });
+                circleTransferId = transfer.transactionId;
+              } catch (err: any) {
+                console.error("[Swarm] Circle release on consensus failed:", err.message);
+              }
+            }
+          }
+          await storage.updateEscrow(escrow.id, {
+            status: "released",
+            circleTransactionId: circleTransferId,
+          });
+          escrowRelease = {
+            escrowId: escrow.id,
+            amount: escrow.amount,
+            currency: escrow.currency,
+            chain: escrow.chain,
+            circleTransactionId: circleTransferId,
+          };
         }
 
         if (gig) {
@@ -1020,6 +1285,19 @@ export async function registerRoutes(
       .slice(0, 5)
       .map(([badge, count]) => `${badge} (${count})`);
 
+    const chainBreakdown = {
+      BASE_SEPOLIA: {
+        gigs: gigs.filter(g => g.chain === "BASE_SEPOLIA" || !g.chain).length,
+        escrows: escrows.filter(e => e.chain === "BASE_SEPOLIA" || !e.chain).length,
+        escrowed: escrows.filter(e => (e.chain === "BASE_SEPOLIA" || !e.chain) && e.status === "locked").reduce((s, e) => s + e.amount, 0),
+      },
+      SOL_DEVNET: {
+        gigs: gigs.filter(g => g.chain === "SOL_DEVNET").length,
+        escrows: escrows.filter(e => e.chain === "SOL_DEVNET").length,
+        escrowed: escrows.filter(e => e.chain === "SOL_DEVNET" && e.status === "locked").reduce((s, e) => s + e.amount, 0),
+      },
+    };
+
     res.json({
       totalAgents: agents.length,
       totalGigs: gigs.length,
@@ -1032,6 +1310,8 @@ export async function registerRoutes(
       topBadges,
       completedGigs: gigs.filter((g) => g.status === "completed").length,
       openGigs: gigs.filter((g) => g.status === "open").length,
+      chainBreakdown,
+      circleConfigured: isCircleConfigured(),
     });
   });
 

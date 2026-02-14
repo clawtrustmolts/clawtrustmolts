@@ -5,6 +5,7 @@ import { z } from "zod";
 
 export const gigStatusEnum = pgEnum("gig_status", ["open", "assigned", "in_progress", "pending_validation", "completed", "disputed"]);
 export const currencyEnum = pgEnum("currency", ["ETH", "USDC"]);
+export const chainEnum = pgEnum("chain", ["BASE_SEPOLIA", "SOL_DEVNET"]);
 export const validationStatusEnum = pgEnum("validation_status", ["pending", "approved", "rejected"]);
 export const voteEnum = pgEnum("vote_type", ["approve", "reject"]);
 export const repSourceEnum = pgEnum("rep_source", ["on_chain", "moltbook", "swarm", "escrow"]);
@@ -27,6 +28,8 @@ export const agents = pgTable("agents", {
   totalEarned: real("total_earned").notNull().default(0),
   isVerified: boolean("is_verified").notNull().default(false),
   moltDomain: text("molt_domain"),
+  solanaAddress: text("solana_address"),
+  circleWalletId: text("circle_wallet_id"),
   registeredAt: timestamp("registered_at").defaultNow(),
 });
 
@@ -37,6 +40,7 @@ export const gigs = pgTable("gigs", {
   skillsRequired: text("skills_required").array().notNull().default(sql`'{}'::text[]`),
   budget: real("budget").notNull(),
   currency: currencyEnum("currency").notNull().default("USDC"),
+  chain: chainEnum("chain").notNull().default("BASE_SEPOLIA"),
   status: gigStatusEnum("status").notNull().default("open"),
   posterId: varchar("poster_id").notNull(),
   assigneeId: varchar("assignee_id"),
@@ -61,9 +65,12 @@ export const escrowTransactions = pgTable("escrow_transactions", {
   depositorId: varchar("depositor_id").notNull(),
   amount: real("amount").notNull(),
   currency: currencyEnum("currency").notNull().default("USDC"),
+  chain: chainEnum("chain").notNull().default("BASE_SEPOLIA"),
   status: escrowStatusEnum("status").notNull().default("pending"),
   txHash: text("tx_hash"),
   releaseTxHash: text("release_tx_hash"),
+  circleWalletId: text("circle_wallet_id"),
+  circleTransactionId: text("circle_transaction_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -111,11 +118,12 @@ export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, created
 export const insertReputationEventSchema = createInsertSchema(reputationEvents).omit({ id: true, createdAt: true });
 export const insertSwarmValidationSchema = createInsertSchema(swarmValidations).omit({ id: true, createdAt: true, votesFor: true, votesAgainst: true });
 export const insertSwarmVoteSchema = createInsertSchema(swarmVotes).omit({ id: true, createdAt: true, rewardClaimed: true });
-export const insertEscrowSchema = createInsertSchema(escrowTransactions).omit({ id: true, createdAt: true, updatedAt: true, txHash: true, releaseTxHash: true });
+export const insertEscrowSchema = createInsertSchema(escrowTransactions).omit({ id: true, createdAt: true, updatedAt: true, txHash: true, releaseTxHash: true, circleWalletId: true, circleTransactionId: true });
 
 export const registerAgentSchema = z.object({
   handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
   walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid Ethereum address"),
+  solanaAddress: z.string().min(32).max(44).optional().nullable(),
   skills: z.array(z.string()).min(1, "At least one skill required"),
   bio: z.string().max(500).optional(),
   avatar: z.string().url().optional().nullable(),

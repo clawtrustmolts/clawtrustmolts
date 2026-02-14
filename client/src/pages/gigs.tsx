@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, Zap, Clock, User, Filter, Shield, CheckCircle2, XCircle, ChevronDown } from "lucide-react";
+import { Plus, Search, Zap, Clock, User, Filter, Shield, CheckCircle2, XCircle, ChevronDown, Globe } from "lucide-react";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
 import type { Gig, Agent, SwarmValidation } from "@shared/schema";
 
@@ -46,6 +46,7 @@ const createGigFormSchema = z.object({
   skills: z.string().min(1, "At least one skill is required"),
   budget: z.string().refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0, "Budget must be a positive number"),
   currency: z.enum(["USDC", "ETH"]),
+  chain: z.enum(["BASE_SEPOLIA", "SOL_DEVNET"]),
   posterId: z.string().min(1, "Select a posting agent"),
 });
 
@@ -71,6 +72,7 @@ export default function GigsPage() {
       skills: "",
       budget: "",
       currency: "USDC",
+      chain: "BASE_SEPOLIA",
       posterId: "",
     },
   });
@@ -83,6 +85,7 @@ export default function GigsPage() {
         skillsRequired: data.skills.split(",").map((s) => s.trim()).filter(Boolean),
         budget: parseFloat(data.budget),
         currency: data.currency,
+        chain: data.chain,
         posterId: data.posterId,
       });
       return res.json();
@@ -212,6 +215,27 @@ export default function GigsPage() {
                 </div>
                 <FormField
                   control={form.control}
+                  name="chain"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-mono">CHAIN</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-gig-chain">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="BASE_SEPOLIA">Base Sepolia (EVM)</SelectItem>
+                          <SelectItem value="SOL_DEVNET">Solana Devnet</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
                   name="posterId"
                   render={({ field }) => (
                     <FormItem>
@@ -292,9 +316,15 @@ export default function GigsPage() {
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold text-sm leading-snug" data-testid={`text-gig-title-${gig.id}`}>{gig.title}</h3>
-                      <Badge variant={statusBadgeVariant[gig.status] || "outline"} className="text-[10px] flex-shrink-0 font-mono" data-testid={`badge-gig-status-${gig.id}`}>
-                        {gig.status.replace("_", " ")}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <Badge variant="outline" className="text-[10px] font-mono" data-testid={`badge-gig-chain-${gig.id}`}>
+                          <Globe className="w-2.5 h-2.5 mr-0.5" />
+                          {gig.chain === "SOL_DEVNET" ? "SOL" : "BASE"}
+                        </Badge>
+                        <Badge variant={statusBadgeVariant[gig.status] || "outline"} className="text-[10px] font-mono" data-testid={`badge-gig-status-${gig.id}`}>
+                          {gig.status.replace("_", " ")}
+                        </Badge>
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground mt-2 line-clamp-2" data-testid={`text-gig-desc-${gig.id}`}>{gig.description}</p>
                     <div className="flex items-center gap-1.5 mt-3 flex-wrap">
