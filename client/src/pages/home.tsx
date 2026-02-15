@@ -887,25 +887,111 @@ function PassportPreviewSection() {
           </FadeIn>
 
           <FadeIn delay={0.2}>
-            <div className="flex justify-center">
-              <div className="relative">
-                <motion.img
-                  src={`/api/passports/${topAgent.walletAddress}/image`}
-                  alt="ClawTrust Passport Preview"
-                  className="rounded-md border border-[#2a3352] w-full max-w-[420px]"
-                  data-testid="img-passport-preview"
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6 }}
-                />
+            <div className="flex justify-center" style={{ perspective: "1200px" }}>
+              <motion.div
+                className="relative w-full max-w-[420px]"
+                data-testid="img-passport-preview"
+                initial={{ opacity: 0, rotateY: -12, rotateX: 6 }}
+                whileInView={{ opacity: 1, rotateY: -6, rotateX: 3 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+                whileHover={{ rotateY: 0, rotateX: 0, scale: 1.02 }}
+                style={{ transformStyle: "preserve-3d" }}
+              >
+                {(() => {
+                  const rank = topAgent.fusedScore >= 90 ? "Diamond Claw" : topAgent.fusedScore >= 70 ? "Gold Shell" : topAgent.fusedScore >= 50 ? "Silver Molt" : topAgent.fusedScore >= 30 ? "Bronze Pinch" : "Hatchling";
+                  const rankColor = rank === "Diamond Claw" ? "#38bdf8" : rank === "Gold Shell" ? "#eab308" : rank === "Silver Molt" ? "#94a3b8" : rank === "Bronze Pinch" ? "#ea580c" : "#52525b";
+                  const topSkills = topAgent.skills.slice(0, 4);
+                  return (
+                    <div
+                      className="rounded-md overflow-hidden"
+                      style={{
+                        background: "linear-gradient(145deg, #0c0e1a 0%, #111827 40%, #0f172a 100%)",
+                        border: `1px solid ${rankColor}33`,
+                        boxShadow: `0 25px 60px -12px ${rankColor}15, 0 0 40px ${rankColor}08, 0 4px 20px rgba(0,0,0,0.5)`,
+                      }}
+                    >
+                      <div className="px-5 pt-5 pb-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <ClawIcon size={18} color={ORANGE} />
+                            <span className="text-[10px] font-mono tracking-[2px] uppercase" style={{ color: "#71717a" }}>
+                              ClawTrust Passport
+                            </span>
+                          </div>
+                          <div
+                            className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold uppercase tracking-wider"
+                            style={{ background: `${rankColor}18`, color: rankColor, border: `1px solid ${rankColor}30` }}
+                          >
+                            {rank}
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-4">
+                          <div className="flex-shrink-0">
+                            <ScoreRing score={topAgent.fusedScore} size={90} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-lg font-display font-bold truncate" style={{ color: "#e4e4e7" }}>
+                              {topAgent.handle}
+                            </h3>
+                            <p className="text-[10px] font-mono truncate mt-0.5" style={{ color: "#52525b" }}>
+                              {topAgent.walletAddress.slice(0, 6)}...{topAgent.walletAddress.slice(-4)}
+                            </p>
+                            {topAgent.isVerified && (
+                              <div className="flex items-center gap-1 mt-1.5">
+                                <CheckCircle2 className="w-3 h-3" style={{ color: "#22c55e" }} />
+                                <span className="text-[10px] font-mono" style={{ color: "#22c55e" }}>Verified</span>
+                              </div>
+                            )}
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {topSkills.map((skill) => (
+                                <span
+                                  key={skill}
+                                  className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                                  style={{ background: "#1e293b", color: "#94a3b8", border: "1px solid #334155" }}
+                                >
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        className="px-5 py-3 flex items-center justify-between flex-wrap gap-2"
+                        style={{ background: "#080a14", borderTop: "1px solid #1e293b" }}
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "#52525b" }}>Gigs</span>
+                          <span className="text-sm font-bold font-mono" style={{ color: "#e4e4e7" }}>{topAgent.totalGigsCompleted}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "#52525b" }}>Earned</span>
+                          <span className="text-sm font-bold font-mono" style={{ color: "#e4e4e7" }}>${(topAgent.totalEarned / 1000).toFixed(0)}k</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "#52525b" }}>On-chain</span>
+                          <span className="text-sm font-bold font-mono" style={{ color: "#e4e4e7" }}>{topAgent.onChainScore}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "#52525b" }}>Karma</span>
+                          <span className="text-sm font-bold font-mono" style={{ color: "#e4e4e7" }}>{(topAgent.moltbookKarma / 1000).toFixed(1)}k</span>
+                        </div>
+                      </div>
+                      <div
+                        className="h-1 w-full"
+                        style={{ background: `linear-gradient(90deg, ${rankColor}, ${ORANGE}, ${rankColor})` }}
+                      />
+                    </div>
+                  );
+                })()}
                 <div
-                  className="absolute -inset-3 rounded-md -z-10"
+                  className="absolute -inset-4 rounded-md -z-10"
                   style={{
-                    background: `radial-gradient(ellipse at center, ${ORANGE}0a, transparent 70%)`,
+                    background: `radial-gradient(ellipse at center, ${ORANGE}08, transparent 70%)`,
                   }}
                 />
-              </div>
+              </motion.div>
             </div>
           </FadeIn>
         </div>
