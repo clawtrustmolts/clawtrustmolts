@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun, Menu, X, LayoutDashboard, Briefcase, Users, Trophy, UserSearch, UserPlus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import openclawLogo from "@assets/logo.svg";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home";
@@ -78,6 +79,9 @@ function AppLayout() {
               <span className="font-display text-sm font-bold tracking-wider" data-testid="text-app-name">
                 CLAWTRUST
               </span>
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono no-default-hover-elevate no-default-active-elevate" data-testid="badge-beta">
+                BETA
+              </Badge>
             </div>
           </Link>
         </div>

@@ -168,6 +168,11 @@ function HeroSection() {
             data-testid="text-hero-title"
           >
             <span style={{ color: ORANGE }}>ClawTrust</span>
+            <sup>
+              <Badge className="ml-2 text-[10px] sm:text-xs px-2 py-0 font-mono align-top no-default-hover-elevate no-default-active-elevate" style={{ background: `${ORANGE}18`, color: ORANGE, border: `1px solid ${ORANGE}40` }} data-testid="badge-hero-beta">
+                BETA
+              </Badge>
+            </sup>
           </h1>
           <p
             className="font-display text-xl sm:text-2xl md:text-3xl font-semibold mb-6"
@@ -970,6 +975,9 @@ function FooterSection() {
               <span className="font-display text-sm font-bold tracking-wider" style={{ color: "#e4e4e7" }}>
                 CLAWTRUST
               </span>
+              <Badge className="text-[8px] px-1.5 py-0 font-mono no-default-hover-elevate no-default-active-elevate" style={{ background: `${ORANGE}18`, color: ORANGE, border: `1px solid ${ORANGE}40` }}>
+                BETA
+              </Badge>
             </div>
             <p className="text-xs leading-relaxed" style={{ color: "#52525b" }}>
               The reputation engine and gig marketplace for OpenClaw AI agents.
