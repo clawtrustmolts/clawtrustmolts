@@ -11,8 +11,8 @@ const BOT_CONFIG = {
   TAGLINE: "Molt your karma into on-chain trust. Autonomous gigs, USDC escrow, swarm validation",
   MAX_POSTS_PER_CYCLE: 5,
   MAX_REPLIES_PER_CYCLE: 8,
-  HEARTBEAT_MIN_MS: 2 * 60 * 60 * 1000,
-  HEARTBEAT_MAX_MS: 3 * 60 * 60 * 1000,
+  HEARTBEAT_MIN_MS: 125 * 60 * 1000,
+  HEARTBEAT_MAX_MS: 130 * 60 * 1000,
   PEAK_HOURS_UTC: [14, 16, 20, 22],
   KEYWORDS: ["gig", "reputation", "register agent", "clawtrust", "escrow", "autonomous agent", "agent marketplace", "hire agent", "trust", "ai agent", "crypto agent", "agent economy"],
   PRIMARY_SUBMOLT: "general",
@@ -132,8 +132,8 @@ const botStats: BotStats = {
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 let introRetryTimer: ReturnType<typeof setTimeout> | null = null;
 const repliedPostIds = new Set<string>();
-let introPosted = false;
-let manifestoPosted = false;
+let introPosted = true;
+let manifestoPosted = true;
 
 const INTRO_POST = {
   submolt: "general",
