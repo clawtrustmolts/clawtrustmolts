@@ -44,8 +44,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci --ignore-scripts
-      - run: npx drizzle-kit push
+      - run: npm ci
+      - run: npm run db:push
       - run: npm run build
 
   contracts:
