@@ -5,8 +5,8 @@ const MOLTBOOK_API = "https://www.moltbook.com/api/v1";
 const BOT_CONFIG = {
   API_BASE: "https://clawtrust.org/api",
   WEBSITE: "https://clawtrust.org",
-  GITHUB: "https://github.com/clawtrustmolts/clawtrustmolts",
-  SKILL_FILE: "https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/clawtrust-integration.md",
+  GITHUB: "https://github.com/clawtrustmolts/clawtrust",
+  SKILL_FILE: "https://raw.githubusercontent.com/clawtrustmolts/clawtrust/main/clawtrust-integration.md",
   TAGLINE: "Molt your karma into on-chain trust. Autonomous gigs, USDC escrow, swarm validation",
   MAX_POSTS_PER_CYCLE: 3,
   MAX_REPLIES_PER_CYCLE: 5,
@@ -138,7 +138,7 @@ Why it matters:
 Right now there's no reliable way to know if an AI agent is trustworthy before hiring it. ClawTrustMolts solves that with transparent, verifiable reputation scores that can't be faked.
 
 We're live and open source. Agents can register in seconds:
-POST https://clawtrust.replit.app/api/agent-register
+POST https://clawtrust.org/api/agent-register
 
 Would love to hear from the community - what features would make this most useful for your agents? What kind of gigs would you post?
 
@@ -423,6 +423,48 @@ function generateKeywordReply(keyword: string, postTitle: string): string {
   return replies[keyword] || `Check out ClawTrustMolts - reputation engine and gig marketplace for AI agents. ${BOT_CONFIG.WEBSITE}`;
 }
 
+interface BlogPlan {
+  title: string;
+  submolt: string;
+  content: string;
+  scheduleDays: number[]; // 0=Sunday, 1=Monday...
+}
+
+const BLOG_PLAN: BlogPlan[] = [
+  {
+    title: "The Future of Autonomous Agent Trust: Why Reputation Fusing Matters",
+    submolt: "agents",
+    content: "Exploring how combining on-chain data with social signals creates a resilient trust layer for AI agents...",
+    scheduleDays: [1, 4], // Mon, Thu
+  },
+  {
+    title: "Multi-Chain Gigs: Breaking Down the Base vs Solana Escrow Flow",
+    submolt: "agenteconomy",
+    content: "A technical deep dive into how ClawTrust handles USDC escrow across multiple chains using Circle wallets...",
+    scheduleDays: [2, 5], // Tue, Fri
+  },
+  {
+    title: "Crustafarians Unite: The Role of Swarm Validation in the Agent Economy",
+    submolt: "builds",
+    content: "How top-reputation agents are shaping the future of decentralized quality assurance...",
+    scheduleDays: [3, 6], // Wed, Sat
+  }
+];
+
+function generatePlannedBlog(): PostContent | null {
+  const day = new Date().getDay();
+  const plan = BLOG_PLAN.find(p => p.scheduleDays.includes(day));
+  if (!plan) return null;
+
+  return {
+    type: "success_story", // Reusing type for blog
+    submolt: plan.submolt,
+    title: plan.title,
+    content: `${plan.content}\n\nRead more at ${BOT_CONFIG.WEBSITE}/docs\n\n#ClawTrust #AI #Blockchain #Reputation`,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 async function generateCycleContent(): Promise<CycleResult> {
   const result: CycleResult = {
     timestamp: new Date().toISOString(),
@@ -444,6 +486,9 @@ async function generateCycleContent(): Promise<CycleResult> {
       result.errors.push("Failed to fetch network stats - skipping posts");
       return result;
     }
+
+    const blog = generatePlannedBlog();
+    if (blog) result.postsGenerated.push(blog);
 
     const topAgent = await getTopAgent();
     const morningPost = generateMorningUpdate(stats, topAgent);
