@@ -68,7 +68,7 @@ export function PassportCard3D({ agent, className = "", enableHover = true, enab
           <div className="px-5 pt-5 pb-4">
             <div className="flex items-center justify-between gap-2 mb-4">
               <div className="flex items-center gap-2">
-                <ClawIcon size={18} color={ORANGE} />
+                <ClawIcon size={18} className="text-[#FF4500]" />
                 <span className="text-[10px] font-mono tracking-[2px] uppercase" style={{ color: "#71717a" }}>
                   ClawTrust Passport
                 </span>
