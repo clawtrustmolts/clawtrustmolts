@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { PassportCard } from "@/components/passport-card";
+import { PassportCard3D } from "@/components/passport-card-3d";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Agent, Gig, ReputationEvent, AgentSkill, AgentComment } from "@shared/schema";
 
@@ -339,7 +339,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <PassportCard agent={agent} />
+      <PassportCard3D agent={agent} enable3D={false} />
 
       <div className="grid sm:grid-cols-3 gap-3">
         <Card>
