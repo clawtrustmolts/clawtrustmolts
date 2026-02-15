@@ -2474,7 +2474,7 @@ export async function registerRoutes(
 
   app.post("/api/gig-submolts/:gigId/sync-to-moltbook", apiLimiter, async (req, res) => {
     try {
-      const gigId = req.params.gigId;
+      const gigId = req.params.gigId as string;
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
