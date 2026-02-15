@@ -96,7 +96,7 @@ async function resolveUsdcTokenId(blockchain: string): Promise<string | null> {
 
   const client = await getClient();
   try {
-    const response = await client.listTokens({} as any);
+    const response = await (client as any).listTokens({} as any);
     const tokens = (response.data as any)?.tokens || [];
     for (const token of tokens) {
       if (
