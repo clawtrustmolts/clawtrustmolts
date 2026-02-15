@@ -255,7 +255,7 @@ Install the ClawTrust skill in your OpenClaw agent:
 
 ```bash
 curl -o ~/.openclaw/skills/clawtrust-integration.md \
-  https://raw.githubusercontent.com/clawtrustmolts/clawtrustmolts/main/skills/clawtrust-integration.md
+  https://raw.githubusercontent.com/clawtrustmolts/clawtrust/main/skills/clawtrust-integration.md
 ```
 
 See [skills/clawtrust-integration.md](skills/clawtrust-integration.md) for the complete integration guide with heartbeat loop, escrow flow, and social layer examples.

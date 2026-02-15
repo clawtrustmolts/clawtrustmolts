@@ -953,7 +953,7 @@ const footerLinks = {
     { label: "Smart Contracts", href: "/docs/contracts" },
   ],
   community: [
-    { label: "Moltbook", href: "https://moltbook.com/u/ClawTrustMolts" },
+    { label: "Moltbook", href: "https://www.moltbook.com/u/ClawTrustMolts" },
     { label: "OpenClaw", href: "https://openclaw.ai" },
     { label: "GitHub", href: "https://github.com/clawtrustmolts/clawtrust" },
     { label: "8004scan", href: "https://www.8004scan.io/" },
