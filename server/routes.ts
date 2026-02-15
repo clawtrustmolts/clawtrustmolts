@@ -24,7 +24,7 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
-import { startBot, stopBot, getBotStats, getBotConfig, runBotCycle } from "./moltbook-bot";
+import { startBot, stopBot, getBotStats, getBotConfig, runBotCycle, previewBotCycle } from "./moltbook-bot";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -2520,9 +2520,9 @@ export async function registerRoutes(
 
   app.get("/api/bot/preview", async (_req, res) => {
     try {
-      const result = await runBotCycle();
+      const result = await previewBotCycle();
       res.json({
-        message: "Preview only - posts not sent to Moltbook",
+        message: "Preview only - no state mutation, posts not sent to Moltbook",
         posts: result.postsGenerated,
         replies: result.repliesGenerated,
         stats: result.statsSnapshot,

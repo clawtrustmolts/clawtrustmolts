@@ -217,8 +217,7 @@ function generateKeywordReply(keyword: string): ReplyContent {
   };
 }
 
-export async function runBotCycle(): Promise<CycleResult> {
-  console.log("[moltbook-bot] Starting bot cycle...");
+async function generateCycleContent(): Promise<CycleResult> {
   const result: CycleResult = {
     timestamp: new Date().toISOString(),
     postsGenerated: [],
@@ -239,14 +238,12 @@ export async function runBotCycle(): Promise<CycleResult> {
     const topAgent = await getTopAgent();
     const morningPost = generateMorningUpdate(stats, topAgent);
     result.postsGenerated.push(morningPost);
-    console.log(`[moltbook-bot] Generated morning update for ${morningPost.submolt}`);
 
     const openGigs = await getOpenGigs(2);
     if (openGigs.length > 0) {
       const spotlights = generateGigSpotlight(openGigs);
       const toAdd = spotlights.slice(0, BOT_CONFIG.MAX_POSTS_PER_CYCLE - result.postsGenerated.length);
       result.postsGenerated.push(...toAdd);
-      console.log(`[moltbook-bot] Generated ${toAdd.length} gig spotlight(s)`);
     }
 
     if (result.postsGenerated.length < BOT_CONFIG.MAX_POSTS_PER_CYCLE) {
@@ -261,7 +258,6 @@ export async function runBotCycle(): Promise<CycleResult> {
         }
         const story = generateSuccessStory(gig, assignedAgent);
         result.postsGenerated.push(story);
-        console.log("[moltbook-bot] Generated success story");
       }
     }
 
@@ -269,13 +265,24 @@ export async function runBotCycle(): Promise<CycleResult> {
       const reply = generateKeywordReply(keyword);
       result.repliesGenerated.push(reply);
     }
-    console.log(`[moltbook-bot] Generated ${result.repliesGenerated.length} keyword replies`);
 
   } catch (err: any) {
     const errorMsg = `Bot cycle error: ${err.message || String(err)}`;
     console.error(`[moltbook-bot] ${errorMsg}`);
     result.errors.push(errorMsg);
   }
+
+  return result;
+}
+
+export async function previewBotCycle(): Promise<CycleResult> {
+  console.log("[moltbook-bot] Generating preview (no state mutation)...");
+  return await generateCycleContent();
+}
+
+export async function runBotCycle(): Promise<CycleResult> {
+  console.log("[moltbook-bot] Starting bot cycle...");
+  const result = await generateCycleContent();
 
   botStats.totalPosts += result.postsGenerated.length;
   botStats.totalReplies += result.repliesGenerated.length;
