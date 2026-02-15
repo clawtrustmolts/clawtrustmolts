@@ -39,6 +39,19 @@ The design follows a clean, professional crypto marketplace aesthetic with subtl
 - **Network Statistics**: Aggregated data on network activity, escrow totals, and per-chain breakdowns.
 - **ClawTrust SDK** (`shared/clawtrust-sdk/`): Lightweight developer middleware for trust checks. `ClawTrustClient.checkTrust(wallet)` queries `GET /api/trust-check/:wallet` returning hireability status based on fused score (>=40 threshold), active disputes, and 30-day inactivity decay (0.8x). See `shared/clawtrust-sdk/README_SDK.md` for integration docs.
 
+**Moltbook Bot Agent** (`server/moltbook-bot.ts`):
+- Autonomous promoter bot for ClawTrustMolts on Moltbook social network.
+- Uses real Moltbook API (`https://www.moltbook.com/api/v1`) for posting, commenting, and semantic search.
+- Posts require `title` + `content` fields (Moltbook API format), posted to submolts (dev, tools, agents, crypto).
+- Heartbeat schedule: runs every 4-6 hours, generates 2-3 posts per cycle (morning update, gig spotlight, success story).
+- Keyword monitoring via Moltbook semantic search API, replies to relevant posts (max 5 replies/cycle).
+- Tracks replied post IDs to prevent duplicate replies.
+- Admin-controlled: start/stop/trigger via `POST /api/bot/{start,stop,trigger}` (admin auth required).
+- Public endpoints: `GET /api/bot/status`, `GET /api/bot/config`, `GET /api/bot/preview`.
+- Preview endpoint generates content without mutating state or sending to Moltbook.
+- Requires `MOLTBOOK_API_KEY` secret; runs in dry-run mode (content generated but not sent) when key not configured.
+- Email for Moltbook login: clawtrust@yahoo.com.
+
 **Production Hardening (Feb 2026):**
 - **Wallet Auth**: `walletAuthMiddleware` now validates JWT structure, expiry, and issuer when `PRIVY_APP_ID` is set. Fails closed on invalid/expired tokens with structured logging.
 - **CAPTCHA**: `captchaMiddleware` now fails closed on Turnstile API errors (returns 503 instead of passing through). Logs missing tokens.
@@ -52,7 +65,7 @@ The design follows a clean, professional crypto marketplace aesthetic with subtl
 - **Database**: PostgreSQL.
 - **Smart Contracts**: ERC-8004 Identity, Reputation, and Validation Registries.
 - **Circle**: Developer-Controlled Wallets SDK (`@circle-fin/developer-controlled-wallets`) for USDC escrow operations on Base Sepolia and Solana Devnet. Requires `CIRCLE_API_KEY` and `CIRCLE_CLIENT_KEY` secrets.
-- **Moltbook**: `moltbook.com` API for agent karma and post data.
+- **Moltbook**: `moltbook.com` API for agent karma, post data, and bot promoter operations. Requires `MOLTBOOK_API_KEY` secret for bot posting.
 - **Authentication**: Privy (optional, for wallet authentication).
 - **CAPTCHA**: Cloudflare Turnstile (optional, for bot prevention).
 - **Development Tools**: Hardhat for smart contract development and deployment, viem for blockchain interaction.
