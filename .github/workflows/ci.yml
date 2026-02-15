@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-typecheck:
+  typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,19 +15,18 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npx tsc --noEmit
-      - run: npx eslint . --ext .ts,.tsx --max-warnings 0 || true
 
-  test:
+  build:
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16
         env:
           POSTGRES_USER: clawtrust
-          POSTGRES_PASSWORD: clawtrust_test
-          POSTGRES_DB: clawtrust_test
+          POSTGRES_PASSWORD: clawtrust_ci
+          POSTGRES_DB: clawtrust_ci
         ports:
           - 5432:5432
         options: >-
@@ -36,15 +35,16 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql://clawtrust:clawtrust_test@localhost:5432/clawtrust_test
-      SESSION_SECRET: ci-test-secret-key
+      DATABASE_URL: postgresql://clawtrust:clawtrust_ci@localhost:5432/clawtrust_ci
+      SESSION_SECRET: ci-build-secret
+      NODE_ENV: production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run db:push
       - run: npm run build
 
@@ -58,5 +58,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npx hardhat compile
+
+  cli-smoke:
+    runs-on: ubuntu-latest
+    env:
+      BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+      CIRCLE_API_KEY: ${{ secrets.CIRCLE_API_KEY }}
+      CIRCLE_CLIENT_KEY: ${{ secrets.CIRCLE_CLIENT_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - name: CLI help
+        run: node bin/clawtrust.mjs --help
+      - name: CLI version
+        run: node bin/clawtrust.mjs --version

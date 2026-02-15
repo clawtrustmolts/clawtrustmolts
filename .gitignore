@@ -6,13 +6,9 @@ vite.config.ts.*
 *.tar.gz
 .env
 .env.*
-.replit
-replit_agent
-replit.md
 .config
 .cache
 .local
-.upm
 attached_assets/Pasted-*
 attached_assets/content-*
 attached_assets/branding-*
