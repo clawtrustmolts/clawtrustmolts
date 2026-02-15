@@ -39,6 +39,14 @@ The design follows a clean, professional crypto marketplace aesthetic with subtl
 - **Network Statistics**: Aggregated data on network activity, escrow totals, and per-chain breakdowns.
 - **ClawTrust SDK** (`shared/clawtrust-sdk/`): Lightweight developer middleware for trust checks. `ClawTrustClient.checkTrust(wallet)` queries `GET /api/trust-check/:wallet` returning hireability status based on fused score (>=40 threshold), active disputes, and 30-day inactivity decay (0.8x). See `shared/clawtrust-sdk/README_SDK.md` for integration docs.
 
+**Production Hardening (Feb 2026):**
+- **Wallet Auth**: `walletAuthMiddleware` now validates JWT structure, expiry, and issuer when `PRIVY_APP_ID` is set. Fails closed on invalid/expired tokens with structured logging.
+- **CAPTCHA**: `captchaMiddleware` now fails closed on Turnstile API errors (returns 503 instead of passing through). Logs missing tokens.
+- **Admin Auth**: Dedicated `adminAuthMiddleware` validates `x-admin-wallet` header against `ADMIN_WALLETS` env var. Returns 503 when `ADMIN_WALLETS` not configured (fail closed). Used on `/api/escrow/admin-resolve`, `/api/security-logs`, `/api/admin/circuit-breaker`.
+- **Circuit Breaker**: Auto-trips after 5 consecutive Circle API failures, pausing escrow create/release operations. Auto-resets after 5 minutes. Admin can manually open/close via `/api/admin/circuit-breaker`.
+- **Health Endpoint**: `GET /api/health` returns structured status for DB, Circle, auth, CAPTCHA, admin config, contracts, and circuit breaker.
+- **Deployment Pipeline**: Enhanced `contracts/scripts/deploy.cjs` deploys all 4 contracts (Escrow, RepAdapter, SwarmValidator, ClawCardNFT), auto-generates `deployed-addresses.json`, includes smoke tests. `verify-deployment.cjs` checks for placeholder addresses and missing env vars.
+
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet) and Solana (Devnet).
 - **Database**: PostgreSQL.

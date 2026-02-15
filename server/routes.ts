@@ -4,6 +4,8 @@ import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
 import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema } from "@shared/schema";
 import { z } from "zod";
+import * as jose from "jose";
+import crypto from "crypto";
 import { type Address } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation } from "./reputation";
 import {
@@ -31,6 +33,40 @@ import {
   SUPPORTED_CHAINS,
   listWallets,
 } from "./circle-wallet";
+
+const escrowCircuitBreaker = {
+  isOpen: false,
+  openedAt: null as Date | null,
+  reason: null as string | null,
+  failureCount: 0,
+  threshold: 5,
+  resetTimeMs: 5 * 60 * 1000,
+};
+
+function checkCircuitBreaker(): { allowed: boolean; reason?: string } {
+  if (escrowCircuitBreaker.isOpen) {
+    if (escrowCircuitBreaker.openedAt &&
+        Date.now() - escrowCircuitBreaker.openedAt.getTime() > escrowCircuitBreaker.resetTimeMs) {
+      escrowCircuitBreaker.isOpen = false;
+      escrowCircuitBreaker.failureCount = 0;
+      escrowCircuitBreaker.reason = null;
+      escrowCircuitBreaker.openedAt = null;
+      return { allowed: true };
+    }
+    return { allowed: false, reason: escrowCircuitBreaker.reason || "Escrow operations paused" };
+  }
+  return { allowed: true };
+}
+
+function recordCircuitFailure(reason: string) {
+  escrowCircuitBreaker.failureCount++;
+  if (escrowCircuitBreaker.failureCount >= escrowCircuitBreaker.threshold) {
+    escrowCircuitBreaker.isOpen = true;
+    escrowCircuitBreaker.openedAt = new Date();
+    escrowCircuitBreaker.reason = `Auto-tripped: ${reason} (${escrowCircuitBreaker.failureCount} failures)`;
+    console.error(`[CircuitBreaker] OPENED: ${escrowCircuitBreaker.reason}`);
+  }
+}
 
 const sanitizeString = (s: string, maxLen = 500): string =>
   s.replace(/[<>'";&\\]/g, "").trim().slice(0, maxLen);
@@ -93,7 +129,7 @@ async function verifyTurnstileToken(token: string): Promise<boolean> {
     const data = await resp.json() as { success: boolean };
     return data.success === true;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -102,6 +138,7 @@ function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
 
   const token = req.body?.captchaToken || req.headers["x-captcha-token"];
   if (!token) {
+    logSuspiciousActivity(req, "captcha_missing", "No CAPTCHA token provided on protected endpoint");
     return res.status(400).json({ message: "CAPTCHA verification required" });
   }
 
@@ -111,7 +148,55 @@ function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
       return res.status(403).json({ message: "CAPTCHA verification failed" });
     }
     next();
+  }).catch(() => {
+    logSuspiciousActivity(req, "captcha_error", "CAPTCHA verification service error");
+    return res.status(503).json({ message: "CAPTCHA verification service unavailable. Please try again." });
   });
+}
+
+let privyVerificationKey: crypto.KeyObject | null = null;
+try {
+  const keyPem = process.env.PRIVY_VERIFICATION_KEY;
+  if (keyPem) {
+    privyVerificationKey = crypto.createPublicKey(keyPem.replace(/\\n/g, "\n"));
+    console.log("[Auth] Privy verification key loaded - cryptographic JWT verification enabled");
+  }
+} catch (err: any) {
+  console.error("[Auth] Failed to load PRIVY_VERIFICATION_KEY:", err.message);
+}
+
+async function verifyPrivyJWT(token: string): Promise<{ verified: boolean; payload?: any; error?: string }> {
+  if (privyVerificationKey) {
+    try {
+      const { payload } = await jose.jwtVerify(token, privyVerificationKey, {
+        issuer: "privy.io",
+        audience: process.env.PRIVY_APP_ID,
+      });
+      return { verified: true, payload };
+    } catch (err: any) {
+      return { verified: false, error: err.message?.slice(0, 200) };
+    }
+  }
+
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return { verified: false, error: "Not a valid JWT format" };
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
+
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      return { verified: false, error: `Token expired at ${new Date(payload.exp * 1000).toISOString()}` };
+    }
+    if (payload.iss && !payload.iss.includes("privy")) {
+      return { verified: false, error: `Wrong issuer: ${String(payload.iss).slice(0, 50)}` };
+    }
+    if (payload.aud && payload.aud !== process.env.PRIVY_APP_ID) {
+      return { verified: false, error: "Wrong audience" };
+    }
+
+    return { verified: true, payload };
+  } catch {
+    return { verified: false, error: "Failed to decode token" };
+  }
 }
 
 function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -125,11 +210,66 @@ function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ message: "Authentication required. Please connect your wallet." });
   }
 
-  if (walletHeader && !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
-    logSuspiciousActivity(req, "invalid_wallet", `Invalid wallet header: ${walletHeader?.slice(0, 20)}`);
-    return res.status(400).json({ message: "Invalid wallet address format" });
+  const token = authHeader.slice(7);
+  if (!token || token.length < 10) {
+    logSuspiciousActivity(req, "auth_invalid_token", "Bearer token too short or empty");
+    return res.status(401).json({ message: "Invalid authentication token" });
   }
 
+  verifyPrivyJWT(token).then((result) => {
+    if (!result.verified) {
+      logSuspiciousActivity(req, "auth_verification_failed", result.error || "JWT verification failed");
+      return res.status(401).json({ message: "Authentication failed. Please reconnect your wallet." });
+    }
+
+    if (walletHeader && !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+      logSuspiciousActivity(req, "invalid_wallet", `Invalid wallet header: ${walletHeader?.slice(0, 20)}`);
+      return res.status(400).json({ message: "Invalid wallet address format" });
+    }
+
+    const tokenWallet = result.payload?.wallet_address || result.payload?.linked_accounts?.find?.((a: any) => a.type === "wallet")?.address;
+    if (walletHeader && tokenWallet && walletHeader.toLowerCase() !== tokenWallet.toLowerCase()) {
+      logSuspiciousActivity(req, "auth_wallet_mismatch", `Header wallet ${walletHeader} != token wallet ${tokenWallet}`, "critical");
+      return res.status(403).json({ message: "Wallet address does not match authenticated identity" });
+    }
+
+    (req as any).authUser = {
+      sub: result.payload?.sub,
+      walletAddress: walletHeader || tokenWallet,
+    };
+
+    next();
+  }).catch(() => {
+    logSuspiciousActivity(req, "auth_internal_error", "Internal auth verification error");
+    return res.status(500).json({ message: "Authentication service error" });
+  });
+}
+
+function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  const adminWallet = req.headers["x-admin-wallet"] as string | undefined;
+  const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
+
+  if (ADMIN_WALLETS.length === 0) {
+    logSuspiciousActivity(req, "admin_not_configured", "Admin endpoint accessed but ADMIN_WALLETS not configured", "critical");
+    return res.status(503).json({ message: "Admin access not configured. Set ADMIN_WALLETS environment variable." });
+  }
+
+  if (!adminWallet) {
+    logSuspiciousActivity(req, "admin_missing_wallet", "Admin endpoint accessed without x-admin-wallet header");
+    return res.status(401).json({ message: "Admin wallet address required. Send x-admin-wallet header." });
+  }
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(adminWallet)) {
+    logSuspiciousActivity(req, "admin_invalid_wallet", `Invalid admin wallet format: ${adminWallet.slice(0, 20)}`);
+    return res.status(400).json({ message: "Invalid admin wallet address format" });
+  }
+
+  if (!ADMIN_WALLETS.includes(adminWallet.toLowerCase())) {
+    logSuspiciousActivity(req, "unauthorized_admin_action", `Non-admin wallet ${adminWallet} attempted admin access`, "critical");
+    return res.status(403).json({ message: "Wallet not authorized for admin actions" });
+  }
+
+  (req as any).adminWallet = adminWallet;
   next();
 }
 
@@ -543,6 +683,11 @@ export async function registerRoutes(
   });
 
   app.post("/api/escrow/create", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    const cb = checkCircuitBreaker();
+    if (!cb.allowed) {
+      return res.status(503).json({ message: "Escrow operations temporarily paused", reason: cb.reason });
+    }
+
     try {
       const escrowBody = z.object({
         gigId: z.string().uuid(),
@@ -575,6 +720,7 @@ export async function registerRoutes(
           circleWalletId = circleWallet.walletId;
         } catch (err: any) {
           console.error("[Escrow] Circle wallet creation failed, falling back to on-chain:", err.message);
+          recordCircuitFailure("Circle wallet creation failed");
         }
       }
 
@@ -709,22 +855,15 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/escrow/admin-resolve", strictLimiter, walletAuthMiddleware, async (req, res) => {
+  app.post("/api/escrow/admin-resolve", strictLimiter, adminAuthMiddleware, async (req, res) => {
     const adminResolveSchema = z.object({
       gigId: z.string().min(1).max(64),
       action: z.enum(["release_to_assignee", "refund_to_poster"]),
-      adminWallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid Ethereum address"),
     });
 
     try {
-      const { gigId, action, adminWallet } = adminResolveSchema.parse(req.body);
-
-      const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
-
-      if (ADMIN_WALLETS.length > 0 && !ADMIN_WALLETS.includes(adminWallet.toLowerCase())) {
-        await logSuspiciousActivity(req, "unauthorized_admin_action", `Non-admin wallet ${adminWallet} attempted admin-resolve on gig ${gigId}`, "critical");
-        return res.status(403).json({ message: "Wallet not authorized for admin actions" });
-      }
+      const { gigId, action } = adminResolveSchema.parse(req.body);
+      const adminWallet = (req as any).adminWallet as string;
 
       const escrow = await storage.getEscrowByGig(gigId);
       if (!escrow) return res.status(404).json({ message: "No escrow found" });
@@ -757,6 +896,7 @@ export async function registerRoutes(
               });
             } catch (err: any) {
               console.error("[Escrow] Circle transfer failed:", err.message);
+              recordCircuitFailure("Circle USDC transfer failed on admin-resolve");
               await storage.updateEscrow(escrow.id, { status: "released" });
             }
           } else {
@@ -786,6 +926,7 @@ export async function registerRoutes(
               });
             } catch (err: any) {
               console.error("[Escrow] Circle refund failed:", err.message);
+              recordCircuitFailure("Circle USDC refund failed on admin-resolve");
               await storage.updateEscrow(escrow.id, { status: "refunded" });
             }
           } else {
@@ -837,6 +978,10 @@ export async function registerRoutes(
   });
 
   app.post("/api/escrow/release", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    const cb = checkCircuitBreaker();
+    if (!cb.allowed) {
+      return res.status(503).json({ message: "Escrow operations temporarily paused", reason: cb.reason });
+    }
     try {
       const releaseSchema = z.object({
         gigId: z.string().uuid(),
@@ -875,6 +1020,7 @@ export async function registerRoutes(
             });
           } catch (err: any) {
             console.error("[Escrow] Circle release failed:", err.message);
+            recordCircuitFailure("Circle USDC transfer failed on release");
           }
         }
       }
@@ -940,14 +1086,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/security-logs", async (req, res) => {
-    const adminWallet = req.headers["x-admin-wallet"] as string | undefined;
-    const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
-
-    if (ADMIN_WALLETS.length > 0 && (!adminWallet || !ADMIN_WALLETS.includes(adminWallet.toLowerCase()))) {
-      return res.status(403).json({ message: "Admin access required" });
-    }
-
+  app.get("/api/security-logs", adminAuthMiddleware, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
     const logs = await storage.getSecurityLogs(limit);
     res.json({ count: logs.length, logs });
@@ -2249,10 +2388,106 @@ export async function registerRoutes(
         rateLimiting: "100 req/15min per IP (POST/PUT), 20 req/15min on sensitive endpoints",
         captcha: process.env.TURNSTILE_SECRET_KEY ? "Cloudflare Turnstile (active)" : "Cloudflare Turnstile (configure TURNSTILE_SECRET_KEY)",
         walletAuth: process.env.PRIVY_APP_ID ? "Privy wallet auth (active)" : "Privy wallet auth (configure PRIVY_APP_ID)",
+        adminWallets: (process.env.ADMIN_WALLETS || "").split(",").filter(Boolean).length > 0 ? "Configured" : "Not configured (set ADMIN_WALLETS)",
         inputValidation: "Zod strict schemas + XSS sanitization on all inputs",
+        circuitBreaker: escrowCircuitBreaker.isOpen ? "OPEN (escrow paused)" : "CLOSED (operational)",
         auditStatus: "Pending - professional audit recommended before mainnet deployment",
       },
     });
+  });
+
+  app.get("/api/health", async (_req, res) => {
+    const checks: Record<string, { status: string; latencyMs?: number; details?: string }> = {};
+
+    const dbStart = Date.now();
+    try {
+      const agents = await storage.getAgents();
+      checks.database = { status: "healthy", latencyMs: Date.now() - dbStart, details: `${agents.length} agents` };
+    } catch (err: any) {
+      checks.database = { status: "unhealthy", latencyMs: Date.now() - dbStart, details: err.message?.slice(0, 200) };
+    }
+
+    checks.circle = {
+      status: isCircleConfigured() ? "configured" : "not_configured",
+      details: isCircleConfigured()
+        ? (escrowCircuitBreaker.isOpen ? "Circuit breaker OPEN" : "Operational")
+        : "Set CIRCLE_API_KEY and CIRCLE_CLIENT_KEY",
+    };
+
+    checks.auth = {
+      status: process.env.PRIVY_APP_ID ? "active" : "bypassed",
+      details: process.env.PRIVY_APP_ID
+        ? (privyVerificationKey ? "Privy JWT (cryptographic ES256 verification)" : "Privy JWT (structure validation, set PRIVY_VERIFICATION_KEY for full crypto)")
+        : "No PRIVY_APP_ID - auth middleware bypassed",
+    };
+
+    checks.captcha = {
+      status: process.env.TURNSTILE_SECRET_KEY ? "active" : "bypassed",
+      details: process.env.TURNSTILE_SECRET_KEY ? "Cloudflare Turnstile enforced" : "No TURNSTILE_SECRET_KEY - CAPTCHA bypassed",
+    };
+
+    const adminWallets = (process.env.ADMIN_WALLETS || "").split(",").filter(Boolean);
+    checks.admin = {
+      status: adminWallets.length > 0 ? "configured" : "not_configured",
+      details: adminWallets.length > 0 ? `${adminWallets.length} admin wallet(s)` : "Set ADMIN_WALLETS for dispute resolution",
+    };
+
+    checks.contracts = {
+      status: ERC8004_CONTRACTS.identity.address !== "0x0000000000000000000000000000000000000000" ? "configured" : "placeholder",
+      details: `Identity: ${ERC8004_CONTRACTS.identity.address.slice(0, 10)}...`,
+    };
+
+    checks.circuitBreaker = {
+      status: escrowCircuitBreaker.isOpen ? "open" : "closed",
+      details: escrowCircuitBreaker.isOpen
+        ? `Paused since ${escrowCircuitBreaker.openedAt?.toISOString()} - ${escrowCircuitBreaker.reason}`
+        : `Failures: ${escrowCircuitBreaker.failureCount}/${escrowCircuitBreaker.threshold}`,
+    };
+
+    const allHealthy = checks.database?.status === "healthy";
+    res.status(allHealthy ? 200 : 503).json({
+      status: allHealthy ? "healthy" : "degraded",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      checks,
+    });
+  });
+
+  app.post("/api/admin/circuit-breaker", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    const schema = z.object({
+      action: z.enum(["open", "close"]),
+      reason: z.string().max(500).optional(),
+    });
+
+    try {
+      const { action, reason } = schema.parse(req.body);
+      const adminWallet = (req as any).adminWallet as string;
+
+      if (action === "open") {
+        escrowCircuitBreaker.isOpen = true;
+        escrowCircuitBreaker.openedAt = new Date();
+        escrowCircuitBreaker.reason = reason || "Manually opened by admin";
+        await logSuspiciousActivity(req, "circuit_breaker_opened", `Admin ${adminWallet} opened escrow circuit breaker: ${reason || "manual"}`, "critical");
+      } else {
+        escrowCircuitBreaker.isOpen = false;
+        escrowCircuitBreaker.openedAt = null;
+        escrowCircuitBreaker.reason = null;
+        escrowCircuitBreaker.failureCount = 0;
+        await logSuspiciousActivity(req, "circuit_breaker_closed", `Admin ${adminWallet} closed escrow circuit breaker`, "info");
+      }
+
+      res.json({
+        circuitBreaker: {
+          isOpen: escrowCircuitBreaker.isOpen,
+          openedAt: escrowCircuitBreaker.openedAt,
+          reason: escrowCircuitBreaker.reason,
+          failureCount: escrowCircuitBreaker.failureCount,
+        },
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      res.status(400).json({ message: err.message });
+    }
   });
 
   return httpServer;
