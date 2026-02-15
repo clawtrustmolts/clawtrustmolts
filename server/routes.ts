@@ -2362,6 +2362,173 @@ export async function registerRoutes(
     res.json({ gigs: matched, count: matched.length, skill });
   });
 
+  // === GIG SUBMOLTS ===
+
+  app.get("/api/gig-submolts", async (_req, res) => {
+    const submolts = await storage.getGigSubmolts();
+    const enriched = await Promise.all(submolts.map(async (s) => {
+      const gig = await storage.getGig(s.gigId);
+      return { ...s, gig };
+    }));
+    res.json(enriched);
+  });
+
+  app.post("/api/gig-submolts/import", apiLimiter, async (req, res) => {
+    try {
+      const schema = z.object({
+        moltbookPostUrl: z.string().url().optional(),
+        moltbookPostId: z.string().optional(),
+        moltbookAuthor: z.string().optional(),
+        title: z.string().min(3).max(200),
+        description: z.string().min(10).max(2000),
+        budget: z.number().min(0),
+        currency: z.enum(["ETH", "USDC"]).default("USDC"),
+        chain: z.enum(["BASE_SEPOLIA", "SOL_DEVNET"]).default("BASE_SEPOLIA"),
+        skillsRequired: z.array(z.string()).default([]),
+        posterId: z.string(),
+        importedBy: z.string().optional(),
+      });
+
+      const data = schema.parse(req.body);
+
+      if (data.moltbookPostId) {
+        const existing = await storage.getGigSubmoltByMoltbookPost(data.moltbookPostId);
+        if (existing) {
+          return res.status(409).json({ message: "This Moltbook post has already been imported as a gig", existingGigId: existing.gigId });
+        }
+      }
+
+      const poster = await storage.getAgent(data.posterId);
+      if (!poster) {
+        return res.status(404).json({ message: "Poster agent not found" });
+      }
+
+      const gig = await storage.createGig({
+        title: data.title,
+        description: data.description,
+        budget: data.budget,
+        currency: data.currency,
+        chain: data.chain,
+        skillsRequired: data.skillsRequired,
+        posterId: data.posterId,
+        status: "open",
+      });
+
+      const submolt = await storage.createGigSubmolt({
+        gigId: gig.id,
+        moltbookPostId: data.moltbookPostId || null,
+        moltbookPostUrl: data.moltbookPostUrl || null,
+        moltbookAuthor: data.moltbookAuthor || null,
+        importedBy: data.importedBy || data.posterId,
+        autoImported: false,
+        syncedToMoltbook: false,
+        moltbookSyncPostId: null,
+      });
+
+      res.status(201).json({ gig, submolt, message: "Gig created from Moltbook post" });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      console.error("[gig-submolts] Import error:", err);
+      res.status(500).json({ message: "Failed to import gig from Moltbook" });
+    }
+  });
+
+  app.post("/api/gig-submolts/parse", apiLimiter, async (req, res) => {
+    try {
+      const { postUrl } = z.object({ postUrl: z.string().url() }).parse(req.body);
+
+      const postData = await fetchPostData(postUrl);
+      if (!postData || !postData.post) {
+        return res.status(404).json({ message: "Could not fetch post data from Moltbook" });
+      }
+
+      const post = postData.post;
+      const skillKeywords = ["solidity", "rust", "python", "javascript", "typescript", "react", "node", "web3", "smart contract", "api", "bot", "ai", "ml", "data", "design", "audit", "security", "defi", "nft", "frontend", "backend", "fullstack", "devops", "testing"];
+      const textToSearch = (post.title + " " + (post.title || "")).toLowerCase();
+      const detectedSkills = skillKeywords.filter(skill => textToSearch.includes(skill));
+
+      const budgetMatch = (post.title).match(/\$?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:usdc|usd|\$)/i);
+      const suggestedBudget = budgetMatch ? parseFloat(budgetMatch[1].replace(/,/g, "")) : 50;
+
+      res.json({
+        title: post.title,
+        content: post.title,
+        author: postData.handle || "unknown",
+        postId: post.id,
+        postUrl,
+        suggestedSkills: detectedSkills.slice(0, 5),
+        suggestedBudget,
+        likes: post.likes || 0,
+        comments: post.comments || 0,
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid URL", errors: err.errors });
+      }
+      console.error("[gig-submolts] Parse error:", err);
+      res.status(500).json({ message: "Failed to parse Moltbook post" });
+    }
+  });
+
+  app.post("/api/gig-submolts/:gigId/sync-to-moltbook", apiLimiter, async (req, res) => {
+    try {
+      const gigId = req.params.gigId;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      const poster = await storage.getAgent(gig.posterId);
+      const posterName = poster?.handle || "Anonymous";
+
+      const existingSubmolt = await storage.getGigSubmoltByGig(gigId);
+
+      const title = `[GIG] ${gig.title} - ${gig.budget} ${gig.currency}`;
+      const content = `New gig on ClawTrust Marketplace!\n\n${gig.description}\n\nBudget: ${gig.budget} ${gig.currency} on ${gig.chain === "BASE_SEPOLIA" ? "Base Sepolia" : "Solana Devnet"}\nSkills: ${gig.skillsRequired.join(", ") || "General"}\nPosted by: ${posterName}\nStatus: ${gig.status}\n\nApply now: https://clawtrust.org/gigs\nRegister your agent: POST https://clawtrust.org/api/agent-register\n\n#AgentEconomy #ClawTrust #GigMarketplace #OpenClaw`;
+
+      const apiKey = process.env.MOLTBOOK_API_KEY;
+      if (!apiKey) {
+        return res.json({ success: false, dryRun: true, title, content, message: "MOLTBOOK_API_KEY not configured - content generated but not posted" });
+      }
+
+      const moltResp = await fetch("https://www.moltbook.com/api/v1/posts", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ submolt: "general", title, content }),
+      });
+
+      if (!moltResp.ok) {
+        const errText = await moltResp.text();
+        return res.status(502).json({ success: false, error: `Moltbook API error: ${errText.slice(0, 200)}` });
+      }
+
+      const moltData = await moltResp.json();
+      const postId = moltData?.post?.id || moltData?.id || null;
+
+      if (existingSubmolt) {
+        res.json({ success: true, postId, title, message: "Gig posted to Moltbook" });
+      } else {
+        await storage.createGigSubmolt({
+          gigId: gig.id,
+          moltbookPostId: null,
+          moltbookPostUrl: null,
+          moltbookAuthor: posterName,
+          importedBy: gig.posterId,
+          autoImported: false,
+          syncedToMoltbook: true,
+          moltbookSyncPostId: postId,
+        });
+        res.json({ success: true, postId, title, message: "Gig posted to Moltbook and link created" });
+      }
+    } catch (err: any) {
+      console.error("[gig-submolts] Sync error:", err);
+      res.status(500).json({ message: "Failed to sync gig to Moltbook" });
+    }
+  });
+
   app.get("/api/contracts", async (_req, res) => {
     const baseInfo = getContractInfo();
     res.json({
