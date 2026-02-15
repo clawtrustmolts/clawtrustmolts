@@ -25,6 +25,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         uint256 resolvedAt;
         uint256 expiresAt;
         uint256 rewardPool;
+        uint256 rewardPoolClaimed;
         address rewardToken;
         mapping(address => bool) rewardClaimed;
     }
@@ -115,8 +116,8 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         if(rewardToken == address(0)) {
             if(msg.value < rewardPool) revert InsufficientRewardPool();
         } else {
-            if(IERC20(rewardToken).balanceOf(address(this)) < rewardPool) {
-                revert InsufficientRewardPool();
+            if(rewardPool > 0) {
+                IERC20(rewardToken).safeTransferFrom(msg.sender, address(this), rewardPool);
             }
         }
 
@@ -205,8 +206,9 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         ValidationRequest storage v = validations[gigId];
         if(v.rewardPool == 0) return;
 
-        uint256 amount = v.rewardPool;
-        v.rewardPool = 0;
+        uint256 amount = v.rewardPool - v.rewardPoolClaimed;
+        if(amount == 0) return;
+        v.rewardPoolClaimed = v.rewardPool;
 
         if(v.rewardToken == address(0)) {
             (bool success, ) = escrowContract.call{value: amount}("");
@@ -228,7 +230,14 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         uint256 rewardPerValidator = v.rewardPool / v.votesFor;
         if(rewardPerValidator == 0) revert NoRewardAvailable();
 
+        uint256 remaining = v.rewardPool - v.rewardPoolClaimed;
+        if(remaining == 0) revert NoRewardAvailable();
+        if(rewardPerValidator > remaining) {
+            rewardPerValidator = remaining;
+        }
+
         v.rewardClaimed[msg.sender] = true;
+        v.rewardPoolClaimed += rewardPerValidator;
 
         if(v.rewardToken == address(0)) {
             (bool success, ) = msg.sender.call{value: rewardPerValidator}("");

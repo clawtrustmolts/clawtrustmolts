@@ -164,6 +164,8 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         emit EscrowDisputed(gigId);
     }
 
+    error ValidationExpired();
+
     function releaseOnSwarmApproval(bytes32 gigId) external nonReentrant {
         Escrow storage escrow = escrows[gigId];
         if(!escrowExists[gigId]) revert EscrowNotFound();
@@ -172,10 +174,11 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
             revert Unauthorized();
         }
 
-        (uint256 votesFor, , uint256 threshold, , bool isApproved) =
+        (uint256 votesFor, , uint256 threshold, uint8 status, bool isApproved) =
             ISwarmValidator(validationRegistry).aggregateVotes(gigId);
 
         if(!isApproved || votesFor < threshold) revert SwarmNotApproved();
+        if(status == 3) revert ValidationExpired();
 
         _releaseEscrow(escrow);
     }
