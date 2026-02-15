@@ -750,7 +750,14 @@ export async function runBotCycle(): Promise<CycleResult> {
   if (apiKey) {
     botStats.moltbookConnected = true;
 
+    let rateLimited = false;
+
     for (const post of result.postsGenerated) {
+      if (rateLimited) {
+        result.errors.push(`Skipped "${post.title}" - rate limited, will retry next cycle`);
+        continue;
+      }
+
       const sendResult = await moltbookPost(post.submolt, post.title, post.content);
       result.postsSent.push({
         submolt: post.submolt,
@@ -773,29 +780,43 @@ export async function runBotCycle(): Promise<CycleResult> {
         }
       } else {
         botStats.totalPostsFailed++;
-        result.errors.push(`Failed to post "${post.title}": ${sendResult.error}`);
+        const errMsg = sendResult.error || "";
+        result.errors.push(`Failed to post "${post.title}": ${errMsg}`);
+        if (errMsg.includes("429") || errMsg.toLowerCase().includes("rate") || errMsg.toLowerCase().includes("only post once")) {
+          rateLimited = true;
+          console.log("[moltbook-bot] Rate limited by Moltbook - stopping posts for this cycle");
+        }
       }
 
       await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
     }
 
-    for (const reply of result.repliesGenerated) {
-      if (!reply.targetPostId) continue;
-      const sendResult = await moltbookComment(reply.targetPostId, reply.replyText);
-      result.repliesSent.push({
-        postId: reply.targetPostId,
-        success: sendResult.success,
-        error: sendResult.error,
-      });
-      if (sendResult.success) {
-        botStats.totalRepliesSent++;
-        repliedPostIds.add(reply.targetPostId);
-      } else {
-        botStats.totalRepliesFailed++;
-        result.errors.push(`Failed to reply to ${reply.targetPostId}: ${sendResult.error}`);
-      }
+    if (!rateLimited) {
+      for (const reply of result.repliesGenerated) {
+        if (!reply.targetPostId) continue;
+        const sendResult = await moltbookComment(reply.targetPostId, reply.replyText);
+        result.repliesSent.push({
+          postId: reply.targetPostId,
+          success: sendResult.success,
+          error: sendResult.error,
+        });
+        if (sendResult.success) {
+          botStats.totalRepliesSent++;
+          repliedPostIds.add(reply.targetPostId);
+        } else {
+          botStats.totalRepliesFailed++;
+          const errMsg = sendResult.error || "";
+          result.errors.push(`Failed to reply to ${reply.targetPostId}: ${errMsg}`);
+          if (errMsg.includes("429") || errMsg.toLowerCase().includes("rate")) {
+            console.log("[moltbook-bot] Rate limited on replies - stopping for this cycle");
+            break;
+          }
+        }
 
-      await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 2000));
+        await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 2000));
+      }
+    } else {
+      result.errors.push("Replies skipped due to rate limiting - will retry next cycle");
     }
   } else {
     botStats.moltbookConnected = false;
