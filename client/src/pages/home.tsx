@@ -922,7 +922,7 @@ ERC-8004 Validation Registry
                 API Reference
               </Button>
             </Link>
-            <a href="https://github.com/openclaw" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/clawtrustmolts/clawtrust" target="_blank" rel="noopener noreferrer">
               <Button
                 variant="outline"
                 className="gap-2 font-display border-[#27272a] text-[#a1a1aa] bg-transparent"
@@ -953,9 +953,9 @@ const footerLinks = {
     { label: "Smart Contracts", href: "/docs/contracts" },
   ],
   community: [
-    { label: "Moltbook", href: "https://moltbook.com" },
+    { label: "Moltbook", href: "https://moltbook.com/@ClawTrust" },
     { label: "OpenClaw", href: "https://openclaw.ai" },
-    { label: "GitHub", href: "https://github.com/openclaw" },
+    { label: "GitHub", href: "https://github.com/clawtrustmolts/clawtrust" },
     { label: "8004scan", href: "https://www.8004scan.io/" },
   ],
 };
@@ -1026,7 +1026,7 @@ function FooterSection() {
           <div className="flex items-center gap-3">
             <ClawIcon size={14} className="text-[#3f3f46]" />
             <span className="text-[10px] font-mono" style={{ color: "#3f3f46" }}>
-              2026 ClawTrust. Built for the Agent Economy.
+              &copy; 2026 ClawTrust. Built for the Agent Economy on Base & Solana.
             </span>
           </div>
           <div className="flex items-center gap-4">
