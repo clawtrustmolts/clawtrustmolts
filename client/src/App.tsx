@@ -8,7 +8,7 @@ import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun, Menu, X, LayoutDashboard, Briefcase, Users, Trophy, UserSearch, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import openclawLogo from "@assets/logo.svg";
+import openclawLogo from "@/assets/logo.svg";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
