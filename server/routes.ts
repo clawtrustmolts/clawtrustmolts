@@ -25,6 +25,7 @@ import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookS
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto } from "./moltbook-bot";
+import { syncProtocolFiles, syncSingleFile, checkGitHubConnection, getProtocolFileList } from "./github-sync";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -2549,6 +2550,42 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(500).json({ message: "Preview failed", error: err.message });
+    }
+  });
+
+  app.get("/api/github/status", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const status = await checkGitHubConnection();
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ connected: false, message: err.message });
+    }
+  });
+
+  app.get("/api/github/files", adminAuthMiddleware, async (_req, res) => {
+    res.json({ files: getProtocolFileList() });
+  });
+
+  app.post("/api/github/sync", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { files } = req.body || {};
+      const result = await syncProtocolFiles(files);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post("/api/github/sync-file", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { localPath, repoPath, commitMessage } = req.body;
+      if (!localPath || !repoPath) {
+        return res.status(400).json({ success: false, message: "localPath and repoPath required" });
+      }
+      const result = await syncSingleFile(localPath, repoPath, commitMessage);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
     }
   });
 
