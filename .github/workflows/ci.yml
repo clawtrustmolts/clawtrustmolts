@@ -37,7 +37,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://clawtrust:clawtrust_ci@localhost:5432/clawtrust_ci
       SESSION_SECRET: ci-build-secret
-      NODE_ENV: production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,6 +46,8 @@ jobs:
       - run: npm ci
       - run: npm run db:push
       - run: npm run build
+        env:
+          NODE_ENV: production
 
   contracts:
     runs-on: ubuntu-latest
