@@ -8,7 +8,12 @@ vite.config.ts.*
 .env.*
 .replit
 replit_agent
+replit.md
 .config
 .cache
 .local
 .upm
+attached_assets/Pasted-*
+attached_assets/content-*
+attached_assets/branding-*
+attached_assets/logoHref.html
