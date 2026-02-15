@@ -24,7 +24,7 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
-import { startBot, stopBot, getBotStats, getBotConfig, runBotCycle, previewBotCycle, postIntroNow } from "./moltbook-bot";
+import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto } from "./moltbook-bot";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -2492,21 +2492,22 @@ export async function registerRoutes(
   });
 
   app.get("/api/bot/status", async (_req, res) => {
-    res.json(getBotStats());
+    res.json(getBotStatus());
   });
 
   app.get("/api/bot/config", async (_req, res) => {
-    res.json(getBotConfig());
+    const status = getBotStatus();
+    res.json(status.config);
   });
 
   app.post("/api/bot/start", strictLimiter, adminAuthMiddleware, async (_req, res) => {
     startBot();
-    res.json({ message: "Bot started", stats: getBotStats() });
+    res.json({ message: "Bot started", stats: getBotStatus() });
   });
 
   app.post("/api/bot/stop", strictLimiter, adminAuthMiddleware, async (_req, res) => {
     stopBot();
-    res.json({ message: "Bot stopped", stats: getBotStats() });
+    res.json({ message: "Bot stopped", stats: getBotStatus() });
   });
 
   app.post("/api/bot/trigger", strictLimiter, adminAuthMiddleware, async (_req, res) => {
@@ -2520,7 +2521,16 @@ export async function registerRoutes(
 
   app.post("/api/bot/intro", strictLimiter, adminAuthMiddleware, async (_req, res) => {
     try {
-      const result = await postIntroNow();
+      const result = await triggerIntroPost();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post("/api/bot/manifesto", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await postManifesto();
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 
 const MOLTBOOK_API_BASE = "https://moltbook.com/api";
-const MOLTBOOK_IO_BASE = "https://moltbook.io";
+const MOLTBOOK_COM_BASE = "https://moltbook.com";
 
 const FETCH_TIMEOUT_MS = 5000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -125,7 +125,7 @@ async function fetchFromMoltbookAPI(handle: string): Promise<MoltbookAgentData |
         postCount: json.postCount ?? json.posts?.length ?? json.stats?.posts ?? 0,
         followers: json.followers ?? json.stats?.followers ?? 0,
         topPosts: parseAPIPosts(json.posts || json.topPosts || json.recentPosts || []),
-        profileUrl: `${MOLTBOOK_IO_BASE}/@${handle}`,
+        profileUrl: `${MOLTBOOK_COM_BASE}/u/${handle}`,
         source: "api",
         fetchedAt: Date.now(),
       };
@@ -149,7 +149,7 @@ function parseAPIPosts(posts: any[]): MoltbookPost[] {
   return posts.slice(0, 10).map((p: any, i: number) => ({
     id: p.id || p._id || `post-${i}`,
     title: p.title || p.content?.substring(0, 80) || `Post ${i + 1}`,
-    url: p.url || p.link || `${MOLTBOOK_IO_BASE}/post/${p.id || i}`,
+    url: p.url || p.link || `${MOLTBOOK_COM_BASE}/post/${p.id || i}`,
     likes: p.likes ?? p.upvotes ?? p.score ?? 0,
     comments: p.comments ?? p.commentCount ?? p.replies ?? 0,
     shares: p.shares ?? p.reposts ?? 0,
@@ -161,9 +161,9 @@ function parseAPIPosts(posts: any[]): MoltbookPost[] {
 async function scrapeFromMoltbookProfile(handle: string, moltbookLink?: string | null): Promise<MoltbookAgentData | null> {
   const urls = [
     moltbookLink,
-    `${MOLTBOOK_IO_BASE}/@${handle}`,
-    `${MOLTBOOK_IO_BASE}/user/${handle}`,
-    `https://moltbook.com/@${handle}`,
+    `${MOLTBOOK_COM_BASE}/u/${handle}`,
+    `${MOLTBOOK_COM_BASE}/user/${handle}`,
+    `https://moltbook.com/u/${handle}`,
   ].filter(Boolean) as string[];
 
   for (const url of urls) {
@@ -324,7 +324,7 @@ export async function fetchMoltbookData(
       postCount: 0,
       followers: 0,
       topPosts: [],
-      profileUrl: moltbookLink || `${MOLTBOOK_IO_BASE}/@${handle}`,
+      profileUrl: moltbookLink || `${MOLTBOOK_COM_BASE}/u/${handle}`,
       source: "cached",
       fetchedAt: Date.now(),
       error: "Rate limited - no cached data available",
@@ -350,7 +350,7 @@ export async function fetchMoltbookData(
     postCount: 0,
     followers: 0,
     topPosts: [],
-    profileUrl: moltbookLink || `${MOLTBOOK_IO_BASE}/@${handle}`,
+    profileUrl: moltbookLink || `${MOLTBOOK_COM_BASE}/u/${handle}`,
     source: "cached",
     fetchedAt: Date.now(),
     error: "Moltbook API and scrape both unavailable - using DB fallback",
