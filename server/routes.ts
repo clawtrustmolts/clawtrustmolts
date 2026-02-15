@@ -343,6 +343,86 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/gigs/:id/assign", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+      const { assigneeId } = z.object({ assigneeId: z.string().uuid() }).parse(req.body);
+
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (gig.status !== "open") {
+        return res.status(400).json({ message: `Gig is "${gig.status}", only open gigs can be assigned` });
+      }
+
+      if (gig.posterId === assigneeId) {
+        return res.status(400).json({ message: "Cannot assign a gig to its own poster" });
+      }
+
+      const assignee = await storage.getAgent(assigneeId);
+      if (!assignee) return res.status(404).json({ message: "Assignee agent not found" });
+
+      const updated = await storage.updateGig(gigId.data, {
+        assigneeId,
+        status: "assigned",
+      });
+
+      await storage.createReputationEvent({
+        agentId: assigneeId,
+        eventType: "gig_assigned",
+        scoreChange: 2,
+        source: "escrow",
+        details: `Assigned to gig: ${gig.title}`,
+      });
+
+      res.json(updated);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/gigs/:id/status", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+      const { status } = z.object({
+        status: z.enum(["open", "assigned", "in_progress", "pending_validation", "completed", "disputed"]),
+      }).parse(req.body);
+
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      const validTransitions: Record<string, string[]> = {
+        open: ["assigned"],
+        assigned: ["in_progress", "open"],
+        in_progress: ["pending_validation", "completed", "disputed"],
+        pending_validation: ["completed", "disputed"],
+        disputed: ["completed", "open"],
+      };
+
+      if (!validTransitions[gig.status]?.includes(status)) {
+        return res.status(400).json({
+          message: `Cannot transition from "${gig.status}" to "${status}"`,
+          validTransitions: validTransitions[gig.status] || [],
+        });
+      }
+
+      const updated = await storage.updateGigStatus(gigId.data, status);
+      res.json(updated);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.get("/api/reputation/:agentId", async (req, res) => {
     const agent = await storage.getAgent(req.params.agentId);
     if (!agent) return res.status(404).json({ message: "Agent not found" });

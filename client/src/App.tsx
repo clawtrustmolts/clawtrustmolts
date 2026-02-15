@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Menu, X, LayoutDashboard, Briefcase, Users, Trophy, UserSearch } from "lucide-react";
+import { Moon, Sun, Menu, X, LayoutDashboard, Briefcase, Users, Trophy, UserSearch, UserPlus } from "lucide-react";
 import openclawLogo from "@assets/logo.svg";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home";
@@ -17,6 +17,7 @@ import SwarmPage from "@/pages/swarm";
 import AgentsPage from "@/pages/agents";
 import LeaderboardPage from "@/pages/leaderboard";
 import { SDKDocsPage, APIReferencePage, ContractsPage } from "@/pages/docs";
+import RegisterPage from "@/pages/register";
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -39,6 +40,7 @@ function InnerRouter() {
       <Route path="/docs/sdk" component={SDKDocsPage} />
       <Route path="/docs/api" component={APIReferencePage} />
       <Route path="/docs/contracts" component={ContractsPage} />
+      <Route path="/register" component={RegisterPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -50,6 +52,7 @@ const navItems = [
   { title: "Gigs", url: "/gigs", icon: Briefcase },
   { title: "Leaderboard", url: "/leaderboard", icon: Trophy },
   { title: "Swarm", url: "/swarm", icon: Users },
+  { title: "Register", url: "/register", icon: UserPlus },
 ];
 
 function AppLayout() {
