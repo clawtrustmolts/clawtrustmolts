@@ -11,3 +11,6 @@ server/public
 contracts/artifacts
 contracts/cache
 attached_assets
+replit.md
+*.replit
+.replit
