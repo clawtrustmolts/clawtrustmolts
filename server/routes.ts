@@ -25,7 +25,7 @@ import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookS
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto } from "./moltbook-bot";
-import { syncProtocolFiles, syncSingleFile, syncAllFiles, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
+import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -2746,7 +2746,8 @@ export async function registerRoutes(
   app.post("/api/github/sync-all", strictLimiter, adminAuthMiddleware, async (_req, res) => {
     try {
       const result = await syncAllFiles();
-      res.json(result);
+      const skillResult = await syncSkillRepo();
+      res.json({ ...result, skillRepo: skillResult });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }

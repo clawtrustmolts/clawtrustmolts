@@ -20,6 +20,98 @@ const EXCLUDE_FILES = new Set([
   ".replit", ".gitignore", ".prettierrc",
 ]);
 
+const CLEAN_VITE_CONFIG = `import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+
+export default defineConfig({
+  plugins: [
+    react(),
+  ],
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "client", "src"),
+      "@shared": path.resolve(import.meta.dirname, "shared"),
+    },
+  },
+  root: path.resolve(import.meta.dirname, "client"),
+  build: {
+    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    emptyOutDir: true,
+  },
+  server: {
+    fs: {
+      strict: true,
+      deny: ["**/.*"],
+    },
+  },
+});
+`;
+
+const CLEAN_SERVER_VITE = `import { type Express } from "express";
+import { createServer as createViteServer, createLogger } from "vite";
+import { type Server } from "http";
+import viteConfig from "../vite.config";
+import fs from "fs";
+import path from "path";
+import { nanoid } from "nanoid";
+
+const viteLogger = createLogger();
+
+export async function setupVite(server: Server, app: Express) {
+  const serverOptions = {
+    middlewareMode: true,
+    hmr: { server, path: "/vite-hmr" },
+    allowedHosts: true as const,
+  };
+
+  const vite = await createViteServer({
+    ...viteConfig,
+    configFile: false,
+    customLogger: {
+      ...viteLogger,
+      error: (msg, options) => {
+        viteLogger.error(msg, options);
+        process.exit(1);
+      },
+    },
+    server: serverOptions,
+    appType: "custom",
+  });
+
+  app.use(vite.middlewares);
+
+  app.use("/{*path}", async (req, res, next) => {
+    const url = req.originalUrl;
+
+    try {
+      const clientTemplate = path.resolve(
+        import.meta.dirname,
+        "..",
+        "client",
+        "index.html",
+      );
+
+      let template = await fs.promises.readFile(clientTemplate, "utf-8");
+      template = template.replace(
+        \`src="/src/main.tsx"\`,
+        \`src="/src/main.tsx?v=\${nanoid()}"\`,
+      );
+      const page = await vite.transformIndexHtml(url, template);
+      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+    } catch (e) {
+      vite.ssrFixStacktrace(e as Error);
+      next(e);
+    }
+  });
+}
+`;
+
+const FILE_OVERRIDES: Record<string, string> = {
+  "vite.config.ts": CLEAN_VITE_CONFIG,
+  "server/vite.ts": CLEAN_SERVER_VITE,
+};
+
 const INCLUDE_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".cjs", ".mjs",
   ".css", ".json", ".sol", ".md", ".html",
@@ -185,8 +277,8 @@ export async function syncAllFiles(): Promise<{
     const blobResults = await Promise.all(
       batch.map(async (file) => {
         try {
-          const fullPath = path.resolve(rootDir, file.localPath);
-          const content = fs.readFileSync(fullPath, "utf-8");
+          const content = FILE_OVERRIDES[file.path]
+            ?? fs.readFileSync(path.resolve(rootDir, file.localPath), "utf-8");
           const blobSha = await createBlob(content);
           return { file, blobSha, error: null };
         } catch (err: any) {
@@ -372,4 +464,65 @@ export function getProtocolFileList(): string[] {
 export function getAllFileList(): string[] {
   const rootDir = process.cwd();
   return discoverFiles(rootDir).map((f) => f.path);
+}
+
+export async function syncSkillRepo(): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const SKILL_REPO = "clawtrust-skill";
+  const localPath = path.resolve(process.cwd(), "skills/clawtrust-integration.md");
+  if (!fs.existsSync(localPath)) {
+    return { success: false, message: "Skill file not found locally" };
+  }
+
+  const content = fs.readFileSync(localPath, "utf-8");
+  const token = getToken();
+
+  const endpoint = `${GITHUB_API}/repos/${REPO_OWNER}/${SKILL_REPO}/contents/clawtrust-integration.md`;
+
+  let sha: string | null = null;
+  try {
+    const existing = await githubRequest(`/repos/${REPO_OWNER}/${SKILL_REPO}/contents/clawtrust-integration.md`);
+    sha = existing.sha || null;
+  } catch {}
+
+  const timestamp = new Date().toISOString().split("T")[0];
+  const body: any = {
+    message: `chore: sync skill from ClawTrust platform [${timestamp}]`,
+    content: Buffer.from(content).toString("base64"),
+    branch: "main",
+  };
+  if (sha) body.sha = sha;
+
+  try {
+    await githubRequest(`/repos/${REPO_OWNER}/${SKILL_REPO}/contents/clawtrust-integration.md`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+
+    let readmeSha: string | null = null;
+    try {
+      const existing = await githubRequest(`/repos/${REPO_OWNER}/${SKILL_REPO}/contents/README.md`);
+      readmeSha = existing.sha || null;
+    } catch {}
+
+    const readmeContent = `# ClawTrust Integration Skill\n\nOpenClaw agent skill for autonomous reputation building, gig discovery, USDC escrow payments, and swarm validation on the ClawTrust platform.\n\n- **Platform**: [clawtrust.org](https://clawtrust.org)\n- **GitHub**: [github.com/clawtrustmolts/clawtrustmolts](https://github.com/clawtrustmolts/clawtrustmolts)\n- **Chains**: Base Sepolia (EVM), Solana Devnet\n\n## Install\n\nCopy \`clawtrust-integration.md\` into your OpenClaw agent's skills folder:\n\n\`\`\`bash\ncurl -o ~/.openclaw/skills/clawtrust-integration.md https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/clawtrust-integration.md\n\`\`\`\n\nSee the skill file for full API documentation and heartbeat loop examples.\n`;
+
+    const readmeBody: any = {
+      message: `chore: update README [${timestamp}]`,
+      content: Buffer.from(readmeContent).toString("base64"),
+      branch: "main",
+    };
+    if (readmeSha) readmeBody.sha = readmeSha;
+
+    await githubRequest(`/repos/${REPO_OWNER}/${SKILL_REPO}/contents/README.md`, {
+      method: "PUT",
+      body: JSON.stringify(readmeBody),
+    });
+
+    return { success: true, message: `Synced skill + README to ${REPO_OWNER}/${SKILL_REPO}` };
+  } catch (err: any) {
+    return { success: false, message: err.message };
+  }
 }
