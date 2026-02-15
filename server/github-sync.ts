@@ -10,21 +10,20 @@ interface GitHubFile {
   localPath: string;
 }
 
-const PROTOCOL_FILES: GitHubFile[] = [
-  { path: "README.md", localPath: "README.md" },
-  { path: "CONTRIBUTING.md", localPath: "CONTRIBUTING.md" },
-  { path: "skills/clawtrust-integration.md", localPath: "skills/clawtrust-integration.md" },
-  { path: "shared/clawtrust-sdk/README_SDK.md", localPath: "shared/clawtrust-sdk/README_SDK.md" },
-  { path: "shared/clawtrust-sdk/index.ts", localPath: "shared/clawtrust-sdk/index.ts" },
-  { path: "contracts/contracts/ClawTrustEscrow.sol", localPath: "contracts/contracts/ClawTrustEscrow.sol" },
-  { path: "contracts/contracts/ClawTrustRepAdapter.sol", localPath: "contracts/contracts/ClawTrustRepAdapter.sol" },
-  { path: "contracts/contracts/ClawTrustSwarmValidator.sol", localPath: "contracts/contracts/ClawTrustSwarmValidator.sol" },
-  { path: "contracts/contracts/ClawCardNFT.sol", localPath: "contracts/contracts/ClawCardNFT.sol" },
-  { path: "contracts/scripts/deploy.cjs", localPath: "contracts/scripts/deploy.cjs" },
-  { path: "contracts/scripts/verify-deployment.cjs", localPath: "contracts/scripts/verify-deployment.cjs" },
-  { path: "contracts/hardhat.config.cjs", localPath: "contracts/hardhat.config.cjs" },
-  { path: "shared/schema.ts", localPath: "shared/schema.ts" },
-];
+const EXCLUDE_DIRS = new Set([
+  "node_modules", ".git", "dist", ".cache", ".config", ".local", ".upm",
+  "attached_assets", "contracts/artifacts", "contracts/cache",
+]);
+
+const EXCLUDE_FILES = new Set([
+  "replit.md", "replit_zip_error_log.txt", "package-lock.json",
+  ".replit", ".gitignore", ".prettierrc",
+]);
+
+const INCLUDE_EXTENSIONS = new Set([
+  ".ts", ".tsx", ".js", ".jsx", ".cjs", ".mjs",
+  ".css", ".json", ".sol", ".md", ".html",
+]);
 
 function getToken(): string {
   const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
@@ -51,6 +50,192 @@ async function githubRequest(endpoint: string, options: RequestInit = {}) {
   }
 
   return res.json();
+}
+
+function discoverFiles(rootDir: string, baseDir: string = ""): GitHubFile[] {
+  const files: GitHubFile[] = [];
+  const entries = fs.readdirSync(path.join(rootDir, baseDir), { withFileTypes: true });
+
+  for (const entry of entries) {
+    const relativePath = baseDir ? `${baseDir}/${entry.name}` : entry.name;
+    const fullPath = path.join(rootDir, relativePath);
+
+    if (entry.isDirectory()) {
+      if (EXCLUDE_DIRS.has(relativePath) || EXCLUDE_DIRS.has(entry.name)) continue;
+      if (entry.name.startsWith(".")) continue;
+      files.push(...discoverFiles(rootDir, relativePath));
+    } else if (entry.isFile()) {
+      if (EXCLUDE_FILES.has(entry.name) || EXCLUDE_FILES.has(relativePath)) continue;
+      if (entry.name.startsWith(".")) continue;
+      const ext = path.extname(entry.name);
+      if (!INCLUDE_EXTENSIONS.has(ext)) continue;
+      const stat = fs.statSync(fullPath);
+      if (stat.size > 500_000) continue;
+      files.push({ path: relativePath, localPath: relativePath });
+    }
+  }
+
+  return files;
+}
+
+const PROTOCOL_FILES: GitHubFile[] = [
+  { path: "README.md", localPath: "README.md" },
+  { path: "CONTRIBUTING.md", localPath: "CONTRIBUTING.md" },
+  { path: "skills/clawtrust-integration.md", localPath: "skills/clawtrust-integration.md" },
+  { path: "shared/clawtrust-sdk/README_SDK.md", localPath: "shared/clawtrust-sdk/README_SDK.md" },
+  { path: "shared/clawtrust-sdk/index.ts", localPath: "shared/clawtrust-sdk/index.ts" },
+  { path: "contracts/contracts/ClawTrustEscrow.sol", localPath: "contracts/contracts/ClawTrustEscrow.sol" },
+  { path: "contracts/contracts/ClawTrustRepAdapter.sol", localPath: "contracts/contracts/ClawTrustRepAdapter.sol" },
+  { path: "contracts/contracts/ClawTrustSwarmValidator.sol", localPath: "contracts/contracts/ClawTrustSwarmValidator.sol" },
+  { path: "contracts/contracts/ClawCardNFT.sol", localPath: "contracts/contracts/ClawCardNFT.sol" },
+  { path: "contracts/scripts/deploy.cjs", localPath: "contracts/scripts/deploy.cjs" },
+  { path: "contracts/scripts/verify-deployment.cjs", localPath: "contracts/scripts/verify-deployment.cjs" },
+  { path: "contracts/hardhat.config.cjs", localPath: "contracts/hardhat.config.cjs" },
+  { path: "shared/schema.ts", localPath: "shared/schema.ts" },
+];
+
+async function getRef(branch: string): Promise<string> {
+  const data = await githubRequest(
+    `/repos/${REPO_OWNER}/${REPO_NAME}/git/ref/heads/${branch}`
+  );
+  return data.object.sha;
+}
+
+async function getCommit(sha: string): Promise<string> {
+  const data = await githubRequest(
+    `/repos/${REPO_OWNER}/${REPO_NAME}/git/commits/${sha}`
+  );
+  return data.tree.sha;
+}
+
+async function createBlob(content: string): Promise<string> {
+  const data = await githubRequest(
+    `/repos/${REPO_OWNER}/${REPO_NAME}/git/blobs`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        content: Buffer.from(content).toString("base64"),
+        encoding: "base64",
+      }),
+    }
+  );
+  return data.sha;
+}
+
+async function createTree(
+  baseTreeSha: string,
+  treeItems: Array<{ path: string; mode: string; type: string; sha: string }>
+): Promise<string> {
+  const data = await githubRequest(
+    `/repos/${REPO_OWNER}/${REPO_NAME}/git/trees`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        base_tree: baseTreeSha,
+        tree: treeItems,
+      }),
+    }
+  );
+  return data.sha;
+}
+
+async function createCommit(
+  message: string,
+  treeSha: string,
+  parentSha: string
+): Promise<string> {
+  const data = await githubRequest(
+    `/repos/${REPO_OWNER}/${REPO_NAME}/git/commits`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message,
+        tree: treeSha,
+        parents: [parentSha],
+      }),
+    }
+  );
+  return data.sha;
+}
+
+async function updateRef(branch: string, commitSha: string): Promise<void> {
+  await githubRequest(
+    `/repos/${REPO_OWNER}/${REPO_NAME}/git/refs/heads/${branch}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ sha: commitSha, force: true }),
+    }
+  );
+}
+
+export async function syncAllFiles(): Promise<{
+  success: boolean;
+  filesCount: number;
+  results: Array<{ path: string; status: string }>;
+  message: string;
+}> {
+  const rootDir = process.cwd();
+  const allFiles = discoverFiles(rootDir);
+  const results: Array<{ path: string; status: string }> = [];
+  const treeItems: Array<{ path: string; mode: string; type: string; sha: string }> = [];
+
+  const BATCH_SIZE = 8;
+  for (let i = 0; i < allFiles.length; i += BATCH_SIZE) {
+    const batch = allFiles.slice(i, i + BATCH_SIZE);
+    const blobResults = await Promise.all(
+      batch.map(async (file) => {
+        try {
+          const fullPath = path.resolve(rootDir, file.localPath);
+          const content = fs.readFileSync(fullPath, "utf-8");
+          const blobSha = await createBlob(content);
+          return { file, blobSha, error: null };
+        } catch (err: any) {
+          return { file, blobSha: null, error: err.message };
+        }
+      })
+    );
+
+    for (const { file, blobSha, error } of blobResults) {
+      if (blobSha) {
+        treeItems.push({
+          path: file.path,
+          mode: "100644",
+          type: "blob",
+          sha: blobSha,
+        });
+        results.push({ path: file.path, status: "synced" });
+      } else {
+        results.push({ path: file.path, status: `error: ${error}` });
+      }
+    }
+  }
+
+  if (treeItems.length === 0) {
+    return { success: false, filesCount: 0, results, message: "No files to sync" };
+  }
+
+  const branch = "main";
+  const headSha = await getRef(branch);
+  const baseTreeSha = await getCommit(headSha);
+
+  const MAX_TREE_BATCH = 100;
+  let currentTreeSha = baseTreeSha;
+  for (let i = 0; i < treeItems.length; i += MAX_TREE_BATCH) {
+    const batch = treeItems.slice(i, i + MAX_TREE_BATCH);
+    currentTreeSha = await createTree(currentTreeSha, batch);
+  }
+
+  const timestamp = new Date().toISOString().split("T")[0];
+  const commitMessage = `chore: full platform sync — ${treeItems.length} files [${timestamp}]`;
+  const commitSha = await createCommit(commitMessage, currentTreeSha, headSha);
+  await updateRef(branch, commitSha);
+
+  return {
+    success: true,
+    filesCount: treeItems.length,
+    results,
+    message: `Pushed ${treeItems.length} files to ${REPO_OWNER}/${REPO_NAME} in a single commit`,
+  };
 }
 
 async function getFileSha(filePath: string): Promise<string | null> {
@@ -182,4 +367,9 @@ export async function checkGitHubConnection(): Promise<{
 
 export function getProtocolFileList(): string[] {
   return PROTOCOL_FILES.map((f) => f.path);
+}
+
+export function getAllFileList(): string[] {
+  const rootDir = process.cwd();
+  return discoverFiles(rootDir).map((f) => f.path);
 }
