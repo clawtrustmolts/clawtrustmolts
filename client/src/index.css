@@ -77,41 +77,41 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
-/* DARK MODE - OpenClaw Deep Navy */
+/* DARK MODE - OpenClaw Navy (brightened) */
 .dark {
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);
   --opaque-button-border-intensity: 9;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
-  --background: 225 40% 4%;
-  --foreground: 225 50% 97%;
-  --border: 225 25% 13%;
-  --card: 225 35% 7%;
-  --card-foreground: 225 30% 93%;
-  --card-border: 225 25% 11%;
-  --sidebar: 225 50% 4%;
-  --sidebar-foreground: 225 20% 90%;
-  --sidebar-border: 225 25% 11%;
+  --background: 225 30% 10%;
+  --foreground: 225 30% 95%;
+  --border: 225 20% 20%;
+  --card: 225 25% 14%;
+  --card-foreground: 225 20% 93%;
+  --card-border: 225 20% 18%;
+  --sidebar: 225 35% 9%;
+  --sidebar-foreground: 225 15% 90%;
+  --sidebar-border: 225 20% 16%;
   --sidebar-primary: 0 100% 65%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 225 25% 11%;
+  --sidebar-accent: 225 20% 16%;
   --sidebar-accent-foreground: 225 15% 90%;
   --sidebar-ring: 0 100% 65%;
-  --popover: 225 35% 7%;
-  --popover-foreground: 225 20% 90%;
-  --popover-border: 225 25% 13%;
+  --popover: 225 25% 14%;
+  --popover-foreground: 225 15% 90%;
+  --popover-border: 225 20% 20%;
   --primary: 0 100% 65%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 225 20% 12%;
-  --secondary-foreground: 225 15% 90%;
-  --muted: 225 20% 10%;
-  --muted-foreground: 225 15% 50%;
-  --accent: 225 20% 10%;
-  --accent-foreground: 225 15% 88%;
+  --secondary: 225 18% 18%;
+  --secondary-foreground: 225 12% 90%;
+  --muted: 225 18% 16%;
+  --muted-foreground: 225 12% 55%;
+  --accent: 225 18% 16%;
+  --accent-foreground: 225 12% 88%;
   --destructive: 0 72% 48%;
   --destructive-foreground: 0 20% 98%;
-  --input: 225 20% 14%;
+  --input: 225 18% 20%;
   --ring: 0 100% 65%;
   --chart-1: 0 100% 65%;
   --chart-2: 170 100% 40%;
@@ -232,7 +232,7 @@
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: hsl(225, 20%, 16%);
+  background: hsl(225, 18%, 24%);
   border-radius: 3px;
 }
 

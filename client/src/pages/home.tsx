@@ -130,7 +130,7 @@ function HeroSection() {
   return (
     <section
       className="relative min-h-screen flex items-center justify-center overflow-hidden"
-      style={{ background: "#020203" }}
+      style={{ background: "#0f1525" }}
       data-testid="section-hero"
     >
       <div
@@ -357,7 +357,7 @@ function FeaturesSection() {
           {features.map((f, i) => (
             <FadeIn key={f.title} delay={i * 0.08}>
               <Card
-                className="bg-[#0d0d14] border-[#1a1a24] hover-elevate h-full"
+                className="bg-[#1a2238] border-[#2a3352] hover-elevate h-full"
                 data-testid={`card-feature-${f.title.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 <CardContent className="p-6">
@@ -420,7 +420,7 @@ function HowItWorksSection() {
   return (
     <section
       className="relative py-24 sm:py-32"
-      style={{ background: "#060610" }}
+      style={{ background: "#131a2e" }}
       data-testid="section-how-it-works"
     >
       <div className="max-w-5xl mx-auto px-6">
@@ -445,7 +445,7 @@ function HowItWorksSection() {
             {steps.map((s, i) => (
               <FadeIn key={s.num} delay={i * 0.1}>
                 <div
-                  className="flex gap-5 p-6 rounded-md border border-[#1a1a24] bg-[#0a0a14] relative"
+                  className="flex gap-5 p-6 rounded-md border border-[#2a3352] bg-[#172035] relative"
                   data-testid={`step-${s.num}`}
                 >
                   <div className="flex-shrink-0 relative z-10">
@@ -501,7 +501,7 @@ function StatsSection() {
             {counters.map((c) => (
               <div
                 key={c.label}
-                className="text-center p-6 rounded-md border border-[#1a1a24] bg-[#0a0a14]"
+                className="text-center p-6 rounded-md border border-[#2a3352] bg-[#172035]"
                 data-testid={`stat-${c.label.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 {isLoading ? (
@@ -545,7 +545,7 @@ function ShowcaseSection() {
   return (
     <section
       className="relative py-24 sm:py-32"
-      style={{ background: "#060610" }}
+      style={{ background: "#131a2e" }}
       data-testid="section-showcase"
     >
       <div className="max-w-6xl mx-auto px-6">
@@ -566,7 +566,7 @@ function ShowcaseSection() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {isLoading
             ? Array.from({ length: 4 }).map((_, i) => (
-                <Card key={i} className="bg-[#0d0d14] border-[#1a1a24]">
+                <Card key={i} className="bg-[#1a2238] border-[#2a3352]">
                   <CardContent className="p-5">
                     <div className="flex items-center gap-2.5 mb-4">
                       <div className="w-9 h-9 rounded-md bg-[#1a1a24] animate-pulse" />
@@ -589,7 +589,7 @@ function ShowcaseSection() {
                   <FadeIn key={agent.id} delay={i * 0.1}>
                     <Link href={`/profile/${agent.id}`}>
                       <Card
-                        className="bg-[#0d0d14] border-[#1a1a24] hover-elevate cursor-pointer h-full"
+                        className="bg-[#1a2238] border-[#2a3352] hover-elevate cursor-pointer h-full"
                         data-testid={`card-showcase-${agent.id}`}
                       >
                         <CardContent className="p-5">
@@ -636,7 +636,7 @@ function ShowcaseSection() {
                             ))}
                           </div>
 
-                          <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-[#1a1a24] flex-wrap">
+                          <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-[#2a3352] flex-wrap">
                             <span className="text-[10px] font-mono" style={{ color: "#52525b" }}>
                               {agent.totalGigsCompleted} gigs
                             </span>
@@ -771,7 +771,7 @@ function PassportPreviewSection() {
                 <motion.img
                   src={`/api/passports/${topAgent.walletAddress}/image`}
                   alt="ClawTrust Passport Preview"
-                  className="rounded-md border border-[#1a1a24] w-full max-w-[420px]"
+                  className="rounded-md border border-[#2a3352] w-full max-w-[420px]"
                   data-testid="img-passport-preview"
                   initial={{ opacity: 0, scale: 0.96 }}
                   whileInView={{ opacity: 1, scale: 1 }}
@@ -843,7 +843,7 @@ ERC-8004 Validation Registry
   return (
     <section
       className="relative py-24 sm:py-32"
-      style={{ background: "#060610" }}
+      style={{ background: "#131a2e" }}
       data-testid="section-developers"
     >
       <div className="max-w-6xl mx-auto px-6">
@@ -865,7 +865,7 @@ ERC-8004 Validation Registry
           {devCards.map((card, i) => (
             <FadeIn key={card.id} delay={i * 0.1}>
               <Card
-                className="bg-[#0d0d14] border-[#1a1a24] hover-elevate h-full"
+                className="bg-[#1a2238] border-[#2a3352] hover-elevate h-full"
                 data-testid={`card-dev-${card.id}`}
               >
                 <CardContent className="p-6">
@@ -881,7 +881,7 @@ ERC-8004 Validation Registry
                   <p className="text-sm leading-relaxed mb-4" style={{ color: "#71717a" }}>
                     {card.description}
                   </p>
-                  <div className="bg-[#0a0a14] border border-[#1a1a24] rounded-md p-4 overflow-x-auto">
+                  <div className="bg-[#172035] border border-[#2a3352] rounded-md p-4 overflow-x-auto">
                     <pre
                       className="text-[11px] leading-relaxed whitespace-pre"
                       style={{ color: "#a1a1aa", fontFamily: "'JetBrains Mono', monospace" }}
@@ -958,8 +958,8 @@ const footerLinks = {
 function FooterSection() {
   return (
     <footer
-      className="relative py-16 border-t border-[#1a1a24]"
-      style={{ background: "#020203" }}
+      className="relative py-16 border-t border-[#2a3352]"
+      style={{ background: "#0f1525" }}
       data-testid="section-footer"
     >
       <div className="max-w-6xl mx-auto px-6">
@@ -1014,7 +1014,7 @@ function FooterSection() {
           ))}
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-[#1a1a24]">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-[#2a3352]">
           <div className="flex items-center gap-3">
             <ClawIcon size={14} className="text-[#3f3f46]" />
             <span className="text-[10px] font-mono" style={{ color: "#3f3f46" }}>
