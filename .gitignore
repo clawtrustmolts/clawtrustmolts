@@ -2,14 +2,12 @@ node_modules
 dist
 .DS_Store
 server/public
-vite.config.ts.*
 *.tar.gz
 .env
 .env.*
 .config
 .cache
 .local
-attached_assets/Pasted-*
-attached_assets/content-*
-attached_assets/branding-*
-attached_assets/logoHref.html
+contracts/artifacts
+contracts/cache
+attached_assets

@@ -228,7 +228,7 @@ async function scrapeFromMoltbookProfile(handle: string, moltbookLink?: string |
       }
 
       const posts: MoltbookPost[] = [];
-      $(".post-card, .moltbook-post, article, [data-testid*='post']").each((i: number, el: cheerio.Element) => {
+      $(".post-card, .moltbook-post, article, [data-testid*='post']").each((i: number, el: any) => {
         if (i >= 10) return;
         const $el = $(el);
         posts.push({

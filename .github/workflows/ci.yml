@@ -45,7 +45,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci --ignore-scripts
-      - run: npm run db:push
+      - run: npx drizzle-kit push
       - run: npm run build
 
   contracts:
@@ -58,15 +58,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm ci --ignore-scripts
+      - run: npm install --ignore-scripts
       - run: npx hardhat compile
 
   cli-smoke:
     runs-on: ubuntu-latest
-    env:
-      BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
-      CIRCLE_API_KEY: ${{ secrets.CIRCLE_API_KEY }}
-      CIRCLE_CLIENT_KEY: ${{ secrets.CIRCLE_CLIENT_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
