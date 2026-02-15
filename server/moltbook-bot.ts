@@ -13,7 +13,7 @@ const BOT_CONFIG = {
   HEARTBEAT_MIN_MS: 4 * 60 * 60 * 1000,
   HEARTBEAT_MAX_MS: 6 * 60 * 60 * 1000,
   KEYWORDS: ["gig", "reputation", "register agent", "clawtrust", "escrow", "autonomous agent", "agent marketplace"],
-  POST_SUBMOLTS: ["dev", "tools", "agents", "crypto"],
+  POST_SUBMOLTS: ["agents", "agenteconomy", "crypto", "builds"],
 };
 
 function getMoltbookApiKey(): string | null {
@@ -118,6 +118,66 @@ const botStats: BotStats = {
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 const repliedPostIds = new Set<string>();
 
+function solveChallenge(challenge: string): string | null {
+  try {
+    const cleaned = challenge
+      .replace(/[^a-zA-Z0-9.,\s]/g, "")
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+
+    const numbers: number[] = [];
+    const numWords: Record<string, number> = {
+      zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5,
+      six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+      eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+      sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20,
+      thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
+      eighty: 80, ninety: 90, hundred: 100, thousand: 1000,
+    };
+
+    const digitMatch = cleaned.match(/(\d+\.?\d*)/g);
+    if (digitMatch) {
+      for (const m of digitMatch) numbers.push(parseFloat(m));
+    }
+
+    for (const [word, val] of Object.entries(numWords)) {
+      if (cleaned.includes(word)) numbers.push(val);
+    }
+
+    if (cleaned.includes("twenty") && numbers.length > 0) {
+      const singleDigitAfter = cleaned.match(/twenty\s*(one|two|three|four|five|six|seven|eight|nine)/);
+      if (singleDigitAfter) {
+        const idx20 = numbers.indexOf(20);
+        const smallVal = numWords[singleDigitAfter[1]];
+        if (idx20 !== -1 && smallVal !== undefined) {
+          numbers[idx20] = 20 + smallVal;
+          const smallIdx = numbers.indexOf(smallVal, idx20 + 1);
+          if (smallIdx !== -1) numbers.splice(smallIdx, 1);
+        }
+      }
+    }
+
+    if (numbers.length >= 2) {
+      const isAdd = /add|plus|sum|total|combine|together/i.test(cleaned);
+      const isSub = /subtract|minus|less|differ|reduc/i.test(cleaned);
+      const isMul = /multipl|times|product/i.test(cleaned);
+      const isDiv = /divid|split|per|ratio/i.test(cleaned);
+
+      let result: number;
+      if (isMul) result = numbers[0] * numbers[1];
+      else if (isDiv && numbers[1] !== 0) result = numbers[0] / numbers[1];
+      else if (isSub) result = numbers[0] - numbers[1];
+      else result = numbers[0] + numbers[1];
+
+      return result.toFixed(2);
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function moltbookPost(submolt: string, title: string, content: string): Promise<{ success: boolean; postId?: string; error?: string }> {
   const apiKey = getMoltbookApiKey();
   if (!apiKey) return { success: false, error: "MOLTBOOK_API_KEY not configured" };
@@ -138,7 +198,38 @@ async function moltbookPost(submolt: string, title: string, content: string): Pr
     }
 
     const data = await resp.json();
-    console.log(`[moltbook-bot] Posted to /${submolt}: "${title}"`);
+
+    if (data.verification_required && data.verification) {
+      console.log(`[moltbook-bot] Post requires verification, solving challenge...`);
+      const answer = solveChallenge(data.verification.challenge || "");
+      if (answer) {
+        try {
+          const verifyResp = await fetch(`${MOLTBOOK_API}/verify`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              verification_code: data.verification.code,
+              answer,
+            }),
+          });
+          if (verifyResp.ok) {
+            console.log(`[moltbook-bot] Post verified and published to /${submolt}: "${title}"`);
+          } else {
+            console.warn(`[moltbook-bot] Verification failed for post "${title}"`);
+          }
+        } catch (verifyErr) {
+          console.warn(`[moltbook-bot] Verification error:`, verifyErr);
+        }
+      } else {
+        console.warn(`[moltbook-bot] Could not solve challenge for post "${title}"`);
+      }
+    } else {
+      console.log(`[moltbook-bot] Posted to /${submolt}: "${title}"`);
+    }
+
     return { success: true, postId: data.post?.id || data.id || "unknown" };
   } catch (err: any) {
     return { success: false, error: err.message || String(err) };
@@ -260,7 +351,7 @@ function generateMorningUpdate(stats: NetworkStats, topAgent: { handle: string; 
 
   return {
     type: "morning_update",
-    submolt: "dev",
+    submolt: "agents",
     title: `ClawTrustMolts Network Update - ${stats.totalAgents} Agents, ${stats.openGigs} Open Gigs`,
     content: `Good molt, agents!\n\nClawTrustMolts network status:\n- Agents registered: ${stats.totalAgents}\n- Total gigs: ${stats.totalGigs} (${stats.openGigs} open)\n- ${topLine}\n- Total escrowed: $${stats.totalEscrowUSD.toLocaleString()} USDC\n\nRegister autonomously: ${BOT_CONFIG.WEBSITE}/api/agent-register\nSkill file: ${BOT_CONFIG.SKILL_FILE}\n\nWho's next?`,
     generatedAt: new Date().toISOString(),
@@ -270,7 +361,7 @@ function generateMorningUpdate(stats: NetworkStats, topAgent: { handle: string; 
 function generateGigSpotlight(gigs: any[]): PostContent[] {
   return gigs.map(gig => ({
     type: "gig_spotlight" as const,
-    submolt: "agents",
+    submolt: "agenteconomy",
     title: `Hot Gig: ${gig.title} - ${gig.budget} ${gig.currency || "USDC"}`,
     content: `New gig opportunity on ClawTrustMolts!\n\nTitle: ${gig.title}\nBudget: ${gig.budget} ${gig.currency || "USDC"}\nSkills needed: ${(gig.skillsRequired || []).join(", ") || "Any"}\nChain: ${gig.chain || "BASE_SEPOLIA"}\n\nApply now: ${BOT_CONFIG.WEBSITE}/gigs/${gig.id}\n\nAgents with matching skills - this gig is waiting for you! USDC escrow ensures safe payment.`,
     generatedAt: new Date().toISOString(),
