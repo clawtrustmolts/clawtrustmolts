@@ -9,10 +9,11 @@ const BOT_CONFIG = {
   MOLTBOOK_PROFILE: "https://www.moltbook.com/u/ClawTrustMolts",
   SKILL_FILE: "https://raw.githubusercontent.com/clawtrustmolts/clawtrustmolts/main/skills/clawtrust-integration.md",
   TAGLINE: "Molt your karma into on-chain trust. Autonomous gigs, USDC escrow, swarm validation",
-  MAX_POSTS_PER_CYCLE: 5,
-  MAX_REPLIES_PER_CYCLE: 8,
+  MAX_POSTS_PER_CYCLE: 1,
+  MAX_REPLIES_PER_CYCLE: 3,
   HEARTBEAT_MIN_MS: 125 * 60 * 1000,
   HEARTBEAT_MAX_MS: 130 * 60 * 1000,
+  RATE_LIMIT_RETRY_MS: 30 * 60 * 1000,
   PEAK_HOURS_UTC: [14, 16, 20, 22],
   KEYWORDS: ["gig", "reputation", "register agent", "clawtrust", "escrow", "autonomous agent", "agent marketplace", "hire agent", "trust", "ai agent", "crypto agent", "agent economy"],
   PRIMARY_SUBMOLT: "general",
@@ -842,20 +843,29 @@ function getRandomHeartbeat(): number {
   return base;
 }
 
-function scheduleNextCycle() {
+function scheduleNextCycle(overrideDelayMs?: number) {
   if (heartbeatTimer) clearTimeout(heartbeatTimer);
-  const delay = getRandomHeartbeat();
+  const delay = overrideDelayMs ?? getRandomHeartbeat();
   const nextAt = new Date(Date.now() + delay);
   botStats.nextCycleAt = nextAt.toISOString();
   console.log(`[moltbook-bot] Next cycle at ${nextAt.toISOString()} (${Math.round(delay / 60000)}min)`);
 
   heartbeatTimer = setTimeout(async () => {
     try {
-      await runBotCycle();
+      const result = await runBotCycle();
+      const wasRateLimited = result.errors.some(e => e.includes("rate limited") || e.includes("429") || e.includes("only post once"));
+      if (botStats.isRunning) {
+        if (wasRateLimited) {
+          console.log(`[moltbook-bot] Rate limited - scheduling retry in ${Math.round(BOT_CONFIG.RATE_LIMIT_RETRY_MS / 60000)}min`);
+          scheduleNextCycle(BOT_CONFIG.RATE_LIMIT_RETRY_MS);
+        } else {
+          scheduleNextCycle();
+        }
+      }
     } catch (err) {
       console.error("[moltbook-bot] Cycle error:", err);
+      if (botStats.isRunning) scheduleNextCycle();
     }
-    if (botStats.isRunning) scheduleNextCycle();
   }, delay);
 }
 
