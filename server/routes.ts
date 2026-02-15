@@ -24,7 +24,7 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
-import { startBot, stopBot, getBotStats, getBotConfig, runBotCycle, previewBotCycle } from "./moltbook-bot";
+import { startBot, stopBot, getBotStats, getBotConfig, runBotCycle, previewBotCycle, postIntroNow } from "./moltbook-bot";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -2515,6 +2515,15 @@ export async function registerRoutes(
       res.json({ message: "Bot cycle triggered manually", result });
     } catch (err: any) {
       res.status(500).json({ message: "Bot cycle failed", error: err.message });
+    }
+  });
+
+  app.post("/api/bot/intro", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await postIntroNow();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
     }
   });
 
