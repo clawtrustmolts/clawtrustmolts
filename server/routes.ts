@@ -4,6 +4,8 @@ import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
 import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema } from "@shared/schema";
 import { z } from "zod";
+import * as jose from "jose";
+import crypto from "crypto";
 import { type Address } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation } from "./reputation";
 import {
@@ -152,6 +154,51 @@ function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
   });
 }
 
+let privyVerificationKey: crypto.KeyObject | null = null;
+try {
+  const keyPem = process.env.PRIVY_VERIFICATION_KEY;
+  if (keyPem) {
+    privyVerificationKey = crypto.createPublicKey(keyPem.replace(/\\n/g, "\n"));
+    console.log("[Auth] Privy verification key loaded - cryptographic JWT verification enabled");
+  }
+} catch (err: any) {
+  console.error("[Auth] Failed to load PRIVY_VERIFICATION_KEY:", err.message);
+}
+
+async function verifyPrivyJWT(token: string): Promise<{ verified: boolean; payload?: any; error?: string }> {
+  if (privyVerificationKey) {
+    try {
+      const { payload } = await jose.jwtVerify(token, privyVerificationKey, {
+        issuer: "privy.io",
+        audience: process.env.PRIVY_APP_ID,
+      });
+      return { verified: true, payload };
+    } catch (err: any) {
+      return { verified: false, error: err.message?.slice(0, 200) };
+    }
+  }
+
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return { verified: false, error: "Not a valid JWT format" };
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
+
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      return { verified: false, error: `Token expired at ${new Date(payload.exp * 1000).toISOString()}` };
+    }
+    if (payload.iss && !payload.iss.includes("privy")) {
+      return { verified: false, error: `Wrong issuer: ${String(payload.iss).slice(0, 50)}` };
+    }
+    if (payload.aud && payload.aud !== process.env.PRIVY_APP_ID) {
+      return { verified: false, error: "Wrong audience" };
+    }
+
+    return { verified: true, payload };
+  } catch {
+    return { verified: false, error: "Failed to decode token" };
+  }
+}
+
 function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
   if (!process.env.PRIVY_APP_ID) return next();
 
@@ -169,39 +216,33 @@ function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ message: "Invalid authentication token" });
   }
 
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) {
-      logSuspiciousActivity(req, "auth_malformed_jwt", "Token is not a valid JWT format");
-      return res.status(401).json({ message: "Invalid authentication token format" });
-    }
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
-
-    if (payload.exp && payload.exp * 1000 < Date.now()) {
-      logSuspiciousActivity(req, "auth_expired_token", `Token expired at ${new Date(payload.exp * 1000).toISOString()}`);
-      return res.status(401).json({ message: "Authentication token has expired. Please reconnect your wallet." });
+  verifyPrivyJWT(token).then((result) => {
+    if (!result.verified) {
+      logSuspiciousActivity(req, "auth_verification_failed", result.error || "JWT verification failed");
+      return res.status(401).json({ message: "Authentication failed. Please reconnect your wallet." });
     }
 
-    if (payload.iss && !payload.iss.includes("privy")) {
-      logSuspiciousActivity(req, "auth_wrong_issuer", `Unexpected token issuer: ${String(payload.iss).slice(0, 50)}`);
-      return res.status(401).json({ message: "Invalid authentication token issuer" });
+    if (walletHeader && !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+      logSuspiciousActivity(req, "invalid_wallet", `Invalid wallet header: ${walletHeader?.slice(0, 20)}`);
+      return res.status(400).json({ message: "Invalid wallet address format" });
+    }
+
+    const tokenWallet = result.payload?.wallet_address || result.payload?.linked_accounts?.find?.((a: any) => a.type === "wallet")?.address;
+    if (walletHeader && tokenWallet && walletHeader.toLowerCase() !== tokenWallet.toLowerCase()) {
+      logSuspiciousActivity(req, "auth_wallet_mismatch", `Header wallet ${walletHeader} != token wallet ${tokenWallet}`, "critical");
+      return res.status(403).json({ message: "Wallet address does not match authenticated identity" });
     }
 
     (req as any).authUser = {
-      sub: payload.sub,
-      walletAddress: walletHeader || payload.wallet_address,
+      sub: result.payload?.sub,
+      walletAddress: walletHeader || tokenWallet,
     };
-  } catch {
-    logSuspiciousActivity(req, "auth_decode_failed", "Failed to decode authentication token");
-    return res.status(401).json({ message: "Invalid authentication token" });
-  }
 
-  if (walletHeader && !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
-    logSuspiciousActivity(req, "invalid_wallet", `Invalid wallet header: ${walletHeader?.slice(0, 20)}`);
-    return res.status(400).json({ message: "Invalid wallet address format" });
-  }
-
-  next();
+    next();
+  }).catch(() => {
+    logSuspiciousActivity(req, "auth_internal_error", "Internal auth verification error");
+    return res.status(500).json({ message: "Authentication service error" });
+  });
 }
 
 function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -2375,7 +2416,9 @@ export async function registerRoutes(
 
     checks.auth = {
       status: process.env.PRIVY_APP_ID ? "active" : "bypassed",
-      details: process.env.PRIVY_APP_ID ? "Privy wallet auth enforced" : "No PRIVY_APP_ID - auth middleware bypassed",
+      details: process.env.PRIVY_APP_ID
+        ? (privyVerificationKey ? "Privy JWT (cryptographic ES256 verification)" : "Privy JWT (structure validation, set PRIVY_VERIFICATION_KEY for full crypto)")
+        : "No PRIVY_APP_ID - auth middleware bypassed",
     };
 
     checks.captcha = {
