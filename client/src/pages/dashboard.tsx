@@ -1,11 +1,16 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/stat-card";
 import { AgentRow } from "@/components/agent-row";
+import { PassportCard3D } from "@/components/passport-card-3d";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Briefcase, Users, TrendingUp, Zap, Activity, Radio, DollarSign, Trophy, Globe } from "lucide-react";
+import { Briefcase, Users, TrendingUp, Zap, Activity, DollarSign, Trophy, Globe, ArrowRight, UserSearch } from "lucide-react";
+import { Link } from "wouter";
 import type { Agent, Gig } from "@shared/schema";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -20,9 +25,24 @@ const mockChartData = [
 ];
 
 export default function Dashboard() {
+  const [actorAgentId, setActorAgentId] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("clawtrust_actor_id") || "";
+    return "";
+  });
+
+  const saveActorId = (id: string) => {
+    setActorAgentId(id);
+    if (typeof window !== "undefined") {
+      if (id) localStorage.setItem("clawtrust_actor_id", id);
+      else localStorage.removeItem("clawtrust_actor_id");
+    }
+  };
+
   const { data: agents, isLoading: agentsLoading } = useQuery<Agent[]>({
     queryKey: ["/api/agents"],
   });
+
+  const myAgent = actorAgentId ? agents?.find((a) => a.id === actorAgentId) : null;
 
   const { data: gigs, isLoading: gigsLoading } = useQuery<Gig[]>({
     queryKey: ["/api/gigs"],
@@ -55,6 +75,8 @@ export default function Dashboard() {
     ? [...gigs].sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()).slice(0, 5)
     : [];
 
+  const openGigs = gigs?.filter((g) => g.status === "open").slice(0, 4) ?? [];
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
       <div>
@@ -68,6 +90,92 @@ export default function Dashboard() {
           Real-time reputation analytics for the OpenClaw agent network
         </p>
       </div>
+
+      {myAgent ? (
+        <div className="grid lg:grid-cols-2 gap-4 items-start">
+          <div>
+            <PassportCard3D agent={myAgent} enable3D={false} enableHover={false} />
+            <div className="mt-3 flex items-center justify-center gap-2">
+              <Link href={`/profile/${myAgent.id}`}>
+                <Button variant="outline" size="sm" data-testid="button-view-my-profile">
+                  <UserSearch className="w-3.5 h-3.5 mr-1" />
+                  View Full Profile
+                </Button>
+              </Link>
+              <Button variant="ghost" size="sm" onClick={() => saveActorId("")} data-testid="button-clear-agent-id">
+                Switch Agent
+              </Button>
+            </div>
+          </div>
+          {openGigs.length > 0 && (
+            <Card data-testid="card-available-gigs">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-sm font-display tracking-wider">AVAILABLE GIGS</CardTitle>
+                <Link href="/gigs">
+                  <Button variant="ghost" size="sm" className="text-xs gap-1" data-testid="button-browse-all-gigs">
+                    Browse All <ArrowRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 space-y-1.5">
+                {openGigs.map((gig) => {
+                  const poster = agents?.find((a) => a.id === gig.posterId);
+                  const hasMatchingSkill = myAgent.skills.some((s) =>
+                    gig.skillsRequired.some((r) => r.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(r.toLowerCase()))
+                  );
+                  return (
+                    <Link key={gig.id} href="/gigs">
+                      <div
+                        className="flex items-center justify-between gap-2 p-2.5 rounded-md hover-elevate cursor-pointer"
+                        data-testid={`open-gig-${gig.id}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-sm font-medium truncate">{gig.title}</p>
+                            {hasMatchingSkill && (
+                              <Badge variant="default" className="text-[9px]">Match</Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              <Zap className="w-3 h-3 inline mr-0.5 text-chart-2" />
+                              {gig.budget} {gig.currency}
+                            </span>
+                            {poster && (
+                              <span className="text-[10px] font-mono text-muted-foreground">by {poster.handle}</span>
+                            )}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="text-[10px] font-mono flex-shrink-0">
+                          <Globe className="w-2.5 h-2.5 mr-0.5" />
+                          {gig.chain === "SOL_DEVNET" ? "SOL" : "BASE"}
+                        </Badge>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      ) : (
+        <Card data-testid="card-agent-id-prompt">
+          <CardContent className="p-4 flex items-center gap-3 flex-wrap">
+            <UserSearch className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+            <div className="flex-1 min-w-[200px]">
+              <p className="text-sm font-medium">Set your Agent ID to see your passport</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Paste your agent ID to view your passport card and discover matching gigs</p>
+            </div>
+            <Input
+              placeholder="Paste your Agent ID..."
+              value={actorAgentId}
+              onChange={(e) => saveActorId(e.target.value)}
+              className="max-w-xs text-xs font-mono"
+              data-testid="input-dashboard-agent-id"
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard

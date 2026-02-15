@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Plus, Search, Zap, Clock, User, Filter, Shield, CheckCircle2, XCircle,
-  ChevronDown, Globe, Lock, Unlock, AlertTriangle, ArrowRight, UserPlus, Play,
+  ChevronDown, Globe, Lock, Unlock, AlertTriangle, ArrowRight, UserPlus, Play, MessageSquare,
 } from "lucide-react";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
 import type { Gig, Agent, EscrowTransaction } from "@shared/schema";
@@ -70,12 +70,45 @@ function GigDetailDialog({
 }) {
   const { toast } = useToast();
   const [selectedAssignee, setSelectedAssignee] = useState("");
+  const [applyMessage, setApplyMessage] = useState("");
+  const actorAgentId = typeof window !== "undefined" ? localStorage.getItem("clawtrust_actor_id") || "" : "";
 
   const { data: allGigs } = useQuery<GigWithValidation[]>({ queryKey: ["/api/gigs"] });
   const gig = allGigs?.find((g) => g.id === initialGig.id) || initialGig;
 
   const poster = agents.find((a) => a.id === gig.posterId);
   const assignee = gig.assigneeId ? agents.find((a) => a.id === gig.assigneeId) : null;
+
+  const { data: applicants } = useQuery<{ id: string; gigId: string; agentId: string; message: string | null; createdAt: string; agent: { id: string; handle: string; fusedScore: number; skills: string[] } }[]>({
+    queryKey: ["/api/gigs", gig.id, "applicants"],
+    enabled: open,
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/gigs/${gig.id}/apply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-agent-id": actorAgentId,
+        },
+        body: JSON.stringify({ message: applyMessage || undefined }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ message: "Application failed" }));
+        throw new Error(data.message || "Application failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs", gig.id, "applicants"] });
+      toast({ title: "Application submitted", description: "Your application has been sent." });
+      setApplyMessage("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Application failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   const { data: escrow, isLoading: escrowLoading, isError: escrowError } = useQuery<EscrowTransaction>({
     queryKey: ["/api/escrow", gig.id],
@@ -263,6 +296,75 @@ function GigDetailDialog({
                 >
                   {assignMutation.isPending ? "..." : "Assign"}
                 </Button>
+              </div>
+            </div>
+          )}
+
+          {gig.status === "open" && (
+            <div className="space-y-2 p-3 rounded-md border">
+              <span className="text-xs font-mono font-semibold flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5" />
+                APPLY TO THIS GIG
+              </span>
+              {actorAgentId ? (
+                <div className="space-y-2">
+                  <Textarea
+                    placeholder="Optional message with your application..."
+                    value={applyMessage}
+                    onChange={(e) => setApplyMessage(e.target.value)}
+                    className="text-sm"
+                    data-testid="input-apply-message"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={applyMutation.isPending}
+                    onClick={() => applyMutation.mutate()}
+                    data-testid="button-apply-gig"
+                  >
+                    {applyMutation.isPending ? "Applying..." : "Apply"}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Enter your Agent ID on any profile page to apply
+                </p>
+              )}
+            </div>
+          )}
+
+          {applicants && applicants.length > 0 && (
+            <div className="space-y-2 p-3 rounded-md border">
+              <span className="text-xs font-mono font-semibold flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5" />
+                APPLICANTS ({applicants.length})
+              </span>
+              <div className="space-y-2">
+                {applicants.map((a) => (
+                  <div key={a.id} className="flex items-start justify-between gap-2 p-2 rounded-md bg-muted/40">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap" data-testid={`text-applicant-${a.agentId}`}>
+                        <span className="text-xs font-mono font-semibold">{a.agent.handle}</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          score: {a.agent.fusedScore.toFixed(1)}
+                        </Badge>
+                      </div>
+                      {a.message && (
+                        <p className="text-xs text-muted-foreground mt-1">{a.message}</p>
+                      )}
+                    </div>
+                    {gig.status === "open" && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={assignMutation.isPending}
+                        onClick={() => assignMutation.mutate(a.agentId)}
+                        data-testid={`button-accept-applicant-${a.agentId}`}
+                      >
+                        {assignMutation.isPending ? "..." : "Accept"}
+                      </Button>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}

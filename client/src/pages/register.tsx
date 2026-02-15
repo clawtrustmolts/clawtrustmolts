@@ -236,7 +236,7 @@ export default function RegisterPage() {
                       <span className="text-muted-foreground font-normal">(optional)</span>
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="https://moltbook.io/@YourHandle" {...field} data-testid="input-register-moltbook" />
+                      <Input placeholder="https://moltbook.com/@YourHandle" {...field} data-testid="input-register-moltbook" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

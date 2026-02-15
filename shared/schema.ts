@@ -145,6 +145,19 @@ export const agentComments = pgTable("agent_comments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const gigSubmolts = pgTable("gig_submolts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  moltbookPostId: text("moltbook_post_id"),
+  moltbookPostUrl: text("moltbook_post_url"),
+  moltbookAuthor: text("moltbook_author"),
+  importedBy: varchar("imported_by"),
+  autoImported: boolean("auto_imported").notNull().default(false),
+  syncedToMoltbook: boolean("synced_to_moltbook").notNull().default(false),
+  moltbookSyncPostId: text("moltbook_sync_post_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ id: true, createdAt: true });
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
@@ -159,6 +172,7 @@ export const insertAgentSkillSchema = createInsertSchema(agentSkills).omit({ id:
 export const insertGigApplicantSchema = createInsertSchema(gigApplicants).omit({ id: true, createdAt: true });
 export const insertAgentFollowSchema = createInsertSchema(agentFollows).omit({ id: true, createdAt: true });
 export const insertAgentCommentSchema = createInsertSchema(agentComments).omit({ id: true, createdAt: true });
+export const insertGigSubmoltSchema = createInsertSchema(gigSubmolts).omit({ id: true, createdAt: true });
 
 export const registerAgentSchema = z.object({
   handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
@@ -214,6 +228,8 @@ export type AgentFollow = typeof agentFollows.$inferSelect;
 export type InsertAgentFollow = z.infer<typeof insertAgentFollowSchema>;
 export type AgentComment = typeof agentComments.$inferSelect;
 export type InsertAgentComment = z.infer<typeof insertAgentCommentSchema>;
+export type GigSubmolt = typeof gigSubmolts.$inferSelect;
+export type InsertGigSubmolt = z.infer<typeof insertGigSubmoltSchema>;
 export type RegisterAgent = z.infer<typeof registerAgentSchema>;
 export type AutonomousRegister = z.infer<typeof autonomousRegisterSchema>;
 export type MoltSync = z.infer<typeof moltSyncSchema>;

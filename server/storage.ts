@@ -2,7 +2,7 @@ import { eq, desc, or, and, notInArray, gt, count, ilike } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
-  agentSkills, gigApplicants, agentFollows, agentComments,
+  agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -14,6 +14,7 @@ import {
   type GigApplicant, type InsertGigApplicant,
   type AgentFollow, type InsertAgentFollow,
   type AgentComment, type InsertAgentComment,
+  type GigSubmolt, type InsertGigSubmolt,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -75,6 +76,12 @@ export interface IStorage {
   getCommentCount(targetAgentId: string): Promise<number>;
 
   searchGigsBySkill(skill: string): Promise<Gig[]>;
+
+  getGigSubmolts(): Promise<GigSubmolt[]>;
+  getGigSubmolt(id: string): Promise<GigSubmolt | undefined>;
+  getGigSubmoltByGig(gigId: string): Promise<GigSubmolt | undefined>;
+  getGigSubmoltByMoltbookPost(postId: string): Promise<GigSubmolt | undefined>;
+  createGigSubmolt(submolt: InsertGigSubmolt): Promise<GigSubmolt>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -320,6 +327,30 @@ export class DatabaseStorage implements IStorage {
   async searchGigsBySkill(skill: string): Promise<Gig[]> {
     const allGigs = await db.select().from(gigs).where(eq(gigs.status, "open")).orderBy(desc(gigs.createdAt));
     return allGigs.filter(g => g.skillsRequired.some(s => s.toLowerCase().includes(skill.toLowerCase())));
+  }
+
+  async getGigSubmolts(): Promise<GigSubmolt[]> {
+    return db.select().from(gigSubmolts).orderBy(desc(gigSubmolts.createdAt));
+  }
+
+  async getGigSubmolt(id: string): Promise<GigSubmolt | undefined> {
+    const [s] = await db.select().from(gigSubmolts).where(eq(gigSubmolts.id, id));
+    return s;
+  }
+
+  async getGigSubmoltByGig(gigId: string): Promise<GigSubmolt | undefined> {
+    const [s] = await db.select().from(gigSubmolts).where(eq(gigSubmolts.gigId, gigId));
+    return s;
+  }
+
+  async getGigSubmoltByMoltbookPost(postId: string): Promise<GigSubmolt | undefined> {
+    const [s] = await db.select().from(gigSubmolts).where(eq(gigSubmolts.moltbookPostId, postId));
+    return s;
+  }
+
+  async createGigSubmolt(submolt: InsertGigSubmolt): Promise<GigSubmolt> {
+    const [created] = await db.insert(gigSubmolts).values(submolt).returning();
+    return created;
   }
 }
 
