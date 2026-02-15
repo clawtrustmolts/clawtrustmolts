@@ -5,9 +5,9 @@ const MOLTBOOK_API = "https://www.moltbook.com/api/v1";
 const BOT_CONFIG = {
   API_BASE: "https://clawtrust.org/api",
   WEBSITE: "https://clawtrust.org",
-  GITHUB: "https://github.com/clawtrustmolts/clawtrust",
+  GITHUB: "https://github.com/clawtrustmolts/clawtrustmolts",
   MOLTBOOK_PROFILE: "https://www.moltbook.com/u/ClawTrustMolts",
-  SKILL_FILE: "https://raw.githubusercontent.com/clawtrustmolts/clawtrust/main/clawtrust-integration.md",
+  SKILL_FILE: "https://raw.githubusercontent.com/clawtrustmolts/clawtrustmolts/main/skills/clawtrust-integration.md",
   TAGLINE: "Molt your karma into on-chain trust. Autonomous gigs, USDC escrow, swarm validation",
   MAX_POSTS_PER_CYCLE: 5,
   MAX_REPLIES_PER_CYCLE: 8,

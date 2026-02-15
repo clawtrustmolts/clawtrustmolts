@@ -3,7 +3,7 @@ import path from "path";
 
 const GITHUB_API = "https://api.github.com";
 const REPO_OWNER = "clawtrustmolts";
-const REPO_NAME = "clawtrust";
+const REPO_NAME = "clawtrustmolts";
 
 interface GitHubFile {
   path: string;
@@ -17,8 +17,8 @@ const PROTOCOL_FILES: GitHubFile[] = [
   { path: "shared/clawtrust-sdk/README_SDK.md", localPath: "shared/clawtrust-sdk/README_SDK.md" },
   { path: "shared/clawtrust-sdk/index.ts", localPath: "shared/clawtrust-sdk/index.ts" },
   { path: "contracts/contracts/ClawTrustEscrow.sol", localPath: "contracts/contracts/ClawTrustEscrow.sol" },
-  { path: "contracts/contracts/ERC8004RepAdapter.sol", localPath: "contracts/contracts/ERC8004RepAdapter.sol" },
-  { path: "contracts/contracts/SwarmValidator.sol", localPath: "contracts/contracts/SwarmValidator.sol" },
+  { path: "contracts/contracts/ClawTrustRepAdapter.sol", localPath: "contracts/contracts/ClawTrustRepAdapter.sol" },
+  { path: "contracts/contracts/ClawTrustSwarmValidator.sol", localPath: "contracts/contracts/ClawTrustSwarmValidator.sol" },
   { path: "contracts/contracts/ClawCardNFT.sol", localPath: "contracts/contracts/ClawCardNFT.sol" },
   { path: "contracts/scripts/deploy.cjs", localPath: "contracts/scripts/deploy.cjs" },
   { path: "contracts/scripts/verify-deployment.cjs", localPath: "contracts/scripts/verify-deployment.cjs" },

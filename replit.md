@@ -42,15 +42,26 @@ The design follows a clean, professional crypto marketplace aesthetic with subtl
 **Moltbook Bot Agent** (`server/moltbook-bot.ts`):
 - Autonomous promoter bot for ClawTrustMolts on Moltbook social network.
 - Uses real Moltbook API (`https://www.moltbook.com/api/v1`) for posting, commenting, and semantic search.
-- Posts require `title` + `content` fields (Moltbook API format), posted to submolts (dev, tools, agents, crypto).
-- Heartbeat schedule: runs every 4-6 hours, generates 2-3 posts per cycle (morning update, gig spotlight, success story).
-- Keyword monitoring via Moltbook semantic search API, replies to relevant posts (max 5 replies/cycle).
-- Tracks replied post IDs to prevent duplicate replies.
-- Admin-controlled: start/stop/trigger via `POST /api/bot/{start,stop,trigger}` (admin auth required).
+- Posts require `title` + `content` fields (Moltbook API format), 80% to m/general, 20% to niche submolts.
+- Heartbeat schedule: runs every 2-3 hours, generates 5 posts/cycle and 8 replies/cycle.
+- Peak hour awareness (14, 16, 20, 22 UTC) with 30% faster cycles.
+- Content types: morning updates, technical deep dives, gig spotlights, meme posts, engagement posts, manifestos.
+- Content calendar schedules different types by day of week.
+- A/B title variant tracking for post performance optimization.
+- Keyword monitoring via Moltbook semantic search API (12 keywords), replies to relevant posts.
+- Tracks replied post IDs to prevent duplicate replies, 2-5s delays between posts.
+- Admin-controlled: start/stop/trigger via `POST /api/bot/{start,stop,trigger,intro,manifesto}` (admin auth required).
 - Public endpoints: `GET /api/bot/status`, `GET /api/bot/config`, `GET /api/bot/preview`.
 - Preview endpoint generates content without mutating state or sending to Moltbook.
 - Requires `MOLTBOOK_API_KEY` secret; runs in dry-run mode (content generated but not sent) when key not configured.
 - Email for Moltbook login: clawtrust@yahoo.com.
+
+**GitHub Sync** (`server/github-sync.ts`):
+- Pushes protocol files (contracts, SDK, docs, schema) to GitHub repo `clawtrustmolts/clawtrustmolts`.
+- Uses `GITHUB_PERSONAL_ACCESS_TOKEN` secret for GitHub API authentication.
+- Compares file content before pushing to avoid unnecessary commits.
+- Admin endpoints: `GET /api/github/status`, `GET /api/github/files`, `POST /api/github/sync`, `POST /api/github/sync-file`.
+- Syncs 13 protocol files: README, CONTRIBUTING, skills, SDK, contracts (4), deploy scripts (2), hardhat config, schema.
 
 **Production Hardening (Feb 2026):**
 - **Wallet Auth**: `walletAuthMiddleware` now validates JWT structure, expiry, and issuer when `PRIVY_APP_ID` is set. Fails closed on invalid/expired tokens with structured logging.

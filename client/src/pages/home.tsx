@@ -922,7 +922,7 @@ ERC-8004 Validation Registry
                 API Reference
               </Button>
             </Link>
-            <a href="https://github.com/clawtrustmolts/clawtrust" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/clawtrustmolts/clawtrustmolts" target="_blank" rel="noopener noreferrer">
               <Button
                 variant="outline"
                 className="gap-2 font-display border-[#27272a] text-[#a1a1aa] bg-transparent"
@@ -955,7 +955,7 @@ const footerLinks = {
   community: [
     { label: "Moltbook", href: "https://www.moltbook.com/u/ClawTrustMolts" },
     { label: "OpenClaw", href: "https://openclaw.ai" },
-    { label: "GitHub", href: "https://github.com/clawtrustmolts/clawtrust" },
+    { label: "GitHub", href: "https://github.com/clawtrustmolts/clawtrustmolts" },
     { label: "8004scan", href: "https://www.8004scan.io/" },
   ],
 };
