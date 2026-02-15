@@ -1,8 +1,8 @@
-import { eq, desc, or, and, notInArray, gt } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, gt, count, ilike } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
-  agentSkills, gigApplicants,
+  agentSkills, gigApplicants, agentFollows, agentComments,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -12,6 +12,8 @@ import {
   type SecurityLog, type InsertSecurityLog,
   type AgentSkill, type InsertAgentSkill,
   type GigApplicant, type InsertGigApplicant,
+  type AgentFollow, type InsertAgentFollow,
+  type AgentComment, type InsertAgentComment,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -59,6 +61,20 @@ export interface IStorage {
   getGigApplicants(gigId: string): Promise<GigApplicant[]>;
   getGigApplicant(gigId: string, agentId: string): Promise<GigApplicant | undefined>;
   createGigApplicant(applicant: InsertGigApplicant): Promise<GigApplicant>;
+
+  createFollow(follow: InsertAgentFollow): Promise<AgentFollow>;
+  deleteFollow(followerId: string, followedId: string): Promise<void>;
+  getFollow(followerId: string, followedId: string): Promise<AgentFollow | undefined>;
+  getFollowers(agentId: string): Promise<AgentFollow[]>;
+  getFollowing(agentId: string): Promise<AgentFollow[]>;
+  getFollowerCount(agentId: string): Promise<number>;
+  getFollowingCount(agentId: string): Promise<number>;
+
+  createComment(comment: InsertAgentComment): Promise<AgentComment>;
+  getCommentsByAgent(targetAgentId: string, limit?: number, offset?: number): Promise<AgentComment[]>;
+  getCommentCount(targetAgentId: string): Promise<number>;
+
+  searchGigsBySkill(skill: string): Promise<Gig[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -244,6 +260,66 @@ export class DatabaseStorage implements IStorage {
   async createGigApplicant(applicant: InsertGigApplicant): Promise<GigApplicant> {
     const [created] = await db.insert(gigApplicants).values(applicant).returning();
     return created;
+  }
+
+  async createFollow(follow: InsertAgentFollow): Promise<AgentFollow> {
+    const [created] = await db.insert(agentFollows).values(follow).returning();
+    return created;
+  }
+
+  async deleteFollow(followerId: string, followedId: string): Promise<void> {
+    await db.delete(agentFollows).where(
+      and(eq(agentFollows.followerAgentId, followerId), eq(agentFollows.followedAgentId, followedId))
+    );
+  }
+
+  async getFollow(followerId: string, followedId: string): Promise<AgentFollow | undefined> {
+    const [follow] = await db.select().from(agentFollows).where(
+      and(eq(agentFollows.followerAgentId, followerId), eq(agentFollows.followedAgentId, followedId))
+    );
+    return follow;
+  }
+
+  async getFollowers(agentId: string): Promise<AgentFollow[]> {
+    return db.select().from(agentFollows).where(eq(agentFollows.followedAgentId, agentId)).orderBy(desc(agentFollows.createdAt));
+  }
+
+  async getFollowing(agentId: string): Promise<AgentFollow[]> {
+    return db.select().from(agentFollows).where(eq(agentFollows.followerAgentId, agentId)).orderBy(desc(agentFollows.createdAt));
+  }
+
+  async getFollowerCount(agentId: string): Promise<number> {
+    const [result] = await db.select({ value: count() }).from(agentFollows).where(eq(agentFollows.followedAgentId, agentId));
+    return result?.value || 0;
+  }
+
+  async getFollowingCount(agentId: string): Promise<number> {
+    const [result] = await db.select({ value: count() }).from(agentFollows).where(eq(agentFollows.followerAgentId, agentId));
+    return result?.value || 0;
+  }
+
+  async createComment(comment: InsertAgentComment): Promise<AgentComment> {
+    const [created] = await db.insert(agentComments).values(comment).returning();
+    return created;
+  }
+
+  async getCommentsByAgent(targetAgentId: string, limit = 50, offset = 0): Promise<AgentComment[]> {
+    return db.select().from(agentComments)
+      .where(and(eq(agentComments.targetAgentId, targetAgentId), eq(agentComments.isVisible, true)))
+      .orderBy(desc(agentComments.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getCommentCount(targetAgentId: string): Promise<number> {
+    const [result] = await db.select({ value: count() }).from(agentComments)
+      .where(and(eq(agentComments.targetAgentId, targetAgentId), eq(agentComments.isVisible, true)));
+    return result?.value || 0;
+  }
+
+  async searchGigsBySkill(skill: string): Promise<Gig[]> {
+    const allGigs = await db.select().from(gigs).where(eq(gigs.status, "open")).orderBy(desc(gigs.createdAt));
+    return allGigs.filter(g => g.skillsRequired.some(s => s.toLowerCase().includes(skill.toLowerCase())));
   }
 }
 

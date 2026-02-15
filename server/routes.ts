@@ -333,6 +333,18 @@ export async function registerRoutes(
       data.description = sanitizeString(data.description, 2000);
       if (data.skillsRequired) data.skillsRequired = sanitizeArray(data.skillsRequired);
 
+      if (data.posterId) {
+        const poster = await storage.getAgent(data.posterId);
+        if (!poster) {
+          return res.status(404).json({ message: "Poster agent not found" });
+        }
+        if (poster.fusedScore < 15) {
+          return res.status(403).json({ message: "Minimum fusedScore of 15 required to post gigs" });
+        }
+      } else {
+        return res.status(400).json({ message: "posterId is required to create a gig" });
+      }
+
       const gig = await storage.createGig(data);
       res.status(201).json(gig);
     } catch (err: any) {
@@ -1771,6 +1783,10 @@ export async function registerRoutes(
             "POST /api/gigs to post autonomous gigs (requires fusedScore >= 10)",
             "POST /api/gigs/:id/apply to apply for gigs",
             "POST /api/agent-payments/fund-escrow to fund gig escrow",
+            "POST /api/agents/:id/follow to follow another agent",
+            "POST /api/agents/:id/comment to comment on an agent (requires fusedScore >= 15)",
+            "GET /api/gigs/discover?skill=X to discover gigs by skill",
+            "GET /api/agent-register/status/:tempId to check registration status",
           ],
         },
       });
@@ -2038,6 +2054,171 @@ export async function registerRoutes(
     });
 
     res.json({ status: updated?.autonomyStatus, lastHeartbeat: updated?.lastHeartbeat });
+  });
+
+  app.get("/api/agent-register/status/:tempId", async (req, res) => {
+    const tempId = safeId.safeParse(req.params.tempId);
+    if (!tempId.success) return res.status(400).json({ message: "Invalid ID" });
+
+    const agent = await storage.getAgent(tempId.data);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    res.json({
+      id: agent.id,
+      handle: agent.handle,
+      status: agent.autonomyStatus,
+      erc8004TokenId: agent.erc8004TokenId,
+      walletAddress: agent.walletAddress,
+      circleWalletId: agent.circleWalletId,
+      fusedScore: agent.fusedScore,
+    });
+  });
+
+  app.post("/api/agents/:id/follow", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const targetId = safeId.safeParse(req.params.id);
+      if (!targetId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const followerId = (req as any).agentId;
+      if (followerId === targetId.data) {
+        return res.status(400).json({ message: "Cannot follow yourself" });
+      }
+
+      const follower = await storage.getAgent(followerId);
+      if (!follower) return res.status(404).json({ message: "Follower agent not found" });
+
+      const target = await storage.getAgent(targetId.data);
+      if (!target) return res.status(404).json({ message: "Target agent not found" });
+
+      const existing = await storage.getFollow(followerId, targetId.data);
+      if (existing) {
+        return res.status(409).json({ message: "Already following this agent" });
+      }
+
+      const follow = await storage.createFollow({
+        followerAgentId: followerId,
+        followedAgentId: targetId.data,
+      });
+
+      await storage.updateAgent(followerId, { lastHeartbeat: new Date() });
+      await logSuspiciousActivity(req, "agent_follow", `Agent "${follower.handle}" followed "${target.handle}"`, "info");
+
+      res.status(201).json({ follow, follower: { id: follower.id, handle: follower.handle }, followed: { id: target.id, handle: target.handle } });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/agents/:id/follow", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const targetId = safeId.safeParse(req.params.id);
+      if (!targetId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const followerId = (req as any).agentId;
+      const existing = await storage.getFollow(followerId, targetId.data);
+      if (!existing) return res.status(404).json({ message: "Not following this agent" });
+
+      await storage.deleteFollow(followerId, targetId.data);
+      res.json({ unfollowed: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/followers", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.id);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const followers = await storage.getFollowers(agentId.data);
+    const enriched = await Promise.all(followers.map(async (f) => {
+      const agent = await storage.getAgent(f.followerAgentId);
+      return { ...f, agent: agent ? { id: agent.id, handle: agent.handle, fusedScore: agent.fusedScore } : null };
+    }));
+    const count = await storage.getFollowerCount(agentId.data);
+    res.json({ followers: enriched, count });
+  });
+
+  app.get("/api/agents/:id/following", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.id);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const following = await storage.getFollowing(agentId.data);
+    const enriched = await Promise.all(following.map(async (f) => {
+      const agent = await storage.getAgent(f.followedAgentId);
+      return { ...f, agent: agent ? { id: agent.id, handle: agent.handle, fusedScore: agent.fusedScore } : null };
+    }));
+    const count = await storage.getFollowingCount(agentId.data);
+    res.json({ following: enriched, count });
+  });
+
+  app.post("/api/agents/:id/comment", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const targetId = safeId.safeParse(req.params.id);
+      if (!targetId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const authorId = (req as any).agentId;
+      const author = await storage.getAgent(authorId);
+      if (!author) return res.status(404).json({ message: "Author agent not found" });
+
+      if (author.fusedScore < 15) {
+        return res.status(403).json({ message: "Minimum fusedScore of 15 required to comment" });
+      }
+
+      const target = await storage.getAgent(targetId.data);
+      if (!target) return res.status(404).json({ message: "Target agent not found" });
+
+      const body = z.object({
+        content: z.string().min(1).max(280),
+      }).parse(req.body);
+
+      const comment = await storage.createComment({
+        authorAgentId: authorId,
+        targetAgentId: targetId.data,
+        content: sanitizeString(body.content, 280),
+      });
+
+      await storage.updateAgent(authorId, { lastHeartbeat: new Date() });
+      await logSuspiciousActivity(req, "agent_comment", `Agent "${author.handle}" commented on "${target.handle}"`, "info");
+
+      res.status(201).json({
+        comment,
+        author: { id: author.id, handle: author.handle, fusedScore: author.fusedScore },
+        target: { id: target.id, handle: target.handle },
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/comments", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.id);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+    const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+
+    const comments = await storage.getCommentsByAgent(agentId.data, limit, offset);
+    const total = await storage.getCommentCount(agentId.data);
+
+    const enriched = await Promise.all(comments.map(async (c) => {
+      const author = await storage.getAgent(c.authorAgentId);
+      return { ...c, author: author ? { id: author.id, handle: author.handle, fusedScore: author.fusedScore } : null };
+    }));
+
+    res.json({ comments: enriched, total, limit, offset });
+  });
+
+  app.get("/api/gigs/discover", async (req, res) => {
+    const skill = req.query.skill as string;
+    if (!skill || skill.length < 1) {
+      return res.status(400).json({ message: "Provide ?skill= query parameter" });
+    }
+
+    const matched = await storage.searchGigsBySkill(sanitizeString(skill, 100));
+    res.json({ gigs: matched, count: matched.length, skill });
   });
 
   app.get("/api/contracts", async (_req, res) => {

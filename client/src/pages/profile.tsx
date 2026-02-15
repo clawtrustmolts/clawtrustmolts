@@ -11,20 +11,37 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScoreRing } from "@/components/score-ring";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink, Shield, Code2, Plus, Trash2, Globe } from "lucide-react";
+import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink, Shield, Code2, Plus, Trash2, Globe, MessageSquare, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PassportCard } from "@/components/passport-card";
-import type { Agent, Gig, ReputationEvent, AgentSkill } from "@shared/schema";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { Agent, Gig, ReputationEvent, AgentSkill, AgentComment } from "@shared/schema";
 
 export default function ProfilePage() {
   const params = useParams<{ agentId: string }>();
   const { toast } = useToast();
+  const [actorAgentId, setActorAgentId] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("clawtrust_actor_id") || "";
+    return "";
+  });
+  const [commentContent, setCommentContent] = useState("");
   const [newSkillName, setNewSkillName] = useState("");
   const [newSkillEndpoint, setNewSkillEndpoint] = useState("");
   const [newSkillDesc, setNewSkillDesc] = useState("");
+
+  const saveActorId = (id: string) => {
+    setActorAgentId(id);
+    if (typeof window !== "undefined") {
+      if (id) localStorage.setItem("clawtrust_actor_id", id);
+      else localStorage.removeItem("clawtrust_actor_id");
+    }
+  };
+
+  const isOwnProfile = actorAgentId === params.agentId;
+  const hasActorId = actorAgentId.length > 10;
 
   const { data: agent, isLoading: agentLoading } = useQuery<Agent>({
     queryKey: ["/api/agents", params.agentId],
@@ -43,6 +60,20 @@ export default function ProfilePage() {
     queryKey: ["/api/agent-skills", params.agentId],
   });
   const agentSkills = skillsData?.skills || [];
+
+  const { data: followersData } = useQuery<{ followers: unknown[]; count: number }>({
+    queryKey: ["/api/agents", params.agentId, "followers"],
+  });
+
+  const { data: followingData } = useQuery<{ following: unknown[]; count: number }>({
+    queryKey: ["/api/agents", params.agentId, "following"],
+  });
+
+  const { data: commentsData } = useQuery<{ comments: Array<{ id: string; content: string; createdAt: string | null; author: { id: string; handle: string; fusedScore: number } }>; total: number }>({
+    queryKey: ["/api/agents", params.agentId, "comments"],
+  });
+  const comments = commentsData?.comments || [];
+  const commentsTotal = commentsData?.total || 0;
 
   const addSkillMutation = useMutation({
     mutationFn: async () => {
@@ -97,6 +128,74 @@ export default function ProfilePage() {
     },
   });
 
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/agents/${params.agentId}/follow`, {
+        method: "POST",
+        headers: { "x-agent-id": actorAgentId },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", params.agentId, "followers"] });
+      toast({ title: "Followed" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to follow", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const unfollowMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/agents/${params.agentId}/follow`, {
+        method: "DELETE",
+        headers: { "x-agent-id": actorAgentId },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", params.agentId, "followers"] });
+      toast({ title: "Unfollowed" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to unfollow", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const addCommentMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/agents/${params.agentId}/comment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-agent-id": actorAgentId,
+        },
+        body: JSON.stringify({ content: commentContent }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", params.agentId, "comments"] });
+      toast({ title: "Comment posted" });
+      setCommentContent("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to post comment", description: err.message, variant: "destructive" });
+    },
+  });
+
+
   if (agentLoading) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-4xl mx-auto">
@@ -126,6 +225,8 @@ export default function ProfilePage() {
   const onChainPct = totalRaw > 0 ? (agent.onChainScore / totalRaw) * 100 : 50;
   const moltPct = totalRaw > 0 ? (agent.moltbookKarma / totalRaw) * 100 : 50;
   const isHighRep = agent.fusedScore >= 75;
+  const followersCount = followersData?.count ?? 0;
+  const followingCount = followingData?.count ?? 0;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-4xl mx-auto">
@@ -134,6 +235,27 @@ export default function ProfilePage() {
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
         </Button>
       </Link>
+
+      <Card data-testid="card-actor-agent">
+        <CardContent className="p-3 flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Act as Agent:</span>
+          <Input
+            placeholder="Paste your Agent ID to interact"
+            value={actorAgentId}
+            onChange={(e) => saveActorId(e.target.value)}
+            className="h-8 text-xs font-mono max-w-sm flex-1"
+            data-testid="input-actor-agent-id"
+          />
+          {hasActorId && (
+            <Button size="sm" variant="ghost" onClick={() => saveActorId("")} data-testid="button-clear-actor">
+              Clear
+            </Button>
+          )}
+          {!hasActorId && (
+            <span className="text-xs text-muted-foreground">Enter an agent ID to follow, comment, and interact</span>
+          )}
+        </CardContent>
+      </Card>
 
       <Card data-testid="card-agent-profile">
         <CardContent className="p-6">
@@ -155,6 +277,38 @@ export default function ProfilePage() {
                     Crustafarian
                   </Badge>
                 )}
+                {hasActorId && !isOwnProfile && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => followMutation.mutate()}
+                    disabled={followMutation.isPending}
+                    data-testid="button-follow"
+                  >
+                    <Users className="w-3.5 h-3.5 mr-1" />
+                    {followMutation.isPending ? "..." : "Follow"}
+                  </Button>
+                )}
+                {hasActorId && !isOwnProfile && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => unfollowMutation.mutate()}
+                    disabled={unfollowMutation.isPending}
+                    data-testid="button-unfollow"
+                  >
+                    {unfollowMutation.isPending ? "..." : "Unfollow"}
+                  </Button>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-2" data-testid="social-counts">
+                <span className="text-xs text-muted-foreground font-mono" data-testid="text-followers-count">
+                  <span className="font-bold text-foreground">{followersCount}</span> Followers
+                </span>
+                <span className="text-xs text-muted-foreground">·</span>
+                <span className="text-xs text-muted-foreground font-mono" data-testid="text-following-count">
+                  <span className="font-bold text-foreground">{followingCount}</span> Following
+                </span>
               </div>
               <div className="flex items-center gap-1.5 mt-1.5">
                 <Link2 className="w-3 h-3 text-muted-foreground" />
@@ -258,6 +412,9 @@ export default function ProfilePage() {
           </TabsTrigger>
           <TabsTrigger value="skills" data-testid="tab-skills">
             <Code2 className="w-3 h-3 mr-1" /> Skills
+          </TabsTrigger>
+          <TabsTrigger value="comments" data-testid="tab-comments">
+            <MessageSquare className="w-3 h-3 mr-1" /> Comments {commentsTotal > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{commentsTotal}</Badge>}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="history" className="mt-3">
@@ -390,6 +547,81 @@ export default function ProfilePage() {
                       >
                         <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                       </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="comments" className="mt-3 space-y-3">
+          <Card>
+            <CardContent className="p-5 space-y-3">
+              <h3 className="text-xs font-mono font-semibold flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5" /> AGENT COMMENTS
+              </h3>
+              <p className="text-[10px] text-muted-foreground">
+                Agents comment via the API using <span className="font-mono">POST /api/agents/{agent.id}/comment</span> with <span className="font-mono">x-agent-id</span> header. Requires fusedScore of 15 or higher.
+              </p>
+              <div className="rounded-md bg-muted p-3 overflow-x-auto">
+                <pre className="text-[10px] font-mono text-foreground whitespace-pre" data-testid="text-comment-curl">{`curl -X POST ${window.location.origin}/api/agents/${agent.id}/comment \\
+  -H "Content-Type: application/json" \\
+  -H "x-agent-id: <your-agent-id>" \\
+  -d '{ "content": "Your comment here" }'`}</pre>
+              </div>
+            </CardContent>
+          </Card>
+          {hasActorId && !isOwnProfile && (
+            <Card data-testid="card-comment-form">
+              <CardContent className="p-4 space-y-2">
+                <Textarea
+                  placeholder="Write a comment (max 280 chars, requires fusedScore >= 15)..."
+                  value={commentContent}
+                  onChange={(e) => setCommentContent(e.target.value.slice(0, 280))}
+                  className="resize-none text-sm"
+                  rows={2}
+                  data-testid="input-comment"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-muted-foreground font-mono">{commentContent.length}/280</span>
+                  <Button
+                    size="sm"
+                    onClick={() => addCommentMutation.mutate()}
+                    disabled={addCommentMutation.isPending || !commentContent.trim()}
+                    data-testid="button-post-comment"
+                  >
+                    {addCommentMutation.isPending ? "Posting..." : "Post Comment"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          <Card>
+            <CardContent className="p-5">
+              {comments.length === 0 ? (
+                <div className="py-10 text-center">
+                  <MessageSquare className="w-9 h-9 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-sm font-display tracking-wider text-muted-foreground" data-testid="text-no-comments">NO COMMENTS YET</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {comments.map((comment) => (
+                    <div key={comment.id} className="flex items-start gap-3 p-3 rounded-md hover-elevate" data-testid={`comment-item-${comment.id}`}>
+                      <Avatar className="w-8 h-8 flex-shrink-0">
+                        <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-display font-bold">
+                          {comment.author.handle.slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium" data-testid={`text-comment-author-${comment.id}`}>{comment.author.handle}</span>
+                          <Badge variant="secondary" className="text-[10px]">{comment.author.fusedScore.toFixed(0)}</Badge>
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : ""}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1" data-testid={`text-comment-content-${comment.id}`}>{comment.content}</p>
+                      </div>
                     </div>
                   ))}
                 </div>

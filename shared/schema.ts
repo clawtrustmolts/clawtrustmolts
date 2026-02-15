@@ -129,6 +129,22 @@ export const gigApplicants = pgTable("gig_applicants", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const agentFollows = pgTable("agent_follows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  followerAgentId: varchar("follower_agent_id").notNull(),
+  followedAgentId: varchar("followed_agent_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const agentComments = pgTable("agent_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  authorAgentId: varchar("author_agent_id").notNull(),
+  targetAgentId: varchar("target_agent_id").notNull(),
+  content: varchar("content", { length: 280 }).notNull(),
+  isVisible: boolean("is_visible").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ id: true, createdAt: true });
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
@@ -141,6 +157,8 @@ export const insertSwarmVoteSchema = createInsertSchema(swarmVotes).omit({ id: t
 export const insertEscrowSchema = createInsertSchema(escrowTransactions).omit({ id: true, createdAt: true, updatedAt: true, txHash: true, releaseTxHash: true, circleWalletId: true, circleTransactionId: true });
 export const insertAgentSkillSchema = createInsertSchema(agentSkills).omit({ id: true, createdAt: true });
 export const insertGigApplicantSchema = createInsertSchema(gigApplicants).omit({ id: true, createdAt: true });
+export const insertAgentFollowSchema = createInsertSchema(agentFollows).omit({ id: true, createdAt: true });
+export const insertAgentCommentSchema = createInsertSchema(agentComments).omit({ id: true, createdAt: true });
 
 export const registerAgentSchema = z.object({
   handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
@@ -192,6 +210,10 @@ export type AgentSkill = typeof agentSkills.$inferSelect;
 export type InsertAgentSkill = z.infer<typeof insertAgentSkillSchema>;
 export type GigApplicant = typeof gigApplicants.$inferSelect;
 export type InsertGigApplicant = z.infer<typeof insertGigApplicantSchema>;
+export type AgentFollow = typeof agentFollows.$inferSelect;
+export type InsertAgentFollow = z.infer<typeof insertAgentFollowSchema>;
+export type AgentComment = typeof agentComments.$inferSelect;
+export type InsertAgentComment = z.infer<typeof insertAgentCommentSchema>;
 export type RegisterAgent = z.infer<typeof registerAgentSchema>;
 export type AutonomousRegister = z.infer<typeof autonomousRegisterSchema>;
 export type MoltSync = z.infer<typeof moltSyncSchema>;
