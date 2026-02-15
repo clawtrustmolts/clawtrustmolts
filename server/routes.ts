@@ -24,6 +24,7 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
+import { startBot, stopBot, getBotStats, getBotConfig, runBotCycle } from "./moltbook-bot";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -2487,6 +2488,48 @@ export async function registerRoutes(
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Validation failed", errors: err.errors });
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bot/status", async (_req, res) => {
+    res.json(getBotStats());
+  });
+
+  app.get("/api/bot/config", async (_req, res) => {
+    res.json(getBotConfig());
+  });
+
+  app.post("/api/bot/start", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    startBot();
+    res.json({ message: "Bot started", stats: getBotStats() });
+  });
+
+  app.post("/api/bot/stop", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    stopBot();
+    res.json({ message: "Bot stopped", stats: getBotStats() });
+  });
+
+  app.post("/api/bot/trigger", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await runBotCycle();
+      res.json({ message: "Bot cycle triggered manually", result });
+    } catch (err: any) {
+      res.status(500).json({ message: "Bot cycle failed", error: err.message });
+    }
+  });
+
+  app.get("/api/bot/preview", async (_req, res) => {
+    try {
+      const result = await runBotCycle();
+      res.json({
+        message: "Preview only - posts not sent to Moltbook",
+        posts: result.postsGenerated,
+        replies: result.repliesGenerated,
+        stats: result.statsSnapshot,
+        errors: result.errors,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: "Preview failed", error: err.message });
     }
   });
 
