@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,16 +7,24 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScoreRing } from "@/components/score-ring";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink, Shield } from "lucide-react";
+import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink, Shield, Code2, Plus, Trash2, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PassportCard } from "@/components/passport-card";
-import type { Agent, Gig, ReputationEvent } from "@shared/schema";
+import type { Agent, Gig, ReputationEvent, AgentSkill } from "@shared/schema";
 
 export default function ProfilePage() {
   const params = useParams<{ agentId: string }>();
+  const { toast } = useToast();
+  const [newSkillName, setNewSkillName] = useState("");
+  const [newSkillEndpoint, setNewSkillEndpoint] = useState("");
+  const [newSkillDesc, setNewSkillDesc] = useState("");
 
   const { data: agent, isLoading: agentLoading } = useQuery<Agent>({
     queryKey: ["/api/agents", params.agentId],
@@ -29,6 +38,64 @@ export default function ProfilePage() {
     queryKey: ["/api/reputation", params.agentId],
   });
   const repEvents = repData?.events;
+
+  const { data: skillsData } = useQuery<{ skills: AgentSkill[] }>({
+    queryKey: ["/api/agent-skills", params.agentId],
+  });
+  const agentSkills = skillsData?.skills || [];
+
+  const addSkillMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/agent-skills", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-agent-id": params.agentId!,
+        },
+        body: JSON.stringify({
+          skillName: newSkillName,
+          mcpEndpoint: newSkillEndpoint || null,
+          description: newSkillDesc || null,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-skills", params.agentId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", params.agentId] });
+      toast({ title: "Skill added" });
+      setNewSkillName("");
+      setNewSkillEndpoint("");
+      setNewSkillDesc("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to add skill", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteSkillMutation = useMutation({
+    mutationFn: async (skillId: string) => {
+      const res = await fetch(`/api/agent-skills/${skillId}`, {
+        method: "DELETE",
+        headers: { "x-agent-id": params.agentId! },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-skills", params.agentId] });
+      toast({ title: "Skill removed" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to remove skill", description: err.message, variant: "destructive" });
+    },
+  });
 
   if (agentLoading) {
     return (
@@ -189,6 +256,9 @@ export default function ProfilePage() {
           <TabsTrigger value="gigs" data-testid="tab-gigs">
             <Briefcase className="w-3 h-3 mr-1" /> Gigs
           </TabsTrigger>
+          <TabsTrigger value="skills" data-testid="tab-skills">
+            <Code2 className="w-3 h-3 mr-1" /> Skills
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="history" className="mt-3">
           <Card>
@@ -241,6 +311,85 @@ export default function ProfilePage() {
                         <span className="text-[10px] font-mono text-muted-foreground">{gig.budget} {gig.currency}</span>
                       </div>
                       <Badge variant="outline" className="text-[10px] flex-shrink-0 font-mono">{gig.status}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="skills" className="mt-3 space-y-3">
+          <Card>
+            <CardContent className="p-5 space-y-4">
+              <h3 className="text-xs font-mono font-semibold flex items-center gap-1.5">
+                <Plus className="w-3.5 h-3.5" /> ADD SKILL / MCP ENDPOINT
+              </h3>
+              <div className="space-y-3">
+                <Input
+                  placeholder="Skill name (e.g. solidity-audit)"
+                  value={newSkillName}
+                  onChange={(e) => setNewSkillName(e.target.value)}
+                  data-testid="input-skill-name"
+                />
+                <Input
+                  placeholder="MCP endpoint URL (optional)"
+                  value={newSkillEndpoint}
+                  onChange={(e) => setNewSkillEndpoint(e.target.value)}
+                  data-testid="input-skill-endpoint"
+                />
+                <Textarea
+                  placeholder="Description (optional)"
+                  value={newSkillDesc}
+                  onChange={(e) => setNewSkillDesc(e.target.value)}
+                  data-testid="input-skill-description"
+                />
+                <Button
+                  size="sm"
+                  disabled={!newSkillName.trim() || addSkillMutation.isPending}
+                  onClick={() => addSkillMutation.mutate()}
+                  data-testid="button-add-skill"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  {addSkillMutation.isPending ? "Adding..." : "Add Skill"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-5">
+              {agentSkills.length === 0 ? (
+                <div className="py-10 text-center">
+                  <Code2 className="w-9 h-9 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-sm font-display tracking-wider text-muted-foreground" data-testid="text-no-skills">NO SKILLS ATTACHED</p>
+                  <p className="text-xs text-muted-foreground mt-1">Add skills and MCP endpoints to make them discoverable</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {agentSkills.map((skill) => (
+                    <div key={skill.id} className="flex items-start gap-3 p-3 rounded-md hover-elevate" data-testid={`skill-item-${skill.id}`}>
+                      <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <Code2 className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{skill.skillName}</p>
+                        {skill.description && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{skill.description}</p>
+                        )}
+                        {skill.mcpEndpoint && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <Globe className="w-3 h-3 text-chart-2" />
+                            <span className="text-[10px] font-mono text-chart-2 truncate">{skill.mcpEndpoint}</span>
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => deleteSkillMutation.mutate(skill.id)}
+                        data-testid={`button-delete-skill-${skill.id}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                      </Button>
                     </div>
                   ))}
                 </div>

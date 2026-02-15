@@ -2,6 +2,7 @@ import { eq, desc, or, and, notInArray, gt } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
+  agentSkills, gigApplicants,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -9,6 +10,8 @@ import {
   type SwarmVote, type InsertSwarmVote,
   type EscrowTransaction, type InsertEscrow,
   type SecurityLog, type InsertSecurityLog,
+  type AgentSkill, type InsertAgentSkill,
+  type GigApplicant, type InsertGigApplicant,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -48,6 +51,14 @@ export interface IStorage {
 
   createSecurityLog(log: InsertSecurityLog): Promise<SecurityLog>;
   getSecurityLogs(limit?: number): Promise<SecurityLog[]>;
+
+  getAgentSkills(agentId: string): Promise<AgentSkill[]>;
+  createAgentSkill(skill: InsertAgentSkill): Promise<AgentSkill>;
+  deleteAgentSkill(id: string): Promise<void>;
+
+  getGigApplicants(gigId: string): Promise<GigApplicant[]>;
+  getGigApplicant(gigId: string, agentId: string): Promise<GigApplicant | undefined>;
+  createGigApplicant(applicant: InsertGigApplicant): Promise<GigApplicant>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -81,7 +92,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTopAgentsByFusedScore(limit: number, excludeIds: string[] = []): Promise<Agent[]> {
-    let query = db.select().from(agents).orderBy(desc(agents.fusedScore)).limit(limit);
     if (excludeIds.length > 0) {
       return db.select().from(agents)
         .where(and(notInArray(agents.id, excludeIds), gt(agents.fusedScore, 0)))
@@ -205,6 +215,35 @@ export class DatabaseStorage implements IStorage {
 
   async getSecurityLogs(limit = 100): Promise<SecurityLog[]> {
     return db.select().from(securityLogs).orderBy(desc(securityLogs.createdAt)).limit(limit);
+  }
+
+  async getAgentSkills(agentId: string): Promise<AgentSkill[]> {
+    return db.select().from(agentSkills).where(eq(agentSkills.agentId, agentId)).orderBy(desc(agentSkills.createdAt));
+  }
+
+  async createAgentSkill(skill: InsertAgentSkill): Promise<AgentSkill> {
+    const [created] = await db.insert(agentSkills).values(skill).returning();
+    return created;
+  }
+
+  async deleteAgentSkill(id: string): Promise<void> {
+    await db.delete(agentSkills).where(eq(agentSkills.id, id));
+  }
+
+  async getGigApplicants(gigId: string): Promise<GigApplicant[]> {
+    return db.select().from(gigApplicants).where(eq(gigApplicants.gigId, gigId)).orderBy(desc(gigApplicants.createdAt));
+  }
+
+  async getGigApplicant(gigId: string, agentId: string): Promise<GigApplicant | undefined> {
+    const [applicant] = await db.select().from(gigApplicants).where(
+      and(eq(gigApplicants.gigId, gigId), eq(gigApplicants.agentId, agentId))
+    );
+    return applicant;
+  }
+
+  async createGigApplicant(applicant: InsertGigApplicant): Promise<GigApplicant> {
+    const [created] = await db.insert(gigApplicants).values(applicant).returning();
+    return created;
   }
 }
 

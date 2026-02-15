@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema } from "@shared/schema";
+import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema } from "@shared/schema";
 import { z } from "zod";
 import { type Address } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation } from "./reputation";
@@ -1645,6 +1645,399 @@ export async function registerRoutes(
       }
       res.status(400).json({ message: err.message });
     }
+  });
+
+  const autonomousRegLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { xForwardedForHeader: false },
+    handler: async (req, res) => {
+      await logSuspiciousActivity(req, "autonomous_reg_rate_limit", "Exceeded 3 autonomous registrations per hour");
+      res.status(429).json({ message: "Registration rate limit exceeded. Max 3 per hour." });
+    },
+  });
+
+  app.post("/api/agent-register", autonomousRegLimiter, async (req, res) => {
+    try {
+      const data = autonomousRegisterSchema.parse(req.body);
+
+      const existingHandle = await storage.getAgentByHandle(data.handle);
+      if (existingHandle) {
+        return res.status(409).json({ message: "Handle already registered" });
+      }
+
+      const skillNames = data.skills.map(s => sanitizeString(s.name, 100));
+
+      const metadata = buildIdentityMetadata({
+        handle: data.handle,
+        walletAddress: "0x0000000000000000000000000000000000000000",
+        skills: skillNames,
+        bio: data.bio || undefined,
+        moltbookLink: data.moltbookLink || undefined,
+        x402Support: true,
+      });
+
+      const metadataUri = `ipfs://clawtrust/${data.handle}/metadata.json`;
+
+      const mintTx = await prepareRegisterAgentTx({
+        handle: data.handle,
+        metadataUri,
+        skills: skillNames,
+      });
+
+      let circleWalletResult = null;
+      let walletAddress = "0x0000000000000000000000000000000000000000";
+      let circleWalletId = null;
+
+      if (isCircleConfigured()) {
+        try {
+          circleWalletResult = await createEscrowWallet("BASE_SEPOLIA");
+          walletAddress = circleWalletResult.address || walletAddress;
+          circleWalletId = circleWalletResult.walletId;
+        } catch (err: any) {
+          console.error("[Autonomous Register] Circle wallet creation failed:", err.message);
+        }
+      }
+
+      const agent = await storage.createAgent({
+        handle: data.handle,
+        walletAddress,
+        skills: skillNames,
+        bio: data.bio ? sanitizeString(data.bio, 500) : null,
+        metadataUri,
+        moltbookLink: data.moltbookLink || null,
+        moltbookKarma: 0,
+        onChainScore: 0,
+        erc8004TokenId: null,
+        avatar: null,
+        solanaAddress: null,
+        circleWalletId,
+        autonomyStatus: "registered",
+      });
+
+      for (const skill of data.skills) {
+        await storage.createAgentSkill({
+          agentId: agent.id,
+          skillName: sanitizeString(skill.name, 100),
+          mcpEndpoint: skill.mcpEndpoint || null,
+          description: skill.desc ? sanitizeString(skill.desc, 500) : null,
+        });
+      }
+
+      await storage.createReputationEvent({
+        agentId: agent.id,
+        eventType: "Autonomous Registration",
+        scoreChange: 5,
+        source: "on_chain",
+        details: "Agent registered autonomously via API",
+        proofUri: null,
+      });
+
+      const updatedAgent = await storage.updateAgent(agent.id, {
+        onChainScore: 5,
+        fusedScore: computeFusedScore(5, 0),
+        lastHeartbeat: new Date(),
+      });
+
+      await logSuspiciousActivity(req, "autonomous_registration", `Agent "${data.handle}" registered autonomously`, "info");
+
+      res.status(201).json({
+        agent: updatedAgent,
+        walletAddress,
+        circleWalletId,
+        tempAgentId: agent.id,
+        metadata,
+        erc8004: {
+          identityRegistry: ERC8004_CONTRACTS.identity.address,
+          metadataUri,
+          status: "pending_mint",
+          note: "Sign and submit the mint transaction to register ERC-8004 identity NFT on Base Sepolia",
+        },
+        mintTransaction: {
+          to: mintTx.to,
+          data: mintTx.data,
+          value: mintTx.value,
+          chainId: mintTx.chainId,
+          description: mintTx.description,
+          gasEstimate: mintTx.gasEstimate,
+          error: mintTx.error,
+        },
+        autonomous: {
+          note: "This agent was registered without human interaction. Use tempAgentId for subsequent API calls.",
+          nextSteps: [
+            "POST /api/agent-skills to attach MCP endpoints",
+            "POST /api/gigs to post autonomous gigs (requires fusedScore >= 10)",
+            "POST /api/gigs/:id/apply to apply for gigs",
+            "POST /api/agent-payments/fund-escrow to fund gig escrow",
+          ],
+        },
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  function agentAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+    const agentId = req.headers["x-agent-id"] as string | undefined;
+    if (!agentId) {
+      return res.status(401).json({ message: "Agent authentication required. Send x-agent-id header." });
+    }
+    if (!uuidPattern.test(agentId)) {
+      return res.status(400).json({ message: "Invalid x-agent-id format" });
+    }
+    (req as any).agentId = agentId;
+    next();
+  }
+
+  app.post("/api/agent-payments/fund-escrow", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const body = z.object({
+        gigId: z.string().uuid(),
+        amount: z.number().positive(),
+      }).parse(req.body);
+
+      const agentId = (req as any).agentId;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const gig = await storage.getGig(body.gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (gig.posterId !== agentId) {
+        return res.status(403).json({ message: "Only the gig poster can fund escrow" });
+      }
+
+      const existingEscrow = await storage.getEscrowByGig(body.gigId);
+
+      if (existingEscrow && existingEscrow.status === "locked") {
+        return res.status(409).json({ message: "Escrow already funded and locked" });
+      }
+
+      let circleWalletId = null;
+      let depositAddress = null;
+      let circleTransactionId = null;
+
+      if (isCircleConfigured() && gig.currency === "USDC") {
+        try {
+          if (existingEscrow?.circleWalletId) {
+            circleWalletId = existingEscrow.circleWalletId;
+          } else {
+            const wallet = await createEscrowWallet(gig.chain || "BASE_SEPOLIA");
+            circleWalletId = wallet.walletId;
+            depositAddress = wallet.address;
+          }
+
+          if (agent.circleWalletId && circleWalletId) {
+            const transfer = await transferUSDC({
+              sourceWalletId: agent.circleWalletId,
+              destinationAddress: circleWalletId,
+              amount: String(body.amount),
+              chain: gig.chain || "BASE_SEPOLIA",
+            });
+            circleTransactionId = transfer?.transactionId || null;
+          }
+        } catch (err: any) {
+          console.error("[Agent Fund Escrow] Circle transfer failed:", err.message);
+        }
+      }
+
+      let escrow;
+      if (existingEscrow) {
+        escrow = await storage.updateEscrow(existingEscrow.id, {
+          status: "locked",
+          amount: body.amount,
+          circleWalletId: circleWalletId || existingEscrow.circleWalletId,
+          circleTransactionId,
+        });
+      } else {
+        escrow = await storage.createEscrow({
+          gigId: body.gigId,
+          depositorId: agentId,
+          amount: body.amount,
+          currency: gig.currency,
+          chain: gig.chain || "BASE_SEPOLIA",
+          status: "locked",
+        });
+        if (circleWalletId) {
+          escrow = await storage.updateEscrow(escrow.id, {
+            circleWalletId,
+            circleTransactionId,
+          });
+        }
+      }
+
+      await storage.updateAgent(agentId, { lastHeartbeat: new Date() });
+
+      await logSuspiciousActivity(req, "agent_fund_escrow", `Agent "${agent.handle}" funded escrow for gig ${body.gigId}: ${body.amount} ${gig.currency}`, "info");
+
+      res.json({
+        escrow,
+        funded: true,
+        circleTransactionId,
+        depositAddress,
+        note: circleTransactionId
+          ? "USDC transferred via Circle Developer-Controlled Wallet"
+          : "Escrow locked. Fund the Circle deposit address or sign on-chain tx to complete.",
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gigs/:id/apply", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+      const agentId = (req as any).agentId;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      if (agent.fusedScore < 10) {
+        return res.status(403).json({ message: "Minimum fusedScore of 10 required to apply for gigs" });
+      }
+
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (gig.status !== "open") {
+        return res.status(400).json({ message: `Gig is "${gig.status}", only open gigs accept applications` });
+      }
+
+      if (gig.posterId === agentId) {
+        return res.status(400).json({ message: "Cannot apply to your own gig" });
+      }
+
+      const existingApplication = await storage.getGigApplicant(gigId.data, agentId);
+      if (existingApplication) {
+        return res.status(409).json({ message: "Already applied to this gig" });
+      }
+
+      const message = req.body.message ? sanitizeString(req.body.message, 500) : null;
+
+      const applicant = await storage.createGigApplicant({
+        gigId: gigId.data,
+        agentId,
+        message,
+      });
+
+      await storage.updateAgent(agentId, { lastHeartbeat: new Date() });
+
+      await logSuspiciousActivity(req, "gig_application", `Agent "${agent.handle}" applied for gig "${gig.title}"`, "info");
+
+      res.status(201).json({
+        application: applicant,
+        gig: { id: gig.id, title: gig.title, status: gig.status },
+        agent: { id: agent.id, handle: agent.handle, fusedScore: agent.fusedScore },
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/gigs/:id/applicants", async (req, res) => {
+    const gigId = safeId.safeParse(req.params.id);
+    if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+    const applicants = await storage.getGigApplicants(gigId.data);
+    const enriched = await Promise.all(applicants.map(async (a) => {
+      const agent = await storage.getAgent(a.agentId);
+      return {
+        ...a,
+        agent: agent ? { id: agent.id, handle: agent.handle, fusedScore: agent.fusedScore, skills: agent.skills } : null,
+      };
+    }));
+    res.json(enriched);
+  });
+
+  app.get("/api/agent-skills/:agentId", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.agentId);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const agent = await storage.getAgent(agentId.data);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    const skills = await storage.getAgentSkills(agentId.data);
+    res.json({ agent: { id: agent.id, handle: agent.handle }, skills });
+  });
+
+  app.post("/api/agent-skills", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const body = z.object({
+        skillName: z.string().min(1).max(100),
+        mcpEndpoint: z.string().url().optional().nullable(),
+        description: z.string().max(500).optional().nullable(),
+      }).parse(req.body);
+
+      const skill = await storage.createAgentSkill({
+        agentId,
+        skillName: sanitizeString(body.skillName, 100),
+        mcpEndpoint: body.mcpEndpoint || null,
+        description: body.description ? sanitizeString(body.description, 500) : null,
+      });
+
+      const existingSkills = agent.skills || [];
+      if (!existingSkills.includes(body.skillName)) {
+        await storage.updateAgent(agentId, {
+          skills: [...existingSkills, body.skillName],
+          lastHeartbeat: new Date(),
+        });
+      } else {
+        await storage.updateAgent(agentId, { lastHeartbeat: new Date() });
+      }
+
+      res.status(201).json(skill);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/agent-skills/:skillId", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const skillId = safeId.safeParse(req.params.skillId);
+      if (!skillId.success) return res.status(400).json({ message: "Invalid skill ID" });
+
+      const agentId = (req as any).agentId;
+      const skills = await storage.getAgentSkills(agentId);
+      const skill = skills.find(s => s.id === skillId.data);
+      if (!skill) return res.status(403).json({ message: "Skill not found or not owned by this agent" });
+
+      await storage.deleteAgentSkill(skillId.data);
+      res.json({ deleted: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agent-heartbeat", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    const agentId = (req as any).agentId;
+    const agent = await storage.getAgent(agentId);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    const updated = await storage.updateAgent(agentId, {
+      lastHeartbeat: new Date(),
+      autonomyStatus: agent.autonomyStatus === "registered" ? "active" : agent.autonomyStatus,
+    });
+
+    res.json({ status: updated?.autonomyStatus, lastHeartbeat: updated?.lastHeartbeat });
   });
 
   app.get("/api/contracts", async (_req, res) => {

@@ -10,6 +10,7 @@ export const validationStatusEnum = pgEnum("validation_status", ["pending", "app
 export const voteEnum = pgEnum("vote_type", ["approve", "reject"]);
 export const repSourceEnum = pgEnum("rep_source", ["on_chain", "moltbook", "swarm", "escrow"]);
 export const escrowStatusEnum = pgEnum("escrow_status", ["pending", "locked", "released", "refunded", "disputed"]);
+export const autonomyStatusEnum = pgEnum("autonomy_status", ["pending", "registered", "active"]);
 
 export const agents = pgTable("agents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -30,6 +31,8 @@ export const agents = pgTable("agents", {
   moltDomain: text("molt_domain"),
   solanaAddress: text("solana_address"),
   circleWalletId: text("circle_wallet_id"),
+  autonomyStatus: autonomyStatusEnum("autonomy_status").notNull().default("pending"),
+  lastHeartbeat: timestamp("last_heartbeat"),
   registeredAt: timestamp("registered_at").defaultNow(),
 });
 
@@ -109,16 +112,35 @@ export const securityLogs = pgTable("security_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const agentSkills = pgTable("agent_skills", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentId: varchar("agent_id").notNull(),
+  skillName: text("skill_name").notNull(),
+  mcpEndpoint: text("mcp_endpoint"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const gigApplicants = pgTable("gig_applicants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  agentId: varchar("agent_id").notNull(),
+  message: text("message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ id: true, createdAt: true });
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
 
-export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true, fusedScore: true, totalGigsCompleted: true, totalEarned: true, isVerified: true });
+export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true, fusedScore: true, totalGigsCompleted: true, totalEarned: true, isVerified: true, lastHeartbeat: true });
 export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, assigneeId: true, escrowTxHash: true });
 export const insertReputationEventSchema = createInsertSchema(reputationEvents).omit({ id: true, createdAt: true });
 export const insertSwarmValidationSchema = createInsertSchema(swarmValidations).omit({ id: true, createdAt: true, votesFor: true, votesAgainst: true });
 export const insertSwarmVoteSchema = createInsertSchema(swarmVotes).omit({ id: true, createdAt: true, rewardClaimed: true });
 export const insertEscrowSchema = createInsertSchema(escrowTransactions).omit({ id: true, createdAt: true, updatedAt: true, txHash: true, releaseTxHash: true, circleWalletId: true, circleTransactionId: true });
+export const insertAgentSkillSchema = createInsertSchema(agentSkills).omit({ id: true, createdAt: true });
+export const insertGigApplicantSchema = createInsertSchema(gigApplicants).omit({ id: true, createdAt: true });
 
 export const registerAgentSchema = z.object({
   handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
@@ -129,6 +151,17 @@ export const registerAgentSchema = z.object({
   avatar: z.string().url().optional().nullable(),
   metadataUri: z.string().url().optional().nullable(),
   moltbookLink: z.string().url().optional().nullable(),
+});
+
+export const autonomousRegisterSchema = z.object({
+  handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
+  skills: z.array(z.object({
+    name: z.string().min(1).max(100),
+    mcpEndpoint: z.string().url().optional(),
+    desc: z.string().max(500).optional(),
+  })).min(1, "At least one skill required"),
+  moltbookLink: z.string().url().optional().nullable(),
+  bio: z.string().max(500).optional(),
 });
 
 export const moltSyncSchema = z.object({
@@ -155,5 +188,10 @@ export type InsertSwarmVote = z.infer<typeof insertSwarmVoteSchema>;
 export type SwarmVote = typeof swarmVotes.$inferSelect;
 export type InsertEscrow = z.infer<typeof insertEscrowSchema>;
 export type EscrowTransaction = typeof escrowTransactions.$inferSelect;
+export type AgentSkill = typeof agentSkills.$inferSelect;
+export type InsertAgentSkill = z.infer<typeof insertAgentSkillSchema>;
+export type GigApplicant = typeof gigApplicants.$inferSelect;
+export type InsertGigApplicant = z.infer<typeof insertGigApplicantSchema>;
 export type RegisterAgent = z.infer<typeof registerAgentSchema>;
+export type AutonomousRegister = z.infer<typeof autonomousRegisterSchema>;
 export type MoltSync = z.infer<typeof moltSyncSchema>;
