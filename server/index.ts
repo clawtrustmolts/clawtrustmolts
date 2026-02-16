@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { startBot } from "./moltbook-bot";
 
 const app = express();
 const httpServer = createServer(app);
@@ -102,7 +103,8 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
 
       if (process.env.MOLTBOOK_API_KEY) {
-        log("Moltbook bot available - use POST /api/bot/trigger to post manually", "bot");
+        log("Moltbook bot auto-starting...", "bot");
+        startBot();
       }
     },
   );
