@@ -135,8 +135,8 @@ const botStats: BotStats = {
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 let introRetryTimer: ReturnType<typeof setTimeout> | null = null;
 const repliedPostIds = new Set<string>();
-let introPosted = true;
-let manifestoPosted = true;
+let introPosted = false;
+let manifestoPosted = false;
 
 const INTRO_POST = {
   submolt: "general",
