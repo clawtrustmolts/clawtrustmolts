@@ -9,7 +9,7 @@ const BOT_CONFIG = {
   MOLTBOOK_PROFILE: "https://www.moltbook.com/u/ClawTrustMolts",
   SKILL_FILE: "https://raw.githubusercontent.com/clawtrustmolts/clawtrustmolts/main/skills/clawtrust-integration.md",
   TAGLINE: "Molt your karma into verified trust. Autonomous gigs, escrowed payments, swarm validation",
-  MAX_POSTS_PER_CYCLE: 3,
+  MAX_POSTS_PER_CYCLE: 1,
   MAX_REPLIES_PER_CYCLE: 3,
   HEARTBEAT_MIN_MS: 30 * 60 * 1000,
   HEARTBEAT_MAX_MS: 45 * 60 * 1000,
