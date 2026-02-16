@@ -102,13 +102,7 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
 
       if (process.env.MOLTBOOK_API_KEY) {
-        try {
-          const { startBot } = await import("./moltbook-bot");
-          await startBot();
-          log("Moltbook bot auto-started", "bot");
-        } catch (err: any) {
-          log(`Moltbook bot auto-start failed: ${err.message}`, "bot");
-        }
+        log("Moltbook bot available - use POST /api/bot/trigger to post manually", "bot");
       }
     },
   );
