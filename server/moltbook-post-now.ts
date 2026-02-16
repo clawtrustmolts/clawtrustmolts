@@ -123,57 +123,95 @@ async function postNow() {
   process.exit(1);
 }
 
+function deobfuscateMoltbook(challenge: string): string {
+  const lettersOnly = challenge.replace(/[^a-zA-Z\s]/g, "");
+  const words = lettersOnly.split(/\s+/).filter(w => w.length > 0);
+  const decoded: string[] = [];
+  for (const word of words) {
+    let result = "";
+    for (let i = 0; i < word.length; i++) {
+      const c = word[i];
+      if (result.length === 0 || c.toLowerCase() !== result[result.length - 1]) {
+        result += c.toLowerCase();
+      }
+    }
+    decoded.push(result);
+  }
+  return decoded.join(" ");
+}
+
 function solveChallenge(challenge: string): string | null {
-  const cleaned = challenge.replace(/[^a-zA-Z0-9\s.,?!+\-*/=():]/g, "").replace(/\s+/g, " ").trim();
-  const lc = cleaned.toLowerCase();
-  console.log(`Cleaned: "${cleaned}"`);
+  try {
+    console.log(`Raw challenge: "${challenge}"`);
+    const decoded = deobfuscateMoltbook(challenge);
+    console.log(`Decoded: "${decoded}"`);
 
-  const digitMatches = challenge.match(/\d+/g);
-  if (digitMatches && digitMatches.length >= 2) {
-    const nums = digitMatches.map(Number);
-    console.log(`Numbers found: ${nums.join(", ")}`);
+    const numWords: Record<string, number> = {
+      zero: 0, one: 1, two: 2, three: 3, thre: 3, four: 4, five: 5,
+      six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+      eleven: 11, twelve: 12, thirteen: 13, thirten: 13, fourteen: 14, fourten: 14, fifteen: 15, fiften: 15,
+      sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, nineten: 19, twenty: 20,
+      thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
+      eighty: 80, ninety: 90, hundred: 100, thousand: 1000,
+    };
 
-    if (/add|plus|sum|\+/i.test(lc)) return String(nums[0] + nums[1]);
-    if (/subtract|minus|-/i.test(lc)) return String(nums[0] - nums[1]);
-    if (/multipl|times|\*/i.test(lc)) return String(nums[0] * nums[1]);
-    if (/divid|split|\//i.test(lc)) {
-      const r = nums[0] / nums[1];
-      return Number.isInteger(r) ? String(r) : r.toFixed(2);
+    const compoundNums: Record<string, number> = {};
+    const tens = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+    const onesWords = ["one", "two", "three", "thre", "four", "five", "six", "seven", "eight", "nine"];
+    for (const t of tens) {
+      for (const o of onesWords) {
+        compoundNums[`${t} ${o}`] = numWords[t] + numWords[o];
+      }
     }
-    return String(nums[0] + nums[1]);
-  }
 
-  if (digitMatches && digitMatches.length === 1) {
-    console.log(`Single number: ${digitMatches[0]}`);
-    return digitMatches[0];
-  }
+    let workingText = decoded;
+    const numbers: number[] = [];
 
-  if (/how many/i.test(lc)) {
-    const match = lc.match(/how many (\w+)/);
-    if (match) {
-      const target = match[1].replace(/s$/, "");
-      const count = (lc.match(new RegExp(target, "gi")) || []).length - 1;
-      if (count > 0) return String(count);
+    for (const [compound, val] of Object.entries(compoundNums)) {
+      if (workingText.includes(compound)) {
+        numbers.push(val);
+        workingText = workingText.replace(compound, ` __NUM__ `);
+      }
     }
-  }
 
-  if (/reverse|backward/i.test(lc)) {
-    const quoted = challenge.match(/[""']([^""']+)[""']/);
-    if (quoted) return quoted[1].split("").reverse().join("");
-  }
+    for (const [word, val] of Object.entries(numWords)) {
+      const regex = new RegExp(`\\b${word}\\b`, "gi");
+      if (regex.test(workingText)) {
+        numbers.push(val);
+        workingText = workingText.replace(regex, ` __NUM__ `);
+      }
+    }
 
-  if (/capital|uppercase/i.test(lc)) {
-    const caps = challenge.replace(/[^A-Z]/g, "");
-    if (caps.length > 0) return caps.toLowerCase();
-  }
+    const digitMatches = decoded.match(/\b\d+\.?\d*\b/g);
+    if (digitMatches) {
+      for (const d of digitMatches) numbers.push(parseFloat(d));
+    }
 
-  const letterOnly = challenge.replace(/[^a-zA-Z\s]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
-  if (letterOnly.length > 2) {
-    console.log(`Deobfuscated: "${letterOnly}"`);
-    return letterOnly;
-  }
+    console.log(`Found numbers: ${numbers.join(", ")}`);
 
-  return cleaned.toLowerCase() || null;
+    const hasMultiply = /\*|times|multiply|multiplied/i.test(challenge) || /\*|times|multiply|multiplied/i.test(decoded);
+    const hasDivide = /\/|divided|split|ratio/i.test(challenge) || /\/|divided|split|ratio/i.test(decoded);
+    const hasSubtract = /subtract|minus|less than|difference/i.test(decoded);
+    const hasAdd = /\+|add|plus|sum|total|combine|together/i.test(challenge) || /\+|add|plus|sum|total|combine|together/i.test(decoded);
+
+    if (numbers.length >= 2) {
+      let result: number;
+      if (hasMultiply) result = numbers[0] * numbers[1];
+      else if (hasDivide && numbers[1] !== 0) result = numbers[0] / numbers[1];
+      else if (hasSubtract) result = numbers[0] - numbers[1];
+      else if (hasAdd) result = numbers[0] + numbers[1];
+      else result = numbers[0] * numbers[1];
+      const answer = result.toFixed(2);
+      console.log(`Answer: ${answer}`);
+      return answer;
+    }
+
+    if (numbers.length === 1) return numbers[0].toFixed(2);
+    return null;
+  } catch (err) {
+    console.error(`Solver error:`, err);
+    return null;
+  }
 }
 
 postNow().catch(err => {

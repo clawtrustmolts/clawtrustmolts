@@ -24,7 +24,7 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
-import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto } from "./moltbook-bot";
+import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
@@ -2702,6 +2702,19 @@ export async function registerRoutes(
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post("/api/bot/direct-post", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { title, content, submolt } = req.body;
+      if (!title || !content) {
+        return res.status(400).json({ error: "title and content required" });
+      }
+      const result = await directPost(title, content, submolt || "general");
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 
