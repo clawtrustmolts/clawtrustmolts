@@ -198,10 +198,12 @@ ${BOT_CONFIG.HASHTAGS}`,
 
 function solveChallenge(challenge: string): string | null {
   try {
-    const cleaned = challenge
-      .replace(/[^a-zA-Z0-9.,\s]/g, "")
-      .replace(/\s+/g, " ")
-      .toLowerCase();
+    console.log(`[moltbook-bot] Raw challenge: "${challenge}"`);
+
+    const letterOnly = challenge.replace(/[^a-zA-Z0-9\s.,?!+\-*/=]/g, "").replace(/\s+/g, " ").trim();
+    console.log(`[moltbook-bot] Cleaned challenge: "${letterOnly}"`);
+
+    const lc = letterOnly.toLowerCase();
 
     const numbers: number[] = [];
     const numWords: Record<string, number> = {
@@ -213,41 +215,89 @@ function solveChallenge(challenge: string): string | null {
       eighty: 80, ninety: 90, hundred: 100, thousand: 1000,
     };
 
-    const digitMatch = cleaned.match(/(\d+\.?\d*)/g);
+    const digitMatch = lc.match(/(\d+\.?\d*)/g);
     if (digitMatch) {
       for (const m of digitMatch) numbers.push(parseFloat(m));
     }
 
     for (const [word, val] of Object.entries(numWords)) {
-      if (cleaned.includes(word)) numbers.push(val);
-    }
-
-    if (cleaned.includes("twenty") && numbers.length > 0) {
-      const singleDigitAfter = cleaned.match(/twenty\s*(one|two|three|four|five|six|seven|eight|nine)/);
-      if (singleDigitAfter) {
-        const idx20 = numbers.indexOf(20);
-        const smallVal = numWords[singleDigitAfter[1]];
-        if (idx20 !== -1 && smallVal !== undefined) {
-          numbers[idx20] = 20 + smallVal;
-          const smallIdx = numbers.indexOf(smallVal, idx20 + 1);
-          if (smallIdx !== -1) numbers.splice(smallIdx, 1);
-        }
-      }
+      const wordRegex = new RegExp(`\\b${word}\\b`, "i");
+      if (wordRegex.test(lc)) numbers.push(val);
     }
 
     if (numbers.length >= 2) {
-      const isAdd = /add|plus|sum|total|combine|together/i.test(cleaned);
-      const isSub = /subtract|minus|less|differ|reduc/i.test(cleaned);
-      const isMul = /multipl|times|product/i.test(cleaned);
-      const isDiv = /divid|split|per|ratio/i.test(cleaned);
+      const isAdd = /add|plus|sum|total|combine|together|\+/i.test(lc);
+      const isSub = /subtract|minus|less|differ|reduc|-/i.test(lc);
+      const isMul = /multipl|times|product|\*/i.test(lc);
+      const isDiv = /divid|split|per|ratio|\//i.test(lc);
 
       let result: number;
       if (isMul) result = numbers[0] * numbers[1];
       else if (isDiv && numbers[1] !== 0) result = numbers[0] / numbers[1];
       else if (isSub) result = numbers[0] - numbers[1];
+      else if (isAdd) result = numbers[0] + numbers[1];
       else result = numbers[0] + numbers[1];
 
-      return result.toFixed(2);
+      const answer = Number.isInteger(result) ? String(result) : result.toFixed(2);
+      console.log(`[moltbook-bot] Math answer: ${answer} (from ${numbers.join(", ")})`);
+      return answer;
+    }
+
+    const countMatch = lc.match(/how many (\w+)s? (?:are |is )?(?:in |there )?/i);
+    if (countMatch) {
+      const target = countMatch[1].toLowerCase();
+      const count = (letterOnly.toLowerCase().match(new RegExp(target, "gi")) || []).length;
+      if (count > 0) {
+        console.log(`[moltbook-bot] Count answer: ${count}`);
+        return String(count);
+      }
+    }
+
+    const wordExtract = lc.match(/(?:what is the|what's the|find the|extract the) (\w+) word/i);
+    if (wordExtract) {
+      const ordinals: Record<string, number> = { first: 0, second: 1, third: 2, fourth: 3, fifth: 4, last: -1 };
+      const pos = ordinals[wordExtract[1]];
+      if (pos !== undefined) {
+        const words = letterOnly.split(/\s+/).filter(w => w.length > 0);
+        const idx = pos === -1 ? words.length - 1 : pos;
+        if (idx >= 0 && idx < words.length) {
+          console.log(`[moltbook-bot] Word answer: ${words[idx]}`);
+          return words[idx];
+        }
+      }
+    }
+
+    if (lc.includes("reverse") || lc.includes("backwards")) {
+      const quoteMatch = challenge.match(/"([^"]+)"|'([^']+)'|`([^`]+)`/);
+      if (quoteMatch) {
+        const toReverse = quoteMatch[1] || quoteMatch[2] || quoteMatch[3];
+        const reversed = toReverse.split("").reverse().join("");
+        console.log(`[moltbook-bot] Reverse answer: ${reversed}`);
+        return reversed;
+      }
+    }
+
+    if (lc.includes("capital") || lc.includes("uppercase")) {
+      const capitals = challenge.replace(/[^A-Z]/g, "");
+      if (capitals.length > 0) {
+        console.log(`[moltbook-bot] Capitals answer: ${capitals}`);
+        return capitals;
+      }
+    }
+
+    if (numbers.length === 1) {
+      console.log(`[moltbook-bot] Single number answer: ${numbers[0]}`);
+      return String(numbers[0]);
+    }
+
+    const deobfuscated = challenge
+      .replace(/[^a-zA-Z\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+    if (deobfuscated.length > 0) {
+      console.log(`[moltbook-bot] Deobfuscated text: "${deobfuscated}"`);
+      return deobfuscated;
     }
 
     return null;
@@ -277,9 +327,15 @@ async function moltbookPost(submolt: string, title: string, content: string): Pr
 
     const data = await resp.json();
 
+    const postId = data.post?.id || data.id || "unknown";
+    let verified = false;
+
     if (data.verification_required && data.verification) {
-      console.log(`[moltbook-bot] Post requires verification, solving challenge...`);
-      const answer = solveChallenge(data.verification.challenge || "");
+      const challenge = data.verification.challenge || "";
+      console.log(`[moltbook-bot] Post requires verification. Challenge: "${challenge}"`);
+      console.log(`[moltbook-bot] Full verification data:`, JSON.stringify(data.verification));
+      const answer = solveChallenge(challenge);
+      console.log(`[moltbook-bot] Challenge answer: ${answer}`);
       if (answer) {
         try {
           const verifyResp = await fetch(`${MOLTBOOK_API}/verify`, {
@@ -293,22 +349,28 @@ async function moltbookPost(submolt: string, title: string, content: string): Pr
               answer,
             }),
           });
+          const verifyData = await verifyResp.text();
           if (verifyResp.ok) {
-            console.log(`[moltbook-bot] Post verified and published to /${submolt}: "${title}"`);
+            console.log(`[moltbook-bot] Post verified and published to /${submolt}: "${title}" - Response: ${verifyData}`);
+            verified = true;
           } else {
-            console.warn(`[moltbook-bot] Verification failed for post "${title}"`);
+            console.warn(`[moltbook-bot] Verification failed for "${title}" - Status: ${verifyResp.status}, Response: ${verifyData}`);
           }
         } catch (verifyErr) {
           console.warn(`[moltbook-bot] Verification error:`, verifyErr);
         }
       } else {
-        console.warn(`[moltbook-bot] Could not solve challenge for post "${title}"`);
+        console.warn(`[moltbook-bot] Could not solve challenge "${challenge}" for post "${title}"`);
+      }
+
+      if (!verified) {
+        return { success: false, postId, error: `Verification challenge failed for "${challenge}" - post not published` };
       }
     } else {
-      console.log(`[moltbook-bot] Posted to /${submolt}: "${title}"`);
+      console.log(`[moltbook-bot] Posted to /${submolt}: "${title}" (no verification needed)`);
     }
 
-    return { success: true, postId: data.post?.id || data.id || "unknown" };
+    return { success: true, postId };
   } catch (err: any) {
     return { success: false, error: err.message || String(err) };
   }
