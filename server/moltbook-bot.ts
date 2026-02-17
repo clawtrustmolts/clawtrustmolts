@@ -135,8 +135,9 @@ const botStats: BotStats = {
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 let introRetryTimer: ReturnType<typeof setTimeout> | null = null;
 const repliedPostIds = new Set<string>();
-let introPosted = false;
-let manifestoPosted = false;
+let introPosted = true;
+let manifestoPosted = true;
+let accountSuspendedUntil: Date | null = null;
 
 const INTRO_POST = {
   submolt: "general",
@@ -325,6 +326,15 @@ async function moltbookPost(submolt: string, title: string, content: string): Pr
 
     if (!resp.ok) {
       const text = await resp.text();
+      if (resp.status === 401 && text.includes("suspended")) {
+        const daysMatch = text.match(/(\d+)\s*days?/i);
+        const hoursMatch = text.match(/(\d+)\s*hours?/i);
+        let suspendMs = 7 * 24 * 60 * 60 * 1000;
+        if (daysMatch) suspendMs = parseInt(daysMatch[1]) * 24 * 60 * 60 * 1000;
+        else if (hoursMatch) suspendMs = parseInt(hoursMatch[1]) * 60 * 60 * 1000;
+        accountSuspendedUntil = new Date(Date.now() + suspendMs);
+        console.log(`[moltbook-bot] Account suspended until ${accountSuspendedUntil.toISOString()}`);
+      }
       return { success: false, error: `HTTP ${resp.status}: ${text.slice(0, 200)}` };
     }
 
