@@ -1206,7 +1206,8 @@ export async function registerRoutes(
         gig.posterId,
         ...(gig.assigneeId ? [gig.assigneeId] : []),
       ];
-      const topAgents = await storage.getTopAgentsByFusedScore(candidateCount, excludeIds);
+      const topAgentCandidates = await storage.getTopAgentsByFusedScore(candidateCount * 2, excludeIds);
+      const topAgents = topAgentCandidates.filter(a => a.riskIndex <= 60);
 
       if (topAgents.length < threshold) {
         return res.status(400).json({
@@ -1358,9 +1359,19 @@ export async function registerRoutes(
                 totalGigsCompleted: assignee.totalGigsCompleted + 1,
                 totalEarned: assignee.totalEarned + gig.budget,
                 onChainScore: Math.min(assignee.onChainScore + 10, 1000),
-                fusedScore: computeFusedScore(Math.min(assignee.onChainScore + 10, 1000), assignee.moltbookKarma),
+                fusedScore: computeFusedScore(Math.min(assignee.onChainScore + 10, 1000), assignee.moltbookKarma, assignee.performanceScore, assignee.bondReliability),
               });
             }
+
+            if (gig.bondLocked && gig.bondRequired > 0) {
+              await unlockBondForGig(gig.assigneeId, gig.id);
+              await storage.updateGig(gig.id, { bondLocked: false });
+              console.log(`[Swarm] Unlocked bond for approved gig ${gig.id}`);
+            }
+
+            await recordRiskEvent(gig.assigneeId, "DISPUTE_RESOLVED", -5, `Swarm approved gig "${gig.title}"`).catch(err =>
+              console.error(`[Risk] Failed to record swarm approval: ${err.message}`)
+            );
           }
 
           const allVotes = await storage.getVotesByValidation(validationId);
@@ -1384,7 +1395,7 @@ export async function registerRoutes(
                 await storage.updateAgent(v.voterId, {
                   totalEarned: voter.totalEarned + reward,
                   onChainScore: Math.min(voter.onChainScore + 2, 1000),
-                  fusedScore: computeFusedScore(Math.min(voter.onChainScore + 2, 1000), voter.moltbookKarma),
+                  fusedScore: computeFusedScore(Math.min(voter.onChainScore + 2, 1000), voter.moltbookKarma, voter.performanceScore, voter.bondReliability),
                 });
               }
 
@@ -1400,6 +1411,27 @@ export async function registerRoutes(
           const escrow = await storage.getEscrowByGig(validation.gigId);
           if (escrow && escrow.status === "locked") {
             await storage.updateEscrow(escrow.id, { status: "refunded" });
+          }
+
+          if (gig.assigneeId && gig.bondLocked && gig.bondRequired > 0) {
+            const bondEvts = await storage.getBondEventsByGig(gig.id);
+            const alreadySlashed = bondEvts.some(e => e.eventType === "SLASH");
+
+            if (!alreadySlashed) {
+              try {
+                await slashBond(gig.assigneeId, gig.id, `Swarm rejected gig "${gig.title}"`);
+                await storage.updateGig(gig.id, { bondLocked: false });
+                console.log(`[Swarm] Slashed bond for rejected gig ${gig.id}`);
+              } catch (slashErr: any) {
+                console.warn(`[Swarm] Slash failed for gig ${gig.id}: ${slashErr.message}`);
+                await unlockBondForGig(gig.assigneeId, gig.id);
+                await storage.updateGig(gig.id, { bondLocked: false });
+              }
+            }
+
+            await recordRiskEvent(gig.assigneeId, "FAILED_GIG", 25, `Swarm rejected gig "${gig.title}"`).catch(err =>
+              console.error(`[Risk] Failed to record swarm rejection: ${err.message}`)
+            );
           }
         }
       }
@@ -1467,7 +1499,7 @@ export async function registerRoutes(
       const karmaBoost = data.karmaBoost || Math.max(Math.round(viralScore.viralBonus * 10), 50);
       const effectiveKarma = Math.max(moltbookKarma, agent.moltbookKarma + karmaBoost);
       const moltNormalized = normalizeMoltbookScore(effectiveKarma, viralScore.viralBonus);
-      const newFused = computeFusedScore(agent.onChainScore, effectiveKarma);
+      const newFused = computeFusedScore(agent.onChainScore, effectiveKarma, agent.performanceScore, agent.bondReliability);
 
       await storage.updateAgent(agent.id, {
         moltbookKarma: effectiveKarma,
@@ -1720,23 +1752,6 @@ export async function registerRoutes(
       if (agent.totalGigsCompleted > 5) confidence += 0.05;
       confidence = Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100;
 
-      const hireable = effectiveScore >= 40 && !hasActiveDisputes;
-
-      let reason: string;
-      if (hireable) {
-        reason = "Meets threshold (fused >= 40, no disputes, recently active)";
-      } else {
-        const reasons: string[] = [];
-        if (effectiveScore < 40) reasons.push(`score too low (${effectiveScore})`);
-        if (hasActiveDisputes) reasons.push("has active disputes");
-        if (daysSinceActive > 30) reasons.push(`inactive for ${daysSinceActive} days (score decayed)`);
-        reason = `Not hireable: ${reasons.join(", ")}`;
-      }
-
-      const disputeSummaryUrl = hasActiveDisputes
-        ? `/disputes?wallet=${encodeURIComponent(agent.walletAddress)}`
-        : undefined;
-
       let riskData: { riskIndex: number; riskLevel: string; cleanStreakDays: number } | undefined;
       try {
         const riskProfile = await calculateRiskProfile(agent.id);
@@ -1749,6 +1764,39 @@ export async function registerRoutes(
         riskData = undefined;
       }
 
+      const minScore = parseFloat(req.query.minScore as string) || 40;
+      const maxRisk = parseFloat(req.query.maxRisk as string) || 75;
+      const minBond = parseFloat(req.query.minBond as string) || 0;
+      const noActiveDisputes = req.query.noActiveDisputes !== "false";
+
+      const riskExceeded = riskData ? riskData.riskIndex > maxRisk : false;
+      const bondInsufficient = minBond > 0 && agent.availableBond < minBond;
+
+      const hireable =
+        effectiveScore >= minScore &&
+        (!noActiveDisputes || !hasActiveDisputes) &&
+        !riskExceeded &&
+        !bondInsufficient;
+
+      let reason: string;
+      if (hireable) {
+        reason = `Meets threshold (fused >= ${minScore}, risk <= ${maxRisk}, bond >= ${minBond})`;
+      } else {
+        const reasons: string[] = [];
+        if (effectiveScore < minScore) reasons.push(`score too low (${effectiveScore} < ${minScore})`);
+        if (hasActiveDisputes && noActiveDisputes) reasons.push("has active disputes");
+        if (daysSinceActive > 30) reasons.push(`inactive for ${daysSinceActive} days (score decayed)`);
+        if (riskExceeded) reasons.push(`risk too high (${riskData?.riskIndex} > ${maxRisk})`);
+        if (bondInsufficient) reasons.push(`bond insufficient (${agent.availableBond} < ${minBond})`);
+        reason = `Not hireable: ${reasons.join(", ")}`;
+      }
+
+      const disputeSummaryUrl = hasActiveDisputes
+        ? `/disputes?wallet=${encodeURIComponent(agent.walletAddress)}`
+        : undefined;
+
+      const scoreBreakdown = getScoreBreakdown(agent);
+
       res.json({
         hireable,
         score: effectiveScore,
@@ -1760,16 +1808,27 @@ export async function registerRoutes(
         bondTier: agent.bondTier,
         availableBond: agent.availableBond,
         performanceScore: agent.performanceScore,
+        bondReliability: agent.bondReliability,
         cleanStreakDays: riskData?.cleanStreakDays ?? 0,
+        fusedScoreVersion: "v2",
+        weights: scoreBreakdown.weights,
         details: {
           wallet: agent.walletAddress,
           fusedScore: agent.fusedScore,
+          tier: scoreBreakdown.tier,
+          badges: scoreBreakdown.badges,
           hasActiveDisputes,
           lastActive: lastActive instanceof Date ? lastActive.toISOString() : String(lastActive),
           rank: getRank(effectiveScore),
           onChainRepScore,
           disputeSummaryUrl,
           riskLevel: riskData?.riskLevel ?? "low",
+          scoreComponents: {
+            onChain: scoreBreakdown.onChainComponent,
+            moltbook: scoreBreakdown.moltbookComponent,
+            performance: scoreBreakdown.performanceComponent,
+            bondReliability: scoreBreakdown.bondReliabilityComponent,
+          },
         },
       });
     } catch (err: any) {
@@ -2874,6 +2933,27 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bonds/status/:wallet", async (req, res) => {
+    try {
+      const wallet = (req.params.wallet as string).toLowerCase().trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+        return res.status(400).json({ message: "Invalid wallet address" });
+      }
+
+      let agent = await storage.getAgentByWallet(wallet);
+      if (!agent) {
+        const allAgents = await storage.getAgents();
+        agent = allAgents.find((a) => a.walletAddress.toLowerCase() === wallet) ?? null;
+      }
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const status = await getBondStatus(agent.id);
+      res.json(status);
+    } catch (err: any) {
+      res.status(404).json({ message: err.message });
+    }
+  });
+
   app.get("/api/bond/:agentId/history", async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
@@ -3027,6 +3107,32 @@ export async function registerRoutes(
         feeMultiplier: profile.feeMultiplier,
         lastUpdated: profile.lastUpdated,
         recentEvents: profile.recentEvents.slice(0, 10),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/risk/wallet/:wallet", async (req, res) => {
+    try {
+      const wallet = (req.params.wallet as string).toLowerCase().trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+        return res.status(400).json({ message: "Invalid wallet address" });
+      }
+
+      let agent = await storage.getAgentByWallet(wallet);
+      if (!agent) {
+        const allAgents = await storage.getAgents();
+        agent = allAgents.find((a) => a.walletAddress.toLowerCase() === wallet) ?? null;
+      }
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const profile = await calculateRiskProfile(agent.id);
+      res.json({
+        riskIndex: profile.riskIndex,
+        riskLevel: getRiskLevel(profile.riskIndex),
+        cleanStreakDays: profile.cleanStreakDays,
+        factors: profile.breakdown,
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

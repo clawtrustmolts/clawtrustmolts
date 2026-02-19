@@ -1,6 +1,6 @@
-import type { TrustCheckResponse, TrustCheckOptions } from "./types";
+import type { TrustCheckResponse, TrustCheckOptions, BondCheckResponse, RiskCheckResponse } from "./types";
 
-export { type AgentTrustProfile, type TrustCheckResponse, type TrustCheckOptions } from "./types";
+export { type AgentTrustProfile, type TrustCheckResponse, type TrustCheckOptions, type BondCheckResponse, type RiskCheckResponse } from "./types";
 
 interface CacheEntry {
   result: TrustCheckResponse;
@@ -15,14 +15,21 @@ export class ClawTrustClient {
   private baseUrl: string;
   private cache: Map<string, CacheEntry> = new Map();
   private cacheTtl: number;
+  private defaultApiKey?: string;
 
-  constructor(baseUrl?: string, cacheTtl?: number) {
+  constructor(baseUrl?: string, cacheTtl?: number, apiKey?: string) {
     this.baseUrl = baseUrl || (typeof process !== "undefined" && process.env?.CLAWTRUST_API_URL) || "http://localhost:5000";
     this.cacheTtl = cacheTtl ?? DEFAULT_CACHE_TTL;
+    this.defaultApiKey = apiKey;
   }
 
   private getCacheKey(wallet: string, options?: TrustCheckOptions): string {
-    return `${wallet.toLowerCase()}:${options?.verifyOnChain ? "onchain" : "db"}`;
+    const parts = [wallet.toLowerCase()];
+    if (options?.verifyOnChain) parts.push("onchain");
+    if (options?.minScore) parts.push(`ms${options.minScore}`);
+    if (options?.maxRisk) parts.push(`mr${options.maxRisk}`);
+    if (options?.minBond) parts.push(`mb${options.minBond}`);
+    return parts.join(":");
   }
 
   private getCached(key: string): TrustCheckResponse | null {
@@ -43,6 +50,15 @@ export class ClawTrustClient {
     this.cache.clear();
   }
 
+  private getHeaders(apiKey?: string): Record<string, string> {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const key = apiKey || this.defaultApiKey;
+    if (key) {
+      headers["Authorization"] = `Bearer ${key}`;
+    }
+    return headers;
+  }
+
   async checkTrust(wallet: string, options?: TrustCheckOptions): Promise<TrustCheckResponse> {
     const cacheKey = this.getCacheKey(wallet, options);
     const cached = this.getCached(cacheKey);
@@ -50,13 +66,14 @@ export class ClawTrustClient {
 
     const params = new URLSearchParams();
     if (options?.verifyOnChain) params.set("verifyOnChain", "true");
+    if (options?.minScore !== undefined) params.set("minScore", String(options.minScore));
+    if (options?.maxRisk !== undefined) params.set("maxRisk", String(options.maxRisk));
+    if (options?.minBond !== undefined) params.set("minBond", String(options.minBond));
+    if (options?.noActiveDisputes !== undefined) params.set("noActiveDisputes", String(options.noActiveDisputes));
     const qs = params.toString();
     const url = `${this.baseUrl}/api/trust-check/${encodeURIComponent(wallet)}${qs ? `?${qs}` : ""}`;
 
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (options?.apiKey) {
-      headers["Authorization"] = `Bearer ${options.apiKey}`;
-    }
+    const headers = this.getHeaders(options?.apiKey);
 
     let lastError: unknown;
 
@@ -71,6 +88,15 @@ export class ClawTrustClient {
               score: 0,
               confidence: 0,
               reason: "Agent not found",
+              riskIndex: 0,
+              bonded: false,
+              bondTier: "UNBONDED",
+              availableBond: 0,
+              performanceScore: 0,
+              bondReliability: 0,
+              cleanStreakDays: 0,
+              fusedScoreVersion: "v2",
+              weights: { onChain: 0.45, moltbook: 0.25, performance: 0.20, bondReliability: 0.10 },
               details: {},
             };
             this.setCache(cacheKey, result);
@@ -103,8 +129,90 @@ export class ClawTrustClient {
       score: 0,
       confidence: 0,
       reason: "Service unavailable or network error",
+      riskIndex: 0,
+      bonded: false,
+      bondTier: "UNBONDED",
+      availableBond: 0,
+      performanceScore: 0,
+      bondReliability: 0,
+      cleanStreakDays: 0,
+      fusedScoreVersion: "v2",
+      weights: { onChain: 0.45, moltbook: 0.25, performance: 0.20, bondReliability: 0.10 },
       details: {},
     };
+  }
+
+  async checkBond(wallet: string, apiKey?: string): Promise<BondCheckResponse> {
+    const url = `${this.baseUrl}/api/bonds/status/${encodeURIComponent(wallet)}`;
+    const headers = this.getHeaders(apiKey);
+
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        if (res.status === 404) {
+          return {
+            bonded: false,
+            bondTier: "UNBONDED",
+            availableBond: 0,
+            totalBonded: 0,
+            lockedBond: 0,
+            slashedBond: 0,
+            bondReliability: 0,
+          };
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      return {
+        bonded: data.totalBonded > 0,
+        bondTier: data.bondTier || "UNBONDED",
+        availableBond: data.availableBond ?? 0,
+        totalBonded: data.totalBonded ?? 0,
+        lockedBond: data.lockedBond ?? 0,
+        slashedBond: data.slashedBond ?? 0,
+        bondReliability: data.bondReliability ?? 0,
+      };
+    } catch (err) {
+      console.error("ClawTrust bond check failed:", err);
+      return {
+        bonded: false,
+        bondTier: "UNBONDED",
+        availableBond: 0,
+        totalBonded: 0,
+        lockedBond: 0,
+        slashedBond: 0,
+        bondReliability: 0,
+      };
+    }
+  }
+
+  async getRisk(wallet: string, apiKey?: string): Promise<RiskCheckResponse> {
+    const url = `${this.baseUrl}/api/risk/wallet/${encodeURIComponent(wallet)}`;
+    const headers = this.getHeaders(apiKey);
+
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        if (res.status === 404) {
+          return {
+            riskIndex: 0,
+            riskLevel: "low",
+            cleanStreakDays: 0,
+            factors: { slashCount: 0, failedGigRatio: 0, activeDisputes: 0, inactivityDecay: 0, bondDepletion: 0 },
+          };
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return (await res.json()) as RiskCheckResponse;
+    } catch (err) {
+      console.error("ClawTrust risk check failed:", err);
+      return {
+        riskIndex: 0,
+        riskLevel: "low",
+        cleanStreakDays: 0,
+        factors: { slashCount: 0, failedGigRatio: 0, activeDisputes: 0, inactivityDecay: 0, bondDepletion: 0 },
+      };
+    }
   }
 
   async checkTrustBatch(
@@ -124,13 +232,6 @@ export class ClawTrustClient {
 
     return results;
   }
-
-  // TODO: Implement WebSocket real-time subscriptions (e.g. via socket.io or native WS)
-  // subscribeToWallet(wallet: string, callback: (update: Partial<TrustCheckResponse>) => void): void {
-  //   // Future: connect to WS endpoint at ${this.baseUrl}/ws/trust-updates
-  //   // and emit wallet-specific score changes in real-time
-  //   throw new Error("Not yet implemented — use polling via checkTrust() for now");
-  // }
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));

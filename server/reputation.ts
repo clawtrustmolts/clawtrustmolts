@@ -15,8 +15,14 @@ import {
 } from "./moltbook-client";
 export type { MoltbookViralScore };
 
-const ON_CHAIN_WEIGHT = 0.6;
-const MOLTBOOK_WEIGHT = 0.4;
+const ON_CHAIN_WEIGHT_V1 = 0.6;
+const MOLTBOOK_WEIGHT_V1 = 0.4;
+
+const ON_CHAIN_WEIGHT = 0.45;
+const MOLTBOOK_WEIGHT = 0.25;
+const PERFORMANCE_WEIGHT = 0.20;
+const BOND_RELIABILITY_WEIGHT = 0.10;
+
 const MAX_ON_CHAIN_SCORE = 1000;
 const MAX_MOLTBOOK_KARMA = 10000;
 
@@ -67,13 +73,19 @@ export interface FusedScoreBreakdown {
   fusedScore: number;
   onChainComponent: number;
   moltbookComponent: number;
+  performanceComponent: number;
+  bondReliabilityComponent: number;
   onChainNormalized: number;
   moltbookNormalized: number;
+  performanceNormalized: number;
+  bondReliabilityNormalized: number;
   rawOnChainScore: number;
   rawMoltbookKarma: number;
   weights: {
     onChain: number;
     moltbook: number;
+    performance: number;
+    bondReliability: number;
   };
   tier: string;
   badges: string[];
@@ -81,25 +93,52 @@ export interface FusedScoreBreakdown {
 
 export function computeFusedScore(
   onChainScore: number,
+  moltbookKarma: number,
+  performanceScore?: number,
+  bondReliability?: number
+): number {
+  const onChainNormalized = Math.min(onChainScore / MAX_ON_CHAIN_SCORE, 1) * 100;
+  const moltbookNormalized = Math.min(moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
+  const perfNormalized = Math.min(performanceScore ?? 0, 100);
+  const bondRelNormalized = Math.min(bondReliability ?? 0, 1) * 100;
+
+  const fused =
+    (ON_CHAIN_WEIGHT * onChainNormalized) +
+    (MOLTBOOK_WEIGHT * moltbookNormalized) +
+    (PERFORMANCE_WEIGHT * perfNormalized) +
+    (BOND_RELIABILITY_WEIGHT * bondRelNormalized);
+  return Math.round(fused * 10) / 10;
+}
+
+export function computeFusedScoreV1(
+  onChainScore: number,
   moltbookKarma: number
 ): number {
   const onChainNormalized = Math.min(onChainScore / MAX_ON_CHAIN_SCORE, 1) * 100;
   const moltbookNormalized = Math.min(moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
-  const fused = (ON_CHAIN_WEIGHT * onChainNormalized) + (MOLTBOOK_WEIGHT * moltbookNormalized);
+  const fused = (ON_CHAIN_WEIGHT_V1 * onChainNormalized) + (MOLTBOOK_WEIGHT_V1 * moltbookNormalized);
   return Math.round(fused * 10) / 10;
 }
 
 export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
   const onChainNormalized = Math.min(agent.onChainScore / MAX_ON_CHAIN_SCORE, 1) * 100;
   const moltbookNormalized = Math.min(agent.moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
+  const performanceNormalized = Math.min(agent.performanceScore ?? 0, 100);
+  const bondReliabilityNormalized = Math.min(agent.bondReliability ?? 0, 1) * 100;
+
   const onChainComponent = ON_CHAIN_WEIGHT * onChainNormalized;
   const moltbookComponent = MOLTBOOK_WEIGHT * moltbookNormalized;
-  const fusedScore = Math.round((onChainComponent + moltbookComponent) * 10) / 10;
+  const performanceComponent = PERFORMANCE_WEIGHT * performanceNormalized;
+  const bondReliabilityComponent = BOND_RELIABILITY_WEIGHT * bondReliabilityNormalized;
 
-  const tier = fusedScore >= 80 ? "Diamond Claw"
-    : fusedScore >= 60 ? "Gold Shell"
-    : fusedScore >= 40 ? "Silver Molt"
-    : fusedScore >= 20 ? "Bronze Pinch"
+  const fusedScore = Math.round(
+    (onChainComponent + moltbookComponent + performanceComponent + bondReliabilityComponent) * 10
+  ) / 10;
+
+  const tier = fusedScore >= 90 ? "Diamond Claw"
+    : fusedScore >= 70 ? "Gold Shell"
+    : fusedScore >= 50 ? "Silver Molt"
+    : fusedScore >= 30 ? "Bronze Pinch"
     : "Hatchling";
 
   const badges: string[] = [];
@@ -108,18 +147,25 @@ export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
   if (agent.moltbookKarma >= 5000) badges.push("Moltbook Influencer");
   if (agent.onChainScore >= 800) badges.push("Chain Champion");
   if (agent.isVerified) badges.push("ERC-8004 Verified");
+  if (agent.bondReliability >= 0.9) badges.push("Bond Reliable");
 
   return {
     fusedScore,
     onChainComponent: Math.round(onChainComponent * 10) / 10,
     moltbookComponent: Math.round(moltbookComponent * 10) / 10,
+    performanceComponent: Math.round(performanceComponent * 10) / 10,
+    bondReliabilityComponent: Math.round(bondReliabilityComponent * 10) / 10,
     onChainNormalized: Math.round(onChainNormalized * 10) / 10,
     moltbookNormalized: Math.round(moltbookNormalized * 10) / 10,
+    performanceNormalized: Math.round(performanceNormalized * 10) / 10,
+    bondReliabilityNormalized: Math.round(bondReliabilityNormalized * 10) / 10,
     rawOnChainScore: agent.onChainScore,
     rawMoltbookKarma: agent.moltbookKarma,
     weights: {
       onChain: ON_CHAIN_WEIGHT,
       moltbook: MOLTBOOK_WEIGHT,
+      performance: PERFORMANCE_WEIGHT,
+      bondReliability: BOND_RELIABILITY_WEIGHT,
     },
     tier,
     badges,
