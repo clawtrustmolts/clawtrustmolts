@@ -2,7 +2,7 @@ import { eq, desc, or, and, notInArray, gt, count, ilike } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
-  agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts,
+  agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -15,6 +15,7 @@ import {
   type AgentFollow, type InsertAgentFollow,
   type AgentComment, type InsertAgentComment,
   type GigSubmolt, type InsertGigSubmolt,
+  type BondEvent, type InsertBondEvent,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -82,6 +83,10 @@ export interface IStorage {
   getGigSubmoltByGig(gigId: string): Promise<GigSubmolt | undefined>;
   getGigSubmoltByMoltbookPost(postId: string): Promise<GigSubmolt | undefined>;
   createGigSubmolt(submolt: InsertGigSubmolt): Promise<GigSubmolt>;
+
+  createBondEvent(event: InsertBondEvent): Promise<BondEvent>;
+  getBondEvents(agentId: string, limit?: number): Promise<BondEvent[]>;
+  getBondEventsByGig(gigId: string): Promise<BondEvent[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -351,6 +356,19 @@ export class DatabaseStorage implements IStorage {
   async createGigSubmolt(submolt: InsertGigSubmolt): Promise<GigSubmolt> {
     const [created] = await db.insert(gigSubmolts).values(submolt).returning();
     return created;
+  }
+
+  async createBondEvent(event: InsertBondEvent): Promise<BondEvent> {
+    const [created] = await db.insert(bondEvents).values(event).returning();
+    return created;
+  }
+
+  async getBondEvents(agentId: string, limit = 50): Promise<BondEvent[]> {
+    return db.select().from(bondEvents).where(eq(bondEvents.agentId, agentId)).orderBy(desc(bondEvents.createdAt)).limit(limit);
+  }
+
+  async getBondEventsByGig(gigId: string): Promise<BondEvent[]> {
+    return db.select().from(bondEvents).where(eq(bondEvents.gigId, gigId)).orderBy(desc(bondEvents.createdAt));
   }
 }
 
