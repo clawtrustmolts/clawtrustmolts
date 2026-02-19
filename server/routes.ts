@@ -26,6 +26,7 @@ import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
+import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
@@ -519,6 +520,14 @@ export async function registerRoutes(
       const assignee = await storage.getAgent(assigneeId);
       if (!assignee) return res.status(404).json({ message: "Assignee agent not found" });
 
+      const riskCheck = await checkGigRiskEligibility(assigneeId);
+      if (!riskCheck.eligible) {
+        return res.status(400).json({
+          message: riskCheck.reason,
+          riskIndex: riskCheck.riskIndex,
+        });
+      }
+
       if (gig.bondRequired > 0) {
         const bondResult = await lockBondForGig(assigneeId, gigId.data, gig.bondRequired);
         if (!bondResult.locked) {
@@ -851,6 +860,12 @@ export async function registerRoutes(
 
       await logSuspiciousActivity(req, "dispute_filed", `Dispute on gig ${gigId} by agent ${disputedBy}: ${reason.slice(0, 200)}`, "info");
 
+      if (gig.assigneeId) {
+        await recordRiskEvent(gig.assigneeId, "DISPUTE_OPENED", 20, `Dispute on gig "${gig.title}"`).catch(err =>
+          console.error(`[Risk] Failed to record dispute event: ${err.message}`)
+        );
+      }
+
       res.json({
         status: "disputed",
         escrowId: escrow.id,
@@ -970,6 +985,18 @@ export async function registerRoutes(
             await storage.updateGig(gigId, { bondLocked: false });
           }
           await syncPerformanceScore(gig.assigneeId);
+        }
+      }
+
+      if (gig.assigneeId) {
+        if (action === "release_to_assignee") {
+          await recordRiskEvent(gig.assigneeId, "DISPUTE_RESOLVED", -10, `Dispute resolved in favor of assignee on gig "${gig.title}"`).catch(err =>
+            console.error(`[Risk] Failed to record dispute resolution: ${err.message}`)
+          );
+        } else {
+          await recordRiskEvent(gig.assigneeId, "DISPUTE_RESOLVED", 15, `Dispute resolved against assignee on gig "${gig.title}"`).catch(err =>
+            console.error(`[Risk] Failed to record dispute resolution: ${err.message}`)
+          );
         }
       }
 
@@ -1710,12 +1737,30 @@ export async function registerRoutes(
         ? `/disputes?wallet=${encodeURIComponent(agent.walletAddress)}`
         : undefined;
 
+      let riskData: { riskIndex: number; riskLevel: string; cleanStreakDays: number } | undefined;
+      try {
+        const riskProfile = await calculateRiskProfile(agent.id);
+        riskData = {
+          riskIndex: riskProfile.riskIndex,
+          riskLevel: getRiskLevel(riskProfile.riskIndex),
+          cleanStreakDays: riskProfile.cleanStreakDays,
+        };
+      } catch {
+        riskData = undefined;
+      }
+
       res.json({
         hireable,
         score: effectiveScore,
         confidence,
         reason,
         onChainVerified,
+        riskIndex: riskData?.riskIndex ?? 0,
+        bonded: agent.totalBonded > 0,
+        bondTier: agent.bondTier,
+        availableBond: agent.availableBond,
+        performanceScore: agent.performanceScore,
+        cleanStreakDays: riskData?.cleanStreakDays ?? 0,
         details: {
           wallet: agent.walletAddress,
           fusedScore: agent.fusedScore,
@@ -1724,6 +1769,7 @@ export async function registerRoutes(
           rank: getRank(effectiveScore),
           onChainRepScore,
           disputeSummaryUrl,
+          riskLevel: riskData?.riskLevel ?? "low",
         },
       });
     } catch (err: any) {
@@ -2955,6 +3001,32 @@ export async function registerRoutes(
         fusedScore: agent?.fusedScore || 0,
         bondReliability: agent?.bondReliability || 0,
         totalGigsCompleted: agent?.totalGigsCompleted || 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/risk/:agentId", async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.agentId);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const agent = await storage.getAgent(agentId.data);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const profile = await calculateRiskProfile(agentId.data);
+      res.json({
+        agentId: agentId.data,
+        handle: agent.handle,
+        riskIndex: profile.riskIndex,
+        riskLevel: getRiskLevel(profile.riskIndex),
+        breakdown: profile.breakdown,
+        trend: profile.trend,
+        cleanStreakDays: profile.cleanStreakDays,
+        feeMultiplier: profile.feeMultiplier,
+        lastUpdated: profile.lastUpdated,
+        recentEvents: profile.recentEvents.slice(0, 10),
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
