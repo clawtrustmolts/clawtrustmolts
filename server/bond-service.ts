@@ -272,6 +272,94 @@ async function getSlashCount(agentId: string): Promise<number> {
   return events.filter(e => e.eventType === "SLASH").length;
 }
 
+const MIN_PERFORMANCE_SCORE = 50;
+
+export function computePerformanceScore(agent: Agent): number {
+  const fusedComponent = Math.min(agent.fusedScore, 100);
+  const reliabilityComponent = agent.bondReliability;
+  const gigsComponent = Math.min(agent.totalGigsCompleted * 5, 100);
+
+  const score = Math.round(
+    fusedComponent * 0.5 +
+    reliabilityComponent * 0.3 +
+    gigsComponent * 0.2
+  );
+  return Math.max(0, Math.min(100, score));
+}
+
+export async function syncPerformanceScore(agentId: string): Promise<number> {
+  const agent = await storage.getAgent(agentId);
+  if (!agent) throw new Error("Agent not found");
+
+  const score = computePerformanceScore(agent);
+  await storage.updateAgent(agentId, { performanceScore: score });
+  console.log(`[Bond] Synced performance score for ${agentId}: ${score}`);
+  return score;
+}
+
+export async function lockBondForGig(agentId: string, gigId: string, bondRequired: number): Promise<{
+  locked: boolean;
+  autoSlashed: boolean;
+  reason: string;
+}> {
+  const agent = await storage.getAgent(agentId);
+  if (!agent) throw new Error("Agent not found");
+
+  if (bondRequired <= 0) {
+    return { locked: false, autoSlashed: false, reason: "No bond required for this gig" };
+  }
+
+  if (agent.bondTier === "UNBONDED") {
+    return { locked: false, autoSlashed: false, reason: "Agent has no active bond" };
+  }
+
+  if (agent.availableBond < bondRequired) {
+    return { locked: false, autoSlashed: false, reason: `Insufficient bond. Required: ${bondRequired}, Available: ${agent.availableBond}` };
+  }
+
+  const perfScore = computePerformanceScore(agent);
+  await storage.updateAgent(agentId, { performanceScore: perfScore });
+
+  if (perfScore < MIN_PERFORMANCE_SCORE) {
+    const slashAmount = Math.min(bondRequired * MAX_SLASH_PERCENT, agent.availableBond);
+    if (slashAmount > 0) {
+      const newTotal = agent.totalBonded - slashAmount;
+      const newAvailable = agent.availableBond - slashAmount;
+      const newTier = computeTier(newTotal);
+
+      await storage.updateAgent(agentId, {
+        totalBonded: newTotal,
+        availableBond: newAvailable,
+        bondTier: newTier,
+      });
+
+      await storage.createBondEvent({
+        agentId,
+        eventType: "SLASH",
+        amount: slashAmount,
+        gigId,
+        reason: `Auto-slashed ${slashAmount.toFixed(2)} USDC: performance score ${perfScore} below threshold ${MIN_PERFORMANCE_SCORE}`,
+      });
+
+      console.log(`[Bond] Auto-slash for agent ${agentId}: ${slashAmount.toFixed(2)} USDC (perf: ${perfScore})`);
+    }
+
+    return { locked: false, autoSlashed: true, reason: `Performance score ${perfScore} is below threshold ${MIN_PERFORMANCE_SCORE}. Bond auto-slashed.` };
+  }
+
+  await lockBond(agentId, bondRequired, gigId);
+  return { locked: true, autoSlashed: false, reason: `Locked ${bondRequired} USDC for gig ${gigId}` };
+}
+
+export async function unlockBondForGig(agentId: string, gigId: string): Promise<void> {
+  const events = await storage.getBondEvents(agentId, 1000);
+  const lockEvent = events.find(e => e.eventType === "LOCK" && e.gigId === gigId);
+  if (lockEvent) {
+    await unlockBond(agentId, lockEvent.amount, gigId);
+    await syncPerformanceScore(agentId);
+  }
+}
+
 export async function getNetworkBondStats(): Promise<{
   totalBonded: number;
   bondedAgents: number;

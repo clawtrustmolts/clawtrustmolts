@@ -25,7 +25,7 @@ import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookS
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
-import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats } from "./bond-service";
+import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
@@ -519,9 +519,21 @@ export async function registerRoutes(
       const assignee = await storage.getAgent(assigneeId);
       if (!assignee) return res.status(404).json({ message: "Assignee agent not found" });
 
+      if (gig.bondRequired > 0) {
+        const bondResult = await lockBondForGig(assigneeId, gigId.data, gig.bondRequired);
+        if (!bondResult.locked) {
+          return res.status(400).json({
+            message: bondResult.reason,
+            autoSlashed: bondResult.autoSlashed,
+            bondRequired: gig.bondRequired,
+          });
+        }
+      }
+
       const updated = await storage.updateGig(gigId.data, {
         assigneeId,
         status: "assigned",
+        bondLocked: gig.bondRequired > 0,
       });
 
       await storage.createReputationEvent({
@@ -532,7 +544,7 @@ export async function registerRoutes(
         details: `Assigned to gig: ${gig.title}`,
       });
 
-      res.json(updated);
+      res.json({ ...updated, bondLocked: gig.bondRequired > 0, bondAmount: gig.bondRequired });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
@@ -941,6 +953,26 @@ export async function registerRoutes(
         await storage.updateGigStatus(gigId, "open");
       }
 
+      if (gig.bondLocked && gig.assigneeId && gig.bondRequired > 0) {
+        if (action === "release_to_assignee") {
+          await unlockBondForGig(gig.assigneeId, gigId);
+          await storage.updateGig(gigId, { bondLocked: false });
+          await syncPerformanceScore(gig.assigneeId);
+          console.log(`[Bond-Gig] Unlocked bond for admin-resolved gig ${gigId}`);
+        } else {
+          try {
+            await slashBond(gig.assigneeId, gigId, "Dispute resolved against assignee");
+            await storage.updateGig(gigId, { bondLocked: false });
+            console.log(`[Bond-Gig] Slashed bond for dispute-lost gig ${gigId}`);
+          } catch (slashErr: any) {
+            console.warn(`[Bond-Gig] Slash failed for gig ${gigId}: ${slashErr.message}`);
+            await unlockBondForGig(gig.assigneeId, gigId);
+            await storage.updateGig(gigId, { bondLocked: false });
+          }
+          await syncPerformanceScore(gig.assigneeId);
+        }
+      }
+
       await logSuspiciousActivity(req, "admin_resolution", `Admin ${adminWallet} resolved dispute on gig ${gigId}: ${action}`, "info");
 
       res.json({
@@ -1048,6 +1080,13 @@ export async function registerRoutes(
           totalGigsCompleted: (assignee.totalGigsCompleted || 0) + 1,
           totalEarned: (assignee.totalEarned || 0) + escrow.amount,
         });
+
+        if (gig.bondLocked && gig.bondRequired > 0) {
+          await unlockBondForGig(gig.assigneeId, gigId);
+          await storage.updateGig(gigId, { bondLocked: false });
+          console.log(`[Bond-Gig] Unlocked bond for completed gig ${gigId}`);
+        }
+        await syncPerformanceScore(gig.assigneeId);
       }
 
       res.json({
@@ -2898,6 +2937,55 @@ export async function registerRoutes(
     try {
       const stats = await getNetworkBondStats();
       res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/sync-performance", async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.agentId);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const score = await syncPerformanceScore(agentId.data);
+      const agent = await storage.getAgent(agentId.data);
+      res.json({
+        agentId: agentId.data,
+        performanceScore: score,
+        fusedScore: agent?.fusedScore || 0,
+        bondReliability: agent?.bondReliability || 0,
+        totalGigsCompleted: agent?.totalGigsCompleted || 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bond/:agentId/performance", async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.agentId);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const agent = await storage.getAgent(agentId.data);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const score = computePerformanceScore(agent);
+      res.json({
+        performanceScore: score,
+        storedScore: agent.performanceScore,
+        components: {
+          fusedScore: Math.min(agent.fusedScore, 100),
+          bondReliability: agent.bondReliability,
+          gigsCompleted: agent.totalGigsCompleted,
+        },
+        weights: {
+          fusedScore: 0.5,
+          bondReliability: 0.3,
+          gigsCompleted: 0.2,
+        },
+        threshold: 50,
+        aboveThreshold: score >= 50,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
