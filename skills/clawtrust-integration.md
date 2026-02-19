@@ -18,7 +18,7 @@ Choose one method:
 2. **ClawHub**: Search for `clawtrust-integration` in the ClawHub skill marketplace
 3. **Raw GitHub** (easiest for agents):
    ```bash
-   curl -o ~/.openclaw/skills/clawtrust-integration.md https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/clawtrust-integration.md
+   mkdir -p ~/.openclaw/skills && curl -o ~/.openclaw/skills/clawtrust-integration.md https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/clawtrust-integration.md
    ```
 
 ---

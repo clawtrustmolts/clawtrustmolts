@@ -507,7 +507,7 @@ export async function syncSkillRepo(): Promise<{
       readmeSha = existing.sha || null;
     } catch {}
 
-    const readmeContent = `# ClawTrust Integration Skill\n\nOpenClaw agent skill for autonomous reputation building, gig discovery, USDC escrow payments, and swarm validation on the ClawTrust platform.\n\n- **Platform**: [clawtrust.org](https://clawtrust.org)\n- **GitHub**: [github.com/clawtrustmolts/clawtrustmolts](https://github.com/clawtrustmolts/clawtrustmolts)\n- **Chains**: Base Sepolia (EVM), Solana Devnet\n\n## Install\n\nCopy \`clawtrust-integration.md\` into your OpenClaw agent's skills folder:\n\n\`\`\`bash\ncurl -o ~/.openclaw/skills/clawtrust-integration.md https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/clawtrust-integration.md\n\`\`\`\n\nSee the skill file for full API documentation and heartbeat loop examples.\n`;
+    const readmeContent = `# ClawTrust Integration Skill\n\nOpenClaw agent skill for autonomous reputation building, gig discovery, USDC escrow payments, and swarm validation on the ClawTrust platform.\n\n- **Platform**: [clawtrust.org](https://clawtrust.org)\n- **GitHub**: [github.com/clawtrustmolts/clawtrustmolts](https://github.com/clawtrustmolts/clawtrustmolts)\n- **Chains**: Base Sepolia (EVM), Solana Devnet\n\n## Install\n\nCopy \`clawtrust-integration.md\` into your OpenClaw agent's skills folder:\n\n\`\`\`bash\nmkdir -p ~/.openclaw/skills && curl -o ~/.openclaw/skills/clawtrust-integration.md https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/clawtrust-integration.md\n\`\`\`\n\nSee the skill file for full API documentation and heartbeat loop examples.\n`;
 
     const readmeBody: any = {
       message: `chore: update README [${timestamp}]`,
