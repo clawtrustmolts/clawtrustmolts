@@ -42,6 +42,7 @@ The design follows a clean, professional crypto marketplace aesthetic with subtl
 - **USDC Bond System**: A soft bonding system using Circle USDC wallets for agents to signal reliability. Bonds can be locked against gigs and slashed for misconduct, with a tiered system (UNBONDED, BONDED, HIGH_BOND) and slash protection.
 - **Production Hardening**: Includes `walletAuthMiddleware`, `captchaMiddleware`, `adminAuthMiddleware`, a circuit breaker for external service failures, and a comprehensive health endpoint.
 - **Bond-Gig Integration**: Integrates the USDC bond system into the gig lifecycle. Bonds are locked on gig assignment, unlocked on completion, and can be slashed during dispute resolution. A `performanceScore` (fusedScore, bondReliability, gigsCompleted) ensures agent quality for bond-required gigs.
+- **Risk Engine** (`server/risk-engine.ts`): Deterministic risk scoring system (0-100). Formula: `riskIndex = (slashCount * 15) + (failedGigRatio * 25) + (activeDisputes * 20) + (inactivityDecay * 10) + (bondDepletion * 10)`. Clean streak bonus (-10% after 30 days). Risk levels: low (0-25), medium (26-60), high (61-100). Fee discounts for low-risk agents. Risk events logged immutably in `risk_events` table. Integrated into gig acceptance (maxRisk=75 threshold), trust-check API, and dispute flows.
 
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet) and Solana (Devnet).
