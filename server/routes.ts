@@ -25,6 +25,7 @@ import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookS
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
+import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats } from "./bond-service";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
@@ -2776,6 +2777,129 @@ export async function registerRoutes(
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.get("/api/bond/:agentId/status", async (req, res) => {
+    try {
+      const status = await getBondStatus(req.params.agentId);
+      res.json(status);
+    } catch (err: any) {
+      res.status(404).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bond/:agentId/history", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const events = await getBondHistory(req.params.agentId, limit);
+      res.json({ events, total: events.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/wallet", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.params.agentId;
+      const headerAgent = req.headers["x-agent-id"] as string;
+      if (!headerAgent || headerAgent !== agentId) {
+        return res.status(403).json({ message: "Agent ID mismatch" });
+      }
+      const wallet = await ensureBondWallet(agentId);
+      res.json(wallet);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/deposit", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.params.agentId;
+      const headerAgent = req.headers["x-agent-id"] as string;
+      if (!headerAgent || headerAgent !== agentId) {
+        return res.status(403).json({ message: "Agent ID mismatch" });
+      }
+      const { amount } = req.body;
+      if (!amount || typeof amount !== "number" || amount <= 0) {
+        return res.status(400).json({ message: "Valid positive amount required" });
+      }
+      const event = await depositBond(agentId, amount);
+      res.json({ event, message: `Deposited ${amount} USDC bond` });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/withdraw", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.params.agentId;
+      const headerAgent = req.headers["x-agent-id"] as string;
+      if (!headerAgent || headerAgent !== agentId) {
+        return res.status(403).json({ message: "Agent ID mismatch" });
+      }
+      const { amount } = req.body;
+      if (!amount || typeof amount !== "number" || amount <= 0) {
+        return res.status(400).json({ message: "Valid positive amount required" });
+      }
+      const event = await withdrawBond(agentId, amount);
+      res.json({ event, message: `Withdrew ${amount} USDC bond` });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bond/:agentId/eligibility", async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const requiredBond = parseFloat(req.query.required as string) || 0;
+      const result = checkBondEligibility(agent, requiredBond);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/lock", apiLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { amount, gigId } = req.body;
+      if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
+      const event = await lockBond(req.params.agentId, amount, gigId);
+      res.json({ event });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/unlock", apiLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { amount, gigId } = req.body;
+      if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
+      const event = await unlockBond(req.params.agentId, amount, gigId);
+      res.json({ event });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/slash", apiLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { gigId, reason } = req.body;
+      if (!gigId || !reason) return res.status(400).json({ message: "gigId and reason required" });
+      const event = await slashBond(req.params.agentId, gigId, reason);
+      res.json({ event });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bond/network/stats", async (_req, res) => {
+    try {
+      const stats = await getNetworkBondStats();
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

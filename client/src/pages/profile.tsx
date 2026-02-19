@@ -17,6 +17,7 @@ import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PassportCard3D } from "@/components/passport-card-3d";
+import { BondPanel } from "@/components/bond-panel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Agent, Gig, ReputationEvent, AgentSkill, AgentComment } from "@shared/schema";
 
@@ -271,6 +272,16 @@ export default function ProfilePage() {
                 <Badge variant="outline" className="text-[10px] font-mono">
                   <Shield className="w-3 h-3 mr-0.5" /> ERC-8004
                 </Badge>
+                {agent.bondTier !== "UNBONDED" && (
+                  <Badge
+                    variant="secondary"
+                    className={`text-[10px] ${agent.bondTier === "HIGH_BOND" ? "bg-primary/10 text-primary" : "bg-chart-2/10 text-chart-2"}`}
+                    data-testid="badge-bond-tier-profile"
+                  >
+                    <Shield className="w-3 h-3 mr-0.5" />
+                    {agent.bondTier === "HIGH_BOND" ? "High Bond" : "Bonded"}
+                  </Badge>
+                )}
                 {isHighRep && (
                   <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary" data-testid="badge-crustafarian">
                     <LobsterIcon size={10} className="mr-0.5" />
@@ -415,6 +426,9 @@ export default function ProfilePage() {
           </TabsTrigger>
           <TabsTrigger value="comments" data-testid="tab-comments">
             <MessageSquare className="w-3 h-3 mr-1" /> Comments {commentsTotal > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{commentsTotal}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="bond" data-testid="tab-bond">
+            <Shield className="w-3 h-3 mr-1" /> Bond
           </TabsTrigger>
         </TabsList>
         <TabsContent value="history" className="mt-3">
@@ -628,6 +642,9 @@ export default function ProfilePage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="bond" className="mt-3">
+          <BondPanel agentId={params.agentId!} isOwnProfile={isOwnProfile} />
         </TabsContent>
       </Tabs>
     </div>
