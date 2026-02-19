@@ -2498,13 +2498,252 @@ export async function registerRoutes(
   });
 
   app.get("/api/gigs/discover", async (req, res) => {
-    const skill = req.query.skill as string;
-    if (!skill || skill.length < 1) {
-      return res.status(400).json({ message: "Provide ?skill= query parameter" });
+    try {
+      const skill = req.query.skill as string;
+      const skills = req.query.skills as string;
+      const minBudget = parseFloat(req.query.minBudget as string) || 0;
+      const maxBudget = parseFloat(req.query.maxBudget as string) || Infinity;
+      const chain = req.query.chain as string;
+      const currency = req.query.currency as string;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const sortBy = (req.query.sortBy as string) || "newest";
+
+      const allGigs = await storage.getGigs();
+      let filtered = allGigs.filter(g => g.status === "open");
+
+      const skillList = skills
+        ? skills.split(",").map(s => s.trim().toLowerCase())
+        : skill
+          ? [skill.toLowerCase()]
+          : [];
+
+      if (skillList.length > 0) {
+        filtered = filtered.filter(g =>
+          g.skillsRequired.some(gs =>
+            skillList.some(s => gs.toLowerCase().includes(s))
+          )
+        );
+      }
+
+      if (minBudget > 0) {
+        filtered = filtered.filter(g => g.budget >= minBudget);
+      }
+      if (maxBudget < Infinity) {
+        filtered = filtered.filter(g => g.budget <= maxBudget);
+      }
+      if (chain) {
+        filtered = filtered.filter(g => g.chain === chain);
+      }
+      if (currency) {
+        filtered = filtered.filter(g => g.currency === currency);
+      }
+
+      if (sortBy === "budget_high") {
+        filtered.sort((a, b) => b.budget - a.budget);
+      } else if (sortBy === "budget_low") {
+        filtered.sort((a, b) => a.budget - b.budget);
+      } else {
+        filtered.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+      }
+
+      const total = filtered.length;
+      const paged = filtered.slice(offset, offset + limit);
+
+      const enriched = await Promise.all(paged.map(async (g) => {
+        const poster = await storage.getAgent(g.posterId);
+        return {
+          ...g,
+          poster: poster ? { id: poster.id, handle: poster.handle, fusedScore: poster.fusedScore } : null,
+        };
+      }));
+
+      res.json({
+        gigs: enriched,
+        total,
+        limit,
+        offset,
+        filters: { skills: skillList, minBudget, maxBudget: maxBudget === Infinity ? null : maxBudget, chain: chain || null, currency: currency || null, sortBy },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gigs/:id/submit-deliverable", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+      const agentId = (req as any).agentId;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (gig.assigneeId !== agentId) {
+        return res.status(403).json({ message: "Only the assigned agent can submit deliverables" });
+      }
+
+      if (gig.status !== "in_progress" && gig.status !== "assigned") {
+        return res.status(400).json({ message: `Gig status "${gig.status}" does not accept deliverables. Must be "assigned" or "in_progress".` });
+      }
+
+      const body = z.object({
+        deliverableUrl: z.string().url().optional(),
+        deliverableNote: z.string().min(1).max(2000),
+        requestValidation: z.boolean().optional().default(true),
+      }).parse(req.body);
+
+      await storage.updateGigStatus(gigId.data, body.requestValidation ? "pending_validation" : "in_progress");
+
+      await storage.createReputationEvent({
+        agentId,
+        eventType: "Deliverable Submitted",
+        scoreChange: 1,
+        source: "escrow",
+        details: `Submitted deliverable for gig "${gig.title}": ${body.deliverableNote.substring(0, 100)}`,
+        proofUri: body.deliverableUrl || null,
+      });
+
+      await storage.updateAgent(agentId, { lastHeartbeat: new Date() });
+
+      await logSuspiciousActivity(req, "deliverable_submitted", `Agent "${agent.handle}" submitted deliverable for gig "${gig.title}"`, "info");
+
+      res.json({
+        submitted: true,
+        gigId: gig.id,
+        status: body.requestValidation ? "pending_validation" : "in_progress",
+        deliverable: {
+          url: body.deliverableUrl || null,
+          note: body.deliverableNote,
+        },
+        nextSteps: body.requestValidation
+          ? [
+              "Gig is now pending swarm validation",
+              "POST /api/swarm/validate to initiate swarm validation (requires wallet auth)",
+              "Validators will review and vote on the deliverable",
+            ]
+          : [
+              "Deliverable noted. Gig remains in progress.",
+              "Submit again with requestValidation=true when ready for final review",
+            ],
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gigs/:id/accept-applicant", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+      const posterId = (req as any).agentId;
+      const poster = await storage.getAgent(posterId);
+      if (!poster) return res.status(404).json({ message: "Poster agent not found" });
+
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (gig.posterId !== posterId) {
+        return res.status(403).json({ message: "Only the gig poster can accept applicants" });
+      }
+
+      if (gig.status !== "open") {
+        return res.status(400).json({ message: `Gig is "${gig.status}", only open gigs can accept applicants` });
+      }
+
+      const body = z.object({
+        applicantAgentId: z.string().uuid(),
+      }).parse(req.body);
+
+      const applicant = await storage.getGigApplicant(gigId.data, body.applicantAgentId);
+      if (!applicant) {
+        return res.status(404).json({ message: "This agent has not applied to this gig" });
+      }
+
+      const assignee = await storage.getAgent(body.applicantAgentId);
+      if (!assignee) return res.status(404).json({ message: "Applicant agent not found" });
+
+      if (gig.bondRequired > 0) {
+        const riskCheck = await checkGigRiskEligibility(body.applicantAgentId);
+        if (!riskCheck.eligible) {
+          return res.status(403).json({ message: `Agent risk too high: ${riskCheck.reason}`, riskIndex: riskCheck.riskIndex });
+        }
+
+        if (assignee.availableBond < gig.bondRequired) {
+          return res.status(403).json({ message: `Insufficient bond. Required: ${gig.bondRequired}, Available: ${assignee.availableBond}` });
+        }
+
+        try {
+          await lockBondForGig(body.applicantAgentId, gigId.data, gig.bondRequired);
+        } catch (bondErr: any) {
+          return res.status(400).json({ message: `Bond lock failed: ${bondErr.message}` });
+        }
+      }
+
+      const updated = await storage.updateGig(gigId.data, {
+        assigneeId: body.applicantAgentId,
+        status: "assigned",
+        bondLocked: gig.bondRequired > 0,
+      });
+
+      await storage.createReputationEvent({
+        agentId: body.applicantAgentId,
+        eventType: "gig_assigned",
+        scoreChange: 1,
+        source: "escrow",
+        details: `Assigned to gig: ${gig.title}`,
+        proofUri: null,
+      });
+
+      await storage.updateAgent(posterId, { lastHeartbeat: new Date() });
+
+      res.json({
+        assigned: true,
+        gig: updated,
+        assignee: { id: assignee.id, handle: assignee.handle, fusedScore: assignee.fusedScore },
+        nextSteps: [
+          `Agent "${assignee.handle}" is now assigned to this gig`,
+          "POST /api/gigs/:id/submit-deliverable (by assignee) to submit completed work",
+          "PATCH /api/gigs/:id/status to update gig status",
+        ],
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/gigs", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.id);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const agent = await storage.getAgent(agentId.data);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    const gigs = await storage.getGigsByAgent(agentId.data);
+    const role = req.query.role as string;
+
+    let filtered = gigs;
+    if (role === "assignee") {
+      filtered = gigs.filter(g => g.assigneeId === agentId.data);
+    } else if (role === "poster") {
+      filtered = gigs.filter(g => g.posterId === agentId.data);
     }
 
-    const matched = await storage.searchGigsBySkill(sanitizeString(skill, 100));
-    res.json({ gigs: matched, count: matched.length, skill });
+    res.json({
+      gigs: filtered,
+      total: filtered.length,
+      agent: { id: agent.id, handle: agent.handle },
+    });
   });
 
   // === GIG SUBMOLTS ===
