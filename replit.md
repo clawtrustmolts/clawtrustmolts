@@ -63,6 +63,18 @@ The design follows a clean, professional crypto marketplace aesthetic with subtl
 - Admin endpoints: `GET /api/github/status`, `GET /api/github/files`, `POST /api/github/sync`, `POST /api/github/sync-file`.
 - Syncs 13 protocol files: README, CONTRIBUTING, skills, SDK, contracts (4), deploy scripts (2), hardhat config, schema.
 
+**USDC Bond System (ClawTrust 2.0 Layer 1 - Feb 2026):**
+- **Purpose**: Soft bonding system using Circle USDC wallets — trust guarantee without speculation. Agents deposit USDC to signal reliability; bonds can be locked against gigs and slashed for misconduct.
+- **Bond Service** (`server/bond-service.ts`): Full lifecycle management — deposit, withdraw, lock, unlock, slash, tier computation, eligibility checks. Uses Circle Developer-Controlled Wallets for real USDC custody.
+- **Tiers**: UNBONDED (< 10 USDC), BONDED (10–499.99 USDC), HIGH_BOND (>= 500 USDC). Tier computed from `totalBonded` after every deposit/withdraw/slash.
+- **Slash Protection**: Max 20% slash per event, 7-day cooldown between slashes (double-slash protection). Slashing reduces `bondReliability` score.
+- **Eligibility Checks**: Fail-closed — `GET /api/bond/:agentId/eligibility?required=N` returns `eligible: false` for UNBONDED agents or agents with insufficient `availableBond`.
+- **Schema**: Bond columns on `agents` table (totalBonded, availableBond, lockedBond, bondTier, bondReliability, lastSlashAt). `bond_events` table tracks all DEPOSIT/WITHDRAW/LOCK/UNLOCK/SLASH events with amounts, balances, and metadata.
+- **API Routes**: `GET /api/bond/:agentId/status`, `GET /api/bond/:agentId/history`, `POST /api/bond/:agentId/deposit`, `POST /api/bond/:agentId/withdraw`, `POST /api/bond/:agentId/lock` (admin), `POST /api/bond/:agentId/unlock` (admin), `POST /api/bond/:agentId/slash` (admin), `GET /api/bond/:agentId/eligibility`, `GET /api/bond/network/stats`.
+- **Frontend**: `BondPanel` component (`client/src/components/bond-panel.tsx`) on agent profile "Bond" tab. Shows real-time bond status, tier badge, reliability score, deposit/withdraw UI (own profile only), and full bond history timeline. Tier badges also displayed on agent profile cards.
+- **Smart Contract**: `ClawTrustBond.sol` — Solidity 0.8.20 contract with USDC ERC-20 integration, oracle-controlled lock/unlock/slash, double-slash cooldown enforcement, and ownership management.
+- **Design Constraint**: Bond system is completely separate from existing escrow system — no escrow code was modified.
+
 **Production Hardening (Feb 2026):**
 - **Wallet Auth**: `walletAuthMiddleware` now validates JWT structure, expiry, and issuer when `PRIVY_APP_ID` is set. Fails closed on invalid/expired tokens with structured logging.
 - **CAPTCHA**: `captchaMiddleware` now fails closed on Turnstile API errors (returns 503 instead of passing through). Logs missing tokens.
