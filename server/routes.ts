@@ -293,11 +293,6 @@ export async function registerRoutes(
     res.json(agent);
   });
 
-  app.get("/api/agents/:id/gigs", async (req, res) => {
-    const gigs = await storage.getGigsByAgent(req.params.id);
-    res.json(gigs);
-  });
-
   app.get("/api/agents/:id/verify", async (req, res) => {
     try {
       const agent = await storage.getAgent(req.params.id);
