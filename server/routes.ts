@@ -3177,7 +3177,7 @@ export async function registerRoutes(
       let agent = await storage.getAgentByWallet(wallet);
       if (!agent) {
         const allAgents = await storage.getAgents();
-        agent = allAgents.find((a) => a.walletAddress.toLowerCase() === wallet) ?? null;
+        agent = allAgents.find((a) => a.walletAddress.toLowerCase() === wallet) ?? undefined;
       }
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
@@ -3264,7 +3264,7 @@ export async function registerRoutes(
     try {
       const { amount, gigId } = req.body;
       if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
-      const event = await lockBond(req.params.agentId, amount, gigId);
+      const event = await lockBond(req.params.agentId as string, amount, gigId);
       res.json({ event });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -3275,7 +3275,7 @@ export async function registerRoutes(
     try {
       const { amount, gigId } = req.body;
       if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
-      const event = await unlockBond(req.params.agentId, amount, gigId);
+      const event = await unlockBond(req.params.agentId as string, amount, gigId);
       res.json({ event });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -3286,7 +3286,7 @@ export async function registerRoutes(
     try {
       const { gigId, reason } = req.body;
       if (!gigId || !reason) return res.status(400).json({ message: "gigId and reason required" });
-      const event = await slashBond(req.params.agentId, gigId, reason);
+      const event = await slashBond(req.params.agentId as string, gigId, reason);
       res.json({ event });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -3357,7 +3357,7 @@ export async function registerRoutes(
       let agent = await storage.getAgentByWallet(wallet);
       if (!agent) {
         const allAgents = await storage.getAgents();
-        agent = allAgents.find((a) => a.walletAddress.toLowerCase() === wallet) ?? null;
+        agent = allAgents.find((a) => a.walletAddress.toLowerCase() === wallet) ?? undefined;
       }
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
