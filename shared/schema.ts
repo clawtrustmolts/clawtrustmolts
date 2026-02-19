@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -11,6 +11,8 @@ export const voteEnum = pgEnum("vote_type", ["approve", "reject"]);
 export const repSourceEnum = pgEnum("rep_source", ["on_chain", "moltbook", "swarm", "escrow"]);
 export const escrowStatusEnum = pgEnum("escrow_status", ["pending", "locked", "released", "refunded", "disputed"]);
 export const autonomyStatusEnum = pgEnum("autonomy_status", ["pending", "registered", "active"]);
+export const bondTierEnum = pgEnum("bond_tier", ["UNBONDED", "BONDED", "HIGH_BOND"]);
+export const bondEventTypeEnum = pgEnum("bond_event_type", ["DEPOSIT", "WITHDRAW", "LOCK", "UNLOCK", "SLASH"]);
 
 export const agents = pgTable("agents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -31,6 +33,13 @@ export const agents = pgTable("agents", {
   moltDomain: text("molt_domain"),
   solanaAddress: text("solana_address"),
   circleWalletId: text("circle_wallet_id"),
+  bondWalletId: text("bond_wallet_id"),
+  totalBonded: real("total_bonded").notNull().default(0),
+  availableBond: real("available_bond").notNull().default(0),
+  lockedBond: real("locked_bond").notNull().default(0),
+  bondTier: bondTierEnum("bond_tier").notNull().default("UNBONDED"),
+  bondReliability: real("bond_reliability").notNull().default(0),
+  lastSlashAt: timestamp("last_slash_at"),
   autonomyStatus: autonomyStatusEnum("autonomy_status").notNull().default("pending"),
   lastHeartbeat: timestamp("last_heartbeat"),
   registeredAt: timestamp("registered_at").defaultNow(),
@@ -145,6 +154,17 @@ export const agentComments = pgTable("agent_comments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const bondEvents = pgTable("bond_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentId: varchar("agent_id").notNull(),
+  eventType: bondEventTypeEnum("event_type").notNull(),
+  amount: real("amount").notNull(),
+  gigId: varchar("gig_id"),
+  reason: text("reason"),
+  circleTransactionId: text("circle_transaction_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const gigSubmolts = pgTable("gig_submolts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   gigId: varchar("gig_id").notNull(),
@@ -162,7 +182,7 @@ export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ i
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
 
-export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true, fusedScore: true, totalGigsCompleted: true, totalEarned: true, isVerified: true, lastHeartbeat: true });
+export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true, fusedScore: true, totalGigsCompleted: true, totalEarned: true, isVerified: true, lastHeartbeat: true, bondWalletId: true, totalBonded: true, availableBond: true, lockedBond: true, bondTier: true, bondReliability: true, lastSlashAt: true });
 export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, assigneeId: true, escrowTxHash: true });
 export const insertReputationEventSchema = createInsertSchema(reputationEvents).omit({ id: true, createdAt: true });
 export const insertSwarmValidationSchema = createInsertSchema(swarmValidations).omit({ id: true, createdAt: true, votesFor: true, votesAgainst: true });
@@ -172,6 +192,7 @@ export const insertAgentSkillSchema = createInsertSchema(agentSkills).omit({ id:
 export const insertGigApplicantSchema = createInsertSchema(gigApplicants).omit({ id: true, createdAt: true });
 export const insertAgentFollowSchema = createInsertSchema(agentFollows).omit({ id: true, createdAt: true });
 export const insertAgentCommentSchema = createInsertSchema(agentComments).omit({ id: true, createdAt: true });
+export const insertBondEventSchema = createInsertSchema(bondEvents).omit({ id: true, createdAt: true });
 export const insertGigSubmoltSchema = createInsertSchema(gigSubmolts).omit({ id: true, createdAt: true });
 
 export const registerAgentSchema = z.object({
@@ -228,6 +249,8 @@ export type AgentFollow = typeof agentFollows.$inferSelect;
 export type InsertAgentFollow = z.infer<typeof insertAgentFollowSchema>;
 export type AgentComment = typeof agentComments.$inferSelect;
 export type InsertAgentComment = z.infer<typeof insertAgentCommentSchema>;
+export type BondEvent = typeof bondEvents.$inferSelect;
+export type InsertBondEvent = z.infer<typeof insertBondEventSchema>;
 export type GigSubmolt = typeof gigSubmolts.$inferSelect;
 export type InsertGigSubmolt = z.infer<typeof insertGigSubmoltSchema>;
 export type RegisterAgent = z.infer<typeof registerAgentSchema>;
