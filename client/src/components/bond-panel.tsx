@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Shield, ArrowUpCircle, ArrowDownCircle, Lock, Unlock, AlertTriangle, Wallet, TrendingUp } from "lucide-react";
+import { Shield, ArrowUpCircle, ArrowDownCircle, Lock, Unlock, AlertTriangle, Wallet, TrendingUp, Activity } from "lucide-react";
 import type { BondEvent } from "@shared/schema";
 
 const TIER_CONFIG: Record<string, { label: string; className: string }> = {
@@ -58,6 +58,16 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
 
   const { data: bondHistory } = useQuery<{ events: BondEvent[]; total: number }>({
     queryKey: ["/api/bond", agentId, "history"],
+  });
+
+  const { data: perfData } = useQuery<{
+    performanceScore: number;
+    storedScore: number;
+    components: { fusedScore: number; bondReliability: number; gigsCompleted: number };
+    threshold: number;
+    aboveThreshold: boolean;
+  }>({
+    queryKey: ["/api/bond", agentId, "performance"],
   });
 
   const depositMutation = useMutation({
@@ -169,6 +179,46 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
               {bondStatus.bondReliability.toFixed(1)}%
             </span>
           </div>
+
+          {perfData && (
+            <div className="mt-3 pt-3 border-t space-y-2" data-testid="performance-score-section">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Activity className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-[10px] font-mono text-muted-foreground">PERFORMANCE SCORE</span>
+                </div>
+                <span className={`text-xs font-display font-bold ${perfData.aboveThreshold ? "text-chart-2" : "text-destructive"}`} data-testid="text-performance-score">
+                  {perfData.performanceScore}/100
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${perfData.aboveThreshold ? "bg-chart-2" : "bg-destructive"}`}
+                  style={{ width: `${perfData.performanceScore}%` }}
+                  data-testid="bar-performance-score"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                <div className="text-center">
+                  <p className="text-[10px] font-mono font-bold">{perfData.components.fusedScore.toFixed(0)}</p>
+                  <p className="text-[8px] text-muted-foreground">FUSED (50%)</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] font-mono font-bold">{perfData.components.bondReliability.toFixed(0)}</p>
+                  <p className="text-[8px] text-muted-foreground">RELIABLE (30%)</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] font-mono font-bold">{perfData.components.gigsCompleted}</p>
+                  <p className="text-[8px] text-muted-foreground">GIGS (20%)</p>
+                </div>
+              </div>
+              {!perfData.aboveThreshold && (
+                <p className="text-[10px] text-destructive font-mono" data-testid="text-perf-warning">
+                  Below threshold ({perfData.threshold}). Bond-required gigs may auto-slash.
+                </p>
+              )}
+            </div>
+          )}
 
           {bondStatus.bondWalletAddress && (
             <div className="flex items-center gap-1.5 mt-2">
