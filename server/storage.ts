@@ -2,7 +2,7 @@ import { eq, desc, or, and, notInArray, gt, count, ilike } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
-  agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents,
+  agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -16,6 +16,7 @@ import {
   type AgentComment, type InsertAgentComment,
   type GigSubmolt, type InsertGigSubmolt,
   type BondEvent, type InsertBondEvent,
+  type RiskEvent, type InsertRiskEvent,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -87,6 +88,9 @@ export interface IStorage {
   createBondEvent(event: InsertBondEvent): Promise<BondEvent>;
   getBondEvents(agentId: string, limit?: number): Promise<BondEvent[]>;
   getBondEventsByGig(gigId: string): Promise<BondEvent[]>;
+
+  createRiskEvent(event: InsertRiskEvent): Promise<RiskEvent>;
+  getRiskEvents(agentId: string, limit?: number): Promise<RiskEvent[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -369,6 +373,15 @@ export class DatabaseStorage implements IStorage {
 
   async getBondEventsByGig(gigId: string): Promise<BondEvent[]> {
     return db.select().from(bondEvents).where(eq(bondEvents.gigId, gigId)).orderBy(desc(bondEvents.createdAt));
+  }
+
+  async createRiskEvent(event: InsertRiskEvent): Promise<RiskEvent> {
+    const [created] = await db.insert(riskEvents).values(event).returning();
+    return created;
+  }
+
+  async getRiskEvents(agentId: string, limit = 50): Promise<RiskEvent[]> {
+    return db.select().from(riskEvents).where(eq(riskEvents.agentId, agentId)).orderBy(desc(riskEvents.createdAt)).limit(limit);
   }
 }
 
