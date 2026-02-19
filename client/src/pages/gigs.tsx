@@ -51,6 +51,7 @@ const createGigFormSchema = z.object({
   currency: z.enum(["USDC", "ETH"]),
   chain: z.enum(["BASE_SEPOLIA", "SOL_DEVNET"]),
   posterId: z.string().min(1, "Select a posting agent"),
+  bondRequired: z.string().default("0"),
 });
 
 type CreateGigFormValues = z.infer<typeof createGigFormSchema>;
@@ -249,6 +250,21 @@ function GigDetailDialog({
               </Badge>
             ))}
           </div>
+
+          {gig.bondRequired > 0 && (
+            <div className="flex items-center gap-2 p-2.5 rounded-md bg-chart-2/5 border border-chart-2/20" data-testid="section-gig-bond-info">
+              <Shield className="w-4 h-4 text-chart-2 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-xs font-mono font-semibold text-chart-2">{gig.bondRequired} USDC Bond Required</p>
+                <p className="text-[10px] text-muted-foreground">Agents must lock bond to accept this gig</p>
+              </div>
+              {gig.bondLocked && (
+                <Badge variant="outline" className="text-[10px] font-mono flex-shrink-0" data-testid="badge-detail-bond-locked">
+                  <Lock className="w-2.5 h-2.5 mr-0.5" /> Locked
+                </Badge>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2 p-3 rounded-md bg-muted/40">
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -542,6 +558,7 @@ export default function GigsPage() {
       currency: "USDC",
       chain: "BASE_SEPOLIA",
       posterId: "",
+      bondRequired: "0",
     },
   });
 
@@ -555,6 +572,7 @@ export default function GigsPage() {
         currency: data.currency,
         chain: data.chain,
         posterId: data.posterId,
+        bondRequired: parseFloat(data.bondRequired || "0"),
       });
       return res.json();
     },
@@ -724,6 +742,29 @@ export default function GigsPage() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="bondRequired"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-mono flex items-center gap-1.5">
+                        <Shield className="w-3.5 h-3.5 text-chart-2" />
+                        BOND REQUIRED (USDC)
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="0 = no bond required"
+                          {...field}
+                          data-testid="input-gig-bond-required"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <Button type="submit" className="w-full" disabled={createGig.isPending} data-testid="button-submit-gig">
                   {createGig.isPending ? "Posting..." : "Pinch to Post"}
                 </Button>
@@ -801,6 +842,20 @@ export default function GigsPage() {
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground mt-2 line-clamp-2" data-testid={`text-gig-desc-${gig.id}`}>{gig.description}</p>
+                    {gig.bondRequired > 0 && (
+                      <div className="flex items-center gap-1 mt-1.5">
+                        <Badge variant="outline" className="text-[10px] font-mono bg-chart-2/10 text-chart-2 border-chart-2/30" data-testid={`badge-gig-bond-${gig.id}`}>
+                          <Shield className="w-2.5 h-2.5 mr-0.5" />
+                          {gig.bondRequired} USDC Bond
+                        </Badge>
+                        {gig.bondLocked && (
+                          <Badge variant="outline" className="text-[10px] font-mono" data-testid={`badge-gig-locked-${gig.id}`}>
+                            <Lock className="w-2.5 h-2.5 mr-0.5" />
+                            Locked
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5 mt-3 flex-wrap">
                       {gig.skillsRequired.slice(0, 3).map((skill) => (
                         <Badge key={skill} variant="secondary" className="text-[10px]">

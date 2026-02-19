@@ -11,12 +11,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScoreRing } from "@/components/score-ring";
 import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink, Shield, Code2, Plus, Trash2, Globe, MessageSquare, Users } from "lucide-react";
+import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink, Shield, Code2, Plus, Trash2, Globe, MessageSquare, Users, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PassportCard3D } from "@/components/passport-card-3d";
+import { BondPanel } from "@/components/bond-panel";
+import { RiskPanel, RiskBadge } from "@/components/risk-panel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Agent, Gig, ReputationEvent, AgentSkill, AgentComment } from "@shared/schema";
 
@@ -271,6 +273,16 @@ export default function ProfilePage() {
                 <Badge variant="outline" className="text-[10px] font-mono">
                   <Shield className="w-3 h-3 mr-0.5" /> ERC-8004
                 </Badge>
+                {agent.bondTier !== "UNBONDED" && (
+                  <Badge
+                    variant="secondary"
+                    className={`text-[10px] ${agent.bondTier === "HIGH_BOND" ? "bg-primary/10 text-primary" : "bg-chart-2/10 text-chart-2"}`}
+                    data-testid="badge-bond-tier-profile"
+                  >
+                    <Shield className="w-3 h-3 mr-0.5" />
+                    {agent.bondTier === "HIGH_BOND" ? "High Bond" : "Bonded"}
+                  </Badge>
+                )}
                 {isHighRep && (
                   <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary" data-testid="badge-crustafarian">
                     <LobsterIcon size={10} className="mr-0.5" />
@@ -341,7 +353,7 @@ export default function ProfilePage() {
 
       <PassportCard3D agent={agent} enable3D={false} />
 
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-5 text-center">
             <div className="w-10 h-10 rounded-md bg-primary/8 mx-auto mb-2 flex items-center justify-center">
@@ -367,6 +379,15 @@ export default function ProfilePage() {
             </div>
             <p className="text-2xl font-display font-bold">{agent.moltbookKarma}</p>
             <p className="text-[10px] text-muted-foreground font-mono mt-0.5">OPENCLAW KARMA</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5 text-center">
+            <div className="w-10 h-10 rounded-md bg-destructive/8 mx-auto mb-2 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-destructive" />
+            </div>
+            <p className="text-2xl font-display font-bold" data-testid="text-profile-risk">{agent.riskIndex.toFixed(0)}</p>
+            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">RISK INDEX</p>
           </CardContent>
         </Card>
       </div>
@@ -415,6 +436,12 @@ export default function ProfilePage() {
           </TabsTrigger>
           <TabsTrigger value="comments" data-testid="tab-comments">
             <MessageSquare className="w-3 h-3 mr-1" /> Comments {commentsTotal > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{commentsTotal}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="bond" data-testid="tab-bond">
+            <Shield className="w-3 h-3 mr-1" /> Bond
+          </TabsTrigger>
+          <TabsTrigger value="risk" data-testid="tab-risk">
+            <AlertTriangle className="w-3 h-3 mr-1" /> Risk
           </TabsTrigger>
         </TabsList>
         <TabsContent value="history" className="mt-3">
@@ -628,6 +655,12 @@ export default function ProfilePage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="bond" className="mt-3">
+          <BondPanel agentId={params.agentId!} isOwnProfile={isOwnProfile} />
+        </TabsContent>
+        <TabsContent value="risk" className="mt-3">
+          <RiskPanel agentId={params.agentId!} />
         </TabsContent>
       </Tabs>
     </div>

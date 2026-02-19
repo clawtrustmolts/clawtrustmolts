@@ -24,7 +24,9 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
-import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto } from "./moltbook-bot";
+import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
+import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
+import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
@@ -291,11 +293,6 @@ export async function registerRoutes(
     res.json(agent);
   });
 
-  app.get("/api/agents/:id/gigs", async (req, res) => {
-    const gigs = await storage.getGigsByAgent(req.params.id);
-    res.json(gigs);
-  });
-
   app.get("/api/agents/:id/verify", async (req, res) => {
     try {
       const agent = await storage.getAgent(req.params.id);
@@ -518,9 +515,29 @@ export async function registerRoutes(
       const assignee = await storage.getAgent(assigneeId);
       if (!assignee) return res.status(404).json({ message: "Assignee agent not found" });
 
+      const riskCheck = await checkGigRiskEligibility(assigneeId);
+      if (!riskCheck.eligible) {
+        return res.status(400).json({
+          message: riskCheck.reason,
+          riskIndex: riskCheck.riskIndex,
+        });
+      }
+
+      if (gig.bondRequired > 0) {
+        const bondResult = await lockBondForGig(assigneeId, gigId.data, gig.bondRequired);
+        if (!bondResult.locked) {
+          return res.status(400).json({
+            message: bondResult.reason,
+            autoSlashed: bondResult.autoSlashed,
+            bondRequired: gig.bondRequired,
+          });
+        }
+      }
+
       const updated = await storage.updateGig(gigId.data, {
         assigneeId,
         status: "assigned",
+        bondLocked: gig.bondRequired > 0,
       });
 
       await storage.createReputationEvent({
@@ -531,7 +548,7 @@ export async function registerRoutes(
         details: `Assigned to gig: ${gig.title}`,
       });
 
-      res.json(updated);
+      res.json({ ...updated, bondLocked: gig.bondRequired > 0, bondAmount: gig.bondRequired });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
@@ -838,6 +855,12 @@ export async function registerRoutes(
 
       await logSuspiciousActivity(req, "dispute_filed", `Dispute on gig ${gigId} by agent ${disputedBy}: ${reason.slice(0, 200)}`, "info");
 
+      if (gig.assigneeId) {
+        await recordRiskEvent(gig.assigneeId, "DISPUTE_OPENED", 20, `Dispute on gig "${gig.title}"`).catch(err =>
+          console.error(`[Risk] Failed to record dispute event: ${err.message}`)
+        );
+      }
+
       res.json({
         status: "disputed",
         escrowId: escrow.id,
@@ -938,6 +961,38 @@ export async function registerRoutes(
           await storage.updateEscrow(escrow.id, { status: "refunded" });
         }
         await storage.updateGigStatus(gigId, "open");
+      }
+
+      if (gig.bondLocked && gig.assigneeId && gig.bondRequired > 0) {
+        if (action === "release_to_assignee") {
+          await unlockBondForGig(gig.assigneeId, gigId);
+          await storage.updateGig(gigId, { bondLocked: false });
+          await syncPerformanceScore(gig.assigneeId);
+          console.log(`[Bond-Gig] Unlocked bond for admin-resolved gig ${gigId}`);
+        } else {
+          try {
+            await slashBond(gig.assigneeId, gigId, "Dispute resolved against assignee");
+            await storage.updateGig(gigId, { bondLocked: false });
+            console.log(`[Bond-Gig] Slashed bond for dispute-lost gig ${gigId}`);
+          } catch (slashErr: any) {
+            console.warn(`[Bond-Gig] Slash failed for gig ${gigId}: ${slashErr.message}`);
+            await unlockBondForGig(gig.assigneeId, gigId);
+            await storage.updateGig(gigId, { bondLocked: false });
+          }
+          await syncPerformanceScore(gig.assigneeId);
+        }
+      }
+
+      if (gig.assigneeId) {
+        if (action === "release_to_assignee") {
+          await recordRiskEvent(gig.assigneeId, "DISPUTE_RESOLVED", -10, `Dispute resolved in favor of assignee on gig "${gig.title}"`).catch(err =>
+            console.error(`[Risk] Failed to record dispute resolution: ${err.message}`)
+          );
+        } else {
+          await recordRiskEvent(gig.assigneeId, "DISPUTE_RESOLVED", 15, `Dispute resolved against assignee on gig "${gig.title}"`).catch(err =>
+            console.error(`[Risk] Failed to record dispute resolution: ${err.message}`)
+          );
+        }
       }
 
       await logSuspiciousActivity(req, "admin_resolution", `Admin ${adminWallet} resolved dispute on gig ${gigId}: ${action}`, "info");
@@ -1047,6 +1102,13 @@ export async function registerRoutes(
           totalGigsCompleted: (assignee.totalGigsCompleted || 0) + 1,
           totalEarned: (assignee.totalEarned || 0) + escrow.amount,
         });
+
+        if (gig.bondLocked && gig.bondRequired > 0) {
+          await unlockBondForGig(gig.assigneeId, gigId);
+          await storage.updateGig(gigId, { bondLocked: false });
+          console.log(`[Bond-Gig] Unlocked bond for completed gig ${gigId}`);
+        }
+        await syncPerformanceScore(gig.assigneeId);
       }
 
       res.json({
@@ -1139,7 +1201,8 @@ export async function registerRoutes(
         gig.posterId,
         ...(gig.assigneeId ? [gig.assigneeId] : []),
       ];
-      const topAgents = await storage.getTopAgentsByFusedScore(candidateCount, excludeIds);
+      const topAgentCandidates = await storage.getTopAgentsByFusedScore(candidateCount * 2, excludeIds);
+      const topAgents = topAgentCandidates.filter(a => a.riskIndex <= 60);
 
       if (topAgents.length < threshold) {
         return res.status(400).json({
@@ -1291,9 +1354,19 @@ export async function registerRoutes(
                 totalGigsCompleted: assignee.totalGigsCompleted + 1,
                 totalEarned: assignee.totalEarned + gig.budget,
                 onChainScore: Math.min(assignee.onChainScore + 10, 1000),
-                fusedScore: computeFusedScore(Math.min(assignee.onChainScore + 10, 1000), assignee.moltbookKarma),
+                fusedScore: computeFusedScore(Math.min(assignee.onChainScore + 10, 1000), assignee.moltbookKarma, assignee.performanceScore, assignee.bondReliability),
               });
             }
+
+            if (gig.bondLocked && gig.bondRequired > 0) {
+              await unlockBondForGig(gig.assigneeId, gig.id);
+              await storage.updateGig(gig.id, { bondLocked: false });
+              console.log(`[Swarm] Unlocked bond for approved gig ${gig.id}`);
+            }
+
+            await recordRiskEvent(gig.assigneeId, "DISPUTE_RESOLVED", -5, `Swarm approved gig "${gig.title}"`).catch(err =>
+              console.error(`[Risk] Failed to record swarm approval: ${err.message}`)
+            );
           }
 
           const allVotes = await storage.getVotesByValidation(validationId);
@@ -1317,7 +1390,7 @@ export async function registerRoutes(
                 await storage.updateAgent(v.voterId, {
                   totalEarned: voter.totalEarned + reward,
                   onChainScore: Math.min(voter.onChainScore + 2, 1000),
-                  fusedScore: computeFusedScore(Math.min(voter.onChainScore + 2, 1000), voter.moltbookKarma),
+                  fusedScore: computeFusedScore(Math.min(voter.onChainScore + 2, 1000), voter.moltbookKarma, voter.performanceScore, voter.bondReliability),
                 });
               }
 
@@ -1333,6 +1406,27 @@ export async function registerRoutes(
           const escrow = await storage.getEscrowByGig(validation.gigId);
           if (escrow && escrow.status === "locked") {
             await storage.updateEscrow(escrow.id, { status: "refunded" });
+          }
+
+          if (gig.assigneeId && gig.bondLocked && gig.bondRequired > 0) {
+            const bondEvts = await storage.getBondEventsByGig(gig.id);
+            const alreadySlashed = bondEvts.some(e => e.eventType === "SLASH");
+
+            if (!alreadySlashed) {
+              try {
+                await slashBond(gig.assigneeId, gig.id, `Swarm rejected gig "${gig.title}"`);
+                await storage.updateGig(gig.id, { bondLocked: false });
+                console.log(`[Swarm] Slashed bond for rejected gig ${gig.id}`);
+              } catch (slashErr: any) {
+                console.warn(`[Swarm] Slash failed for gig ${gig.id}: ${slashErr.message}`);
+                await unlockBondForGig(gig.assigneeId, gig.id);
+                await storage.updateGig(gig.id, { bondLocked: false });
+              }
+            }
+
+            await recordRiskEvent(gig.assigneeId, "FAILED_GIG", 25, `Swarm rejected gig "${gig.title}"`).catch(err =>
+              console.error(`[Risk] Failed to record swarm rejection: ${err.message}`)
+            );
           }
         }
       }
@@ -1400,7 +1494,7 @@ export async function registerRoutes(
       const karmaBoost = data.karmaBoost || Math.max(Math.round(viralScore.viralBonus * 10), 50);
       const effectiveKarma = Math.max(moltbookKarma, agent.moltbookKarma + karmaBoost);
       const moltNormalized = normalizeMoltbookScore(effectiveKarma, viralScore.viralBonus);
-      const newFused = computeFusedScore(agent.onChainScore, effectiveKarma);
+      const newFused = computeFusedScore(agent.onChainScore, effectiveKarma, agent.performanceScore, agent.bondReliability);
 
       await storage.updateAgent(agent.id, {
         moltbookKarma: effectiveKarma,
@@ -1653,16 +1747,42 @@ export async function registerRoutes(
       if (agent.totalGigsCompleted > 5) confidence += 0.05;
       confidence = Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100;
 
-      const hireable = effectiveScore >= 40 && !hasActiveDisputes;
+      let riskData: { riskIndex: number; riskLevel: string; cleanStreakDays: number } | undefined;
+      try {
+        const riskProfile = await calculateRiskProfile(agent.id);
+        riskData = {
+          riskIndex: riskProfile.riskIndex,
+          riskLevel: getRiskLevel(riskProfile.riskIndex),
+          cleanStreakDays: riskProfile.cleanStreakDays,
+        };
+      } catch {
+        riskData = undefined;
+      }
+
+      const minScore = parseFloat(req.query.minScore as string) || 40;
+      const maxRisk = parseFloat(req.query.maxRisk as string) || 75;
+      const minBond = parseFloat(req.query.minBond as string) || 0;
+      const noActiveDisputes = req.query.noActiveDisputes !== "false";
+
+      const riskExceeded = riskData ? riskData.riskIndex > maxRisk : false;
+      const bondInsufficient = minBond > 0 && agent.availableBond < minBond;
+
+      const hireable =
+        effectiveScore >= minScore &&
+        (!noActiveDisputes || !hasActiveDisputes) &&
+        !riskExceeded &&
+        !bondInsufficient;
 
       let reason: string;
       if (hireable) {
-        reason = "Meets threshold (fused >= 40, no disputes, recently active)";
+        reason = `Meets threshold (fused >= ${minScore}, risk <= ${maxRisk}, bond >= ${minBond})`;
       } else {
         const reasons: string[] = [];
-        if (effectiveScore < 40) reasons.push(`score too low (${effectiveScore})`);
-        if (hasActiveDisputes) reasons.push("has active disputes");
+        if (effectiveScore < minScore) reasons.push(`score too low (${effectiveScore} < ${minScore})`);
+        if (hasActiveDisputes && noActiveDisputes) reasons.push("has active disputes");
         if (daysSinceActive > 30) reasons.push(`inactive for ${daysSinceActive} days (score decayed)`);
+        if (riskExceeded) reasons.push(`risk too high (${riskData?.riskIndex} > ${maxRisk})`);
+        if (bondInsufficient) reasons.push(`bond insufficient (${agent.availableBond} < ${minBond})`);
         reason = `Not hireable: ${reasons.join(", ")}`;
       }
 
@@ -1670,20 +1790,40 @@ export async function registerRoutes(
         ? `/disputes?wallet=${encodeURIComponent(agent.walletAddress)}`
         : undefined;
 
+      const scoreBreakdown = getScoreBreakdown(agent);
+
       res.json({
         hireable,
         score: effectiveScore,
         confidence,
         reason,
         onChainVerified,
+        riskIndex: riskData?.riskIndex ?? 0,
+        bonded: agent.totalBonded > 0,
+        bondTier: agent.bondTier,
+        availableBond: agent.availableBond,
+        performanceScore: agent.performanceScore,
+        bondReliability: agent.bondReliability,
+        cleanStreakDays: riskData?.cleanStreakDays ?? 0,
+        fusedScoreVersion: "v2",
+        weights: scoreBreakdown.weights,
         details: {
           wallet: agent.walletAddress,
           fusedScore: agent.fusedScore,
+          tier: scoreBreakdown.tier,
+          badges: scoreBreakdown.badges,
           hasActiveDisputes,
           lastActive: lastActive instanceof Date ? lastActive.toISOString() : String(lastActive),
           rank: getRank(effectiveScore),
           onChainRepScore,
           disputeSummaryUrl,
+          riskLevel: riskData?.riskLevel ?? "low",
+          scoreComponents: {
+            onChain: scoreBreakdown.onChainComponent,
+            moltbook: scoreBreakdown.moltbookComponent,
+            performance: scoreBreakdown.performanceComponent,
+            bondReliability: scoreBreakdown.bondReliabilityComponent,
+          },
         },
       });
     } catch (err: any) {
@@ -2353,13 +2493,252 @@ export async function registerRoutes(
   });
 
   app.get("/api/gigs/discover", async (req, res) => {
-    const skill = req.query.skill as string;
-    if (!skill || skill.length < 1) {
-      return res.status(400).json({ message: "Provide ?skill= query parameter" });
+    try {
+      const skill = req.query.skill as string;
+      const skills = req.query.skills as string;
+      const minBudget = parseFloat(req.query.minBudget as string) || 0;
+      const maxBudget = parseFloat(req.query.maxBudget as string) || Infinity;
+      const chain = req.query.chain as string;
+      const currency = req.query.currency as string;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const sortBy = (req.query.sortBy as string) || "newest";
+
+      const allGigs = await storage.getGigs();
+      let filtered = allGigs.filter(g => g.status === "open");
+
+      const skillList = skills
+        ? skills.split(",").map(s => s.trim().toLowerCase())
+        : skill
+          ? [skill.toLowerCase()]
+          : [];
+
+      if (skillList.length > 0) {
+        filtered = filtered.filter(g =>
+          g.skillsRequired.some(gs =>
+            skillList.some(s => gs.toLowerCase().includes(s))
+          )
+        );
+      }
+
+      if (minBudget > 0) {
+        filtered = filtered.filter(g => g.budget >= minBudget);
+      }
+      if (maxBudget < Infinity) {
+        filtered = filtered.filter(g => g.budget <= maxBudget);
+      }
+      if (chain) {
+        filtered = filtered.filter(g => g.chain === chain);
+      }
+      if (currency) {
+        filtered = filtered.filter(g => g.currency === currency);
+      }
+
+      if (sortBy === "budget_high") {
+        filtered.sort((a, b) => b.budget - a.budget);
+      } else if (sortBy === "budget_low") {
+        filtered.sort((a, b) => a.budget - b.budget);
+      } else {
+        filtered.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+      }
+
+      const total = filtered.length;
+      const paged = filtered.slice(offset, offset + limit);
+
+      const enriched = await Promise.all(paged.map(async (g) => {
+        const poster = await storage.getAgent(g.posterId);
+        return {
+          ...g,
+          poster: poster ? { id: poster.id, handle: poster.handle, fusedScore: poster.fusedScore } : null,
+        };
+      }));
+
+      res.json({
+        gigs: enriched,
+        total,
+        limit,
+        offset,
+        filters: { skills: skillList, minBudget, maxBudget: maxBudget === Infinity ? null : maxBudget, chain: chain || null, currency: currency || null, sortBy },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gigs/:id/submit-deliverable", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+      const agentId = (req as any).agentId;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (gig.assigneeId !== agentId) {
+        return res.status(403).json({ message: "Only the assigned agent can submit deliverables" });
+      }
+
+      if (gig.status !== "in_progress" && gig.status !== "assigned") {
+        return res.status(400).json({ message: `Gig status "${gig.status}" does not accept deliverables. Must be "assigned" or "in_progress".` });
+      }
+
+      const body = z.object({
+        deliverableUrl: z.string().url().optional(),
+        deliverableNote: z.string().min(1).max(2000),
+        requestValidation: z.boolean().optional().default(true),
+      }).parse(req.body);
+
+      await storage.updateGigStatus(gigId.data, body.requestValidation ? "pending_validation" : "in_progress");
+
+      await storage.createReputationEvent({
+        agentId,
+        eventType: "Deliverable Submitted",
+        scoreChange: 1,
+        source: "escrow",
+        details: `Submitted deliverable for gig "${gig.title}": ${body.deliverableNote.substring(0, 100)}`,
+        proofUri: body.deliverableUrl || null,
+      });
+
+      await storage.updateAgent(agentId, { lastHeartbeat: new Date() });
+
+      await logSuspiciousActivity(req, "deliverable_submitted", `Agent "${agent.handle}" submitted deliverable for gig "${gig.title}"`, "info");
+
+      res.json({
+        submitted: true,
+        gigId: gig.id,
+        status: body.requestValidation ? "pending_validation" : "in_progress",
+        deliverable: {
+          url: body.deliverableUrl || null,
+          note: body.deliverableNote,
+        },
+        nextSteps: body.requestValidation
+          ? [
+              "Gig is now pending swarm validation",
+              "POST /api/swarm/validate to initiate swarm validation (requires wallet auth)",
+              "Validators will review and vote on the deliverable",
+            ]
+          : [
+              "Deliverable noted. Gig remains in progress.",
+              "Submit again with requestValidation=true when ready for final review",
+            ],
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gigs/:id/accept-applicant", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+      const posterId = (req as any).agentId;
+      const poster = await storage.getAgent(posterId);
+      if (!poster) return res.status(404).json({ message: "Poster agent not found" });
+
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (gig.posterId !== posterId) {
+        return res.status(403).json({ message: "Only the gig poster can accept applicants" });
+      }
+
+      if (gig.status !== "open") {
+        return res.status(400).json({ message: `Gig is "${gig.status}", only open gigs can accept applicants` });
+      }
+
+      const body = z.object({
+        applicantAgentId: z.string().uuid(),
+      }).parse(req.body);
+
+      const applicant = await storage.getGigApplicant(gigId.data, body.applicantAgentId);
+      if (!applicant) {
+        return res.status(404).json({ message: "This agent has not applied to this gig" });
+      }
+
+      const assignee = await storage.getAgent(body.applicantAgentId);
+      if (!assignee) return res.status(404).json({ message: "Applicant agent not found" });
+
+      if (gig.bondRequired > 0) {
+        const riskCheck = await checkGigRiskEligibility(body.applicantAgentId);
+        if (!riskCheck.eligible) {
+          return res.status(403).json({ message: `Agent risk too high: ${riskCheck.reason}`, riskIndex: riskCheck.riskIndex });
+        }
+
+        if (assignee.availableBond < gig.bondRequired) {
+          return res.status(403).json({ message: `Insufficient bond. Required: ${gig.bondRequired}, Available: ${assignee.availableBond}` });
+        }
+
+        try {
+          await lockBondForGig(body.applicantAgentId, gigId.data, gig.bondRequired);
+        } catch (bondErr: any) {
+          return res.status(400).json({ message: `Bond lock failed: ${bondErr.message}` });
+        }
+      }
+
+      const updated = await storage.updateGig(gigId.data, {
+        assigneeId: body.applicantAgentId,
+        status: "assigned",
+        bondLocked: gig.bondRequired > 0,
+      });
+
+      await storage.createReputationEvent({
+        agentId: body.applicantAgentId,
+        eventType: "gig_assigned",
+        scoreChange: 1,
+        source: "escrow",
+        details: `Assigned to gig: ${gig.title}`,
+        proofUri: null,
+      });
+
+      await storage.updateAgent(posterId, { lastHeartbeat: new Date() });
+
+      res.json({
+        assigned: true,
+        gig: updated,
+        assignee: { id: assignee.id, handle: assignee.handle, fusedScore: assignee.fusedScore },
+        nextSteps: [
+          `Agent "${assignee.handle}" is now assigned to this gig`,
+          "POST /api/gigs/:id/submit-deliverable (by assignee) to submit completed work",
+          "PATCH /api/gigs/:id/status to update gig status",
+        ],
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/gigs", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.id);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const agent = await storage.getAgent(agentId.data);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    const gigs = await storage.getGigsByAgent(agentId.data);
+    const role = req.query.role as string;
+
+    let filtered = gigs;
+    if (role === "assignee") {
+      filtered = gigs.filter(g => g.assigneeId === agentId.data);
+    } else if (role === "poster") {
+      filtered = gigs.filter(g => g.posterId === agentId.data);
     }
 
-    const matched = await storage.searchGigsBySkill(sanitizeString(skill, 100));
-    res.json({ gigs: matched, count: matched.length, skill });
+    res.json({
+      gigs: filtered,
+      total: filtered.length,
+      agent: { id: agent.id, handle: agent.handle },
+    });
   });
 
   // === GIG SUBMOLTS ===
@@ -2705,6 +3084,19 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/bot/direct-post", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { title, content, submolt } = req.body;
+      if (!title || !content) {
+        return res.status(400).json({ error: "title and content required" });
+      }
+      const result = await directPost(title, content, submolt || "general");
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.get("/api/bot/preview", async (_req, res) => {
     try {
       const result = await previewBotCycle();
@@ -2763,6 +3155,251 @@ export async function registerRoutes(
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.get("/api/bond/:agentId/status", async (req, res) => {
+    try {
+      const status = await getBondStatus(req.params.agentId);
+      res.json(status);
+    } catch (err: any) {
+      res.status(404).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bonds/status/:wallet", async (req, res) => {
+    try {
+      const wallet = (req.params.wallet as string).toLowerCase().trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+        return res.status(400).json({ message: "Invalid wallet address" });
+      }
+
+      let agent = await storage.getAgentByWallet(wallet);
+      if (!agent) {
+        const allAgents = await storage.getAgents();
+        agent = allAgents.find((a) => a.walletAddress.toLowerCase() === wallet) ?? null;
+      }
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const status = await getBondStatus(agent.id);
+      res.json(status);
+    } catch (err: any) {
+      res.status(404).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bond/:agentId/history", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const events = await getBondHistory(req.params.agentId, limit);
+      res.json({ events, total: events.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/wallet", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.params.agentId;
+      const headerAgent = req.headers["x-agent-id"] as string;
+      if (!headerAgent || headerAgent !== agentId) {
+        return res.status(403).json({ message: "Agent ID mismatch" });
+      }
+      const wallet = await ensureBondWallet(agentId);
+      res.json(wallet);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/deposit", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.params.agentId;
+      const headerAgent = req.headers["x-agent-id"] as string;
+      if (!headerAgent || headerAgent !== agentId) {
+        return res.status(403).json({ message: "Agent ID mismatch" });
+      }
+      const { amount } = req.body;
+      if (!amount || typeof amount !== "number" || amount <= 0) {
+        return res.status(400).json({ message: "Valid positive amount required" });
+      }
+      const event = await depositBond(agentId, amount);
+      res.json({ event, message: `Deposited ${amount} USDC bond` });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/withdraw", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.params.agentId;
+      const headerAgent = req.headers["x-agent-id"] as string;
+      if (!headerAgent || headerAgent !== agentId) {
+        return res.status(403).json({ message: "Agent ID mismatch" });
+      }
+      const { amount } = req.body;
+      if (!amount || typeof amount !== "number" || amount <= 0) {
+        return res.status(400).json({ message: "Valid positive amount required" });
+      }
+      const event = await withdrawBond(agentId, amount);
+      res.json({ event, message: `Withdrew ${amount} USDC bond` });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bond/:agentId/eligibility", async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const requiredBond = parseFloat(req.query.required as string) || 0;
+      const result = checkBondEligibility(agent, requiredBond);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/lock", apiLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { amount, gigId } = req.body;
+      if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
+      const event = await lockBond(req.params.agentId, amount, gigId);
+      res.json({ event });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/unlock", apiLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { amount, gigId } = req.body;
+      if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
+      const event = await unlockBond(req.params.agentId, amount, gigId);
+      res.json({ event });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/slash", apiLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { gigId, reason } = req.body;
+      if (!gigId || !reason) return res.status(400).json({ message: "gigId and reason required" });
+      const event = await slashBond(req.params.agentId, gigId, reason);
+      res.json({ event });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bond/network/stats", async (_req, res) => {
+    try {
+      const stats = await getNetworkBondStats();
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bond/:agentId/sync-performance", async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.agentId);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const score = await syncPerformanceScore(agentId.data);
+      const agent = await storage.getAgent(agentId.data);
+      res.json({
+        agentId: agentId.data,
+        performanceScore: score,
+        fusedScore: agent?.fusedScore || 0,
+        bondReliability: agent?.bondReliability || 0,
+        totalGigsCompleted: agent?.totalGigsCompleted || 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/risk/:agentId", async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.agentId);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const agent = await storage.getAgent(agentId.data);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const profile = await calculateRiskProfile(agentId.data);
+      res.json({
+        agentId: agentId.data,
+        handle: agent.handle,
+        riskIndex: profile.riskIndex,
+        riskLevel: getRiskLevel(profile.riskIndex),
+        breakdown: profile.breakdown,
+        trend: profile.trend,
+        cleanStreakDays: profile.cleanStreakDays,
+        feeMultiplier: profile.feeMultiplier,
+        lastUpdated: profile.lastUpdated,
+        recentEvents: profile.recentEvents.slice(0, 10),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/risk/wallet/:wallet", async (req, res) => {
+    try {
+      const wallet = (req.params.wallet as string).toLowerCase().trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+        return res.status(400).json({ message: "Invalid wallet address" });
+      }
+
+      let agent = await storage.getAgentByWallet(wallet);
+      if (!agent) {
+        const allAgents = await storage.getAgents();
+        agent = allAgents.find((a) => a.walletAddress.toLowerCase() === wallet) ?? null;
+      }
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const profile = await calculateRiskProfile(agent.id);
+      res.json({
+        riskIndex: profile.riskIndex,
+        riskLevel: getRiskLevel(profile.riskIndex),
+        cleanStreakDays: profile.cleanStreakDays,
+        factors: profile.breakdown,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bond/:agentId/performance", async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.agentId);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const agent = await storage.getAgent(agentId.data);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const score = computePerformanceScore(agent);
+      res.json({
+        performanceScore: score,
+        storedScore: agent.performanceScore,
+        components: {
+          fusedScore: Math.min(agent.fusedScore, 100),
+          bondReliability: agent.bondReliability,
+          gigsCompleted: agent.totalGigsCompleted,
+        },
+        weights: {
+          fusedScore: 0.5,
+          bondReliability: 0.3,
+          gigsCompleted: 0.2,
+        },
+        threshold: 50,
+        aboveThreshold: score >= 50,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
