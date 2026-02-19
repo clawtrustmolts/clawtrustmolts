@@ -1,49 +1,62 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./interfaces/IERC20.sol";
+interface IERC20 {
+    function transferFrom(address from, address to, uint256 amount) external returns(bool);
+    function transfer(address to, uint256 amount) external returns(bool);
+    function balanceOf(address account) external view returns(uint256);
+}
 
 contract ClawTrustBond {
     IERC20 public immutable usdcToken;
     address public owner;
-    address public oracle;
 
     struct Bond {
         uint256 totalDeposited;
         uint256 available;
         uint256 locked;
         uint256 lastSlashTimestamp;
+        uint256 performanceScore; // 0-100
+    }
+
+    struct Gig {
+        bytes32 gigId;
+        address agent;
+        uint256 lockedAmount;
+        uint256 approvals;
+        uint256 rejections;
+        bool finalized;
     }
 
     mapping(address => Bond) public bonds;
+    mapping(bytes32 => Gig) public gigs;
 
     uint256 public constant MIN_DEPOSIT = 10e6;
     uint256 public constant SLASH_COOLDOWN = 7 days;
-    uint256 public constant MAX_SLASH_BPS = 2000;
+    uint256 public constant MAX_SLASH_BPS = 2000; // Max 20% of locked bond
+    uint256 public constant SWARM_THRESHOLD = 3;
+    uint256 public constant MIN_FUSED_SCORE = 50; // Example threshold for auto-slash
 
+    // Events
     event BondDeposited(address indexed agent, uint256 amount);
     event BondWithdrawn(address indexed agent, uint256 amount);
     event BondLocked(address indexed agent, uint256 amount, bytes32 gigId);
     event BondUnlocked(address indexed agent, uint256 amount, bytes32 gigId);
     event BondSlashed(address indexed agent, uint256 amount, bytes32 gigId, string reason);
-    event OracleUpdated(address indexed newOracle);
+    event SwarmVote(bytes32 gigId, address validator, bool approve);
+    event PerformanceScoreUpdated(address indexed agent, uint256 performanceScore);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
         _;
     }
 
-    modifier onlyOracle() {
-        require(msg.sender == oracle, "Not oracle");
-        _;
-    }
-
-    constructor(address _usdcToken, address _oracle) {
+    constructor(address _usdcToken) {
         usdcToken = IERC20(_usdcToken);
         owner = msg.sender;
-        oracle = _oracle;
     }
 
+    // --- Bond Management ---
     function deposit(uint256 amount) external {
         require(amount >= MIN_DEPOSIT, "Below minimum deposit");
         require(usdcToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
@@ -67,61 +80,93 @@ contract ClawTrustBond {
         emit BondWithdrawn(msg.sender, amount);
     }
 
-    function lockBond(address agent, uint256 amount, bytes32 gigId) external onlyOracle {
-        Bond storage bond = bonds[agent];
-        require(amount <= bond.available, "Insufficient available bond");
+    // --- Performance Score ---
+    function updatePerformanceScore(address agent, uint256 score) external onlyOwner {
+        require(score <= 100, "Score > 100");
+        bonds[agent].performanceScore = score;
+        emit PerformanceScoreUpdated(agent, score);
+    }
+
+    // --- Gig Actions ---
+    function lockBondForGig(bytes32 gigId, uint256 amount) external {
+        Bond storage bond = bonds[msg.sender];
+        require(amount <= bond.available, "Insufficient bond");
+        require(gigs[gigId].agent == address(0), "Gig already exists");
+
+        // Auto-slash if performance score is below threshold
+        if (bond.performanceScore < MIN_FUSED_SCORE) {
+            uint256 slashAmount = (amount * MAX_SLASH_BPS) / 10000;
+            bond.totalDeposited -= slashAmount;
+            bond.available -= slashAmount;
+            emit BondSlashed(msg.sender, slashAmount, gigId, "Low FusedScore auto-slash");
+            return;
+        }
 
         bond.available -= amount;
         bond.locked += amount;
 
-        emit BondLocked(agent, amount, gigId);
+        gigs[gigId] = Gig({
+            gigId: gigId,
+            agent: msg.sender,
+            lockedAmount: amount,
+            approvals: 0,
+            rejections: 0,
+            finalized: false
+        });
+
+        emit BondLocked(msg.sender, amount, gigId);
     }
 
-    function unlockBond(address agent, uint256 amount, bytes32 gigId) external onlyOracle {
-        Bond storage bond = bonds[agent];
-        uint256 unlockAmount = amount > bond.locked ? bond.locked : amount;
+    function swarmVote(bytes32 gigId, bool approve) external {
+        Gig storage gig = gigs[gigId];
+        require(!gig.finalized, "Gig already finalized");
 
-        bond.locked -= unlockAmount;
-        bond.available += unlockAmount;
+        if (approve) {
+            gig.approvals += 1;
+        } else {
+            gig.rejections += 1;
+        }
 
-        emit BondUnlocked(agent, unlockAmount, gigId);
+        emit SwarmVote(gigId, msg.sender, approve);
+
+        if (gig.approvals >= SWARM_THRESHOLD) {
+            _finalizeGig(gigId, true);
+        } else if (gig.rejections >= SWARM_THRESHOLD) {
+            _finalizeGig(gigId, false);
+        }
     }
 
-    function slashBond(address agent, bytes32 gigId, string calldata reason) external onlyOracle {
-        Bond storage bond = bonds[agent];
-        require(bond.locked > 0, "No locked bond to slash");
-        require(
-            block.timestamp >= bond.lastSlashTimestamp + SLASH_COOLDOWN,
-            "Double-slash protection: cooldown active"
-        );
+    function _finalizeGig(bytes32 gigId, bool success) internal {
+        Gig storage gig = gigs[gigId];
+        Bond storage bond = bonds[gig.agent];
+        require(!gig.finalized, "Already finalized");
 
-        uint256 slashAmount = (bond.locked * MAX_SLASH_BPS) / 10000;
-        bond.locked -= slashAmount;
-        bond.totalDeposited -= slashAmount;
-        bond.lastSlashTimestamp = block.timestamp;
+        gig.finalized = true;
 
-        require(usdcToken.transfer(owner, slashAmount), "Slash transfer failed");
+        if (success) {
+            bond.locked -= gig.lockedAmount;
+            bond.available += gig.lockedAmount;
+            emit BondUnlocked(gig.agent, gig.lockedAmount, gigId);
+        } else {
+            uint256 slashAmount = (gig.lockedAmount * MAX_SLASH_BPS) / 10000;
+            bond.locked -= slashAmount;
+            bond.totalDeposited -= slashAmount;
+            bond.lastSlashTimestamp = block.timestamp;
+            require(usdcToken.transfer(owner, slashAmount), "Slash transfer failed");
 
-        emit BondSlashed(agent, slashAmount, gigId, reason);
+            emit BondSlashed(gig.agent, slashAmount, gigId, "Swarm-rejected");
+        }
     }
 
+    // --- Read Functions ---
     function getBond(address agent) external view returns (
         uint256 totalDeposited,
         uint256 available,
         uint256 locked,
-        uint256 lastSlashTimestamp
+        uint256 lastSlashTimestamp,
+        uint256 performanceScore
     ) {
         Bond storage bond = bonds[agent];
-        return (bond.totalDeposited, bond.available, bond.locked, bond.lastSlashTimestamp);
-    }
-
-    function setOracle(address _oracle) external onlyOwner {
-        oracle = _oracle;
-        emit OracleUpdated(_oracle);
-    }
-
-    function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Invalid address");
-        owner = newOwner;
+        return (bond.totalDeposited, bond.available, bond.locked, bond.lastSlashTimestamp, bond.performanceScore);
     }
 }
