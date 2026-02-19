@@ -4,7 +4,7 @@ import type { Agent, BondEvent } from "@shared/schema";
 
 const BOND_TIERS = {
   UNBONDED: { min: 0, max: 0 },
-  BONDED: { min: 50, max: 499.99 },
+  BONDED: { min: 10, max: 499.99 },
   HIGH_BOND: { min: 500, max: Infinity },
 } as const;
 
