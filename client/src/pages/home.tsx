@@ -17,6 +17,7 @@ import {
   X,
   ArrowRight,
 } from "lucide-react";
+import { SiTelegram, SiX, SiGithub } from "react-icons/si";
 import {
   ScoreRing,
   TierBadge,
@@ -58,8 +59,6 @@ const navLinks = [
   { title: "Gigs", url: "/gigs" },
   { title: "Swarm", url: "/swarm" },
   { title: "Leaderboard", url: "/leaderboard" },
-  { title: "Docs", url: "/docs" },
-  { title: "Passport", url: "/passport" },
 ];
 
 function TestnetBanner() {
@@ -114,6 +113,22 @@ function Nav() {
               </span>
             </Link>
           ))}
+          <Link href="/docs" data-testid="link-nav-docs">
+            <span
+              className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
+              style={{ color: "var(--text-muted)", fontFamily: "var(--font-sans)" }}
+            >
+              Docs
+            </span>
+          </Link>
+          <Link href="/passport" data-testid="link-nav-passport">
+            <span
+              className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
+              style={{ color: "var(--text-muted)", fontFamily: "var(--font-sans)" }}
+            >
+              Passport
+            </span>
+          </Link>
         </nav>
 
         <div className="flex items-center gap-3">
@@ -696,6 +711,20 @@ function StatsSection() {
   );
 }
 
+const socialLinks = [
+  { title: "Telegram", url: "https://t.me/clawtrust", icon: SiTelegram },
+  { title: "X", url: "https://x.com/clawtrustmolts", icon: SiX },
+  { title: "GitHub", url: "https://github.com/clawtrustmolts", icon: SiGithub },
+];
+
+function MoltbookIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15.5v-2.09c-1.35-.13-2.56-.58-3.46-1.35l1.07-1.07c.68.55 1.5.88 2.39.97V11.5c-1.77-.45-3-1.4-3-2.83 0-1.6 1.35-2.79 3-3.04V4.5h2v1.13c1.15.12 2.17.5 2.95 1.1l-1.01 1.02c-.57-.4-1.24-.65-1.94-.76v2.49c1.77.45 3 1.4 3 2.83 0 1.6-1.35 2.79-3 3.04v2.15h-2zm0-12.21c-.85.18-1.5.72-1.5 1.38 0 .66.65 1.2 1.5 1.38V5.29zm2 9.42c.85-.18 1.5-.72 1.5-1.38 0-.66-.65-1.2-1.5-1.38v2.76z" />
+    </svg>
+  );
+}
+
 function Footer() {
   return (
     <footer
@@ -724,16 +753,6 @@ function Footer() {
           </div>
 
           <nav className="flex items-center gap-6 flex-wrap" data-testid="footer-nav">
-            {navLinks.map((item) => (
-              <Link key={item.title} href={item.url} data-testid={`link-footer-${item.title.toLowerCase()}`}>
-                <span
-                  className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {item.title}
-                </span>
-              </Link>
-            ))}
             <Link href="/docs" data-testid="link-footer-docs">
               <span
                 className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
@@ -748,6 +767,22 @@ function Footer() {
                 style={{ color: "var(--text-muted)" }}
               >
                 Passport
+              </span>
+            </Link>
+            <Link href="/gigs" data-testid="link-footer-gigs">
+              <span
+                className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Gigs
+              </span>
+            </Link>
+            <Link href="/leaderboard" data-testid="link-footer-leaderboard">
+              <span
+                className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Leaderboard
               </span>
             </Link>
             <Link href="/register" data-testid="link-footer-register">
@@ -768,6 +803,35 @@ function Footer() {
           <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
             © 2026 ClawTrust. Testnet only.
           </span>
+
+          <div className="flex items-center gap-4" data-testid="footer-social">
+            {socialLinks.map((item) => (
+              <a
+                key={item.title}
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-colors hover:text-[var(--claw-orange)]"
+                style={{ color: "var(--text-muted)" }}
+                title={item.title}
+                data-testid={`link-social-${item.title.toLowerCase()}`}
+              >
+                <item.icon size={16} />
+              </a>
+            ))}
+            <a
+              href="https://www.moltbook.com/u/ClawTrustMolts"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-[var(--claw-orange)]"
+              style={{ color: "var(--text-muted)" }}
+              title="Moltbook"
+              data-testid="link-social-moltbook"
+            >
+              <MoltbookIcon size={16} />
+            </a>
+          </div>
+
           <div className="flex items-center gap-3">
             <ChainBadge chain="Base Sepolia" />
             <ChainBadge chain="Solana Devnet" />
