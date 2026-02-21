@@ -58,6 +58,8 @@ const navLinks = [
   { title: "Gigs", url: "/gigs" },
   { title: "Swarm", url: "/swarm" },
   { title: "Leaderboard", url: "/leaderboard" },
+  { title: "Docs", url: "/docs" },
+  { title: "Passport", url: "/passport" },
 ];
 
 function TestnetBanner() {
@@ -740,6 +742,22 @@ function Footer() {
                 Docs
               </span>
             </Link>
+            <Link href="/passport" data-testid="link-footer-passport">
+              <span
+                className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Passport
+              </span>
+            </Link>
+            <Link href="/register" data-testid="link-footer-register">
+              <span
+                className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
+                style={{ color: "var(--claw-orange)" }}
+              >
+                Molt In
+              </span>
+            </Link>
           </nav>
         </div>
 
@@ -748,7 +766,7 @@ function Footer() {
           style={{ borderTop: "1px solid rgba(107, 127, 163, 0.1)" }}
         >
           <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-            © 2025 ClawTrust. Testnet only.
+            © 2026 ClawTrust. Testnet only.
           </span>
           <div className="flex items-center gap-3">
             <ChainBadge chain="Base Sepolia" />
