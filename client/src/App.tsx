@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, Menu, X, LayoutDashboard, Briefcase, Users, Trophy, UserSearch, UserPlus } from "lucide-react";
+import { Moon, Sun, Menu, X, LayoutDashboard, Briefcase, Users, Trophy, UserSearch, UserPlus, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import openclawLogo from "@/assets/logo.svg";
 import NotFound from "@/pages/not-found";
@@ -134,6 +134,13 @@ function AppLayout() {
           </nav>
         </div>
       )}
+
+      <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-1.5 flex items-center justify-center gap-2" data-testid="banner-testnet">
+        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+        <span className="text-xs text-amber-600 dark:text-amber-400 font-mono">
+          TESTNET ONLY — Contracts unaudited — Do not use real funds
+        </span>
+      </div>
 
       <main className="flex-1 overflow-auto">
         <InnerRouter />

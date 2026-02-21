@@ -287,6 +287,67 @@ export async function registerRoutes(
     res.json(agents);
   });
 
+  function getAgentActivityStatus(agent: { lastHeartbeat: Date | null; registeredAt: Date | null }): {
+    status: "active" | "warm" | "cooling" | "dormant" | "inactive";
+    label: string;
+    eligibleForGigs: boolean;
+    trustPenalty: number;
+  } {
+    const lastActive = agent.lastHeartbeat || agent.registeredAt;
+    if (!lastActive) return { status: "inactive", label: "Inactive", eligibleForGigs: false, trustPenalty: 0.5 };
+    const hoursSince = (Date.now() - new Date(lastActive).getTime()) / (1000 * 60 * 60);
+    if (hoursSince < 1) return { status: "active", label: "Active", eligibleForGigs: true, trustPenalty: 0 };
+    if (hoursSince < 24) return { status: "warm", label: "Warm", eligibleForGigs: true, trustPenalty: 0.05 };
+    if (hoursSince < 168) return { status: "cooling", label: "Cooling", eligibleForGigs: false, trustPenalty: 0.15 };
+    if (hoursSince < 720) return { status: "dormant", label: "Dormant", eligibleForGigs: false, trustPenalty: 0.3 };
+    return { status: "inactive", label: "Inactive", eligibleForGigs: false, trustPenalty: 0.5 };
+  }
+
+  app.get("/api/agents/discover", apiLimiter, async (req, res) => {
+    try {
+      const skillsParam = req.query.skills as string;
+      const skills = skillsParam ? skillsParam.split(",").map(s => s.trim()).filter(Boolean) : undefined;
+      const minScore = req.query.minScore ? parseFloat(req.query.minScore as string) : undefined;
+      const maxRisk = req.query.maxRisk ? parseFloat(req.query.maxRisk as string) : undefined;
+      const minBond = req.query.minBond ? parseFloat(req.query.minBond as string) : undefined;
+      const sortBy = (req.query.sortBy as string) || "score_high";
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const activeOnly = req.query.activeOnly === "true";
+
+      const result = await storage.discoverAgents({ skills, minScore, maxRisk, minBond, sortBy, limit, offset });
+
+      let enriched = await Promise.all(result.agents.map(async (a) => {
+        const agentSkillsList = await storage.getAgentSkills(a.id);
+        const activityStatus = getAgentActivityStatus(a);
+        const followerCount = await storage.getFollowerCount(a.id);
+        return {
+          id: a.id, handle: a.handle, walletAddress: a.walletAddress, avatar: a.avatar, bio: a.bio,
+          skills: a.skills,
+          detailedSkills: agentSkillsList.map(s => ({ name: s.skillName, mcpEndpoint: s.mcpEndpoint, description: s.description })),
+          fusedScore: a.fusedScore, riskIndex: a.riskIndex, bondTier: a.bondTier, availableBond: a.availableBond,
+          totalGigsCompleted: a.totalGigsCompleted, totalEarned: a.totalEarned, isVerified: a.isVerified,
+          performanceScore: a.performanceScore, bondReliability: a.bondReliability,
+          activityStatus, followerCount,
+          tier: a.fusedScore >= 90 ? "Diamond Claw" : a.fusedScore >= 70 ? "Gold Shell" : a.fusedScore >= 50 ? "Silver Molt" : a.fusedScore >= 30 ? "Bronze Pinch" : "Hatchling",
+        };
+      }));
+
+      if (activeOnly) {
+        enriched = enriched.filter(a => a.activityStatus.eligibleForGigs);
+      }
+
+      res.json({
+        agents: enriched,
+        total: activeOnly ? enriched.length : result.total,
+        limit, offset,
+        filters: { skills: skills || [], minScore, maxRisk, minBond, sortBy, activeOnly },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/agents/:id", async (req, res) => {
     const agent = await storage.getAgent(req.params.id);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -1201,12 +1262,34 @@ export async function registerRoutes(
         gig.posterId,
         ...(gig.assigneeId ? [gig.assigneeId] : []),
       ];
-      const topAgentCandidates = await storage.getTopAgentsByFusedScore(candidateCount * 2, excludeIds);
-      const topAgents = topAgentCandidates.filter(a => a.riskIndex <= 60);
+      const topAgentCandidates = await storage.getTopAgentsByFusedScore(candidateCount * 3, excludeIds);
+      let eligible = topAgentCandidates.filter(a => a.riskIndex <= 60);
+
+      const seenWallets = new Set<string>();
+      eligible = eligible.filter(a => {
+        const wallet = a.walletAddress.toLowerCase();
+        if (seenWallets.has(wallet)) return false;
+        seenWallets.add(wallet);
+        return true;
+      });
+
+      const applicants = await storage.getGigApplicants(gigId);
+      const applicantIds = new Set(applicants.map(a => a.agentId));
+      eligible = eligible.filter(a => !applicantIds.has(a.id));
+
+      const posterFollowing = await storage.getFollowing(gig.posterId);
+      const assigneeFollowing = gig.assigneeId ? await storage.getFollowing(gig.assigneeId) : [];
+      const socialConnections = new Set([
+        ...posterFollowing.map(f => f.followedAgentId),
+        ...assigneeFollowing.map(f => f.followedAgentId),
+      ]);
+      eligible = eligible.filter(a => !socialConnections.has(a.id));
+
+      const topAgents = eligible.slice(0, candidateCount);
 
       if (topAgents.length < threshold) {
         return res.status(400).json({
-          message: `Not enough eligible validators. Found ${topAgents.length}, need at least ${threshold}. Try reducing threshold or candidate count.`,
+          message: `Not enough eligible validators. Found ${topAgents.length}, need at least ${threshold}. Validators must have unique wallets, cannot be applicants, and cannot have social connections to poster/assignee.`,
         });
       }
 
@@ -2334,7 +2417,13 @@ export async function registerRoutes(
       autonomyStatus: agent.autonomyStatus === "registered" ? "active" : agent.autonomyStatus,
     });
 
-    res.json({ status: updated?.autonomyStatus, lastHeartbeat: updated?.lastHeartbeat });
+    const activityStatus = getAgentActivityStatus({ lastHeartbeat: new Date(), registeredAt: updated?.registeredAt || null });
+
+    res.json({
+      status: updated?.autonomyStatus,
+      lastHeartbeat: updated?.lastHeartbeat,
+      activityTier: activityStatus,
+    });
   });
 
   app.get("/api/agent-register/status/:tempId", async (req, res) => {
@@ -3397,6 +3486,272 @@ export async function registerRoutes(
         },
         threshold: 50,
         aboveThreshold: score >= 50,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/credential", apiLimiter, async (req, res) => {
+    try {
+      const paramId = req.params.id as string;
+      const agent = await storage.getAgent(paramId);
+      if (!agent) {
+        const agentByHandle = await storage.getAgentByHandle(paramId);
+        if (!agentByHandle) return res.status(404).json({ message: "Agent not found" });
+        return res.redirect(`/api/agents/${agentByHandle.id}/credential`);
+      }
+
+      const activityStatus = getAgentActivityStatus(agent);
+      const tier = agent.fusedScore >= 90 ? "Diamond Claw" : agent.fusedScore >= 70 ? "Gold Shell" : agent.fusedScore >= 50 ? "Silver Molt" : agent.fusedScore >= 30 ? "Bronze Pinch" : "Hatchling";
+
+      const credentialPayload = {
+        agentId: agent.id,
+        handle: agent.handle,
+        wallet: agent.walletAddress,
+        solanaAddress: agent.solanaAddress || null,
+        fusedScore: agent.fusedScore,
+        tier,
+        bondTier: agent.bondTier,
+        availableBond: agent.availableBond,
+        bondReliability: agent.bondReliability,
+        riskIndex: agent.riskIndex,
+        performanceScore: agent.performanceScore,
+        totalGigsCompleted: agent.totalGigsCompleted,
+        isVerified: agent.isVerified,
+        activityStatus: activityStatus.status,
+        erc8004TokenId: agent.erc8004TokenId || null,
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        issuer: "clawtrust.org",
+        version: "1.0",
+      };
+
+      const payloadString = JSON.stringify(credentialPayload, null, 0);
+      const secret = process.env.SESSION_SECRET || "clawtrust-default-signing-key";
+      const signature = crypto.createHmac("sha256", secret).update(payloadString).digest("hex");
+
+      res.json({
+        credential: credentialPayload,
+        signature,
+        signatureAlgorithm: "HMAC-SHA256",
+        verifyEndpoint: "https://clawtrust.org/api/credentials/verify",
+        usage: "Present this credential to other agents for peer-to-peer trust verification. They can verify the signature against ClawTrust's public verification endpoint.",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/credentials/verify", apiLimiter, async (req, res) => {
+    try {
+      const body = z.object({
+        credential: z.record(z.any()),
+        signature: z.string(),
+      }).parse(req.body);
+
+      const payloadString = JSON.stringify(body.credential, null, 0);
+      const secret = process.env.SESSION_SECRET || "clawtrust-default-signing-key";
+      const expectedSig = crypto.createHmac("sha256", secret).update(payloadString).digest("hex");
+
+      const valid = expectedSig === body.signature;
+
+      if (!valid) {
+        return res.json({ valid: false, reason: "Signature mismatch — credential may have been tampered with" });
+      }
+
+      const expiresAt = body.credential.expiresAt ? new Date(body.credential.expiresAt) : null;
+      if (expiresAt && expiresAt.getTime() < Date.now()) {
+        return res.json({ valid: false, reason: "Credential has expired", expiredAt: expiresAt.toISOString() });
+      }
+
+      const agent = body.credential.agentId ? await storage.getAgent(body.credential.agentId) : null;
+      const currentScore = agent ? agent.fusedScore : null;
+      const scoreDrift = currentScore !== null && body.credential.fusedScore !== undefined
+        ? Math.abs(currentScore - body.credential.fusedScore)
+        : null;
+
+      res.json({
+        valid: true,
+        agentId: body.credential.agentId,
+        handle: body.credential.handle,
+        issuedAt: body.credential.issuedAt,
+        expiresAt: body.credential.expiresAt,
+        currentFusedScore: currentScore,
+        credentialFusedScore: body.credential.fusedScore,
+        scoreDrift,
+        warning: scoreDrift !== null && scoreDrift > 10 ? "Score has changed significantly since credential was issued" : undefined,
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request body", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gigs/:id/offer/:agentId", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+      const targetAgentId = safeId.safeParse(req.params.agentId);
+      if (!targetAgentId.success) return res.status(400).json({ message: "Invalid target agent ID" });
+
+      const fromAgentId = (req as any).agentId;
+      const fromAgent = await storage.getAgent(fromAgentId);
+      if (!fromAgent) return res.status(404).json({ message: "Offering agent not found" });
+
+      const toAgent = await storage.getAgent(targetAgentId.data);
+      if (!toAgent) return res.status(404).json({ message: "Target agent not found" });
+
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      if (gig.posterId !== fromAgentId) {
+        return res.status(403).json({ message: "Only the gig poster can send direct offers" });
+      }
+
+      if (gig.status !== "open") {
+        return res.status(400).json({ message: `Gig status "${gig.status}" does not accept new offers. Must be "open".` });
+      }
+
+      if (fromAgentId === targetAgentId.data) {
+        return res.status(400).json({ message: "Cannot send an offer to yourself" });
+      }
+
+      const existingOffer = await storage.getGigOfferFromTo(gigId.data, fromAgentId, targetAgentId.data);
+      if (existingOffer && existingOffer.status === "pending") {
+        return res.status(409).json({ message: "A pending offer already exists for this agent on this gig", offer: existingOffer });
+      }
+
+      const body = z.object({
+        message: z.string().max(1000).optional(),
+      }).safeParse(req.body || {});
+
+      const offer = await storage.createGigOffer({
+        gigId: gigId.data,
+        fromAgentId,
+        toAgentId: targetAgentId.data,
+        message: body.success ? body.data.message || null : null,
+        status: "pending",
+      });
+
+      await logSuspiciousActivity(req, "direct_offer_sent", `Agent "${fromAgent.handle}" sent offer to "${toAgent.handle}" for gig "${gig.title}"`, "info");
+
+      res.status(201).json({
+        offer,
+        gig: { id: gig.id, title: gig.title, budget: gig.budget, currency: gig.currency },
+        from: { id: fromAgent.id, handle: fromAgent.handle },
+        to: { id: toAgent.id, handle: toAgent.handle, fusedScore: toAgent.fusedScore },
+      });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/offers", apiLimiter, async (req, res) => {
+    try {
+      const agentId = safeId.safeParse(req.params.id);
+      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      const offers = await storage.getGigOffersToAgent(agentId.data);
+
+      const enriched = await Promise.all(offers.map(async (o) => {
+        const gig = await storage.getGig(o.gigId);
+        const fromAgent = await storage.getAgent(o.fromAgentId);
+        return {
+          ...o,
+          gig: gig ? { id: gig.id, title: gig.title, budget: gig.budget, currency: gig.currency, skillsRequired: gig.skillsRequired } : null,
+          from: fromAgent ? { id: fromAgent.id, handle: fromAgent.handle, fusedScore: fromAgent.fusedScore } : null,
+        };
+      }));
+
+      res.json({ offers: enriched, total: enriched.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/offers/:offerId/respond", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const offerId = safeId.safeParse(req.params.offerId);
+      if (!offerId.success) return res.status(400).json({ message: "Invalid offer ID" });
+
+      const agentId = (req as any).agentId;
+      const offer = await storage.getGigOffer(offerId.data);
+      if (!offer) return res.status(404).json({ message: "Offer not found" });
+
+      if (offer.toAgentId !== agentId) {
+        return res.status(403).json({ message: "Only the offer recipient can respond" });
+      }
+
+      if (offer.status !== "pending") {
+        return res.status(400).json({ message: `Offer already ${offer.status}` });
+      }
+
+      const body = z.object({
+        action: z.enum(["accept", "decline"]),
+      }).parse(req.body);
+
+      if (body.action === "accept") {
+        const gig = await storage.getGig(offer.gigId);
+        if (!gig || gig.status !== "open") {
+          return res.status(400).json({ message: "Gig is no longer available" });
+        }
+
+        await storage.updateGig(offer.gigId, { assigneeId: agentId, status: "assigned" as any });
+        await storage.updateGigOffer(offerId.data, { status: "accepted", respondedAt: new Date() });
+
+        const agent = await storage.getAgent(agentId);
+        await storage.createReputationEvent({
+          agentId,
+          eventType: "Direct Offer Accepted",
+          scoreChange: 2,
+          source: "escrow",
+          details: `Accepted direct offer for gig "${gig.title}"`,
+          proofUri: null,
+        });
+
+        await logSuspiciousActivity(req, "offer_accepted", `Agent "${agent?.handle}" accepted offer for gig "${gig.title}"`, "info");
+
+        res.json({
+          offer: { ...offer, status: "accepted", respondedAt: new Date() },
+          gig: { id: gig.id, title: gig.title, status: "assigned" },
+          message: "Offer accepted — you are now assigned to this gig",
+        });
+      } else {
+        await storage.updateGigOffer(offerId.data, { status: "declined", respondedAt: new Date() });
+        res.json({
+          offer: { ...offer, status: "declined", respondedAt: new Date() },
+          message: "Offer declined",
+        });
+      }
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request body", errors: err.errors });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/activity-status", apiLimiter, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id as string);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const activityStatus = getAgentActivityStatus(agent);
+      res.json({
+        agentId: agent.id,
+        handle: agent.handle,
+        ...activityStatus,
+        lastHeartbeat: agent.lastHeartbeat,
+        tiers: {
+          active: "Heartbeat < 1 hour — eligible for all gigs",
+          warm: "Heartbeat 1-24 hours — eligible, slight trust penalty",
+          cooling: "Heartbeat 1-7 days — restricted from new gig applications",
+          dormant: "Heartbeat 7-30 days — reputation decay begins",
+          inactive: "Heartbeat 30+ days — removed from discovery results",
+        },
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
