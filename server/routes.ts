@@ -2654,6 +2654,18 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/gigs/:id", async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      res.json(gig);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/gigs/:id/submit-deliverable", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
       const gigId = safeId.safeParse(req.params.id);

@@ -24,11 +24,23 @@ import {
   ArrowLeft,
   ExternalLink,
   MessageSquare,
+  Globe,
+  Cpu,
+  Activity,
+  TrendingUp,
+  Lock,
+  Unlock,
+  AlertTriangle,
+  Calendar,
+  DollarSign,
+  Zap,
+  Link as LinkIcon,
+  Flame,
+  Server,
 } from "lucide-react";
 import type { Agent, Gig, ReputationEvent } from "@shared/schema";
 
-type TabId = "overview" | "gigs" | "social";
-type GigSubTab = "posted" | "assigned";
+type TabId = "overview" | "gigs" | "social" | "bond";
 
 interface RepData {
   fusedScore: number;
@@ -91,6 +103,47 @@ interface CommentsResponse {
   total: number;
 }
 
+interface BondStatus {
+  agentId: string;
+  tier: string;
+  totalBonded: number;
+  availableBond: number;
+  lockedBond: number;
+  bondReliability: number;
+  bondWalletId: string | null;
+  slashProtection: boolean;
+  lastSlashAt: string | null;
+}
+
+interface BondEvent {
+  id: string;
+  agentId: string;
+  eventType: string;
+  amount: number;
+  gigId: string | null;
+  reason: string | null;
+  createdAt: string | null;
+}
+
+interface BondHistoryResponse {
+  events: BondEvent[];
+  total: number;
+}
+
+interface AgentSkill {
+  id: string;
+  agentId: string;
+  skillName: string;
+  mcpEndpoint: string | null;
+  description: string | null;
+  createdAt: string | null;
+}
+
+interface AgentSkillsResponse {
+  agent: { id: string; handle: string };
+  skills: AgentSkill[];
+}
+
 const badgeIcons: Record<string, string> = {
   "Bond Reliable": "⚡",
   "Crustafarian": "🦀",
@@ -108,6 +161,22 @@ const statusColors: Record<string, string> = {
   assigned: "var(--claw-amber)",
   completed: "#22c55e",
   disputed: "#ef4444",
+  pending_validation: "var(--claw-orange)",
+};
+
+const bondEventColors: Record<string, string> = {
+  deposit: "var(--teal-glow)",
+  withdraw: "var(--claw-amber)",
+  lock: "var(--claw-orange)",
+  unlock: "#22c55e",
+  slash: "#ef4444",
+};
+
+const autonomyLabels: Record<string, { label: string; color: string }> = {
+  active: { label: "ACTIVE", color: "var(--teal-glow)" },
+  pending: { label: "PENDING", color: "var(--claw-amber)" },
+  suspended: { label: "SUSPENDED", color: "#ef4444" },
+  inactive: { label: "INACTIVE", color: "var(--text-muted)" },
 };
 
 export default function ProfilePage() {
@@ -115,7 +184,7 @@ export default function ProfilePage() {
   const agentId = params?.agentId;
 
   const [activeTab, setActiveTab] = useState<TabId>("overview");
-  const [gigSubTab, setGigSubTab] = useState<GigSubTab>("posted");
+  const [gigSubTab, setGigSubTab] = useState<"posted" | "assigned">("posted");
 
   const { data: agent, isLoading: agentLoading, isError: agentError } = useQuery<Agent>({
     queryKey: ["/api/agents", agentId],
@@ -144,6 +213,21 @@ export default function ProfilePage() {
 
   const { data: commentsData } = useQuery<CommentsResponse>({
     queryKey: ["/api/agents", agentId, "comments"],
+    enabled: !!agentId,
+  });
+
+  const { data: bondData } = useQuery<BondStatus>({
+    queryKey: ["/api/bond", agentId, "status"],
+    enabled: !!agentId,
+  });
+
+  const { data: bondHistory } = useQuery<BondHistoryResponse>({
+    queryKey: ["/api/bond", agentId, "history"],
+    enabled: !!agentId && activeTab === "bond",
+  });
+
+  const { data: skillsData } = useQuery<AgentSkillsResponse>({
+    queryKey: ["/api/agent-skills", agentId],
     enabled: !!agentId,
   });
 
@@ -188,6 +272,7 @@ export default function ProfilePage() {
   const followingCount = followingData?.count ?? 0;
   const gigs = gigsData?.gigs || [];
   const comments = commentsData?.comments || [];
+  const mcpSkills = skillsData?.skills || [];
 
   const postedGigs = gigs.filter((g) => g.posterId === agentId);
   const assignedGigs = gigs.filter((g) => g.assigneeId === agentId);
@@ -196,8 +281,11 @@ export default function ProfilePage() {
   const tabs: { id: TabId; label: string }[] = [
     { id: "overview", label: "OVERVIEW" },
     { id: "gigs", label: "GIGS" },
+    { id: "bond", label: "BOND & RISK" },
     { id: "social", label: "SOCIAL" },
   ];
+
+  const autoStatus = autonomyLabels[agent.autonomyStatus] || autonomyLabels.pending;
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
@@ -211,7 +299,7 @@ export default function ProfilePage() {
 
       <div className="flex flex-col lg:flex-row gap-6">
         {/* LEFT SIDEBAR — PASSPORT PANEL */}
-        <div className="w-full lg:w-[320px] flex-shrink-0 space-y-4">
+        <div className="w-full lg:w-[340px] flex-shrink-0 space-y-4">
           <div
             className="rounded-sm overflow-visible"
             style={{
@@ -227,7 +315,7 @@ export default function ProfilePage() {
               }}
             />
 
-            <div className="p-5 space-y-5">
+            <div className="p-5 space-y-4">
               <div className="flex justify-between items-start">
                 <div
                   className="w-20 h-20 rounded-sm flex items-center justify-center text-4xl"
@@ -236,19 +324,32 @@ export default function ProfilePage() {
                 >
                   {agent.avatar || "🦞"}
                 </div>
-                {agent.isVerified && (
+                <div className="flex flex-col items-end gap-1.5">
+                  {agent.isVerified && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                      style={{
+                        background: "rgba(10, 236, 184, 0.1)",
+                        color: "var(--teal-glow)",
+                        border: "1px solid rgba(10, 236, 184, 0.3)",
+                      }}
+                      data-testid="badge-erc8004"
+                    >
+                      <Shield className="w-3 h-3" /> ERC-8004
+                    </span>
+                  )}
                   <span
                     className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
                     style={{
-                      background: "rgba(10, 236, 184, 0.1)",
-                      color: "var(--teal-glow)",
-                      border: "1px solid rgba(10, 236, 184, 0.3)",
+                      background: `${autoStatus.color}12`,
+                      color: autoStatus.color,
+                      border: `1px solid ${autoStatus.color}30`,
                     }}
-                    data-testid="badge-erc8004"
+                    data-testid="badge-autonomy"
                   >
-                    <Shield className="w-3 h-3" /> ERC-8004
+                    <Cpu className="w-3 h-3" /> {autoStatus.label}
                   </span>
-                )}
+                </div>
               </div>
 
               <div>
@@ -262,7 +363,19 @@ export default function ProfilePage() {
                 <div className="mt-1">
                   <WalletAddress address={agent.walletAddress} />
                 </div>
+                {agent.solanaAddress && (
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>SOL</span>
+                    <WalletAddress address={agent.solanaAddress} />
+                  </div>
+                )}
               </div>
+
+              {agent.bio && (
+                <p className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }} data-testid="text-bio">
+                  {agent.bio}
+                </p>
+              )}
 
               <TierBadge tier={tier} size="md" />
 
@@ -271,26 +384,10 @@ export default function ProfilePage() {
               </div>
 
               <div className="space-y-2.5" data-testid="score-bars">
-                <ScoreBar
-                  label="On-Chain"
-                  value={breakdown?.onChainNormalized ?? agent.onChainScore}
-                  weight="45%"
-                />
-                <ScoreBar
-                  label="Moltbook"
-                  value={breakdown?.moltbookNormalized ?? agent.moltbookKarma}
-                  weight="25%"
-                />
-                <ScoreBar
-                  label="Performance"
-                  value={breakdown?.performanceNormalized ?? (agent.performanceScore ?? 0)}
-                  weight="20%"
-                />
-                <ScoreBar
-                  label="Bond Reliability"
-                  value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)}
-                  weight="10%"
-                />
+                <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="45%" />
+                <ScoreBar label="Moltbook" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="25%" />
+                <ScoreBar label="Performance" value={breakdown?.performanceNormalized ?? (agent.performanceScore ?? 0)} weight="20%" />
+                <ScoreBar label="Bond Reliability" value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)} weight="10%" />
               </div>
 
               {agent.skills.length > 0 && (
@@ -311,31 +408,16 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              <div
-                className="flex items-center justify-between text-[11px] font-mono px-3 py-2 rounded-sm"
-                style={{ background: "rgba(107, 127, 163, 0.06)" }}
-                data-testid="bond-status"
-              >
-                <span style={{ color: "var(--text-muted)" }}>Bond</span>
-                <span style={{ color: "var(--shell-white)" }}>
-                  {formatUSDC(agent.availableBond)} · {agent.bondTier.replace("_", " ")}
-                </span>
+              <div className="space-y-1.5">
+                <InfoRow icon={<DollarSign className="w-3.5 h-3.5" />} label="Bond" value={`${formatUSDC(agent.availableBond)} · ${agent.bondTier.replace("_", " ")}`} />
+                <InfoRow icon={<Briefcase className="w-3.5 h-3.5" />} label="Gigs" value={`${agent.totalGigsCompleted} completed`} />
+                <InfoRow icon={<TrendingUp className="w-3.5 h-3.5" />} label="Earned" value={formatUSDC(agent.totalEarned)} />
+                <InfoRow icon={<Flame className="w-3.5 h-3.5" />} label="Clean Streak" value={`${agent.cleanStreakDays}d`} />
               </div>
 
               <div className="flex items-center gap-3">
                 <RiskPill riskIndex={agent.riskIndex} />
-                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                  Risk Index
-                </span>
-              </div>
-
-              <div
-                className="flex items-center gap-2 text-[11px] font-mono"
-                data-testid="text-gigs-completed"
-              >
-                <Briefcase className="w-3.5 h-3.5" style={{ color: "var(--claw-orange)" }} />
-                <span style={{ color: "var(--shell-white)" }}>{agent.totalGigsCompleted}</span>
-                <span style={{ color: "var(--text-muted)" }}>Gigs Completed</span>
+                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>Risk Index</span>
               </div>
 
               <div className="flex items-center gap-4 text-[11px] font-mono" data-testid="social-counts">
@@ -349,14 +431,70 @@ export default function ProfilePage() {
                 </span>
               </div>
 
+              <div className="space-y-1.5 pt-1">
+                {agent.moltbookLink && (
+                  <a
+                    href={agent.moltbookLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-[11px] font-mono transition-colors"
+                    style={{ color: "var(--teal-glow)" }}
+                    data-testid="link-moltbook"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Moltbook Profile
+                  </a>
+                )}
+                {agent.moltDomain && (
+                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-molt-domain">
+                    <Globe className="w-3 h-3" style={{ color: "var(--claw-orange)" }} />
+                    <span style={{ color: "var(--shell-cream)" }}>{agent.moltDomain}</span>
+                  </div>
+                )}
+                {agent.lastHeartbeat && (
+                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-heartbeat">
+                    <Activity className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+                    <span style={{ color: "var(--text-muted)" }}>Last heartbeat {timeAgo(agent.lastHeartbeat.toString())}</span>
+                  </div>
+                )}
+                {agent.registeredAt && (
+                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-registered">
+                    <Calendar className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+                    <span style={{ color: "var(--text-muted)" }}>Registered {timeAgo(agent.registeredAt.toString())}</span>
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-2">
                 <ClawButton variant="ghost" size="sm" data-testid="button-follow">
-                  <Users className="w-3.5 h-3.5" /> Follow Agent
+                  <Users className="w-3.5 h-3.5" /> Follow
                 </ClawButton>
                 <ClawButton variant="primary" size="sm" href="/gigs" data-testid="button-hire">
-                  Hire This Agent
+                  Hire Agent
                 </ClawButton>
               </div>
+            </div>
+          </div>
+
+          {/* CLAW CARD */}
+          <div
+            className="rounded-sm overflow-hidden"
+            style={{
+              background: "var(--ocean-mid)",
+              border: "1px solid rgba(107, 127, 163, 0.15)",
+            }}
+            data-testid="card-claw-card"
+          >
+            <div className="p-3">
+              <p className="text-[10px] uppercase tracking-widest mb-2 font-display" style={{ color: "var(--text-muted)" }}>
+                Claw Card
+              </p>
+              <img
+                src={`/api/agents/${agentId}/card`}
+                alt={`${agent.handle} Claw Card`}
+                className="w-full rounded-sm"
+                style={{ border: "1px solid rgba(107, 127, 163, 0.1)" }}
+                data-testid="img-claw-card"
+              />
             </div>
           </div>
 
@@ -369,10 +507,7 @@ export default function ProfilePage() {
               }}
               data-testid="badges-row"
             >
-              <p
-                className="text-[10px] uppercase tracking-widest mb-3 font-display"
-                style={{ color: "var(--text-muted)" }}
-              >
+              <p className="text-[10px] uppercase tracking-widest mb-3 font-display" style={{ color: "var(--text-muted)" }}>
                 Badges
               </p>
               <div className="flex flex-wrap gap-2">
@@ -399,7 +534,7 @@ export default function ProfilePage() {
         {/* RIGHT MAIN CONTENT */}
         <div className="flex-1 min-w-0">
           <div
-            className="flex gap-0 mb-6"
+            className="flex gap-0 mb-6 overflow-x-auto"
             style={{ borderBottom: "1px solid rgba(107, 127, 163, 0.15)" }}
             data-testid="tab-bar"
           >
@@ -407,7 +542,7 @@ export default function ProfilePage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className="font-display tracking-wider text-sm px-5 py-3 transition-colors relative"
+                className="font-display tracking-wider text-sm px-5 py-3 transition-colors relative whitespace-nowrap"
                 style={{
                   color: activeTab === tab.id ? "var(--claw-orange)" : "var(--text-muted)",
                   borderBottom: activeTab === tab.id ? "2px solid var(--claw-orange)" : "2px solid transparent",
@@ -425,6 +560,7 @@ export default function ProfilePage() {
               breakdown={breakdown}
               events={events}
               erc8004={repData?.erc8004}
+              mcpSkills={mcpSkills}
             />
           )}
           {activeTab === "gigs" && (
@@ -434,6 +570,13 @@ export default function ProfilePage() {
               displayedGigs={displayedGigs}
               postedCount={postedGigs.length}
               assignedCount={assignedGigs.length}
+            />
+          )}
+          {activeTab === "bond" && (
+            <BondRiskTab
+              agent={agent}
+              bondData={bondData}
+              bondHistory={bondHistory}
             />
           )}
           {activeTab === "social" && (
@@ -450,31 +593,66 @@ export default function ProfilePage() {
   );
 }
 
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div
+      className="flex items-center justify-between text-[11px] font-mono px-3 py-1.5 rounded-sm"
+      style={{ background: "rgba(107, 127, 163, 0.04)" }}
+    >
+      <div className="flex items-center gap-2">
+        <span style={{ color: "var(--claw-orange)" }}>{icon}</span>
+        <span style={{ color: "var(--text-muted)" }}>{label}</span>
+      </div>
+      <span style={{ color: "var(--shell-white)" }}>{value}</span>
+    </div>
+  );
+}
+
+function SectionCard({ children, testId, teal }: { children: React.ReactNode; testId: string; teal?: boolean }) {
+  return (
+    <div
+      className="rounded-sm p-5"
+      style={{
+        background: teal ? "rgba(10, 236, 184, 0.04)" : "var(--ocean-mid)",
+        border: teal ? "1px solid rgba(10, 236, 184, 0.2)" : "1px solid rgba(107, 127, 163, 0.15)",
+      }}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SectionTitle({ children, icon, color }: { children: React.ReactNode; icon?: React.ReactNode; color?: string }) {
+  return (
+    <h3
+      className="font-display tracking-wider text-sm mb-4 flex items-center gap-2"
+      style={{ color: color || "var(--shell-white)" }}
+    >
+      {icon}
+      {children}
+    </h3>
+  );
+}
+
 function OverviewTab({
   agent,
   breakdown,
   events,
   erc8004,
+  mcpSkills,
 }: {
   agent: Agent;
   breakdown?: RepData["breakdown"];
   events: ReputationEvent[];
   erc8004?: RepData["erc8004"];
+  mcpSkills: AgentSkill[];
 }) {
   return (
     <div className="space-y-6">
-      <div
-        className="rounded-sm p-5"
-        style={{
-          background: "var(--ocean-mid)",
-          border: "1px solid rgba(107, 127, 163, 0.15)",
-        }}
-        data-testid="card-fused-breakdown"
-      >
-        <h3
-          className="font-display tracking-wider text-sm mb-1"
-          style={{ color: "var(--shell-white)" }}
-        >
+      {/* FUSED SCORE BREAKDOWN */}
+      <SectionCard testId="card-fused-breakdown">
+        <h3 className="font-display tracking-wider text-sm mb-1" style={{ color: "var(--shell-white)" }}>
           FUSED SCORE BREAKDOWN
         </h3>
         <p className="text-[10px] font-mono mb-5" style={{ color: "var(--text-muted)" }}>
@@ -494,66 +672,69 @@ function OverviewTab({
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <ScoreBar
-              label="On-Chain"
-              value={breakdown?.onChainNormalized ?? 0}
-              weight="45%"
-            />
-          </div>
-          <div className="flex items-center justify-between gap-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-            Weighted: {(breakdown?.onChainComponent ?? 0).toFixed(1)}
-          </div>
-
-          <div className="flex items-center justify-between gap-2">
-            <ScoreBar
-              label="Moltbook"
-              value={breakdown?.moltbookNormalized ?? 0}
-              weight="25%"
-            />
-          </div>
-          <div className="flex items-center justify-between gap-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-            Weighted: {(breakdown?.moltbookComponent ?? 0).toFixed(1)}
-          </div>
-
-          <div className="flex items-center justify-between gap-2">
-            <ScoreBar
-              label="Performance"
-              value={breakdown?.performanceNormalized ?? 0}
-              weight="20%"
-            />
-          </div>
-          <div className="flex items-center justify-between gap-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-            Weighted: {(breakdown?.performanceComponent ?? 0).toFixed(1)}
-          </div>
-
-          <div className="flex items-center justify-between gap-2">
-            <ScoreBar
-              label="Bond Reliability"
-              value={breakdown?.bondReliabilityNormalized ?? 0}
-              weight="10%"
-            />
-          </div>
-          <div className="flex items-center justify-between gap-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-            Weighted: {(breakdown?.bondReliabilityComponent ?? 0).toFixed(1)}
-          </div>
+          {[
+            { label: "On-Chain", norm: breakdown?.onChainNormalized, comp: breakdown?.onChainComponent, weight: "45%" },
+            { label: "Moltbook", norm: breakdown?.moltbookNormalized, comp: breakdown?.moltbookComponent, weight: "25%" },
+            { label: "Performance", norm: breakdown?.performanceNormalized, comp: breakdown?.performanceComponent, weight: "20%" },
+            { label: "Bond Reliability", norm: breakdown?.bondReliabilityNormalized, comp: breakdown?.bondReliabilityComponent, weight: "10%" },
+          ].map((item) => (
+            <div key={item.label}>
+              <ScoreBar label={item.label} value={item.norm ?? 0} weight={item.weight} />
+              <div className="text-[10px] font-mono mt-0.5 pl-1" style={{ color: "var(--text-muted)" }}>
+                Weighted: {(item.comp ?? 0).toFixed(1)}
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
+      </SectionCard>
 
-      <div
-        className="rounded-sm p-5"
-        style={{
-          background: "var(--ocean-mid)",
-          border: "1px solid rgba(107, 127, 163, 0.15)",
-        }}
-        data-testid="card-rep-events"
-      >
-        <h3
-          className="font-display tracking-wider text-sm mb-4"
-          style={{ color: "var(--shell-white)" }}
-        >
+      {/* MCP SKILLS */}
+      {mcpSkills.length > 0 && (
+        <SectionCard testId="card-mcp-skills">
+          <SectionTitle icon={<Server className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />} color="var(--shell-white)">
+            MCP SKILLS & CAPABILITIES
+          </SectionTitle>
+          <div className="space-y-2">
+            {mcpSkills.map((skill) => (
+              <div
+                key={skill.id}
+                className="p-3 rounded-sm"
+                style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                data-testid={`mcp-skill-${skill.id}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold" style={{ color: "var(--shell-white)" }}>
+                    {skill.skillName}
+                  </span>
+                  {skill.mcpEndpoint && (
+                    <a
+                      href={skill.mcpEndpoint}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[10px] font-mono"
+                      style={{ color: "var(--teal-glow)" }}
+                      data-testid={`mcp-endpoint-${skill.id}`}
+                    >
+                      <LinkIcon className="w-3 h-3" /> MCP
+                    </a>
+                  )}
+                </div>
+                {skill.description && (
+                  <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+                    {skill.description}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* REPUTATION EVENTS */}
+      <SectionCard testId="card-rep-events">
+        <SectionTitle icon={<Activity className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>
           REPUTATION EVENTS
-        </h3>
+        </SectionTitle>
         {events.length === 0 ? (
           <EmptyState message="No reputation events recorded yet." />
         ) : (
@@ -576,13 +757,9 @@ function OverviewTab({
                   {event.scoreChange}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm" style={{ color: "var(--shell-white)" }}>
-                    {event.eventType}
-                  </p>
+                  <p className="text-sm" style={{ color: "var(--shell-white)" }}>{event.eventType}</p>
                   {event.details && (
-                    <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
-                      {event.details}
-                    </p>
+                    <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{event.details}</p>
                   )}
                 </div>
                 <div className="flex-shrink-0 text-right">
@@ -594,23 +771,14 @@ function OverviewTab({
             ))}
           </div>
         )}
-      </div>
+      </SectionCard>
 
+      {/* ERC-8004 ON-CHAIN IDENTITY */}
       {erc8004 && erc8004.tokenId && (
-        <div
-          className="rounded-sm p-5"
-          style={{
-            background: "rgba(10, 236, 184, 0.04)",
-            border: "1px solid rgba(10, 236, 184, 0.2)",
-          }}
-          data-testid="card-erc8004"
-        >
-          <h3
-            className="font-display tracking-wider text-sm mb-3 flex items-center gap-2"
-            style={{ color: "var(--teal-glow)" }}
-          >
-            <Shield className="w-4 h-4" /> ERC-8004 ON-CHAIN IDENTITY
-          </h3>
+        <SectionCard testId="card-erc8004" teal>
+          <SectionTitle icon={<Shield className="w-4 h-4" />} color="var(--teal-glow)">
+            ERC-8004 ON-CHAIN IDENTITY
+          </SectionTitle>
           <div className="space-y-2 text-[11px] font-mono">
             <div className="flex justify-between gap-2">
               <span style={{ color: "var(--text-muted)" }}>Token ID</span>
@@ -618,9 +786,11 @@ function OverviewTab({
             </div>
             <div className="flex justify-between gap-2">
               <span style={{ color: "var(--text-muted)" }}>Identity Registry</span>
-              <span style={{ color: "var(--shell-cream)" }} className="truncate max-w-[200px]">
-                {erc8004.identityRegistry}
-              </span>
+              <span style={{ color: "var(--shell-cream)" }} className="truncate max-w-[200px]">{erc8004.identityRegistry}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: "var(--text-muted)" }}>Reputation Registry</span>
+              <span style={{ color: "var(--shell-cream)" }} className="truncate max-w-[200px]">{erc8004.reputationRegistry}</span>
             </div>
             <div className="flex justify-between gap-2">
               <span style={{ color: "var(--text-muted)" }}>Verified</span>
@@ -629,8 +799,196 @@ function OverviewTab({
               </span>
             </div>
           </div>
-        </div>
+        </SectionCard>
       )}
+    </div>
+  );
+}
+
+function BondRiskTab({
+  agent,
+  bondData,
+  bondHistory,
+}: {
+  agent: Agent;
+  bondData?: BondStatus;
+  bondHistory?: BondHistoryResponse;
+}) {
+  const bd = bondData;
+  const events = bondHistory?.events || [];
+
+  return (
+    <div className="space-y-6">
+      {/* BOND STATUS */}
+      <SectionCard testId="card-bond-status">
+        <SectionTitle icon={<DollarSign className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>
+          USDC BOND STATUS
+        </SectionTitle>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <StatBox label="Total Bonded" value={formatUSDC(bd?.totalBonded ?? agent.totalBonded)} color="var(--shell-white)" />
+          <StatBox label="Available" value={formatUSDC(bd?.availableBond ?? agent.availableBond)} color="var(--teal-glow)" />
+          <StatBox label="Locked" value={formatUSDC(bd?.lockedBond ?? agent.lockedBond)} color="var(--claw-amber)" />
+          <StatBox
+            label="Reliability"
+            value={`${((bd?.bondReliability ?? agent.bondReliability ?? 0) * 100).toFixed(0)}%`}
+            color={
+              (bd?.bondReliability ?? agent.bondReliability ?? 0) >= 0.9
+                ? "var(--teal-glow)"
+                : "var(--claw-orange)"
+            }
+          />
+        </div>
+
+        <div className="space-y-1.5 text-[11px] font-mono">
+          <div className="flex justify-between px-2 py-1">
+            <span style={{ color: "var(--text-muted)" }}>Bond Tier</span>
+            <span
+              className="uppercase font-bold"
+              style={{
+                color:
+                  (bd?.tier || agent.bondTier) === "HIGH_BOND"
+                    ? "var(--teal-glow)"
+                    : (bd?.tier || agent.bondTier) === "BONDED"
+                      ? "var(--claw-orange)"
+                      : "var(--text-muted)",
+              }}
+              data-testid="text-bond-tier"
+            >
+              {(bd?.tier || agent.bondTier).replace("_", " ")}
+            </span>
+          </div>
+          <div className="flex justify-between px-2 py-1">
+            <span style={{ color: "var(--text-muted)" }}>Slash Protection</span>
+            <span style={{ color: bd?.slashProtection ? "var(--teal-glow)" : "var(--text-muted)" }}>
+              {bd?.slashProtection ? "Active" : "None"}
+            </span>
+          </div>
+          {bd?.lastSlashAt && (
+            <div className="flex justify-between px-2 py-1">
+              <span style={{ color: "var(--text-muted)" }}>Last Slash</span>
+              <span style={{ color: "#ef4444" }}>{timeAgo(bd.lastSlashAt)}</span>
+            </div>
+          )}
+          {bd?.bondWalletId && (
+            <div className="flex justify-between px-2 py-1">
+              <span style={{ color: "var(--text-muted)" }}>Bond Wallet</span>
+              <span style={{ color: "var(--shell-cream)" }} className="truncate max-w-[180px]">{bd.bondWalletId}</span>
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* RISK PROFILE */}
+      <SectionCard testId="card-risk-profile">
+        <SectionTitle icon={<AlertTriangle className="w-4 h-4" style={{ color: agent.riskIndex > 60 ? "#ef4444" : "var(--claw-amber)" }} />}>
+          RISK PROFILE
+        </SectionTitle>
+
+        <div className="flex items-center gap-4 mb-5">
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center"
+            style={{
+              border: `3px solid ${agent.riskIndex > 60 ? "#ef4444" : agent.riskIndex > 25 ? "var(--claw-amber)" : "var(--teal-glow)"}`,
+              background: "var(--ocean-deep)",
+            }}
+          >
+            <span className="text-xl font-mono font-bold" style={{ color: "var(--shell-white)" }}>
+              {agent.riskIndex.toFixed(0)}
+            </span>
+          </div>
+          <div>
+            <RiskPill riskIndex={agent.riskIndex} />
+            <p className="text-[10px] font-mono mt-2" style={{ color: "var(--text-muted)" }}>
+              Formula: (slashCount x 15) + (failedGigRatio x 25) + (activeDisputes x 20) + (inactivityDecay x 10) + (bondDepletion x 10)
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 text-[11px] font-mono">
+          <div className="flex justify-between px-2 py-1">
+            <span style={{ color: "var(--text-muted)" }}>Clean Streak</span>
+            <span style={{ color: agent.cleanStreakDays >= 30 ? "var(--teal-glow)" : "var(--shell-white)" }}>
+              {agent.cleanStreakDays} days
+              {agent.cleanStreakDays >= 30 && " (-10% bonus)"}
+            </span>
+          </div>
+          <div className="flex justify-between px-2 py-1">
+            <span style={{ color: "var(--text-muted)" }}>Max Gig Threshold</span>
+            <span style={{ color: agent.riskIndex <= 75 ? "var(--teal-glow)" : "#ef4444" }}>
+              {agent.riskIndex <= 75 ? "Eligible" : "Blocked"} (max 75)
+            </span>
+          </div>
+          {agent.lastSlashAt && (
+            <div className="flex justify-between px-2 py-1">
+              <span style={{ color: "var(--text-muted)" }}>Last Slash</span>
+              <span style={{ color: "#ef4444" }}>{timeAgo(agent.lastSlashAt.toString())}</span>
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* BOND HISTORY */}
+      <SectionCard testId="card-bond-history">
+        <SectionTitle icon={<Clock className="w-4 h-4" style={{ color: "var(--claw-amber)" }} />}>
+          BOND HISTORY
+        </SectionTitle>
+        {events.length === 0 ? (
+          <EmptyState message="No bond transactions recorded yet." />
+        ) : (
+          <div className="space-y-2">
+            {events.map((event) => (
+              <div
+                key={event.id}
+                className="flex items-center gap-3 p-3 rounded-sm"
+                style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                data-testid={`bond-event-${event.id}`}
+              >
+                <div
+                  className="w-8 h-8 rounded-sm flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: `${bondEventColors[event.eventType] || "var(--text-muted)"}15`,
+                    color: bondEventColors[event.eventType] || "var(--text-muted)",
+                  }}
+                >
+                  {event.eventType === "deposit" && <TrendingUp className="w-4 h-4" />}
+                  {event.eventType === "withdraw" && <DollarSign className="w-4 h-4" />}
+                  {event.eventType === "lock" && <Lock className="w-4 h-4" />}
+                  {event.eventType === "unlock" && <Unlock className="w-4 h-4" />}
+                  {event.eventType === "slash" && <Zap className="w-4 h-4" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs uppercase font-bold" style={{ color: bondEventColors[event.eventType] || "var(--shell-white)" }}>
+                    {event.eventType}
+                  </p>
+                  {event.reason && (
+                    <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{event.reason}</p>
+                  )}
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs font-mono font-bold" style={{ color: "var(--shell-white)" }}>
+                    {formatUSDC(event.amount)}
+                  </p>
+                  {event.createdAt && (
+                    <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                      {timeAgo(event.createdAt)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+function StatBox({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="p-3 rounded-sm text-center" style={{ background: "rgba(107, 127, 163, 0.06)" }}>
+      <p className="text-lg font-mono font-bold" style={{ color }}>{value}</p>
+      <p className="text-[10px] uppercase tracking-wider font-display" style={{ color: "var(--text-muted)" }}>{label}</p>
     </div>
   );
 }
@@ -642,8 +1000,8 @@ function GigsTab({
   postedCount,
   assignedCount,
 }: {
-  gigSubTab: GigSubTab;
-  setGigSubTab: (t: GigSubTab) => void;
+  gigSubTab: "posted" | "assigned";
+  setGigSubTab: (t: "posted" | "assigned") => void;
   displayedGigs: Gig[];
   postedCount: number;
   assignedCount: number;
@@ -651,28 +1009,20 @@ function GigsTab({
   return (
     <div className="space-y-4">
       <div className="flex gap-0" style={{ borderBottom: "1px solid rgba(107, 127, 163, 0.1)" }}>
-        <button
-          onClick={() => setGigSubTab("posted")}
-          className="text-[11px] font-display tracking-wider px-4 py-2 transition-colors"
-          style={{
-            color: gigSubTab === "posted" ? "var(--claw-orange)" : "var(--text-muted)",
-            borderBottom: gigSubTab === "posted" ? "2px solid var(--claw-orange)" : "2px solid transparent",
-          }}
-          data-testid="subtab-posted"
-        >
-          POSTED ({postedCount})
-        </button>
-        <button
-          onClick={() => setGigSubTab("assigned")}
-          className="text-[11px] font-display tracking-wider px-4 py-2 transition-colors"
-          style={{
-            color: gigSubTab === "assigned" ? "var(--claw-orange)" : "var(--text-muted)",
-            borderBottom: gigSubTab === "assigned" ? "2px solid var(--claw-orange)" : "2px solid transparent",
-          }}
-          data-testid="subtab-assigned"
-        >
-          ASSIGNED ({assignedCount})
-        </button>
+        {(["posted", "assigned"] as const).map((sub) => (
+          <button
+            key={sub}
+            onClick={() => setGigSubTab(sub)}
+            className="text-[11px] font-display tracking-wider px-4 py-2 transition-colors"
+            style={{
+              color: gigSubTab === sub ? "var(--claw-orange)" : "var(--text-muted)",
+              borderBottom: gigSubTab === sub ? "2px solid var(--claw-orange)" : "2px solid transparent",
+            }}
+            data-testid={`subtab-${sub}`}
+          >
+            {sub.toUpperCase()} ({sub === "posted" ? postedCount : assignedCount})
+          </button>
+        ))}
       </div>
 
       {displayedGigs.length === 0 ? (
@@ -680,7 +1030,7 @@ function GigsTab({
       ) : (
         <div className="space-y-2">
           {displayedGigs.map((gig) => (
-            <Link key={gig.id} href="/gigs">
+            <Link key={gig.id} href={`/gig/${gig.id}`}>
               <div
                 className="flex items-center justify-between gap-3 p-4 rounded-sm cursor-pointer hover-elevate"
                 style={{
@@ -690,12 +1040,22 @@ function GigsTab({
                 data-testid={`gig-card-${gig.id}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: "var(--shell-white)" }}>
-                    {gig.title}
-                  </p>
-                  <p className="text-[11px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
-                    {formatUSDC(gig.budget)}
-                  </p>
+                  <p className="text-sm font-semibold truncate" style={{ color: "var(--shell-white)" }}>{gig.title}</p>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-[11px] font-mono" style={{ color: "var(--claw-orange)" }}>
+                      {formatUSDC(gig.budget)}
+                    </span>
+                    {gig.bondRequired > 0 && (
+                      <span className="text-[10px] font-mono" style={{ color: "var(--claw-amber)" }}>
+                        Bond: {formatUSDC(gig.bondRequired)}
+                      </span>
+                    )}
+                    {gig.createdAt && (
+                      <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        {timeAgo(gig.createdAt.toString())}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span
@@ -707,7 +1067,7 @@ function GigsTab({
                     }}
                     data-testid={`gig-status-${gig.id}`}
                   >
-                    {gig.status}
+                    {gig.status.replace("_", " ")}
                   </span>
                   <ChainBadge chain={gig.chain} />
                 </div>
@@ -733,20 +1093,10 @@ function SocialTab({
 }) {
   return (
     <div className="space-y-6">
-      <div
-        className="rounded-sm p-5"
-        style={{
-          background: "var(--ocean-mid)",
-          border: "1px solid rgba(107, 127, 163, 0.15)",
-        }}
-        data-testid="card-followers"
-      >
-        <h3
-          className="font-display tracking-wider text-sm mb-4 flex items-center gap-2"
-          style={{ color: "var(--shell-white)" }}
-        >
-          <Users className="w-4 h-4" style={{ color: "var(--claw-orange)" }} /> FOLLOWERS ({followers.length})
-        </h3>
+      <SectionCard testId="card-followers">
+        <SectionTitle icon={<Users className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>
+          FOLLOWERS ({followers.length})
+        </SectionTitle>
         {followers.length === 0 ? (
           <EmptyState message="No followers yet." />
         ) : (
@@ -756,22 +1106,12 @@ function SocialTab({
             ))}
           </div>
         )}
-      </div>
+      </SectionCard>
 
-      <div
-        className="rounded-sm p-5"
-        style={{
-          background: "var(--ocean-mid)",
-          border: "1px solid rgba(107, 127, 163, 0.15)",
-        }}
-        data-testid="card-following"
-      >
-        <h3
-          className="font-display tracking-wider text-sm mb-4 flex items-center gap-2"
-          style={{ color: "var(--shell-white)" }}
-        >
-          <Users className="w-4 h-4" style={{ color: "var(--teal-glow)" }} /> FOLLOWING ({following.length})
-        </h3>
+      <SectionCard testId="card-following">
+        <SectionTitle icon={<Users className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
+          FOLLOWING ({following.length})
+        </SectionTitle>
         {following.length === 0 ? (
           <EmptyState message="Not following anyone yet." />
         ) : (
@@ -781,22 +1121,12 @@ function SocialTab({
             ))}
           </div>
         )}
-      </div>
+      </SectionCard>
 
-      <div
-        className="rounded-sm p-5"
-        style={{
-          background: "var(--ocean-mid)",
-          border: "1px solid rgba(107, 127, 163, 0.15)",
-        }}
-        data-testid="card-comments"
-      >
-        <h3
-          className="font-display tracking-wider text-sm mb-4 flex items-center gap-2"
-          style={{ color: "var(--shell-white)" }}
-        >
-          <MessageSquare className="w-4 h-4" style={{ color: "var(--claw-amber)" }} /> COMMENTS ({comments.length})
-        </h3>
+      <SectionCard testId="card-comments">
+        <SectionTitle icon={<MessageSquare className="w-4 h-4" style={{ color: "var(--claw-amber)" }} />}>
+          COMMENTS ({comments.length})
+        </SectionTitle>
         {agentScore < 30 && (
           <div
             className="flex items-center gap-2 text-[11px] font-mono px-3 py-2 rounded-sm mb-4"
@@ -824,7 +1154,7 @@ function SocialTab({
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <Link href={`/profile/${c.author.id}`}>
                     <span
-                      className="text-xs font-semibold cursor-pointer hover:text-[var(--claw-orange)] transition-colors"
+                      className="text-xs font-semibold cursor-pointer"
                       style={{ color: "var(--shell-white)" }}
                       data-testid={`comment-author-${c.id}`}
                     >
@@ -833,23 +1163,15 @@ function SocialTab({
                   </Link>
                   <div className="flex items-center gap-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
                     <span>Score: {c.author.fusedScore.toFixed(1)}</span>
-                    {c.createdAt && (
-                      <>
-                        <span>·</span>
-                        <Clock className="w-3 h-3" />
-                        <span>{timeAgo(c.createdAt)}</span>
-                      </>
-                    )}
+                    {c.createdAt && <span>{timeAgo(c.createdAt)}</span>}
                   </div>
                 </div>
-                <p className="text-sm" style={{ color: "var(--shell-cream)" }}>
-                  {c.content}
-                </p>
+                <p className="text-xs" style={{ color: "var(--shell-cream)" }}>{c.content}</p>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </SectionCard>
     </div>
   );
 }

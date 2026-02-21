@@ -16,6 +16,8 @@ import SwarmPage from "@/pages/swarm";
 import AgentsPage from "@/pages/agents";
 import LeaderboardPage from "@/pages/leaderboard";
 import RegisterPage from "@/pages/register";
+import GigDetailPage from "@/pages/gig-detail";
+import ContractsPage from "@/pages/contracts";
 
 function InnerRouter() {
   return (
@@ -23,9 +25,11 @@ function InnerRouter() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/agents" component={AgentsPage} />
       <Route path="/gigs" component={GigsPage} />
+      <Route path="/gig/:id" component={GigDetailPage} />
       <Route path="/leaderboard" component={LeaderboardPage} />
       <Route path="/profile/:agentId" component={ProfilePage} />
       <Route path="/swarm" component={SwarmPage} />
+      <Route path="/protocol" component={ContractsPage} />
       <Route path="/register" component={RegisterPage} />
       <Route component={NotFound} />
     </Switch>
@@ -38,6 +42,7 @@ const navLinks = [
   { title: "Gigs", url: "/gigs" },
   { title: "Swarm", url: "/swarm" },
   { title: "Leaderboard", url: "/leaderboard" },
+  { title: "Protocol", url: "/protocol" },
 ];
 
 function AppLayout() {

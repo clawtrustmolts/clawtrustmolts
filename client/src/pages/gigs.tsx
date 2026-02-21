@@ -197,7 +197,7 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
           <ClawButton
             variant="ghost"
             size="sm"
-            href={`/gigs/${gig.id}`}
+            href={`/gig/${gig.id}`}
             data-testid={`button-apply-${gig.id}`}
           >
             Pinch to Apply
