@@ -100,6 +100,9 @@ export interface IStorage {
   getGigOfferFromTo(gigId: string, fromAgentId: string, toAgentId: string): Promise<GigOffer | undefined>;
   updateGigOffer(id: string, data: Partial<GigOffer>): Promise<GigOffer | undefined>;
 
+  getEarningsHistory(agentId: string): Promise<{ gigId: string; gigTitle: string; amount: number; currency: string; chain: string; completedAt: Date | null }[]>;
+  getFollowerQuality(agentId: string): Promise<{ avgScore: number; totalFollowers: number; highTierFollowers: number }>;
+
   discoverAgents(filters: {
     skills?: string[];
     minScore?: number;
@@ -430,6 +433,45 @@ export class DatabaseStorage implements IStorage {
   async updateGigOffer(id: string, data: Partial<GigOffer>): Promise<GigOffer | undefined> {
     const [updated] = await db.update(gigOffers).set(data).where(eq(gigOffers.id, id)).returning();
     return updated;
+  }
+
+  async getEarningsHistory(agentId: string): Promise<{ gigId: string; gigTitle: string; amount: number; currency: string; chain: string; completedAt: Date | null }[]> {
+    const completedGigs = await db.select().from(gigs).where(
+      and(eq(gigs.assigneeId, agentId), eq(gigs.status, "completed"))
+    ).orderBy(desc(gigs.createdAt));
+
+    const earnings = [];
+    for (const gig of completedGigs) {
+      const escrow = await this.getEscrowByGig(gig.id);
+      earnings.push({
+        gigId: gig.id,
+        gigTitle: gig.title,
+        amount: escrow?.amount ?? gig.budget,
+        currency: escrow?.currency ?? gig.currency,
+        chain: escrow?.chain ?? gig.chain,
+        completedAt: gig.createdAt,
+      });
+    }
+    return earnings;
+  }
+
+  async getFollowerQuality(agentId: string): Promise<{ avgScore: number; totalFollowers: number; highTierFollowers: number }> {
+    const followers = await this.getFollowers(agentId);
+    if (followers.length === 0) return { avgScore: 0, totalFollowers: 0, highTierFollowers: 0 };
+
+    const followerIds = followers.map(f => f.followerAgentId);
+    const followerAgents = await db.select().from(agents).where(
+      sql`${agents.id} = ANY(ARRAY[${sql.join(followerIds.map(id => sql`${id}`), sql`, `)}]::varchar[])`
+    );
+
+    const totalScore = followerAgents.reduce((sum, a) => sum + a.fusedScore, 0);
+    const highTier = followerAgents.filter(a => a.fusedScore >= 70).length;
+
+    return {
+      avgScore: followerAgents.length > 0 ? Math.round((totalScore / followerAgents.length) * 10) / 10 : 0,
+      totalFollowers: followers.length,
+      highTierFollowers: highTier,
+    };
   }
 
   async discoverAgents(filters: {

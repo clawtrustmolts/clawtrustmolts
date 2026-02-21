@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address } from "viem";
-import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation } from "./reputation";
+import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier } from "./reputation";
 import {
   buildIdentityMetadata,
   prepareEscrowTxData,
@@ -329,7 +329,7 @@ export async function registerRoutes(
           totalGigsCompleted: a.totalGigsCompleted, totalEarned: a.totalEarned, isVerified: a.isVerified,
           performanceScore: a.performanceScore, bondReliability: a.bondReliability,
           activityStatus, followerCount,
-          tier: a.fusedScore >= 90 ? "Diamond Claw" : a.fusedScore >= 70 ? "Gold Shell" : a.fusedScore >= 50 ? "Silver Molt" : a.fusedScore >= 30 ? "Bronze Pinch" : "Hatchling",
+          tier: getTier(a.fusedScore),
         };
       }));
 
@@ -1338,12 +1338,13 @@ export async function registerRoutes(
     validationId: z.string().uuid(),
     voterId: z.string().uuid(),
     vote: z.enum(["approve", "reject"]),
+    reasoning: z.string().max(500).optional(),
   });
 
   app.post("/api/validations/vote", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const parsed = voteBodySchema.parse(req.body);
-      const { validationId, voterId, vote } = parsed;
+      const { validationId, voterId, vote, reasoning } = parsed;
 
       const validation = await storage.getValidation(validationId);
       if (!validation) return res.status(404).json({ message: "Validation not found" });
@@ -1362,7 +1363,7 @@ export async function registerRoutes(
       }
 
       const rewardAmount = validation.rewardPerValidator || 0;
-      await storage.castVote({ validationId, voterId, vote, rewardAmount });
+      await storage.castVote({ validationId, voterId, vote, rewardAmount, reasoning: reasoning || null });
 
       const newFor = vote === "approve" ? validation.votesFor + 1 : validation.votesFor;
       const newAgainst = vote === "reject" ? validation.votesAgainst + 1 : validation.votesAgainst;
@@ -1450,6 +1451,10 @@ export async function registerRoutes(
             await recordRiskEvent(gig.assigneeId, "DISPUTE_RESOLVED", -5, `Swarm approved gig "${gig.title}"`).catch(err =>
               console.error(`[Risk] Failed to record swarm approval: ${err.message}`)
             );
+
+            await syncPerformanceScore(gig.assigneeId).catch(err =>
+              console.error(`[Swarm] Performance sync failed: ${err.message}`)
+            );
           }
 
           const allVotes = await storage.getVotesByValidation(validationId);
@@ -1509,6 +1514,10 @@ export async function registerRoutes(
 
             await recordRiskEvent(gig.assigneeId, "FAILED_GIG", 25, `Swarm rejected gig "${gig.title}"`).catch(err =>
               console.error(`[Risk] Failed to record swarm rejection: ${err.message}`)
+            );
+
+            await syncPerformanceScore(gig.assigneeId).catch(err =>
+              console.error(`[Swarm] Performance sync on rejection failed: ${err.message}`)
             );
           }
         }
@@ -1672,18 +1681,10 @@ export async function registerRoutes(
       return sum;
     }, 0);
 
-    function getTierName(score: number) {
-      if (score >= 90) return "Diamond Claw";
-      if (score >= 70) return "Gold Shell";
-      if (score >= 50) return "Silver Molt";
-      if (score >= 30) return "Bronze Pinch";
-      return "Hatchling";
-    }
-
     const topTiersCount: Record<string, number> = {};
     const badgeCounts: Record<string, number> = {};
     agents.forEach((a) => {
-      const tier = getTierName(a.fusedScore);
+      const tier = getTier(a.fusedScore);
       topTiersCount[tier] = (topTiersCount[tier] || 0) + 1;
       if (a.isVerified) badgeCounts["Verified"] = (badgeCounts["Verified"] || 0) + 1;
       if (a.fusedScore >= 90) badgeCounts["Diamond Claw"] = (badgeCounts["Diamond Claw"] || 0) + 1;
@@ -1789,13 +1790,7 @@ export async function registerRoutes(
       }
       effectiveScore = Math.round(effectiveScore * 10) / 10;
 
-      const getRank = (score: number): string => {
-        if (score >= 90) return "Diamond Claw";
-        if (score >= 70) return "Gold Shell";
-        if (score >= 50) return "Silver Molt";
-        if (score >= 30) return "Bronze Pinch";
-        return "Hatchling";
-      };
+      const getRank = getTier;
 
       let onChainVerified: boolean | undefined;
       let onChainRepScore: number | undefined;
@@ -1874,6 +1869,7 @@ export async function registerRoutes(
         : undefined;
 
       const scoreBreakdown = getScoreBreakdown(agent);
+      const followerQuality = await storage.getFollowerQuality(agent.id);
 
       res.json({
         hireable,
@@ -1907,6 +1903,7 @@ export async function registerRoutes(
             performance: scoreBreakdown.performanceComponent,
             bondReliability: scoreBreakdown.bondReliabilityComponent,
           },
+          followerQuality,
         },
       });
     } catch (err: any) {
@@ -2412,9 +2409,11 @@ export async function registerRoutes(
     const agent = await storage.getAgent(agentId);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
 
+    const newStatus = (agent.autonomyStatus === "registered" || agent.autonomyStatus === "pending") ? "active" : agent.autonomyStatus;
+
     const updated = await storage.updateAgent(agentId, {
       lastHeartbeat: new Date(),
-      autonomyStatus: agent.autonomyStatus === "registered" ? "active" : agent.autonomyStatus,
+      autonomyStatus: newStatus,
     });
 
     const activityStatus = getAgentActivityStatus({ lastHeartbeat: new Date(), registeredAt: updated?.registeredAt || null });
@@ -2839,6 +2838,24 @@ export async function registerRoutes(
       gigs: filtered,
       total: filtered.length,
       agent: { id: agent.id, handle: agent.handle },
+    });
+  });
+
+  app.get("/api/agents/:id/earnings", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.id);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const agent = await storage.getAgent(agentId.data);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    const earnings = await storage.getEarningsHistory(agentId.data);
+    const totalEarned = earnings.reduce((sum, e) => sum + e.amount, 0);
+
+    res.json({
+      agent: { id: agent.id, handle: agent.handle },
+      totalEarned,
+      gigsCompleted: earnings.length,
+      history: earnings,
     });
   });
 
@@ -3515,7 +3532,7 @@ export async function registerRoutes(
       }
 
       const activityStatus = getAgentActivityStatus(agent);
-      const tier = agent.fusedScore >= 90 ? "Diamond Claw" : agent.fusedScore >= 70 ? "Gold Shell" : agent.fusedScore >= 50 ? "Silver Molt" : agent.fusedScore >= 30 ? "Bronze Pinch" : "Hatchling";
+      const tier = getTier(agent.fusedScore);
 
       const credentialPayload = {
         agentId: agent.id,

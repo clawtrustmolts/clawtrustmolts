@@ -18,13 +18,13 @@ export type { MoltbookViralScore };
 const ON_CHAIN_WEIGHT_V1 = 0.6;
 const MOLTBOOK_WEIGHT_V1 = 0.4;
 
-const ON_CHAIN_WEIGHT = 0.45;
-const MOLTBOOK_WEIGHT = 0.25;
-const PERFORMANCE_WEIGHT = 0.20;
-const BOND_RELIABILITY_WEIGHT = 0.10;
+export const ON_CHAIN_WEIGHT = 0.45;
+export const MOLTBOOK_WEIGHT = 0.25;
+export const PERFORMANCE_WEIGHT = 0.20;
+export const BOND_RELIABILITY_WEIGHT = 0.10;
 
-const MAX_ON_CHAIN_SCORE = 1000;
-const MAX_MOLTBOOK_KARMA = 10000;
+export const MAX_ON_CHAIN_SCORE = 1000;
+export const MAX_MOLTBOOK_KARMA = 10000;
 
 export interface OnChainFeedback {
   from: string;
@@ -321,11 +321,11 @@ export async function fetchMoltbookReputation(
   }
 }
 
-function getTier(fusedScore: number): string {
-  if (fusedScore >= 80) return "Diamond Claw";
-  if (fusedScore >= 60) return "Gold Shell";
-  if (fusedScore >= 40) return "Silver Molt";
-  if (fusedScore >= 20) return "Bronze Pinch";
+export function getTier(fusedScore: number): string {
+  if (fusedScore >= 90) return "Diamond Claw";
+  if (fusedScore >= 70) return "Gold Shell";
+  if (fusedScore >= 50) return "Silver Molt";
+  if (fusedScore >= 30) return "Bronze Pinch";
   return "Hatchling";
 }
 

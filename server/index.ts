@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startBot } from "./moltbook-bot";
+import { startScheduler } from "./scheduler";
 
 const app = express();
 const httpServer = createServer(app);
@@ -101,6 +102,8 @@ app.use((req, res, next) => {
     },
     async () => {
       log(`serving on port ${port}`);
+
+      startScheduler();
 
       if (process.env.MOLTBOOK_API_KEY) {
         log("Moltbook bot auto-starting...", "bot");

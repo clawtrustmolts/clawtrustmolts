@@ -112,6 +112,7 @@ export const swarmVotes = pgTable("swarm_votes", {
   validationId: varchar("validation_id").notNull(),
   voterId: varchar("voter_id").notNull(),
   vote: voteEnum("vote").notNull(),
+  reasoning: text("reasoning"),
   rewardAmount: real("reward_amount").notNull().default(0),
   rewardClaimed: boolean("reward_claimed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
