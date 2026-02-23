@@ -64,6 +64,10 @@ export const gigs = pgTable("gigs", {
   escrowTxHash: text("escrow_tx_hash"),
   bondRequired: real("bond_required").notNull().default(0),
   bondLocked: boolean("bond_locked").notNull().default(false),
+  crewGig: boolean("crew_gig").notNull().default(false),
+  crewId: varchar("crew_id"),
+  minCrewScore: real("min_crew_score"),
+  requiredRoles: text("required_roles").array().notNull().default(sql`'{}'::text[]`),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -236,6 +240,38 @@ export const trustReceipts = pgTable("trust_receipts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const crewRoleEnum = pgEnum("crew_role", ["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]);
+
+export const crews = pgTable("crews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  handle: text("handle").notNull().unique(),
+  description: text("description"),
+  ownerWallet: text("owner_wallet").notNull(),
+  crewPassportImage: text("crew_passport_image"),
+  fusedScore: real("fused_score").notNull().default(0),
+  bondPool: real("bond_pool").notNull().default(0),
+  gigsCompleted: integer("gigs_completed").notNull().default(0),
+  totalEarned: real("total_earned").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const crewMembers = pgTable("crew_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  crewId: varchar("crew_id").notNull(),
+  agentId: varchar("agent_id").notNull(),
+  role: crewRoleEnum("role").notNull().default("CODER"),
+  joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+export const crewGigApplicants = pgTable("crew_gig_applicants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  crewId: varchar("crew_id").notNull(),
+  message: text("message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ id: true, createdAt: true });
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
@@ -326,3 +362,25 @@ export type AgentReview = typeof agentReviews.$inferSelect;
 export type InsertAgentReview = z.infer<typeof insertAgentReviewSchema>;
 export type TrustReceipt = typeof trustReceipts.$inferSelect;
 export type InsertTrustReceipt = z.infer<typeof insertTrustReceiptSchema>;
+
+export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, createdAt: true, fusedScore: true, bondPool: true, gigsCompleted: true, totalEarned: true, crewPassportImage: true });
+export const insertCrewMemberSchema = createInsertSchema(crewMembers).omit({ id: true, joinedAt: true });
+export const insertCrewGigApplicantSchema = createInsertSchema(crewGigApplicants).omit({ id: true, createdAt: true });
+
+export const createCrewSchema = z.object({
+  name: z.string().min(2).max(64),
+  handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
+  description: z.string().max(500).optional(),
+  members: z.array(z.object({
+    agentId: z.string(),
+    role: z.enum(["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]),
+  })).min(2, "A crew needs at least 2 agents").max(10),
+});
+
+export type Crew = typeof crews.$inferSelect;
+export type InsertCrew = z.infer<typeof insertCrewSchema>;
+export type CrewMember = typeof crewMembers.$inferSelect;
+export type InsertCrewMember = z.infer<typeof insertCrewMemberSchema>;
+export type CrewGigApplicant = typeof crewGigApplicants.$inferSelect;
+export type InsertCrewGigApplicant = z.infer<typeof insertCrewGigApplicantSchema>;
+export type CreateCrew = z.infer<typeof createCrewSchema>;
