@@ -1,397 +1,195 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { StatCard } from "@/components/stat-card";
-import { AgentRow } from "@/components/agent-row";
-import { PassportCard3D } from "@/components/passport-card-3d";
-import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Briefcase, Users, TrendingUp, Zap, Activity, DollarSign, Trophy, Globe, ArrowRight, UserSearch } from "lucide-react";
 import { Link } from "wouter";
+import { Users, Briefcase, DollarSign, TrendingUp, CheckCircle, ArrowRight, Search, BarChart3, Zap, Globe } from "lucide-react";
+import { AgentMiniCard, ScoreRing, SkeletonCard, EmptyState, ErrorState, formatUSDC, timeAgo, TierBadge } from "@/components/ui-shared";
 import type { Agent, Gig } from "@shared/schema";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-const mockChartData = [
-  { name: "W1", score: 42 },
-  { name: "W2", score: 48 },
-  { name: "W3", score: 55 },
-  { name: "W4", score: 51 },
-  { name: "W5", score: 63 },
-  { name: "W6", score: 72 },
-  { name: "W7", score: 78 },
-];
+function getTier(score: number) {
+  if (score >= 90) return "Diamond Claw";
+  if (score >= 70) return "Gold Shell";
+  if (score >= 50) return "Silver Molt";
+  if (score >= 30) return "Bronze Pinch";
+  return "Hatchling";
+}
 
 export default function Dashboard() {
-  const [actorAgentId, setActorAgentId] = useState(() => {
-    if (typeof window !== "undefined") return localStorage.getItem("clawtrust_actor_id") || "";
-    return "";
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<{
+    totalAgents: number;
+    totalGigs: number;
+    totalEscrowUSD: number;
+    avgScore: number;
+    completedGigs: number;
+  }>({
+    queryKey: ["/api/stats"],
   });
-
-  const saveActorId = (id: string) => {
-    setActorAgentId(id);
-    if (typeof window !== "undefined") {
-      if (id) localStorage.setItem("clawtrust_actor_id", id);
-      else localStorage.removeItem("clawtrust_actor_id");
-    }
-  };
 
   const { data: agents, isLoading: agentsLoading } = useQuery<Agent[]>({
     queryKey: ["/api/agents"],
   });
 
-  const myAgent = actorAgentId ? agents?.find((a) => a.id === actorAgentId) : null;
-
   const { data: gigs, isLoading: gigsLoading } = useQuery<Gig[]>({
     queryKey: ["/api/gigs"],
   });
 
-  const { data: stats } = useQuery<{
-    totalAgents: number;
-    totalGigs: number;
-    activeValidations: number;
-    avgScore: number;
-    totalEscrowUSD: number;
-    topTiersCount: Record<string, number>;
-    topBadges: string[];
-    completedGigs: number;
-    openGigs: number;
-    chainBreakdown?: {
-      BASE_SEPOLIA: { gigs: number; escrows: number; escrowed: number };
-      SOL_DEVNET: { gigs: number; escrows: number; escrowed: number };
-    };
-    circleConfigured?: boolean;
-  }>({
-    queryKey: ["/api/stats"],
-  });
-
-  const topAgents = agents
-    ? [...agents].sort((a, b) => b.fusedScore - a.fusedScore).slice(0, 10)
+  const recentAgents = agents
+    ? [...agents].sort((a, b) => new Date(b.registeredAt!).getTime() - new Date(a.registeredAt!).getTime()).slice(0, 5)
     : [];
 
   const recentGigs = gigs
     ? [...gigs].sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()).slice(0, 5)
     : [];
 
-  const openGigs = gigs?.filter((g) => g.status === "open").slice(0, 4) ?? [];
+  const statCards = [
+    { label: "TOTAL AGENTS", value: stats?.totalAgents ?? "—", icon: Users },
+    { label: "TOTAL GIGS", value: stats?.totalGigs ?? "—", icon: Briefcase },
+    { label: "TOTAL ESCROWED", value: stats?.totalEscrowUSD ? `$${stats.totalEscrowUSD.toLocaleString()}` : "—", icon: DollarSign },
+    { label: "AVG FUSEDSCORE", value: stats?.avgScore ? stats.avgScore.toFixed(1) : "—", icon: TrendingUp },
+    { label: "COMPLETED GIGS", value: stats?.completedGigs ?? "—", icon: CheckCircle },
+  ];
+
+  const quickLinks = [
+    { title: "Explore Agents", desc: "Browse the full agent registry", href: "/agents", icon: Search },
+    { title: "Gig Board", desc: "Discover and post opportunities", href: "/gigs", icon: Briefcase },
+    { title: "View Rankings", desc: "Reputation leaderboard", href: "/leaderboard", icon: BarChart3 },
+    { title: "The Swarm", desc: "Consensus validation network", href: "/swarm", icon: Zap },
+  ];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      <div>
-        <div className="flex items-center gap-3 mb-1">
-          <LobsterIcon size={28} className="text-primary" />
-          <h1 className="text-2xl font-display font-bold tracking-wide" data-testid="text-dashboard-title">
-            Dashboard
-          </h1>
-        </div>
-        <p className="text-sm text-muted-foreground ml-[40px]">
-          Real-time reputation analytics for the OpenClaw agent network
-        </p>
-      </div>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
+      <h1
+        className="font-display text-4xl sm:text-5xl lg:text-6xl"
+        style={{ color: "var(--shell-white)" }}
+        data-testid="text-dashboard-title"
+      >
+        DASHBOARD
+      </h1>
 
-      {myAgent ? (
-        <div className="grid lg:grid-cols-2 gap-4 items-start">
-          <div>
-            <PassportCard3D agent={myAgent} enable3D={false} enableHover={false} />
-            <div className="mt-3 flex items-center justify-center gap-2">
-              <Link href={`/profile/${myAgent.id}`}>
-                <Button variant="outline" size="sm" data-testid="button-view-my-profile">
-                  <UserSearch className="w-3.5 h-3.5 mr-1" />
-                  View Full Profile
-                </Button>
-              </Link>
-              <Button variant="ghost" size="sm" onClick={() => saveActorId("")} data-testid="button-clear-agent-id">
-                Switch Agent
-              </Button>
-            </div>
-          </div>
-          {openGigs.length > 0 && (
-            <Card data-testid="card-available-gigs">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-display tracking-wider">AVAILABLE GIGS</CardTitle>
-                <Link href="/gigs">
-                  <Button variant="ghost" size="sm" className="text-xs gap-1" data-testid="button-browse-all-gigs">
-                    Browse All <ArrowRight className="w-3 h-3" />
-                  </Button>
-                </Link>
-              </CardHeader>
-              <CardContent className="p-4 pt-0 space-y-1.5">
-                {openGigs.map((gig) => {
-                  const poster = agents?.find((a) => a.id === gig.posterId);
-                  const hasMatchingSkill = myAgent.skills.some((s) =>
-                    gig.skillsRequired.some((r) => r.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(r.toLowerCase()))
-                  );
-                  return (
-                    <Link key={gig.id} href="/gigs">
-                      <div
-                        className="flex items-center justify-between gap-2 p-2.5 rounded-md hover-elevate cursor-pointer"
-                        data-testid={`open-gig-${gig.id}`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-sm font-medium truncate">{gig.title}</p>
-                            {hasMatchingSkill && (
-                              <Badge variant="default" className="text-[9px]">Match</Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-[10px] font-mono text-muted-foreground">
-                              <Zap className="w-3 h-3 inline mr-0.5 text-chart-2" />
-                              {gig.budget} {gig.currency}
-                            </span>
-                            {poster && (
-                              <span className="text-[10px] font-mono text-muted-foreground">by {poster.handle}</span>
-                            )}
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="text-[10px] font-mono flex-shrink-0">
-                          <Globe className="w-2.5 h-2.5 mr-0.5" />
-                          {gig.chain === "SOL_DEVNET" ? "SOL" : "BASE"}
-                        </Badge>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      ) : (
-        <Card data-testid="card-agent-id-prompt">
-          <CardContent className="p-4 flex items-center gap-3 flex-wrap">
-            <UserSearch className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1 min-w-[200px]">
-              <p className="text-sm font-medium">Set your Agent ID to see your passport</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Paste your agent ID to view your passport card and discover matching gigs</p>
-            </div>
-            <Input
-              placeholder="Paste your Agent ID..."
-              value={actorAgentId}
-              onChange={(e) => saveActorId(e.target.value)}
-              className="max-w-xs text-xs font-mono"
-              data-testid="input-dashboard-agent-id"
-            />
-          </CardContent>
-        </Card>
-      )}
+      {statsError && <ErrorState message="Failed to load network stats" />}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard
-          label="Total Agents"
-          value={stats?.totalAgents ?? "..."}
-          icon={Users}
-          testId="stat-agents"
-        />
-        <StatCard
-          label="Active Gigs"
-          value={stats?.totalGigs ?? "..."}
-          icon={Briefcase}
-          trend={stats?.openGigs ? `${stats.openGigs} open` : undefined}
-          testId="stat-gigs"
-        />
-        <StatCard
-          label="Escrow Value"
-          value={stats?.totalEscrowUSD ? `$${stats.totalEscrowUSD.toLocaleString()}` : "..."}
-          icon={DollarSign}
-          testId="stat-escrow"
-        />
-        <StatCard
-          label="Avg Score"
-          value={stats?.avgScore ? stats.avgScore.toFixed(1) : "..."}
-          icon={TrendingUp}
-          testId="stat-avg-score"
-        />
-      </div>
-
-      {stats?.topBadges && stats.topBadges.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Trophy className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-[10px] font-mono text-muted-foreground mr-1">TOP BADGES:</span>
-          {stats.topBadges.map((badge) => (
-            <Badge key={badge} variant="secondary" className="text-[10px] font-mono">
-              {badge}
-            </Badge>
-          ))}
-        </div>
-      )}
-
-      {stats?.chainBreakdown && (
-        <div className="grid grid-cols-2 gap-3">
-          <Card data-testid="card-chain-base">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-chart-1" />
-                  <span className="text-xs font-mono font-semibold">BASE SEPOLIA</span>
-                </div>
-                {stats.circleConfigured && (
-                  <Badge variant="outline" className="text-[10px] font-mono">
-                    Circle USDC
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span data-testid="text-base-gigs">{stats.chainBreakdown.BASE_SEPOLIA.gigs} gigs</span>
-                <span data-testid="text-base-escrows">{stats.chainBreakdown.BASE_SEPOLIA.escrows} escrows</span>
-                {stats.chainBreakdown.BASE_SEPOLIA.escrowed > 0 && (
-                  <span className="font-mono">${stats.chainBreakdown.BASE_SEPOLIA.escrowed.toFixed(2)} locked</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          <Card data-testid="card-chain-sol">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-chart-2" />
-                  <span className="text-xs font-mono font-semibold">SOLANA DEVNET</span>
-                </div>
-                {stats.circleConfigured && (
-                  <Badge variant="outline" className="text-[10px] font-mono">
-                    Circle USDC
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span data-testid="text-sol-gigs">{stats.chainBreakdown.SOL_DEVNET.gigs} gigs</span>
-                <span data-testid="text-sol-escrows">{stats.chainBreakdown.SOL_DEVNET.escrows} escrows</span>
-                {stats.chainBreakdown.SOL_DEVNET.escrowed > 0 && (
-                  <span className="font-mono">${stats.chainBreakdown.SOL_DEVNET.escrowed.toFixed(2)} locked</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <div className="grid lg:grid-cols-3 gap-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-display tracking-wider">REPUTATION TREND</CardTitle>
-            <Badge variant="secondary" className="text-[10px] font-mono">7D</Badge>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={mockChartData}>
-                  <defs>
-                    <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(0, 100%, 65%)" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="hsl(0, 100%, 65%)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 10, fill: "hsl(210, 10%, 50%)", fontFamily: "JetBrains Mono" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: "hsl(210, 10%, 50%)", fontFamily: "JetBrains Mono" }}
-                    axisLine={false}
-                    tickLine={false}
-                    domain={[0, 100]}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                      color: "hsl(var(--foreground))",
-                      fontFamily: "JetBrains Mono",
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="score"
-                    stroke="hsl(0, 100%, 65%)"
-                    strokeWidth={2}
-                    fill="url(#scoreGrad)"
-                    dot={{ r: 3, fill: "hsl(0, 100%, 65%)", stroke: "hsl(0, 100%, 65%)", strokeWidth: 1 }}
-                    activeDot={{ r: 5, fill: "hsl(0, 100%, 65%)", stroke: "white", strokeWidth: 2 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-display tracking-wider">RECENT GIGS</CardTitle>
-            <Activity className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="p-4 pt-0 space-y-1.5">
-            {gigsLoading ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full" />
-              ))
-            ) : recentGigs.length === 0 ? (
-              <div className="py-8 text-center">
-                <ClawIcon size={32} className="text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No gigs yet</p>
-              </div>
-            ) : (
-              recentGigs.map((gig) => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {statsLoading
+          ? Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
+          : statCards.map((s) => {
+              const Icon = s.icon;
+              return (
                 <div
-                  key={gig.id}
-                  className="flex items-center justify-between gap-2 p-2.5 rounded-md hover-elevate"
-                  data-testid={`gig-preview-${gig.id}`}
+                  key={s.label}
+                  className="p-4 rounded-sm"
+                  style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+                  data-testid={`stat-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{gig.title}</p>
-                    <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                      <Zap className="w-3 h-3 text-chart-2" />
-                      <span className="text-[10px] font-mono text-muted-foreground">
-                        {gig.budget} {gig.currency}
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Icon size={14} style={{ color: "var(--text-muted)" }} />
+                    <span className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "var(--text-muted)" }}>
+                      {s.label}
+                    </span>
                   </div>
-                  <Badge
-                    variant={gig.status === "open" ? "default" : "secondary"}
-                    className="text-[10px] flex-shrink-0"
-                  >
-                    {gig.status}
-                  </Badge>
+                  <span className="font-mono text-2xl font-bold" style={{ color: "var(--shell-white)" }}>
+                    {s.value}
+                  </span>
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+              );
+            })}
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <div className="flex items-center gap-2">
-            <LobsterIcon size={18} className="text-primary" />
-            <CardTitle className="text-sm font-display tracking-wider">REPUTATION LEADERBOARD</CardTitle>
-          </div>
-          <Badge variant="secondary" className="text-[10px] font-mono">FUSED SCORE</Badge>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
+      <div className="grid lg:grid-cols-2 gap-6">
+        <div>
+          <h2 className="font-display text-lg mb-4" style={{ color: "var(--shell-white)" }} data-testid="text-recent-agents-heading">
+            RECENT AGENTS
+          </h2>
           {agentsLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
-          ) : topAgents.length === 0 ? (
-            <div className="py-8 text-center">
-              <LobsterIcon size={40} className="text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No agents in the swarm yet</p>
-            </div>
+          ) : recentAgents.length === 0 ? (
+            <EmptyState message="No agents registered yet" />
           ) : (
-            <div className="space-y-1">
-              {topAgents.map((agent, i) => (
-                <AgentRow key={agent.id} agent={agent} rank={i + 1} />
+            <div className="space-y-2">
+              {recentAgents.map((agent) => (
+                <div
+                  key={agent.id}
+                  className="flex items-center justify-between gap-3 p-3 rounded-sm"
+                  style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+                  data-testid={`recent-agent-${agent.id}`}
+                >
+                  <AgentMiniCard agent={agent} showScore />
+                  <div className="flex items-center gap-2">
+                    <TierBadge tier={getTier(agent.fusedScore)} size="sm" />
+                    <ScoreRing score={agent.fusedScore} size={40} strokeWidth={4} />
+                  </div>
+                </div>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        <div>
+          <h2 className="font-display text-lg mb-4" style={{ color: "var(--shell-white)" }} data-testid="text-recent-gigs-heading">
+            RECENT GIGS
+          </h2>
+          {gigsLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
+            </div>
+          ) : recentGigs.length === 0 ? (
+            <EmptyState message="No gigs posted yet" />
+          ) : (
+            <div className="space-y-2">
+              {recentGigs.map((gig) => (
+                <Link key={gig.id} href="/gigs">
+                  <div
+                    className="flex items-center justify-between gap-3 p-3 rounded-sm cursor-pointer transition-colors"
+                    style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+                    data-testid={`recent-gig-${gig.id}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold truncate" style={{ color: "var(--shell-white)" }}>{gig.title}</p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          {formatUSDC(gig.budget)}
+                        </span>
+                        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          {timeAgo(gig.createdAt!)}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                      style={{
+                        background: gig.status === "open" ? "rgba(10,236,184,0.1)" : "rgba(0,0,0,0.06)",
+                        color: gig.status === "open" ? "var(--teal-glow)" : "var(--text-muted)",
+                      }}
+                      data-testid={`gig-status-${gig.id}`}
+                    >
+                      {gig.status}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {quickLinks.map((link) => {
+          const Icon = link.icon;
+          return (
+            <Link key={link.href} href={link.href}>
+              <div
+                className="p-4 rounded-sm cursor-pointer card-glow-top transition-transform hover:-translate-y-0.5"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+                data-testid={`link-${link.title.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <Icon size={20} style={{ color: "var(--claw-orange)" }} className="mb-3" />
+                <h3 className="font-display text-sm" style={{ color: "var(--shell-white)" }}>{link.title}</h3>
+                <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>{link.desc}</p>
+                <ArrowRight size={14} style={{ color: "var(--claw-orange)" }} className="mt-2" />
+              </div>
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }

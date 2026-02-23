@@ -215,6 +215,105 @@ export class ClawTrustClient {
     }
   }
 
+  async getPassport(agentId: string, apiKey?: string): Promise<any> {
+    const url = `${this.baseUrl}/api/agents/${encodeURIComponent(agentId)}`;
+    const headers = this.getHeaders(apiKey);
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust getPassport failed:", err);
+      return null;
+    }
+  }
+
+  async getEarnings(agentId: string, apiKey?: string): Promise<any> {
+    const url = `${this.baseUrl}/api/agents/${encodeURIComponent(agentId)}/earnings`;
+    const headers = this.getHeaders(apiKey);
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust getEarnings failed:", err);
+      return null;
+    }
+  }
+
+  async discoverGigs(filters?: { skills?: string; minBudget?: number; maxBudget?: number; chain?: string; currency?: string; sortBy?: string }, apiKey?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (filters?.skills) params.set("skills", filters.skills);
+    if (filters?.minBudget) params.set("minBudget", String(filters.minBudget));
+    if (filters?.maxBudget) params.set("maxBudget", String(filters.maxBudget));
+    if (filters?.chain) params.set("chain", filters.chain);
+    if (filters?.currency) params.set("currency", filters.currency);
+    if (filters?.sortBy) params.set("sortBy", filters.sortBy);
+    const qs = params.toString();
+    const url = `${this.baseUrl}/api/gigs/discover${qs ? `?${qs}` : ""}`;
+    const headers = this.getHeaders(apiKey);
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust discoverGigs failed:", err);
+      return { gigs: [], total: 0 };
+    }
+  }
+
+  async postGig(gigData: { title: string; description: string; budget: number; currency: string; chain: string; skills?: string[]; bondRequired?: number }, walletAddress: string, apiKey?: string): Promise<any> {
+    const url = `${this.baseUrl}/api/gigs`;
+    const headers = { ...this.getHeaders(apiKey), "Content-Type": "application/json", "x-wallet-address": walletAddress };
+    try {
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(gigData) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust postGig failed:", err);
+      return null;
+    }
+  }
+
+  async applyToGig(gigId: string, agentId: string, proposal: string, walletAddress: string, apiKey?: string): Promise<any> {
+    const url = `${this.baseUrl}/api/gigs/${encodeURIComponent(gigId)}/apply`;
+    const headers = { ...this.getHeaders(apiKey), "Content-Type": "application/json", "x-wallet-address": walletAddress, "x-agent-id": agentId };
+    try {
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ agentId, proposal }) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust applyToGig failed:", err);
+      return null;
+    }
+  }
+
+  async submitDeliverable(gigId: string, data: { deliverableUrl: string; deliverableNote?: string; requestValidation?: boolean }, walletAddress: string, agentId: string, apiKey?: string): Promise<any> {
+    const url = `${this.baseUrl}/api/gigs/${encodeURIComponent(gigId)}/submit-deliverable`;
+    const headers = { ...this.getHeaders(apiKey), "Content-Type": "application/json", "x-wallet-address": walletAddress, "x-agent-id": agentId };
+    try {
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust submitDeliverable failed:", err);
+      return null;
+    }
+  }
+
+  async sendHeartbeat(agentId: string, walletAddress: string, apiKey?: string): Promise<any> {
+    const url = `${this.baseUrl}/api/agent-heartbeat`;
+    const headers = { ...this.getHeaders(apiKey), "Content-Type": "application/json", "x-wallet-address": walletAddress, "x-agent-id": agentId };
+    try {
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({}) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust heartbeat failed:", err);
+      return null;
+    }
+  }
+
   async checkTrustBatch(
     wallets: string[],
     options?: TrustCheckOptions,

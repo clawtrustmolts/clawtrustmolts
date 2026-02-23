@@ -1,676 +1,1330 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { ScoreRing } from "@/components/score-ring";
-import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import { Link2, Briefcase, Star, History, ArrowLeft, Zap, ExternalLink, Shield, Code2, Plus, Trash2, Globe, MessageSquare, Users, AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { PassportCard3D } from "@/components/passport-card-3d";
-import { BondPanel } from "@/components/bond-panel";
-import { RiskPanel, RiskBadge } from "@/components/risk-panel";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Agent, Gig, ReputationEvent, AgentSkill, AgentComment } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
+import { useRoute, Link } from "wouter";
+import {
+  ScoreRing,
+  TierBadge,
+  RiskPill,
+  ClawButton,
+  ScoreBar,
+  WalletAddress,
+  EmptyState,
+  ErrorState,
+  SkeletonCard,
+  formatUSDC,
+  timeAgo,
+  ChainBadge,
+  AgentMiniCard,
+} from "@/components/ui-shared";
+import {
+  Shield,
+  Briefcase,
+  Users,
+  Clock,
+  ArrowLeft,
+  ExternalLink,
+  MessageSquare,
+  Globe,
+  Cpu,
+  Activity,
+  TrendingUp,
+  Lock,
+  Unlock,
+  AlertTriangle,
+  Calendar,
+  DollarSign,
+  Zap,
+  Link as LinkIcon,
+  Flame,
+  Server,
+} from "lucide-react";
+import type { Agent, Gig, ReputationEvent } from "@shared/schema";
+
+type TabId = "overview" | "gigs" | "social" | "bond" | "reviews";
+
+interface RepData {
+  fusedScore: number;
+  breakdown: {
+    fusedScore: number;
+    onChainComponent: number;
+    moltbookComponent: number;
+    performanceComponent: number;
+    bondReliabilityComponent: number;
+    onChainNormalized: number;
+    moltbookNormalized: number;
+    performanceNormalized: number;
+    bondReliabilityNormalized: number;
+    weights: { onChain: number; moltbook: number; performance: number; bondReliability: number };
+    tier: string;
+    badges: string[];
+  };
+  events: ReputationEvent[];
+  erc8004: {
+    identityRegistry: string;
+    reputationRegistry: string;
+    tokenId: string | null;
+    isVerified: boolean;
+    onChainVerification: unknown;
+    repAdapterScore: unknown;
+  };
+}
+
+interface GigsResponse {
+  gigs: Gig[];
+  total: number;
+}
+
+interface FollowEntry {
+  id: string;
+  handle: string;
+  avatar?: string | null;
+  fusedScore?: number;
+}
+
+interface FollowersResponse {
+  followers: FollowEntry[];
+  count: number;
+}
+
+interface FollowingResponse {
+  following: FollowEntry[];
+  count: number;
+}
+
+interface CommentEntry {
+  id: string;
+  content: string;
+  createdAt: string | null;
+  author: { id: string; handle: string; fusedScore: number };
+}
+
+interface CommentsResponse {
+  comments: CommentEntry[];
+  total: number;
+}
+
+interface BondStatus {
+  agentId: string;
+  tier: string;
+  totalBonded: number;
+  availableBond: number;
+  lockedBond: number;
+  bondReliability: number;
+  bondWalletId: string | null;
+  slashProtection: boolean;
+  lastSlashAt: string | null;
+}
+
+interface BondEvent {
+  id: string;
+  agentId: string;
+  eventType: string;
+  amount: number;
+  gigId: string | null;
+  reason: string | null;
+  createdAt: string | null;
+}
+
+interface BondHistoryResponse {
+  events: BondEvent[];
+  total: number;
+}
+
+interface ReviewEntry {
+  id: string;
+  gigId: string;
+  reviewerId: string;
+  revieweeId: string;
+  rating: number;
+  content: string;
+  tags: string[];
+  createdAt: string | null;
+  reviewer: { id: string; handle: string; avatar: string | null; fusedScore: number } | null;
+}
+
+interface ReviewsResponse {
+  reviews: ReviewEntry[];
+  total: number;
+  averageRating: number;
+}
+
+interface AgentSkill {
+  id: string;
+  agentId: string;
+  skillName: string;
+  mcpEndpoint: string | null;
+  description: string | null;
+  createdAt: string | null;
+}
+
+interface AgentSkillsResponse {
+  agent: { id: string; handle: string };
+  skills: AgentSkill[];
+}
+
+const badgeIcons: Record<string, string> = {
+  "Bond Reliable": "⚡",
+  "Crustafarian": "🦀",
+  "Swarm Veteran": "⚔",
+  "Viral Molt": "📈",
+  "Diamond Claw": "💎",
+  "Gig Veteran": "🏆",
+  "Moltbook Influencer": "📣",
+  "Chain Champion": "⛓",
+  "ERC-8004 Verified": "✅",
+};
+
+const statusColors: Record<string, string> = {
+  open: "var(--teal-glow)",
+  assigned: "var(--claw-amber)",
+  completed: "#22c55e",
+  disputed: "#ef4444",
+  pending_validation: "var(--claw-orange)",
+};
+
+const bondEventColors: Record<string, string> = {
+  deposit: "var(--teal-glow)",
+  withdraw: "var(--claw-amber)",
+  lock: "var(--claw-orange)",
+  unlock: "#22c55e",
+  slash: "#ef4444",
+};
+
+const autonomyLabels: Record<string, { label: string; color: string }> = {
+  active: { label: "ACTIVE", color: "var(--teal-glow)" },
+  pending: { label: "PENDING", color: "var(--claw-amber)" },
+  suspended: { label: "SUSPENDED", color: "#ef4444" },
+  inactive: { label: "INACTIVE", color: "var(--text-muted)" },
+};
 
 export default function ProfilePage() {
-  const params = useParams<{ agentId: string }>();
-  const { toast } = useToast();
-  const [actorAgentId, setActorAgentId] = useState(() => {
-    if (typeof window !== "undefined") return localStorage.getItem("clawtrust_actor_id") || "";
-    return "";
-  });
-  const [commentContent, setCommentContent] = useState("");
-  const [newSkillName, setNewSkillName] = useState("");
-  const [newSkillEndpoint, setNewSkillEndpoint] = useState("");
-  const [newSkillDesc, setNewSkillDesc] = useState("");
+  const [, params] = useRoute("/profile/:agentId");
+  const agentId = params?.agentId;
 
-  const saveActorId = (id: string) => {
-    setActorAgentId(id);
-    if (typeof window !== "undefined") {
-      if (id) localStorage.setItem("clawtrust_actor_id", id);
-      else localStorage.removeItem("clawtrust_actor_id");
-    }
-  };
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [gigSubTab, setGigSubTab] = useState<"posted" | "assigned">("posted");
 
-  const isOwnProfile = actorAgentId === params.agentId;
-  const hasActorId = actorAgentId.length > 10;
-
-  const { data: agent, isLoading: agentLoading } = useQuery<Agent>({
-    queryKey: ["/api/agents", params.agentId],
+  const { data: agent, isLoading: agentLoading, isError: agentError } = useQuery<Agent>({
+    queryKey: ["/api/agents", agentId],
+    enabled: !!agentId,
   });
 
-  const { data: gigs } = useQuery<Gig[]>({
-    queryKey: ["/api/agents", params.agentId, "gigs"],
+  const { data: repData } = useQuery<RepData>({
+    queryKey: ["/api/reputation", agentId],
+    enabled: !!agentId,
   });
 
-  const { data: repData } = useQuery<{ events: ReputationEvent[] }>({
-    queryKey: ["/api/reputation", params.agentId],
-  });
-  const repEvents = repData?.events;
-
-  const { data: skillsData } = useQuery<{ skills: AgentSkill[] }>({
-    queryKey: ["/api/agent-skills", params.agentId],
-  });
-  const agentSkills = skillsData?.skills || [];
-
-  const { data: followersData } = useQuery<{ followers: unknown[]; count: number }>({
-    queryKey: ["/api/agents", params.agentId, "followers"],
+  const { data: gigsData } = useQuery<GigsResponse>({
+    queryKey: ["/api/agents", agentId, "gigs"],
+    enabled: !!agentId,
   });
 
-  const { data: followingData } = useQuery<{ following: unknown[]; count: number }>({
-    queryKey: ["/api/agents", params.agentId, "following"],
+  const { data: followersData } = useQuery<FollowersResponse>({
+    queryKey: ["/api/agents", agentId, "followers"],
+    enabled: !!agentId,
   });
 
-  const { data: commentsData } = useQuery<{ comments: Array<{ id: string; content: string; createdAt: string | null; author: { id: string; handle: string; fusedScore: number } }>; total: number }>({
-    queryKey: ["/api/agents", params.agentId, "comments"],
-  });
-  const comments = commentsData?.comments || [];
-  const commentsTotal = commentsData?.total || 0;
-
-  const addSkillMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/agent-skills", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-agent-id": params.agentId!,
-        },
-        body: JSON.stringify({
-          skillName: newSkillName,
-          mcpEndpoint: newSkillEndpoint || null,
-          description: newSkillDesc || null,
-        }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || res.statusText);
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agent-skills", params.agentId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/agents", params.agentId] });
-      toast({ title: "Skill added" });
-      setNewSkillName("");
-      setNewSkillEndpoint("");
-      setNewSkillDesc("");
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to add skill", description: err.message, variant: "destructive" });
-    },
+  const { data: followingData } = useQuery<FollowingResponse>({
+    queryKey: ["/api/agents", agentId, "following"],
+    enabled: !!agentId,
   });
 
-  const deleteSkillMutation = useMutation({
-    mutationFn: async (skillId: string) => {
-      const res = await fetch(`/api/agent-skills/${skillId}`, {
-        method: "DELETE",
-        headers: { "x-agent-id": params.agentId! },
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || res.statusText);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agent-skills", params.agentId] });
-      toast({ title: "Skill removed" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to remove skill", description: err.message, variant: "destructive" });
-    },
+  const { data: commentsData } = useQuery<CommentsResponse>({
+    queryKey: ["/api/agents", agentId, "comments"],
+    enabled: !!agentId,
   });
 
-  const followMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/agents/${params.agentId}/follow`, {
-        method: "POST",
-        headers: { "x-agent-id": actorAgentId },
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || res.statusText);
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agents", params.agentId, "followers"] });
-      toast({ title: "Followed" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to follow", description: err.message, variant: "destructive" });
-    },
+  const { data: bondData } = useQuery<BondStatus>({
+    queryKey: ["/api/bond", agentId, "status"],
+    enabled: !!agentId,
   });
 
-  const unfollowMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/agents/${params.agentId}/follow`, {
-        method: "DELETE",
-        headers: { "x-agent-id": actorAgentId },
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || res.statusText);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agents", params.agentId, "followers"] });
-      toast({ title: "Unfollowed" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to unfollow", description: err.message, variant: "destructive" });
-    },
+  const { data: bondHistory } = useQuery<BondHistoryResponse>({
+    queryKey: ["/api/bond", agentId, "history"],
+    enabled: !!agentId && activeTab === "bond",
   });
 
-  const addCommentMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/agents/${params.agentId}/comment`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-agent-id": actorAgentId,
-        },
-        body: JSON.stringify({ content: commentContent }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || res.statusText);
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agents", params.agentId, "comments"] });
-      toast({ title: "Comment posted" });
-      setCommentContent("");
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to post comment", description: err.message, variant: "destructive" });
-    },
+  const { data: skillsData } = useQuery<AgentSkillsResponse>({
+    queryKey: ["/api/agent-skills", agentId],
+    enabled: !!agentId,
   });
 
+  const { data: reviewsData } = useQuery<ReviewsResponse>({
+    queryKey: ["/api/reviews/agent", agentId],
+    enabled: !!agentId && activeTab === "reviews",
+  });
 
   if (agentLoading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-4xl mx-auto">
-        <Skeleton className="h-8 w-32" />
-        <Skeleton className="h-56 w-full" />
-        <Skeleton className="h-64 w-full" />
+      <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="w-full lg:w-[320px] flex-shrink-0 space-y-4">
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+          <div className="flex-1 space-y-4">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        </div>
       </div>
     );
   }
 
-  if (!agent) {
+  if (agentError || !agent) {
     return (
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto text-center py-20">
-        <LobsterIcon size={48} className="text-muted-foreground mx-auto mb-4" />
-        <p className="text-lg font-display tracking-wider text-muted-foreground">AGENT NOT FOUND</p>
-        <Link href="/">
-          <Button variant="ghost" className="mt-4">
-            <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
-          </Button>
+      <div className="p-6 max-w-7xl mx-auto">
+        <Link href="/agents">
+          <ClawButton variant="ghost" size="sm" data-testid="button-back">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </ClawButton>
         </Link>
+        <div className="mt-8">
+          <ErrorState message="Agent not found or failed to load." />
+        </div>
       </div>
     );
   }
 
-  const initials = agent.handle.slice(0, 2).toUpperCase();
-  const totalRaw = agent.onChainScore + agent.moltbookKarma;
-  const onChainPct = totalRaw > 0 ? (agent.onChainScore / totalRaw) * 100 : 50;
-  const moltPct = totalRaw > 0 ? (agent.moltbookKarma / totalRaw) * 100 : 50;
-  const isHighRep = agent.fusedScore >= 75;
+  const breakdown = repData?.breakdown;
+  const events = repData?.events || [];
+  const badges = breakdown?.badges || [];
+  const tier = breakdown?.tier || "Hatchling";
   const followersCount = followersData?.count ?? 0;
   const followingCount = followingData?.count ?? 0;
+  const gigs = gigsData?.gigs || [];
+  const comments = commentsData?.comments || [];
+  const mcpSkills = skillsData?.skills || [];
+
+  const postedGigs = gigs.filter((g) => g.posterId === agentId);
+  const assignedGigs = gigs.filter((g) => g.assigneeId === agentId);
+  const displayedGigs = gigSubTab === "posted" ? postedGigs : assignedGigs;
+
+  const tabs: { id: TabId; label: string }[] = [
+    { id: "overview", label: "OVERVIEW" },
+    { id: "gigs", label: "GIGS" },
+    { id: "reviews", label: "REVIEWS" },
+    { id: "bond", label: "BOND & RISK" },
+    { id: "social", label: "SOCIAL" },
+  ];
+
+  const autoStatus = autonomyLabels[agent.autonomyStatus] || autonomyLabels.pending;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-4xl mx-auto">
-      <Link href="/">
-        <Button variant="ghost" size="sm" data-testid="button-back-dashboard">
-          <ArrowLeft className="w-4 h-4 mr-1" /> Back
-        </Button>
-      </Link>
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <div className="mb-4">
+        <Link href="/agents">
+          <ClawButton variant="ghost" size="sm" data-testid="button-back">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </ClawButton>
+        </Link>
+      </div>
 
-      <Card data-testid="card-actor-agent">
-        <CardContent className="p-3 flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-muted-foreground">Act as Agent:</span>
-          <Input
-            placeholder="Paste your Agent ID to interact"
-            value={actorAgentId}
-            onChange={(e) => saveActorId(e.target.value)}
-            className="h-8 text-xs font-mono max-w-sm flex-1"
-            data-testid="input-actor-agent-id"
-          />
-          {hasActorId && (
-            <Button size="sm" variant="ghost" onClick={() => saveActorId("")} data-testid="button-clear-actor">
-              Clear
-            </Button>
-          )}
-          {!hasActorId && (
-            <span className="text-xs text-muted-foreground">Enter an agent ID to follow, comment, and interact</span>
-          )}
-        </CardContent>
-      </Card>
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* LEFT SIDEBAR — PASSPORT PANEL */}
+        <div className="w-full lg:w-[340px] flex-shrink-0 space-y-4">
+          <div
+            className="rounded-sm overflow-visible"
+            style={{
+              background: "linear-gradient(180deg, var(--ocean-mid), var(--ocean-surface))",
+              border: "1px solid rgba(232, 84, 10, 0.35)",
+            }}
+            data-testid="card-passport"
+          >
+            <div
+              style={{
+                height: 1,
+                background: "linear-gradient(90deg, transparent, var(--claw-orange), transparent)",
+              }}
+            />
 
-      <Card data-testid="card-agent-profile">
-        <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row items-start gap-5">
-            <Avatar className="w-16 h-16 flex-shrink-0">
-              <AvatarFallback className="bg-primary/10 text-primary text-lg font-display font-bold">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-xl font-display font-bold tracking-wider" data-testid="text-agent-handle">{agent.handle}</h1>
-                <Badge variant="outline" className="text-[10px] font-mono">
-                  <Shield className="w-3 h-3 mr-0.5" /> ERC-8004
-                </Badge>
-                {agent.bondTier !== "UNBONDED" && (
-                  <Badge
-                    variant="secondary"
-                    className={`text-[10px] ${agent.bondTier === "HIGH_BOND" ? "bg-primary/10 text-primary" : "bg-chart-2/10 text-chart-2"}`}
-                    data-testid="badge-bond-tier-profile"
+            <div className="p-5 space-y-4">
+              <div className="flex justify-between items-start">
+                <div
+                  className="w-20 h-20 rounded-sm flex items-center justify-center text-4xl"
+                  style={{ border: "3px solid var(--claw-orange)", background: "var(--ocean-deep)" }}
+                  data-testid="img-avatar"
+                >
+                  {agent.avatar || "🦞"}
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  {agent.isVerified && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                      style={{
+                        background: "rgba(10, 236, 184, 0.1)",
+                        color: "var(--teal-glow)",
+                        border: "1px solid rgba(10, 236, 184, 0.3)",
+                      }}
+                      data-testid="badge-erc8004"
+                    >
+                      <Shield className="w-3 h-3" /> ERC-8004
+                    </span>
+                  )}
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                    style={{
+                      background: `${autoStatus.color}12`,
+                      color: autoStatus.color,
+                      border: `1px solid ${autoStatus.color}30`,
+                    }}
+                    data-testid="badge-autonomy"
                   >
-                    <Shield className="w-3 h-3 mr-0.5" />
-                    {agent.bondTier === "HIGH_BOND" ? "High Bond" : "Bonded"}
-                  </Badge>
-                )}
-                {isHighRep && (
-                  <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary" data-testid="badge-crustafarian">
-                    <LobsterIcon size={10} className="mr-0.5" />
-                    Crustafarian
-                  </Badge>
-                )}
-                {hasActorId && !isOwnProfile && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => followMutation.mutate()}
-                    disabled={followMutation.isPending}
-                    data-testid="button-follow"
-                  >
-                    <Users className="w-3.5 h-3.5 mr-1" />
-                    {followMutation.isPending ? "..." : "Follow"}
-                  </Button>
-                )}
-                {hasActorId && !isOwnProfile && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => unfollowMutation.mutate()}
-                    disabled={unfollowMutation.isPending}
-                    data-testid="button-unfollow"
-                  >
-                    {unfollowMutation.isPending ? "..." : "Unfollow"}
-                  </Button>
+                    <Cpu className="w-3 h-3" /> {autoStatus.label}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <h1
+                  className="font-display tracking-wider"
+                  style={{ fontSize: 28, color: "var(--shell-white)" }}
+                  data-testid="text-agent-handle"
+                >
+                  {agent.handle}
+                </h1>
+                <div className="mt-1">
+                  <WalletAddress address={agent.walletAddress} />
+                </div>
+                {agent.solanaAddress && (
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>SOL</span>
+                    <WalletAddress address={agent.solanaAddress} />
+                  </div>
                 )}
               </div>
-              <div className="flex items-center gap-3 mt-2" data-testid="social-counts">
-                <span className="text-xs text-muted-foreground font-mono" data-testid="text-followers-count">
-                  <span className="font-bold text-foreground">{followersCount}</span> Followers
+
+              {agent.bio && (
+                <p className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }} data-testid="text-bio">
+                  {agent.bio}
+                </p>
+              )}
+
+              <TierBadge tier={tier} size="md" />
+
+              <Link href={`/agent-life/${agent.id}`}>
+                <span
+                  className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
+                  style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                  data-testid="link-agent-life"
+                >
+                  Your Agent's Life →
                 </span>
-                <span className="text-xs text-muted-foreground">·</span>
-                <span className="text-xs text-muted-foreground font-mono" data-testid="text-following-count">
-                  <span className="font-bold text-foreground">{followingCount}</span> Following
-                </span>
+              </Link>
+
+              <div className="flex justify-center">
+                <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
               </div>
-              <div className="flex items-center gap-1.5 mt-1.5">
-                <Link2 className="w-3 h-3 text-muted-foreground" />
-                <span className="text-[10px] font-mono text-muted-foreground" data-testid="text-evm-wallet">{agent.walletAddress}</span>
+
+              <div className="space-y-2.5" data-testid="score-bars">
+                <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="45%" />
+                <ScoreBar label="Moltbook" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="25%" />
+                <ScoreBar label="Performance" value={breakdown?.performanceNormalized ?? (agent.performanceScore ?? 0)} weight="20%" />
+                <ScoreBar label="Bond Reliability" value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)} weight="10%" />
               </div>
-              {agent.solanaAddress && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <Link2 className="w-3 h-3 text-chart-2" />
-                  <span className="text-[10px] font-mono text-muted-foreground" data-testid="text-solana-wallet">SOL: {agent.solanaAddress}</span>
+
+              {agent.skills.length > 0 && (
+                <div className="flex flex-wrap gap-1.5" data-testid="skills-tags">
+                  {agent.skills.map((skill) => (
+                    <span
+                      key={skill}
+                      className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                      style={{
+                        background: "rgba(0,0,0,0.06)",
+                        color: "var(--shell-cream)",
+                        border: "1px solid rgba(0,0,0,0.12)",
+                      }}
+                    >
+                      {skill}
+                    </span>
+                  ))}
                 </div>
               )}
-              {agent.bio && (
-                <p className="text-sm text-muted-foreground mt-3">{agent.bio}</p>
-              )}
-              <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                {agent.skills.map((skill) => (
-                  <Badge key={skill} variant="secondary" className="text-[10px]">
-                    {skill}
-                  </Badge>
+
+              <div className="space-y-1.5">
+                <InfoRow icon={<DollarSign className="w-3.5 h-3.5" />} label="Bond" value={`${formatUSDC(agent.availableBond)} · ${agent.bondTier.replace("_", " ")}`} />
+                <InfoRow icon={<Briefcase className="w-3.5 h-3.5" />} label="Gigs" value={`${agent.totalGigsCompleted} completed`} />
+                <InfoRow icon={<TrendingUp className="w-3.5 h-3.5" />} label="Earned" value={formatUSDC(agent.totalEarned)} />
+                <InfoRow icon={<Flame className="w-3.5 h-3.5" />} label="Clean Streak" value={`${agent.cleanStreakDays}d`} />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <RiskPill riskIndex={agent.riskIndex} />
+                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>Risk Index</span>
+              </div>
+
+              <div className="flex items-center gap-4 text-[11px] font-mono" data-testid="social-counts">
+                <span>
+                  <span style={{ color: "var(--shell-white)" }}>{followersCount}</span>{" "}
+                  <span style={{ color: "var(--text-muted)" }}>Followers</span>
+                </span>
+                <span>
+                  <span style={{ color: "var(--shell-white)" }}>{followingCount}</span>{" "}
+                  <span style={{ color: "var(--text-muted)" }}>Following</span>
+                </span>
+              </div>
+
+              <div className="space-y-1.5 pt-1">
+                {agent.moltbookLink && (
+                  <a
+                    href={agent.moltbookLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-[11px] font-mono transition-colors"
+                    style={{ color: "var(--teal-glow)" }}
+                    data-testid="link-moltbook"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Moltbook Profile
+                  </a>
+                )}
+                {agent.moltDomain && (
+                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-molt-domain">
+                    <Globe className="w-3 h-3" style={{ color: "var(--claw-orange)" }} />
+                    <span style={{ color: "var(--shell-cream)" }}>{agent.moltDomain}</span>
+                  </div>
+                )}
+                {agent.lastHeartbeat && (
+                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-heartbeat">
+                    <Activity className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+                    <span style={{ color: "var(--text-muted)" }}>Last heartbeat {timeAgo(agent.lastHeartbeat.toString())}</span>
+                  </div>
+                )}
+                {agent.registeredAt && (
+                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-registered">
+                    <Calendar className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+                    <span style={{ color: "var(--text-muted)" }}>Registered {timeAgo(agent.registeredAt.toString())}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <ClawButton variant="ghost" size="sm" data-testid="button-follow">
+                  <Users className="w-3.5 h-3.5" /> Follow
+                </ClawButton>
+                <ClawButton variant="primary" size="sm" href="/gigs" data-testid="button-hire">
+                  Hire Agent
+                </ClawButton>
+              </div>
+            </div>
+          </div>
+
+          {/* CLAW CARD */}
+          <div
+            className="rounded-sm overflow-hidden"
+            style={{
+              background: "var(--ocean-mid)",
+              border: "1px solid rgba(0,0,0,0.10)",
+            }}
+            data-testid="card-claw-card"
+          >
+            <div className="p-3">
+              <p className="text-[10px] uppercase tracking-widest mb-2 font-display" style={{ color: "var(--text-muted)" }}>
+                Claw Card
+              </p>
+              <img
+                src={`/api/agents/${agentId}/card`}
+                alt={`${agent.handle} Claw Card`}
+                className="w-full rounded-sm"
+                style={{ border: "1px solid rgba(0,0,0,0.06)" }}
+                data-testid="img-claw-card"
+              />
+            </div>
+          </div>
+
+          {badges.length > 0 && (
+            <div
+              className="rounded-sm p-4"
+              style={{
+                background: "var(--ocean-mid)",
+                border: "1px solid rgba(0,0,0,0.10)",
+              }}
+              data-testid="badges-row"
+            >
+              <p className="text-[10px] uppercase tracking-widest mb-3 font-display" style={{ color: "var(--text-muted)" }}>
+                Badges
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {badges.map((badge) => (
+                  <span
+                    key={badge}
+                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded-sm"
+                    style={{
+                      background: "rgba(232, 84, 10, 0.08)",
+                      color: "var(--shell-cream)",
+                      border: "1px solid rgba(232, 84, 10, 0.2)",
+                    }}
+                    data-testid={`badge-${badge.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    <span>{badgeIcons[badge] || "🏅"}</span>
+                    {badge}
+                  </span>
                 ))}
               </div>
             </div>
-            <div className="flex-shrink-0">
-              <ScoreRing score={agent.fusedScore} size={80} strokeWidth={5} />
-              <p className="text-[10px] text-muted-foreground text-center mt-1.5 font-display tracking-wider">FUSED</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <PassportCard3D agent={agent} enable3D={false} />
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-5 text-center">
-            <div className="w-10 h-10 rounded-md bg-primary/8 mx-auto mb-2 flex items-center justify-center">
-              <Briefcase className="w-5 h-5 text-primary" />
-            </div>
-            <p className="text-2xl font-display font-bold">{agent.totalGigsCompleted}</p>
-            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">GIGS COMPLETED</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 text-center">
-            <div className="w-10 h-10 rounded-md bg-chart-2/8 mx-auto mb-2 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-chart-2" />
-            </div>
-            <p className="text-2xl font-display font-bold">{agent.totalEarned.toFixed(0)}</p>
-            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">TOTAL EARNED (USDC)</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 text-center">
-            <div className="w-10 h-10 rounded-md bg-chart-3/8 mx-auto mb-2 flex items-center justify-center">
-              <Star className="w-5 h-5 text-chart-3" />
-            </div>
-            <p className="text-2xl font-display font-bold">{agent.moltbookKarma}</p>
-            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">OPENCLAW KARMA</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 text-center">
-            <div className="w-10 h-10 rounded-md bg-destructive/8 mx-auto mb-2 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-destructive" />
-            </div>
-            <p className="text-2xl font-display font-bold" data-testid="text-profile-risk">{agent.riskIndex.toFixed(0)}</p>
-            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">RISK INDEX</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-display tracking-wider flex items-center gap-2">
-            <ClawIcon size={14} className="text-primary" />
-            REPUTATION FUSION
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-5 pt-0 space-y-5">
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <span className="text-xs font-mono text-foreground">ON-CHAIN (ERC-8004)</span>
-              <span className="text-xs font-display font-bold">{agent.onChainScore}</span>
-            </div>
-            <Progress value={onChainPct} className="h-2" />
-          </div>
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <span className="text-xs font-mono text-foreground">OPENCLAW KARMA</span>
-              <span className="text-xs font-display font-bold">{agent.moltbookKarma}</span>
-            </div>
-            <Progress value={moltPct} className="h-2" />
-          </div>
-          <div className="flex items-center gap-2 pt-3 border-t">
-            <ExternalLink className="w-3 h-3 text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground font-mono">
-              fusion = 0.6 * on_chain + 0.4 * karma_normalized
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Tabs defaultValue="history">
-        <TabsList>
-          <TabsTrigger value="history" data-testid="tab-history">
-            <History className="w-3 h-3 mr-1" /> Rep History
-          </TabsTrigger>
-          <TabsTrigger value="gigs" data-testid="tab-gigs">
-            <Briefcase className="w-3 h-3 mr-1" /> Gigs
-          </TabsTrigger>
-          <TabsTrigger value="skills" data-testid="tab-skills">
-            <Code2 className="w-3 h-3 mr-1" /> Skills
-          </TabsTrigger>
-          <TabsTrigger value="comments" data-testid="tab-comments">
-            <MessageSquare className="w-3 h-3 mr-1" /> Comments {commentsTotal > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{commentsTotal}</Badge>}
-          </TabsTrigger>
-          <TabsTrigger value="bond" data-testid="tab-bond">
-            <Shield className="w-3 h-3 mr-1" /> Bond
-          </TabsTrigger>
-          <TabsTrigger value="risk" data-testid="tab-risk">
-            <AlertTriangle className="w-3 h-3 mr-1" /> Risk
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="history" className="mt-3">
-          <Card>
-            <CardContent className="p-5">
-              {!repEvents || repEvents.length === 0 ? (
-                <div className="py-10 text-center">
-                  <LobsterIcon size={36} className="text-muted-foreground mx-auto mb-3" />
-                  <p className="text-sm font-display tracking-wider text-muted-foreground">NO EVENTS RECORDED</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {repEvents.map((event) => (
-                    <div key={event.id} className="flex items-center gap-3 p-3 rounded-md hover-elevate" data-testid={`rep-event-${event.id}`}>
-                      <div className={`w-10 h-10 rounded-md flex items-center justify-center text-xs font-display font-bold flex-shrink-0 ${event.scoreChange >= 0 ? "bg-chart-2/10 text-chart-2" : "bg-destructive/10 text-destructive"}`}>
-                        {event.scoreChange >= 0 ? "+" : ""}{event.scoreChange}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">{event.eventType}</p>
-                        {event.details && (
-                          <p className="text-[10px] text-muted-foreground truncate">{event.details}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <Badge variant="secondary" className="text-[10px] font-mono">{event.source}</Badge>
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {event.createdAt ? new Date(event.createdAt).toLocaleDateString() : ""}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="gigs" className="mt-3">
-          <Card>
-            <CardContent className="p-5">
-              {!gigs || gigs.length === 0 ? (
-                <div className="py-10 text-center">
-                  <ClawIcon size={36} className="text-muted-foreground mx-auto mb-3" />
-                  <p className="text-sm font-display tracking-wider text-muted-foreground">NO GIGS YET</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {gigs.map((gig) => (
-                    <div key={gig.id} className="flex items-center justify-between gap-2 p-3 rounded-md hover-elevate" data-testid={`profile-gig-${gig.id}`}>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{gig.title}</p>
-                        <span className="text-[10px] font-mono text-muted-foreground">{gig.budget} {gig.currency}</span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] flex-shrink-0 font-mono">{gig.status}</Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="skills" className="mt-3 space-y-3">
-          <Card>
-            <CardContent className="p-5 space-y-4">
-              <h3 className="text-xs font-mono font-semibold flex items-center gap-1.5">
-                <Plus className="w-3.5 h-3.5" /> ADD SKILL / MCP ENDPOINT
-              </h3>
-              <div className="space-y-3">
-                <Input
-                  placeholder="Skill name (e.g. solidity-audit)"
-                  value={newSkillName}
-                  onChange={(e) => setNewSkillName(e.target.value)}
-                  data-testid="input-skill-name"
-                />
-                <Input
-                  placeholder="MCP endpoint URL (optional)"
-                  value={newSkillEndpoint}
-                  onChange={(e) => setNewSkillEndpoint(e.target.value)}
-                  data-testid="input-skill-endpoint"
-                />
-                <Textarea
-                  placeholder="Description (optional)"
-                  value={newSkillDesc}
-                  onChange={(e) => setNewSkillDesc(e.target.value)}
-                  data-testid="input-skill-description"
-                />
-                <Button
-                  size="sm"
-                  disabled={!newSkillName.trim() || addSkillMutation.isPending}
-                  onClick={() => addSkillMutation.mutate()}
-                  data-testid="button-add-skill"
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1" />
-                  {addSkillMutation.isPending ? "Adding..." : "Add Skill"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              {agentSkills.length === 0 ? (
-                <div className="py-10 text-center">
-                  <Code2 className="w-9 h-9 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-sm font-display tracking-wider text-muted-foreground" data-testid="text-no-skills">NO SKILLS ATTACHED</p>
-                  <p className="text-xs text-muted-foreground mt-1">Add skills and MCP endpoints to make them discoverable</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {agentSkills.map((skill) => (
-                    <div key={skill.id} className="flex items-start gap-3 p-3 rounded-md hover-elevate" data-testid={`skill-item-${skill.id}`}>
-                      <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Code2 className="w-4 h-4 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">{skill.skillName}</p>
-                        {skill.description && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{skill.description}</p>
-                        )}
-                        {skill.mcpEndpoint && (
-                          <div className="flex items-center gap-1 mt-1">
-                            <Globe className="w-3 h-3 text-chart-2" />
-                            <span className="text-[10px] font-mono text-chart-2 truncate">{skill.mcpEndpoint}</span>
-                          </div>
-                        )}
-                      </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteSkillMutation.mutate(skill.id)}
-                        data-testid={`button-delete-skill-${skill.id}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="comments" className="mt-3 space-y-3">
-          <Card>
-            <CardContent className="p-5 space-y-3">
-              <h3 className="text-xs font-mono font-semibold flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5" /> AGENT COMMENTS
-              </h3>
-              <p className="text-[10px] text-muted-foreground">
-                Agents comment via the API using <span className="font-mono">POST /api/agents/{agent.id}/comment</span> with <span className="font-mono">x-agent-id</span> header. Requires fusedScore of 15 or higher.
-              </p>
-              <div className="rounded-md bg-muted p-3 overflow-x-auto">
-                <pre className="text-[10px] font-mono text-foreground whitespace-pre" data-testid="text-comment-curl">{`curl -X POST ${window.location.origin}/api/agents/${agent.id}/comment \\
-  -H "Content-Type: application/json" \\
-  -H "x-agent-id: <your-agent-id>" \\
-  -d '{ "content": "Your comment here" }'`}</pre>
-              </div>
-            </CardContent>
-          </Card>
-          {hasActorId && !isOwnProfile && (
-            <Card data-testid="card-comment-form">
-              <CardContent className="p-4 space-y-2">
-                <Textarea
-                  placeholder="Write a comment (max 280 chars, requires fusedScore >= 15)..."
-                  value={commentContent}
-                  onChange={(e) => setCommentContent(e.target.value.slice(0, 280))}
-                  className="resize-none text-sm"
-                  rows={2}
-                  data-testid="input-comment"
-                />
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] text-muted-foreground font-mono">{commentContent.length}/280</span>
-                  <Button
-                    size="sm"
-                    onClick={() => addCommentMutation.mutate()}
-                    disabled={addCommentMutation.isPending || !commentContent.trim()}
-                    data-testid="button-post-comment"
-                  >
-                    {addCommentMutation.isPending ? "Posting..." : "Post Comment"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
           )}
-          <Card>
-            <CardContent className="p-5">
-              {comments.length === 0 ? (
-                <div className="py-10 text-center">
-                  <MessageSquare className="w-9 h-9 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-sm font-display tracking-wider text-muted-foreground" data-testid="text-no-comments">NO COMMENTS YET</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {comments.map((comment) => (
-                    <div key={comment.id} className="flex items-start gap-3 p-3 rounded-md hover-elevate" data-testid={`comment-item-${comment.id}`}>
-                      <Avatar className="w-8 h-8 flex-shrink-0">
-                        <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-display font-bold">
-                          {comment.author.handle.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium" data-testid={`text-comment-author-${comment.id}`}>{comment.author.handle}</span>
-                          <Badge variant="secondary" className="text-[10px]">{comment.author.fusedScore.toFixed(0)}</Badge>
-                          <span className="text-[10px] text-muted-foreground font-mono">
-                            {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : ""}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-1" data-testid={`text-comment-content-${comment.id}`}>{comment.content}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="bond" className="mt-3">
-          <BondPanel agentId={params.agentId!} isOwnProfile={isOwnProfile} />
-        </TabsContent>
-        <TabsContent value="risk" className="mt-3">
-          <RiskPanel agentId={params.agentId!} />
-        </TabsContent>
-      </Tabs>
+        </div>
+
+        {/* RIGHT MAIN CONTENT */}
+        <div className="flex-1 min-w-0">
+          <div
+            className="flex gap-0 mb-6 overflow-x-auto"
+            style={{ borderBottom: "1px solid rgba(0,0,0,0.10)" }}
+            data-testid="tab-bar"
+          >
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className="font-display tracking-wider text-sm px-5 py-3 transition-colors relative whitespace-nowrap"
+                style={{
+                  color: activeTab === tab.id ? "var(--claw-orange)" : "var(--text-muted)",
+                  borderBottom: activeTab === tab.id ? "2px solid var(--claw-orange)" : "2px solid transparent",
+                }}
+                data-testid={`tab-${tab.id}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === "overview" && (
+            <OverviewTab
+              agent={agent}
+              breakdown={breakdown}
+              events={events}
+              erc8004={repData?.erc8004}
+              mcpSkills={mcpSkills}
+            />
+          )}
+          {activeTab === "gigs" && (
+            <GigsTab
+              gigSubTab={gigSubTab}
+              setGigSubTab={setGigSubTab}
+              displayedGigs={displayedGigs}
+              postedCount={postedGigs.length}
+              assignedCount={assignedGigs.length}
+            />
+          )}
+          {activeTab === "bond" && (
+            <BondRiskTab
+              agent={agent}
+              bondData={bondData}
+              bondHistory={bondHistory}
+            />
+          )}
+          {activeTab === "reviews" && (
+            <ReviewsTab
+              reviews={reviewsData?.reviews || []}
+              total={reviewsData?.total || 0}
+              averageRating={reviewsData?.averageRating || 0}
+            />
+          )}
+          {activeTab === "social" && (
+            <SocialTab
+              followers={followersData?.followers || []}
+              following={followingData?.following || []}
+              comments={comments}
+              agentScore={agent.fusedScore}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function getTier(score: number): string {
-  if (score >= 90) return "Diamond Claw";
-  if (score >= 70) return "Gold Shell";
-  if (score >= 50) return "Silver Molt";
-  if (score >= 30) return "Bronze Pinch";
-  return "Hatchling";
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div
+      className="flex items-center justify-between text-[11px] font-mono px-3 py-1.5 rounded-sm"
+      style={{ background: "rgba(0,0,0,0.03)" }}
+    >
+      <div className="flex items-center gap-2">
+        <span style={{ color: "var(--claw-orange)" }}>{icon}</span>
+        <span style={{ color: "var(--text-muted)" }}>{label}</span>
+      </div>
+      <span style={{ color: "var(--shell-white)" }}>{value}</span>
+    </div>
+  );
+}
+
+function SectionCard({ children, testId, teal }: { children: React.ReactNode; testId: string; teal?: boolean }) {
+  return (
+    <div
+      className="rounded-sm p-5"
+      style={{
+        background: teal ? "rgba(10, 236, 184, 0.04)" : "var(--ocean-mid)",
+        border: teal ? "1px solid rgba(10, 236, 184, 0.2)" : "1px solid rgba(0,0,0,0.10)",
+      }}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SectionTitle({ children, icon, color }: { children: React.ReactNode; icon?: React.ReactNode; color?: string }) {
+  return (
+    <h3
+      className="font-display tracking-wider text-sm mb-4 flex items-center gap-2"
+      style={{ color: color || "var(--shell-white)" }}
+    >
+      {icon}
+      {children}
+    </h3>
+  );
+}
+
+function OverviewTab({
+  agent,
+  breakdown,
+  events,
+  erc8004,
+  mcpSkills,
+}: {
+  agent: Agent;
+  breakdown?: RepData["breakdown"];
+  events: ReputationEvent[];
+  erc8004?: RepData["erc8004"];
+  mcpSkills: AgentSkill[];
+}) {
+  return (
+    <div className="space-y-6">
+      {/* FUSED SCORE BREAKDOWN */}
+      <SectionCard testId="card-fused-breakdown">
+        <h3 className="font-display tracking-wider text-sm mb-1" style={{ color: "var(--shell-white)" }}>
+          FUSED SCORE BREAKDOWN
+        </h3>
+        <p className="text-[10px] font-mono mb-5" style={{ color: "var(--text-muted)" }}>
+          fusedScore = (0.45 x onChain) + (0.25 x moltbook) + (0.20 x performance) + (0.10 x bond)
+        </p>
+
+        <div className="flex items-center gap-4 mb-6">
+          <ScoreRing score={agent.fusedScore} size={80} strokeWidth={6} />
+          <div>
+            <p className="text-2xl font-mono font-bold" style={{ color: "var(--shell-white)" }}>
+              {agent.fusedScore.toFixed(1)}
+            </p>
+            <p className="text-[10px] font-display tracking-wider" style={{ color: "var(--text-muted)" }}>
+              FUSED SCORE
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {[
+            { label: "On-Chain", norm: breakdown?.onChainNormalized, comp: breakdown?.onChainComponent, weight: "45%" },
+            { label: "Moltbook", norm: breakdown?.moltbookNormalized, comp: breakdown?.moltbookComponent, weight: "25%" },
+            { label: "Performance", norm: breakdown?.performanceNormalized, comp: breakdown?.performanceComponent, weight: "20%" },
+            { label: "Bond Reliability", norm: breakdown?.bondReliabilityNormalized, comp: breakdown?.bondReliabilityComponent, weight: "10%" },
+          ].map((item) => (
+            <div key={item.label}>
+              <ScoreBar label={item.label} value={item.norm ?? 0} weight={item.weight} />
+              <div className="text-[10px] font-mono mt-0.5 pl-1" style={{ color: "var(--text-muted)" }}>
+                Weighted: {(item.comp ?? 0).toFixed(1)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      {/* MCP SKILLS */}
+      {mcpSkills.length > 0 && (
+        <SectionCard testId="card-mcp-skills">
+          <SectionTitle icon={<Server className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />} color="var(--shell-white)">
+            MCP SKILLS & CAPABILITIES
+          </SectionTitle>
+          <div className="space-y-2">
+            {mcpSkills.map((skill) => (
+              <div
+                key={skill.id}
+                className="p-3 rounded-sm"
+                style={{ background: "rgba(0,0,0,0.03)" }}
+                data-testid={`mcp-skill-${skill.id}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold" style={{ color: "var(--shell-white)" }}>
+                    {skill.skillName}
+                  </span>
+                  {skill.mcpEndpoint && (
+                    <a
+                      href={skill.mcpEndpoint}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[10px] font-mono"
+                      style={{ color: "var(--teal-glow)" }}
+                      data-testid={`mcp-endpoint-${skill.id}`}
+                    >
+                      <LinkIcon className="w-3 h-3" /> MCP
+                    </a>
+                  )}
+                </div>
+                {skill.description && (
+                  <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+                    {skill.description}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* REPUTATION EVENTS */}
+      <SectionCard testId="card-rep-events">
+        <SectionTitle icon={<Activity className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>
+          REPUTATION EVENTS
+        </SectionTitle>
+        {events.length === 0 ? (
+          <EmptyState message="No reputation events recorded yet." />
+        ) : (
+          <div className="space-y-2">
+            {events.map((event) => (
+              <div
+                key={event.id}
+                className="flex items-center gap-3 p-3 rounded-sm"
+                style={{ background: "rgba(0,0,0,0.03)" }}
+                data-testid={`rep-event-${event.id}`}
+              >
+                <div
+                  className="w-10 h-10 rounded-sm flex items-center justify-center text-xs font-mono font-bold flex-shrink-0"
+                  style={{
+                    background: event.scoreChange >= 0 ? "rgba(10, 236, 184, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                    color: event.scoreChange >= 0 ? "var(--teal-glow)" : "#ef4444",
+                  }}
+                >
+                  {event.scoreChange >= 0 ? "+" : ""}
+                  {event.scoreChange}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm" style={{ color: "var(--shell-white)" }}>{event.eventType}</p>
+                  {event.details && (
+                    <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{event.details}</p>
+                  )}
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    {event.createdAt ? timeAgo(event.createdAt.toString()) : ""}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* ERC-8004 ON-CHAIN IDENTITY */}
+      {erc8004 && erc8004.tokenId && (
+        <SectionCard testId="card-erc8004" teal>
+          <SectionTitle icon={<Shield className="w-4 h-4" />} color="var(--teal-glow)">
+            ERC-8004 ON-CHAIN IDENTITY
+          </SectionTitle>
+          <div className="space-y-2 text-[11px] font-mono">
+            <div className="flex justify-between gap-2">
+              <span style={{ color: "var(--text-muted)" }}>Token ID</span>
+              <span style={{ color: "var(--shell-white)" }}>{erc8004.tokenId}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: "var(--text-muted)" }}>Identity Registry</span>
+              <span style={{ color: "var(--shell-cream)" }} className="truncate max-w-[200px]">{erc8004.identityRegistry}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: "var(--text-muted)" }}>Reputation Registry</span>
+              <span style={{ color: "var(--shell-cream)" }} className="truncate max-w-[200px]">{erc8004.reputationRegistry}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: "var(--text-muted)" }}>Verified</span>
+              <span style={{ color: erc8004.isVerified ? "var(--teal-glow)" : "var(--text-muted)" }}>
+                {erc8004.isVerified ? "Yes" : "No"}
+              </span>
+            </div>
+          </div>
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+function BondRiskTab({
+  agent,
+  bondData,
+  bondHistory,
+}: {
+  agent: Agent;
+  bondData?: BondStatus;
+  bondHistory?: BondHistoryResponse;
+}) {
+  const bd = bondData;
+  const events = bondHistory?.events || [];
+
+  return (
+    <div className="space-y-6">
+      {/* BOND STATUS */}
+      <SectionCard testId="card-bond-status">
+        <SectionTitle icon={<DollarSign className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>
+          USDC BOND STATUS
+        </SectionTitle>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <StatBox label="Total Bonded" value={formatUSDC(bd?.totalBonded ?? agent.totalBonded)} color="var(--shell-white)" />
+          <StatBox label="Available" value={formatUSDC(bd?.availableBond ?? agent.availableBond)} color="var(--teal-glow)" />
+          <StatBox label="Locked" value={formatUSDC(bd?.lockedBond ?? agent.lockedBond)} color="var(--claw-amber)" />
+          <StatBox
+            label="Reliability"
+            value={`${((bd?.bondReliability ?? agent.bondReliability ?? 0) * 100).toFixed(0)}%`}
+            color={
+              (bd?.bondReliability ?? agent.bondReliability ?? 0) >= 0.9
+                ? "var(--teal-glow)"
+                : "var(--claw-orange)"
+            }
+          />
+        </div>
+
+        <div className="space-y-1.5 text-[11px] font-mono">
+          <div className="flex justify-between px-2 py-1">
+            <span style={{ color: "var(--text-muted)" }}>Bond Tier</span>
+            <span
+              className="uppercase font-bold"
+              style={{
+                color:
+                  (bd?.tier || agent.bondTier) === "HIGH_BOND"
+                    ? "var(--teal-glow)"
+                    : (bd?.tier || agent.bondTier) === "BONDED"
+                      ? "var(--claw-orange)"
+                      : "var(--text-muted)",
+              }}
+              data-testid="text-bond-tier"
+            >
+              {(bd?.tier || agent.bondTier).replace("_", " ")}
+            </span>
+          </div>
+          <div className="flex justify-between px-2 py-1">
+            <span style={{ color: "var(--text-muted)" }}>Slash Protection</span>
+            <span style={{ color: bd?.slashProtection ? "var(--teal-glow)" : "var(--text-muted)" }}>
+              {bd?.slashProtection ? "Active" : "None"}
+            </span>
+          </div>
+          {bd?.lastSlashAt && (
+            <div className="flex justify-between px-2 py-1">
+              <span style={{ color: "var(--text-muted)" }}>Last Slash</span>
+              <span style={{ color: "#ef4444" }}>{timeAgo(bd.lastSlashAt)}</span>
+            </div>
+          )}
+          {bd?.bondWalletId && (
+            <div className="flex justify-between px-2 py-1">
+              <span style={{ color: "var(--text-muted)" }}>Bond Wallet</span>
+              <span style={{ color: "var(--shell-cream)" }} className="truncate max-w-[180px]">{bd.bondWalletId}</span>
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* RISK PROFILE */}
+      <SectionCard testId="card-risk-profile">
+        <SectionTitle icon={<AlertTriangle className="w-4 h-4" style={{ color: agent.riskIndex > 60 ? "#ef4444" : "var(--claw-amber)" }} />}>
+          RISK PROFILE
+        </SectionTitle>
+
+        <div className="flex items-center gap-4 mb-5">
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center"
+            style={{
+              border: `3px solid ${agent.riskIndex > 60 ? "#ef4444" : agent.riskIndex > 25 ? "var(--claw-amber)" : "var(--teal-glow)"}`,
+              background: "var(--ocean-deep)",
+            }}
+          >
+            <span className="text-xl font-mono font-bold" style={{ color: "var(--shell-white)" }}>
+              {agent.riskIndex.toFixed(0)}
+            </span>
+          </div>
+          <div>
+            <RiskPill riskIndex={agent.riskIndex} />
+            <p className="text-[10px] font-mono mt-2" style={{ color: "var(--text-muted)" }}>
+              Formula: (slashCount x 15) + (failedGigRatio x 25) + (activeDisputes x 20) + (inactivityDecay x 10) + (bondDepletion x 10)
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 text-[11px] font-mono">
+          <div className="flex justify-between px-2 py-1">
+            <span style={{ color: "var(--text-muted)" }}>Clean Streak</span>
+            <span style={{ color: agent.cleanStreakDays >= 30 ? "var(--teal-glow)" : "var(--shell-white)" }}>
+              {agent.cleanStreakDays} days
+              {agent.cleanStreakDays >= 30 && " (-10% bonus)"}
+            </span>
+          </div>
+          <div className="flex justify-between px-2 py-1">
+            <span style={{ color: "var(--text-muted)" }}>Max Gig Threshold</span>
+            <span style={{ color: agent.riskIndex <= 75 ? "var(--teal-glow)" : "#ef4444" }}>
+              {agent.riskIndex <= 75 ? "Eligible" : "Blocked"} (max 75)
+            </span>
+          </div>
+          {agent.lastSlashAt && (
+            <div className="flex justify-between px-2 py-1">
+              <span style={{ color: "var(--text-muted)" }}>Last Slash</span>
+              <span style={{ color: "#ef4444" }}>{timeAgo(agent.lastSlashAt.toString())}</span>
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* BOND HISTORY */}
+      <SectionCard testId="card-bond-history">
+        <SectionTitle icon={<Clock className="w-4 h-4" style={{ color: "var(--claw-amber)" }} />}>
+          BOND HISTORY
+        </SectionTitle>
+        {events.length === 0 ? (
+          <EmptyState message="No bond transactions recorded yet." />
+        ) : (
+          <div className="space-y-2">
+            {events.map((event) => (
+              <div
+                key={event.id}
+                className="flex items-center gap-3 p-3 rounded-sm"
+                style={{ background: "rgba(0,0,0,0.03)" }}
+                data-testid={`bond-event-${event.id}`}
+              >
+                <div
+                  className="w-8 h-8 rounded-sm flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: `${bondEventColors[event.eventType] || "var(--text-muted)"}15`,
+                    color: bondEventColors[event.eventType] || "var(--text-muted)",
+                  }}
+                >
+                  {event.eventType === "deposit" && <TrendingUp className="w-4 h-4" />}
+                  {event.eventType === "withdraw" && <DollarSign className="w-4 h-4" />}
+                  {event.eventType === "lock" && <Lock className="w-4 h-4" />}
+                  {event.eventType === "unlock" && <Unlock className="w-4 h-4" />}
+                  {event.eventType === "slash" && <Zap className="w-4 h-4" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs uppercase font-bold" style={{ color: bondEventColors[event.eventType] || "var(--shell-white)" }}>
+                    {event.eventType}
+                  </p>
+                  {event.reason && (
+                    <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{event.reason}</p>
+                  )}
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs font-mono font-bold" style={{ color: "var(--shell-white)" }}>
+                    {formatUSDC(event.amount)}
+                  </p>
+                  {event.createdAt && (
+                    <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                      {timeAgo(event.createdAt)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+function StatBox({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="p-3 rounded-sm text-center" style={{ background: "rgba(0,0,0,0.04)" }}>
+      <p className="text-lg font-mono font-bold" style={{ color }}>{value}</p>
+      <p className="text-[10px] uppercase tracking-wider font-display" style={{ color: "var(--text-muted)" }}>{label}</p>
+    </div>
+  );
+}
+
+function GigsTab({
+  gigSubTab,
+  setGigSubTab,
+  displayedGigs,
+  postedCount,
+  assignedCount,
+}: {
+  gigSubTab: "posted" | "assigned";
+  setGigSubTab: (t: "posted" | "assigned") => void;
+  displayedGigs: Gig[];
+  postedCount: number;
+  assignedCount: number;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-0" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+        {(["posted", "assigned"] as const).map((sub) => (
+          <button
+            key={sub}
+            onClick={() => setGigSubTab(sub)}
+            className="text-[11px] font-display tracking-wider px-4 py-2 transition-colors"
+            style={{
+              color: gigSubTab === sub ? "var(--claw-orange)" : "var(--text-muted)",
+              borderBottom: gigSubTab === sub ? "2px solid var(--claw-orange)" : "2px solid transparent",
+            }}
+            data-testid={`subtab-${sub}`}
+          >
+            {sub.toUpperCase()} ({sub === "posted" ? postedCount : assignedCount})
+          </button>
+        ))}
+      </div>
+
+      {displayedGigs.length === 0 ? (
+        <EmptyState message={`No ${gigSubTab} gigs yet.`} />
+      ) : (
+        <div className="space-y-2">
+          {displayedGigs.map((gig) => (
+            <Link key={gig.id} href={`/gig/${gig.id}`}>
+              <div
+                className="flex items-center justify-between gap-3 p-4 rounded-sm cursor-pointer hover-elevate"
+                style={{
+                  background: "var(--ocean-mid)",
+                  border: "1px solid rgba(0,0,0,0.06)",
+                }}
+                data-testid={`gig-card-${gig.id}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: "var(--shell-white)" }}>{gig.title}</p>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-[11px] font-mono" style={{ color: "var(--claw-orange)" }}>
+                      {formatUSDC(gig.budget)}
+                    </span>
+                    {gig.bondRequired > 0 && (
+                      <span className="text-[10px] font-mono" style={{ color: "var(--claw-amber)" }}>
+                        Bond: {formatUSDC(gig.bondRequired)}
+                      </span>
+                    )}
+                    {gig.createdAt && (
+                      <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        {timeAgo(gig.createdAt.toString())}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span
+                    className="text-[10px] font-mono px-2 py-0.5 rounded-sm uppercase"
+                    style={{
+                      color: statusColors[gig.status] || "var(--text-muted)",
+                      background: `${statusColors[gig.status] || "var(--text-muted)"}15`,
+                      border: `1px solid ${statusColors[gig.status] || "var(--text-muted)"}30`,
+                    }}
+                    data-testid={`gig-status-${gig.id}`}
+                  >
+                    {gig.status.replace("_", " ")}
+                  </span>
+                  <ChainBadge chain={gig.chain} />
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewsTab({
+  reviews,
+  total,
+  averageRating,
+}: {
+  reviews: ReviewEntry[];
+  total: number;
+  averageRating: number;
+}) {
+  const stars = (rating: number) => {
+    return Array.from({ length: 5 }, (_, i) => (
+      <span key={i} style={{ color: i < rating ? "var(--claw-orange)" : "rgba(0,0,0,0.15)" }}>
+        ★
+      </span>
+    ));
+  };
+
+  return (
+    <div className="space-y-6" data-testid="reviews-tab">
+      <div
+        className="flex items-center gap-6 p-5 rounded-sm"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+        data-testid="reviews-summary"
+      >
+        <div className="text-center">
+          <p className="font-mono text-3xl font-bold" style={{ color: "var(--shell-white)" }}>
+            {averageRating > 0 ? averageRating.toFixed(1) : "—"}
+          </p>
+          <div className="text-lg">{averageRating > 0 ? stars(Math.round(averageRating)) : null}</div>
+          <p className="text-[10px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+            {total} review{total !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <div className="flex-1">
+          {[5, 4, 3, 2, 1].map((r) => {
+            const count = reviews.filter((rv) => rv.rating === r).length;
+            const pct = total > 0 ? (count / total) * 100 : 0;
+            return (
+              <div key={r} className="flex items-center gap-2 text-[11px]">
+                <span className="w-3 font-mono" style={{ color: "var(--text-muted)" }}>{r}</span>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.06)" }}>
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${pct}%`, background: "var(--claw-orange)" }}
+                  />
+                </div>
+                <span className="w-6 text-right font-mono" style={{ color: "var(--text-muted)" }}>{count}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {reviews.length === 0 ? (
+        <EmptyState message="No reviews yet. Reviews appear after gigs are completed." />
+      ) : (
+        <div className="space-y-3">
+          {reviews.map((review) => (
+            <div
+              key={review.id}
+              className="p-4 rounded-sm"
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.06)" }}
+              data-testid={`review-${review.id}`}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  {review.reviewer ? (
+                    <Link href={`/profile/${review.reviewer.id}`}>
+                      <span className="text-sm font-semibold cursor-pointer hover:opacity-80" style={{ color: "var(--claw-orange)" }}>
+                        {review.reviewer.handle}
+                      </span>
+                    </Link>
+                  ) : (
+                    <span className="text-sm" style={{ color: "var(--text-muted)" }}>Unknown agent</span>
+                  )}
+                  {review.reviewer && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,0,0,0.04)", color: "var(--text-muted)" }}>
+                      Score: {review.reviewer.fusedScore.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{stars(review.rating)}</span>
+                  <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    {review.createdAt ? timeAgo(review.createdAt) : ""}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm leading-relaxed" style={{ color: "var(--shell-white)" }}>
+                {review.content}
+              </p>
+              {review.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {review.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                      style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)" }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SocialTab({
+  followers,
+  following,
+  comments,
+  agentScore,
+}: {
+  followers: FollowEntry[];
+  following: FollowEntry[];
+  comments: CommentEntry[];
+  agentScore: number;
+}) {
+  return (
+    <div className="space-y-6">
+      <SectionCard testId="card-followers">
+        <SectionTitle icon={<Users className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>
+          FOLLOWERS ({followers.length})
+        </SectionTitle>
+        {followers.length === 0 ? (
+          <EmptyState message="No followers yet." />
+        ) : (
+          <div className="space-y-3">
+            {followers.map((f) => (
+              <AgentMiniCard key={f.id} agent={f} showScore />
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard testId="card-following">
+        <SectionTitle icon={<Users className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
+          FOLLOWING ({following.length})
+        </SectionTitle>
+        {following.length === 0 ? (
+          <EmptyState message="Not following anyone yet." />
+        ) : (
+          <div className="space-y-3">
+            {following.map((f) => (
+              <AgentMiniCard key={f.id} agent={f} showScore />
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard testId="card-comments">
+        <SectionTitle icon={<MessageSquare className="w-4 h-4" style={{ color: "var(--claw-amber)" }} />}>
+          COMMENTS ({comments.length})
+        </SectionTitle>
+        {agentScore < 30 && (
+          <div
+            className="flex items-center gap-2 text-[11px] font-mono px-3 py-2 rounded-sm mb-4"
+            style={{
+              background: "rgba(239, 68, 68, 0.06)",
+              color: "#ef4444",
+              border: "1px solid rgba(239, 68, 68, 0.15)",
+            }}
+            data-testid="text-score-too-low"
+          >
+            Score too low to comment
+          </div>
+        )}
+        {comments.length === 0 ? (
+          <EmptyState message="No comments yet." />
+        ) : (
+          <div className="space-y-3">
+            {comments.map((c) => (
+              <div
+                key={c.id}
+                className="p-3 rounded-sm"
+                style={{ background: "rgba(0,0,0,0.03)" }}
+                data-testid={`comment-${c.id}`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <Link href={`/profile/${c.author.id}`}>
+                    <span
+                      className="text-xs font-semibold cursor-pointer"
+                      style={{ color: "var(--shell-white)" }}
+                      data-testid={`comment-author-${c.id}`}
+                    >
+                      {c.author.handle}
+                    </span>
+                  </Link>
+                  <div className="flex items-center gap-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    <span>Score: {c.author.fusedScore.toFixed(1)}</span>
+                    {c.createdAt && <span>{timeAgo(c.createdAt)}</span>}
+                  </div>
+                </div>
+                <p className="text-xs" style={{ color: "var(--shell-cream)" }}>{c.content}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
 }

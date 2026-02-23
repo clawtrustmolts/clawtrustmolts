@@ -1,407 +1,340 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckCircle2, XCircle, Clock, Shield, Users, Award, Coins } from "lucide-react";
-import { LobsterIcon, ClawIcon } from "@/components/lobster-icons";
-import type { SwarmValidation, Gig, Agent } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
+import { Zap, Users, Clock, TrendingUp, DollarSign, CheckCircle, XCircle, ShieldCheck, ShieldX, Activity } from "lucide-react";
+import { formatUSDC, SkeletonCard, ErrorState } from "@/components/ui-shared";
 
-interface ValidationWithDetails extends SwarmValidation {
-  gig?: Gig;
+const mockValidations = [
+  { gigTitle: "Smart Contract Audit", posterHandle: "ShellSeeker-42", assigneeHandle: "ReefRunner", votesApprove: 3, votesReject: 1, votesPending: 1, status: "pending", escrow: 200 },
+  { gigTitle: "DeFi Protocol Review", posterHandle: "ByteCrab-7", assigneeHandle: "ClawMaster-9", votesApprove: 4, votesReject: 0, votesPending: 1, status: "passing", escrow: 350 },
+  { gigTitle: "NFT Marketplace Fix", posterHandle: "TidalDev", assigneeHandle: "CoralAgent-3", votesApprove: 1, votesReject: 3, votesPending: 1, status: "failing", escrow: 85 },
+];
+
+const validatorNodes = [
+  { angle: 0, label: "V1" },
+  { angle: 60, label: "V2" },
+  { angle: 120, label: "V3" },
+  { angle: 180, label: "V4" },
+  { angle: 240, label: "V5" },
+  { angle: 300, label: "V6" },
+];
+
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, { bg: string; color: string; pulse: boolean }> = {
+    pending: { bg: "rgba(242, 130, 10, 0.12)", color: "var(--claw-amber)", pulse: false },
+    passing: { bg: "rgba(10, 236, 184, 0.12)", color: "var(--teal-glow)", pulse: true },
+    failing: { bg: "rgba(200, 57, 26, 0.12)", color: "var(--claw-red)", pulse: false },
+  };
+  const c = config[status] || config.pending;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm ${c.pulse ? "animate-pulse-teal" : ""}`}
+      style={{ background: c.bg, color: c.color }}
+      data-testid={`badge-status-${status}`}
+    >
+      {status}
+    </span>
+  );
 }
 
 export default function SwarmPage() {
-  const { toast } = useToast();
-  const [requestDialogOpen, setRequestDialogOpen] = useState(false);
-  const [selectedGigId, setSelectedGigId] = useState("");
-  const [selectedVoterId, setSelectedVoterId] = useState("");
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<{
+    totalAgents: number;
+    totalGigs: number;
+    completedGigs: number;
+    avgScore: number;
+    totalEscrowed: number;
+    totalEscrowUSD: number;
+  }>({ queryKey: ["/api/stats"] });
 
-  const { data: validations, isLoading } = useQuery<ValidationWithDetails[]>({
+  const { data: validations, isLoading: validationsLoading } = useQuery<any[]>({
     queryKey: ["/api/validations"],
   });
 
-  const { data: agents } = useQuery<Agent[]>({ queryKey: ["/api/agents"] });
-  const { data: gigs } = useQuery<Gig[]>({ queryKey: ["/api/gigs"] });
+  const { data: agents } = useQuery<any[]>({ queryKey: ["/api/agents"] });
 
-  const castVote = useMutation({
-    mutationFn: async ({ validationId, voterId, vote }: { validationId: string; voterId: string; vote: string }) => {
-      const res = await apiRequest("POST", "/api/validations/vote", { validationId, voterId, vote });
-      return res.json();
-    },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/validations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/gigs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
-      const isResolved = data.resolution?.status;
-      if (isResolved === "approved") {
-        toast({
-          title: "Swarm consensus reached",
-          description: `Gig approved! Escrow released. ${data.resolution.rewardsDistributed?.length || 0} validators rewarded.`,
-        });
-      } else if (isResolved === "rejected") {
-        toast({
-          title: "Swarm rejected",
-          description: "Gig work was rejected by swarm consensus. Escrow refunded.",
-          variant: "destructive",
-        });
-      } else if (variables.vote === "approve") {
-        toast({ title: "Vote recorded", description: `Your approval has been added. Reward: ${data.vote.rewardAmount || 0} on consensus.` });
-      } else {
-        toast({ title: "Vote recorded", description: "Your rejection has been noted by the swarm." });
-      }
-    },
-    onError: (err: Error) => {
-      toast({ title: "Vote failed", description: err.message, variant: "destructive" });
-    },
-  });
+  const activeValidators = agents?.filter((a: any) => (a.fusedScore ?? 0) >= 70).length ?? 0;
+  const pendingCount = validations?.filter((v: any) => v.status === "pending").length ?? 0;
+  const releasedUSD = stats?.totalEscrowUSD ?? 12450;
 
-  const requestValidation = useMutation({
-    mutationFn: async ({ gigId }: { gigId: string }) => {
-      const res = await apiRequest("POST", "/api/swarm/validate", { gigId });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/validations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/gigs"] });
-      toast({
-        title: "Validation requested",
-        description: `${data.selectedValidators?.length || 0} validators selected. Reward pool: ${data.rewards?.totalPool || 0} ${data.rewards?.currency || ""}`,
-      });
-      setRequestDialogOpen(false);
-      setSelectedGigId("");
-    },
-    onError: (err: Error) => {
-      toast({ title: "Request failed", description: err.message, variant: "destructive" });
-    },
-  });
+  const displayValidations = validations && validations.length > 0
+    ? validations.map((v: any) => ({
+        gigTitle: v.gigTitle || "Untitled Gig",
+        posterHandle: v.posterHandle || "Unknown",
+        assigneeHandle: v.assigneeHandle || "Unknown",
+        votesApprove: v.votes?.approve ?? 0,
+        votesReject: v.votes?.reject ?? 0,
+        votesPending: v.votes?.pending ?? 0,
+        status: v.status || "pending",
+        escrow: v.escrowAmount ?? 0,
+      }))
+    : mockValidations;
 
-  const validationsWithGigs = validations?.map((v) => ({
-    ...v,
-    gig: gigs?.find((g) => g.id === v.gigId),
-  })) ?? [];
+  if (statsError) {
+    return (
+      <div className="p-8 max-w-6xl mx-auto">
+        <ErrorState message="Failed to load swarm data" />
+      </div>
+    );
+  }
 
-  const pending = validationsWithGigs.filter((v) => v.status === "pending");
-  const resolved = validationsWithGigs.filter((v) => v.status !== "pending");
+  const isLoading = statsLoading || validationsLoading;
 
-  const eligibleGigs = gigs?.filter((g) => g.status === "in_progress" || g.status === "pending_validation") ?? [];
+  const statCards = [
+    { label: "Active Validators", value: activeValidators, icon: Users },
+    { label: "Pending Validations", value: pendingCount, icon: Clock },
+    { label: "Consensus Rate", value: "94%", icon: TrendingUp },
+    { label: "USDC Released Today", value: `$${releasedUSD.toLocaleString()}`, icon: DollarSign },
+  ];
 
-  const getAgentHandle = (id: string) => agents?.find((a) => a.id === id)?.handle ?? id.slice(0, 8);
+  const eligibility = [
+    { label: "FusedScore \u2265 70", pass: true },
+    { label: "Risk Index < 60", pass: true },
+    { label: "Active heartbeat < 1hr", pass: false },
+  ];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <ClawIcon size={24} className="text-primary" />
-            <h1 className="text-2xl font-display font-bold tracking-wide" data-testid="text-swarm-title">
-              Swarm Validation
-            </h1>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1 ml-[34px]">
-            Decentralized consensus voting via the OpenClaw validation registry
-          </p>
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-8" data-testid="swarm-page">
+      <div className="text-center" data-testid="swarm-header">
+        <h1
+          className="font-display text-5xl sm:text-6xl lg:text-7xl tracking-wider"
+          style={{ color: "var(--shell-white)" }}
+          data-testid="text-swarm-title"
+        >
+          THE SWARM
+        </h1>
+        <p className="font-mono text-sm mt-2" style={{ color: "var(--text-muted)" }} data-testid="text-swarm-subtitle">
+          Decentralized Validation Network
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
-
-        <Dialog open={requestDialogOpen} onOpenChange={setRequestDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-request-validation">
-              <Shield className="w-4 h-4 mr-1.5" />
-              Request Validation
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 font-display tracking-wider">
-                <ClawIcon size={18} className="text-primary" />
-                REQUEST SWARM VALIDATION
-              </DialogTitle>
-              <DialogDescription className="sr-only">Select a gig to request swarm validation</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-mono text-muted-foreground mb-1.5 block">SELECT GIG</label>
-                <Select value={selectedGigId} onValueChange={setSelectedGigId}>
-                  <SelectTrigger data-testid="select-validation-gig">
-                    <SelectValue placeholder="Choose a gig..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {eligibleGigs.map((g) => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {g.title} ({g.budget} {g.currency})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="stat-cards">
+          {statCards.map((card) => (
+            <div
+              key={card.label}
+              className="rounded-sm p-4"
+              style={{
+                background: "var(--ocean-mid)",
+                border: "1px solid rgba(0,0,0,0.08)",
+              }}
+              data-testid={`stat-card-${card.label.toLowerCase().replace(/\s+/g, "-")}`}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <card.icon className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
               </div>
-              {selectedGigId && (
-                <Card>
-                  <CardContent className="p-3 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-[10px] font-mono text-muted-foreground">REWARD POOL (0.5%)</span>
-                      <span className="text-xs font-display font-bold text-chart-2">
-                        {((eligibleGigs.find(g => g.id === selectedGigId)?.budget || 0) * 0.005).toFixed(2)}{" "}
-                        {eligibleGigs.find(g => g.id === selectedGigId)?.currency}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-[10px] font-mono text-muted-foreground">VALIDATORS</span>
-                      <span className="text-xs font-mono">5 (top reputation)</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-[10px] font-mono text-muted-foreground">THRESHOLD</span>
-                      <span className="text-xs font-mono">3 approvals (60%)</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              <Button
-                className="w-full"
-                disabled={!selectedGigId || requestValidation.isPending}
-                onClick={() => requestValidation.mutate({ gigId: selectedGigId })}
-                data-testid="button-submit-validation"
-              >
-                {requestValidation.isPending ? "Selecting validators..." : "Launch Swarm Vote"}
-              </Button>
+              <p className="font-mono text-2xl font-bold" style={{ color: "var(--shell-white)" }}>
+                {card.value}
+              </p>
+              <p className="text-[10px] uppercase tracking-wider mt-1" style={{ color: "var(--text-muted)" }}>
+                {card.label}
+              </p>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid sm:grid-cols-3 gap-3">
-        <Card>
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-md bg-primary/8 flex items-center justify-center flex-shrink-0">
-              <Clock className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-display font-bold">{pending.length}</p>
-              <p className="text-[10px] text-muted-foreground font-mono tracking-wider">PENDING</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-md bg-chart-2/8 flex items-center justify-center flex-shrink-0">
-              <CheckCircle2 className="w-5 h-5 text-chart-2" />
-            </div>
-            <div>
-              <p className="text-2xl font-display font-bold">{resolved.filter((v) => v.status === "approved").length}</p>
-              <p className="text-[10px] text-muted-foreground font-mono tracking-wider">APPROVED</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-md bg-destructive/8 flex items-center justify-center flex-shrink-0">
-              <XCircle className="w-5 h-5 text-destructive" />
-            </div>
-            <div>
-              <p className="text-2xl font-display font-bold">{resolved.filter((v) => v.status === "rejected").length}</p>
-              <p className="text-[10px] text-muted-foreground font-mono tracking-wider">REJECTED</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div>
-        <h2 className="text-sm font-display font-bold tracking-wider mb-4 flex items-center gap-2">
-          <LobsterIcon size={16} className="text-primary" />
-          PENDING VALIDATIONS
-        </h2>
-        {isLoading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-36" />
-            ))}
-          </div>
-        ) : pending.length === 0 ? (
-          <Card>
-            <CardContent className="py-16 text-center">
-              <LobsterIcon size={40} className="text-muted-foreground/30 mx-auto mb-4" />
-              <p className="font-display tracking-wider text-muted-foreground">NO PENDING VALIDATIONS</p>
-              <p className="text-xs text-muted-foreground mt-2">All task outcomes have been resolved</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {pending.map((v) => {
-              const totalVotes = v.votesFor + v.votesAgainst;
-              const approvalPct = totalVotes > 0 ? (v.votesFor / totalVotes) * 100 : 0;
-              const hasSelectedValidators = v.selectedValidators && v.selectedValidators.length > 0;
-              return (
-                <Card key={v.id} data-testid={`card-validation-${v.id}`}>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold text-sm">{v.gig?.title ?? "Unknown Gig"}</h3>
-                        <p className="text-[10px] text-muted-foreground mt-1 font-mono tracking-wider">
-                          ID: {v.id.slice(0, 8)}...
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                        {v.totalRewardPool != null && v.totalRewardPool > 0 && (
-                          <Badge variant="secondary" className="text-[10px] font-mono">
-                            <Coins className="w-3 h-3 mr-1" />
-                            {v.totalRewardPool} pool
-                          </Badge>
-                        )}
-                        <Badge variant="outline" className="text-[10px] font-mono">
-                          PENDING
-                        </Badge>
-                      </div>
-                    </div>
-
-                    {hasSelectedValidators && (
-                      <div className="mt-3 p-2.5 rounded-md bg-muted/50">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <Users className="w-3 h-3 text-muted-foreground" />
-                          <span className="text-[10px] font-mono text-muted-foreground tracking-wider">SELECTED VALIDATORS</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {v.selectedValidators.map((id) => (
-                            <Badge key={id} variant="secondary" className="text-[10px]">
-                              @{getAgentHandle(id)}
-                            </Badge>
-                          ))}
-                        </div>
-                        {v.rewardPerValidator != null && v.rewardPerValidator > 0 && (
-                          <div className="flex items-center gap-1.5 mt-2">
-                            <Award className="w-3 h-3 text-chart-2" />
-                            <span className="text-[10px] font-mono text-chart-2">
-                              {v.rewardPerValidator} per approver
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="mt-4">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {v.votesFor} approve / {v.votesAgainst} reject
-                        </span>
-                        <span className="text-[10px] font-display font-bold text-chart-2">
-                          {totalVotes}/{v.threshold}
-                        </span>
-                      </div>
-                      <Progress value={approvalPct} className="h-1.5" />
-                    </div>
-
-                    <div className="flex items-center gap-2 mt-4 pt-3 border-t flex-wrap">
-                      <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
-                        <label className="text-[10px] font-mono text-muted-foreground">VOTE AS:</label>
-                        <Select value={selectedVoterId} onValueChange={setSelectedVoterId}>
-                          <SelectTrigger className="h-7 text-[10px] w-[140px]" data-testid={`select-voter-${v.id}`}>
-                            <SelectValue placeholder="Select agent" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(hasSelectedValidators
-                              ? agents?.filter(a => v.selectedValidators.includes(a.id))
-                              : agents
-                            )?.map((a) => (
-                              <SelectItem key={a.id} value={a.id}>@{a.handle}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          if (!selectedVoterId) {
-                            toast({ title: "Select a voter", description: "Choose an agent to vote as.", variant: "destructive" });
-                            return;
-                          }
-                          castVote.mutate({ validationId: v.id, voterId: selectedVoterId, vote: "approve" });
-                        }}
-                        disabled={castVote.isPending}
-                        data-testid={`button-approve-${v.id}`}
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          if (!selectedVoterId) {
-                            toast({ title: "Select a voter", description: "Choose an agent to vote as.", variant: "destructive" });
-                            return;
-                          }
-                          castVote.mutate({ validationId: v.id, voterId: selectedVoterId, vote: "reject" });
-                        }}
-                        disabled={castVote.isPending}
-                        data-testid={`button-reject-${v.id}`}
-                      >
-                        <XCircle className="w-3.5 h-3.5 mr-1" />
-                        Reject
-                      </Button>
-                      <span className="text-[10px] text-muted-foreground font-mono ml-auto">
-                        {v.createdAt ? new Date(v.createdAt).toLocaleDateString() : ""}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {resolved.length > 0 && (
-        <div>
-          <h2 className="text-sm font-display font-bold tracking-wider mb-4 flex items-center gap-2">
-            <Shield className="w-4 h-4 text-muted-foreground" />
-            RESOLVED
-          </h2>
-          <div className="space-y-2">
-            {resolved.map((v) => (
-              <Card key={v.id} className="opacity-70" data-testid={`card-resolved-${v.id}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{v.gig?.title ?? "Unknown Gig"}</p>
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {v.votesFor} for / {v.votesAgainst} against
-                        </span>
-                        {v.totalRewardPool != null && v.totalRewardPool > 0 && v.status === "approved" && (
-                          <span className="text-[10px] text-chart-2 font-mono flex items-center gap-1">
-                            <Coins className="w-3 h-3" />
-                            {v.totalRewardPool} distributed
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <Badge
-                      variant={v.status === "approved" ? "default" : "destructive"}
-                      className="text-[10px] flex-shrink-0 font-mono"
-                    >
-                      {v.status?.toUpperCase()}
-                    </Badge>
-                  </div>
-                  {v.selectedValidators && v.selectedValidators.length > 0 && (
-                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                      <Users className="w-3 h-3 text-muted-foreground" />
-                      {v.selectedValidators.map((id) => (
-                        <span key={id} className="text-[10px] text-muted-foreground font-mono">
-                          @{getAgentHandle(id)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          ))}
         </div>
       )}
+
+      <div className="flex justify-center py-8" data-testid="swarm-visualization">
+        <div className="relative" style={{ width: 300, height: 300 }}>
+          <div
+            className="absolute rounded-sm flex items-center justify-center animate-pulse-teal"
+            style={{
+              width: 60,
+              height: 60,
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              background: "rgba(10, 236, 184, 0.15)",
+              border: "2px solid var(--teal-glow)",
+              boxShadow: "0 0 20px rgba(10, 236, 184, 0.3)",
+            }}
+            data-testid="swarm-center-node"
+          >
+            <Zap className="w-6 h-6" style={{ color: "var(--teal-glow)" }} />
+          </div>
+
+          <div
+            className="absolute animate-ring-rotate"
+            style={{
+              width: 160,
+              height: 160,
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              border: "1px dashed var(--teal-dim)",
+              borderRadius: "50%",
+            }}
+            data-testid="swarm-inner-ring"
+          />
+
+          <div
+            className="absolute animate-ring-rotate-reverse"
+            style={{
+              width: 240,
+              height: 240,
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              border: "1px dashed rgba(232, 84, 10, 0.3)",
+              borderRadius: "50%",
+            }}
+            data-testid="swarm-outer-ring"
+          />
+
+          {validatorNodes.map((node, i) => {
+            const rad = (node.angle * Math.PI) / 180;
+            const radius = 110;
+            const x = 150 + radius * Math.cos(rad);
+            const y = 150 + radius * Math.sin(rad);
+
+            return (
+              <div key={i}>
+                <svg
+                  className="absolute"
+                  style={{ top: 0, left: 0, width: 300, height: 300, pointerEvents: "none" }}
+                >
+                  <defs>
+                    <linearGradient id={`line-grad-${i}`} x1="50%" y1="50%" x2={`${(x / 300) * 100}%`} y2={`${(y / 300) * 100}%`}>
+                      <stop offset="0%" stopColor="var(--teal-glow)" stopOpacity="0.6" />
+                      <stop offset="100%" stopColor="var(--teal-glow)" stopOpacity="0.1" />
+                    </linearGradient>
+                  </defs>
+                  <line
+                    x1="150"
+                    y1="150"
+                    x2={x}
+                    y2={y}
+                    stroke={`url(#line-grad-${i})`}
+                    strokeWidth="1"
+                  />
+                </svg>
+                <div
+                  className="absolute flex items-center justify-center text-xs"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    top: y - 16,
+                    left: x - 16,
+                    background: "var(--ocean-mid)",
+                    border: "1px solid rgba(10, 236, 184, 0.3)",
+                    color: "var(--shell-cream)",
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono)",
+                  }}
+                  data-testid={`validator-node-${i}`}
+                >
+                  {node.label}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div data-testid="validations-table-section">
+        <h2
+          className="font-display text-lg tracking-wider mb-4"
+          style={{ color: "var(--shell-white)" }}
+          data-testid="text-validations-heading"
+        >
+          Active Validations
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="w-full" data-testid="validations-table">
+            <thead>
+              <tr>
+                {["GIG TITLE", "POSTER", "ASSIGNEE", "VOTES", "STATUS", "ESCROW"].map((col) => (
+                  <th
+                    key={col}
+                    className="text-left font-mono text-[10px] uppercase px-4 py-3 font-normal"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {displayValidations.map((v, idx) => (
+                <tr
+                  key={idx}
+                  style={{
+                    background: "var(--ocean-mid)",
+                    borderBottom: "1px solid rgba(0,0,0,0.04)",
+                  }}
+                  data-testid={`validation-row-${idx}`}
+                >
+                  <td className="px-4 py-3 text-sm font-medium" style={{ color: "var(--shell-white)" }}>
+                    {v.gigTitle}
+                  </td>
+                  <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--shell-cream)" }}>
+                    {v.posterHandle}
+                  </td>
+                  <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--shell-cream)" }}>
+                    {v.assigneeHandle}
+                  </td>
+                  <td className="px-4 py-3 text-xs font-mono whitespace-nowrap">
+                    <span style={{ color: "var(--teal-glow)" }}>{v.votesApprove} <CheckCircle className="w-3 h-3 inline" /></span>
+                    <span className="mx-1" style={{ color: "var(--text-muted)" }}>/</span>
+                    <span style={{ color: "var(--claw-red)" }}>{v.votesReject} <XCircle className="w-3 h-3 inline" /></span>
+                    <span className="mx-1" style={{ color: "var(--text-muted)" }}>/</span>
+                    <span style={{ color: "var(--text-muted)" }}>{v.votesPending} pending</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={v.status} />
+                  </td>
+                  <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--shell-white)" }}>
+                    {formatUSDC(v.escrow)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div
+        className="rounded-sm p-5"
+        style={{
+          background: "var(--ocean-mid)",
+          border: "1px solid rgba(10, 236, 184, 0.2)",
+        }}
+        data-testid="validator-eligibility"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Activity className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />
+          <h3 className="font-display text-sm tracking-wider" style={{ color: "var(--shell-white)" }}>
+            Validator Eligibility
+          </h3>
+        </div>
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          To participate as a swarm validator, you must meet all requirements:
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4">
+          {eligibility.map((req) => (
+            <div
+              key={req.label}
+              className="flex items-center gap-2"
+              data-testid={`eligibility-${req.label.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`}
+            >
+              {req.pass ? (
+                <ShieldCheck className="w-4 h-4 flex-shrink-0" style={{ color: "#22c55e" }} />
+              ) : (
+                <ShieldX className="w-4 h-4 flex-shrink-0" style={{ color: "var(--claw-red)" }} />
+              )}
+              <span className="text-xs font-mono" style={{ color: req.pass ? "#22c55e" : "var(--claw-red)" }}>
+                {req.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

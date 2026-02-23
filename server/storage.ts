@@ -1,8 +1,9 @@
-import { eq, desc, or, and, notInArray, gt, count, ilike } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, gt, gte, lte, count, ilike, asc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
-  agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents,
+  agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
+  agentReviews, trustReceipts,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -17,6 +18,9 @@ import {
   type GigSubmolt, type InsertGigSubmolt,
   type BondEvent, type InsertBondEvent,
   type RiskEvent, type InsertRiskEvent,
+  type GigOffer, type InsertGigOffer,
+  type AgentReview, type InsertAgentReview,
+  type TrustReceipt, type InsertTrustReceipt,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -91,6 +95,38 @@ export interface IStorage {
 
   createRiskEvent(event: InsertRiskEvent): Promise<RiskEvent>;
   getRiskEvents(agentId: string, limit?: number): Promise<RiskEvent[]>;
+
+  createGigOffer(offer: InsertGigOffer): Promise<GigOffer>;
+  getGigOffer(id: string): Promise<GigOffer | undefined>;
+  getGigOffersByGig(gigId: string): Promise<GigOffer[]>;
+  getGigOffersToAgent(agentId: string): Promise<GigOffer[]>;
+  getGigOfferFromTo(gigId: string, fromAgentId: string, toAgentId: string): Promise<GigOffer | undefined>;
+  updateGigOffer(id: string, data: Partial<GigOffer>): Promise<GigOffer | undefined>;
+
+  getEarningsHistory(agentId: string): Promise<{ gigId: string; gigTitle: string; amount: number; currency: string; chain: string; completedAt: Date | null }[]>;
+  getFollowerQuality(agentId: string): Promise<{ avgScore: number; totalFollowers: number; highTierFollowers: number }>;
+
+  discoverAgents(filters: {
+    skills?: string[];
+    minScore?: number;
+    maxRisk?: number;
+    minBond?: number;
+    sortBy?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ agents: Agent[]; total: number }>;
+
+  createAgentReview(review: InsertAgentReview): Promise<AgentReview>;
+  getReviewsForAgent(revieweeId: string, limit?: number, offset?: number): Promise<AgentReview[]>;
+  getReviewsByAgent(reviewerId: string): Promise<AgentReview[]>;
+  getReviewForGig(gigId: string, reviewerId: string): Promise<AgentReview | undefined>;
+  getReviewCountForAgent(revieweeId: string): Promise<number>;
+  getAverageRatingForAgent(revieweeId: string): Promise<number>;
+
+  createTrustReceipt(receipt: InsertTrustReceipt): Promise<TrustReceipt>;
+  getTrustReceipt(id: string): Promise<TrustReceipt | undefined>;
+  getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined>;
+  getTrustReceiptsForAgent(agentId: string, limit?: number): Promise<TrustReceipt[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -382,6 +418,187 @@ export class DatabaseStorage implements IStorage {
 
   async getRiskEvents(agentId: string, limit = 50): Promise<RiskEvent[]> {
     return db.select().from(riskEvents).where(eq(riskEvents.agentId, agentId)).orderBy(desc(riskEvents.createdAt)).limit(limit);
+  }
+
+  async createGigOffer(offer: InsertGigOffer): Promise<GigOffer> {
+    const [created] = await db.insert(gigOffers).values(offer).returning();
+    return created;
+  }
+
+  async getGigOffer(id: string): Promise<GigOffer | undefined> {
+    const [offer] = await db.select().from(gigOffers).where(eq(gigOffers.id, id));
+    return offer;
+  }
+
+  async getGigOffersByGig(gigId: string): Promise<GigOffer[]> {
+    return db.select().from(gigOffers).where(eq(gigOffers.gigId, gigId)).orderBy(desc(gigOffers.createdAt));
+  }
+
+  async getGigOffersToAgent(agentId: string): Promise<GigOffer[]> {
+    return db.select().from(gigOffers).where(eq(gigOffers.toAgentId, agentId)).orderBy(desc(gigOffers.createdAt));
+  }
+
+  async getGigOfferFromTo(gigId: string, fromAgentId: string, toAgentId: string): Promise<GigOffer | undefined> {
+    const [offer] = await db.select().from(gigOffers).where(
+      and(eq(gigOffers.gigId, gigId), eq(gigOffers.fromAgentId, fromAgentId), eq(gigOffers.toAgentId, toAgentId))
+    );
+    return offer;
+  }
+
+  async updateGigOffer(id: string, data: Partial<GigOffer>): Promise<GigOffer | undefined> {
+    const [updated] = await db.update(gigOffers).set(data).where(eq(gigOffers.id, id)).returning();
+    return updated;
+  }
+
+  async getEarningsHistory(agentId: string): Promise<{ gigId: string; gigTitle: string; amount: number; currency: string; chain: string; completedAt: Date | null }[]> {
+    const completedGigs = await db.select().from(gigs).where(
+      and(eq(gigs.assigneeId, agentId), eq(gigs.status, "completed"))
+    ).orderBy(desc(gigs.createdAt));
+
+    const earnings = [];
+    for (const gig of completedGigs) {
+      const escrow = await this.getEscrowByGig(gig.id);
+      earnings.push({
+        gigId: gig.id,
+        gigTitle: gig.title,
+        amount: escrow?.amount ?? gig.budget,
+        currency: escrow?.currency ?? gig.currency,
+        chain: escrow?.chain ?? gig.chain,
+        completedAt: gig.createdAt,
+      });
+    }
+    return earnings;
+  }
+
+  async getFollowerQuality(agentId: string): Promise<{ avgScore: number; totalFollowers: number; highTierFollowers: number }> {
+    const followers = await this.getFollowers(agentId);
+    if (followers.length === 0) return { avgScore: 0, totalFollowers: 0, highTierFollowers: 0 };
+
+    const followerIds = followers.map(f => f.followerAgentId);
+    const followerAgents = await db.select().from(agents).where(
+      sql`${agents.id} = ANY(ARRAY[${sql.join(followerIds.map(id => sql`${id}`), sql`, `)}]::varchar[])`
+    );
+
+    const totalScore = followerAgents.reduce((sum, a) => sum + a.fusedScore, 0);
+    const highTier = followerAgents.filter(a => a.fusedScore >= 70).length;
+
+    return {
+      avgScore: followerAgents.length > 0 ? Math.round((totalScore / followerAgents.length) * 10) / 10 : 0,
+      totalFollowers: followers.length,
+      highTierFollowers: highTier,
+    };
+  }
+
+  async discoverAgents(filters: {
+    skills?: string[];
+    minScore?: number;
+    maxRisk?: number;
+    minBond?: number;
+    sortBy?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ agents: Agent[]; total: number }> {
+    const conditions: any[] = [];
+
+    if (filters.minScore !== undefined) {
+      conditions.push(gte(agents.fusedScore, filters.minScore));
+    }
+    if (filters.maxRisk !== undefined) {
+      conditions.push(lte(agents.riskIndex, filters.maxRisk));
+    }
+    if (filters.minBond !== undefined) {
+      conditions.push(gte(agents.availableBond, filters.minBond));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    let allMatching = await db.select().from(agents).where(whereClause).orderBy(desc(agents.fusedScore));
+
+    if (filters.skills && filters.skills.length > 0) {
+      const skillList = filters.skills.map(s => s.toLowerCase());
+      allMatching = allMatching.filter(a =>
+        a.skills.some(as => skillList.some(fs => as.toLowerCase().includes(fs)))
+      );
+    }
+
+    const total = allMatching.length;
+
+    if (filters.sortBy === "score_low") {
+      allMatching.sort((a, b) => a.fusedScore - b.fusedScore);
+    } else if (filters.sortBy === "risk_low") {
+      allMatching.sort((a, b) => a.riskIndex - b.riskIndex);
+    } else if (filters.sortBy === "bond_high") {
+      allMatching.sort((a, b) => b.availableBond - a.availableBond);
+    } else if (filters.sortBy === "newest") {
+      allMatching.sort((a, b) => new Date(b.registeredAt!).getTime() - new Date(a.registeredAt!).getTime());
+    }
+
+    const limit = filters.limit || 50;
+    const offset = filters.offset || 0;
+    const paged = allMatching.slice(offset, offset + limit);
+
+    return { agents: paged, total };
+  }
+
+  async createAgentReview(review: InsertAgentReview): Promise<AgentReview> {
+    const [r] = await db.insert(agentReviews).values(review).returning();
+    return r;
+  }
+
+  async getReviewsForAgent(revieweeId: string, limit = 20, offset = 0): Promise<AgentReview[]> {
+    return db.select().from(agentReviews)
+      .where(eq(agentReviews.revieweeId, revieweeId))
+      .orderBy(desc(agentReviews.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getReviewsByAgent(reviewerId: string): Promise<AgentReview[]> {
+    return db.select().from(agentReviews)
+      .where(eq(agentReviews.reviewerId, reviewerId))
+      .orderBy(desc(agentReviews.createdAt));
+  }
+
+  async getReviewForGig(gigId: string, reviewerId: string): Promise<AgentReview | undefined> {
+    const [r] = await db.select().from(agentReviews)
+      .where(and(eq(agentReviews.gigId, gigId), eq(agentReviews.reviewerId, reviewerId)));
+    return r;
+  }
+
+  async getReviewCountForAgent(revieweeId: string): Promise<number> {
+    const [r] = await db.select({ count: count() }).from(agentReviews)
+      .where(eq(agentReviews.revieweeId, revieweeId));
+    return r?.count ?? 0;
+  }
+
+  async getAverageRatingForAgent(revieweeId: string): Promise<number> {
+    const [r] = await db.select({ avg: sql<number>`COALESCE(AVG(${agentReviews.rating}), 0)` })
+      .from(agentReviews)
+      .where(eq(agentReviews.revieweeId, revieweeId));
+    return Number(r?.avg ?? 0);
+  }
+
+  async createTrustReceipt(receipt: InsertTrustReceipt): Promise<TrustReceipt> {
+    const [r] = await db.insert(trustReceipts).values(receipt).returning();
+    return r;
+  }
+
+  async getTrustReceipt(id: string): Promise<TrustReceipt | undefined> {
+    const [r] = await db.select().from(trustReceipts).where(eq(trustReceipts.id, id));
+    return r;
+  }
+
+  async getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined> {
+    const [r] = await db.select().from(trustReceipts)
+      .where(and(eq(trustReceipts.gigId, gigId), eq(trustReceipts.agentId, agentId)));
+    return r;
+  }
+
+  async getTrustReceiptsForAgent(agentId: string, limit = 20): Promise<TrustReceipt[]> {
+    return db.select().from(trustReceipts)
+      .where(eq(trustReceipts.agentId, agentId))
+      .orderBy(desc(trustReceipts.createdAt))
+      .limit(limit);
   }
 }
 

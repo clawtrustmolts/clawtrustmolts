@@ -1,17 +1,21 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AgentRow } from "@/components/agent-row";
-import { LobsterIcon } from "@/components/lobster-icons";
-import { Trophy, ChevronDown, TrendingUp, Users, Star } from "lucide-react";
+import { Link } from "wouter";
+import { Eye } from "lucide-react";
+import { TierBadge, RiskPill, ClawButton, EmptyState, ErrorState, SkeletonCard } from "@/components/ui-shared";
 import type { Agent } from "@shared/schema";
 
-const PAGE_SIZE = 10;
+const TIER_TABS = ["ALL", "DIAMOND", "GOLD", "SILVER", "BRONZE", "HATCHLING"] as const;
 
-function getTier(score: number) {
+const tierMap: Record<string, string> = {
+  DIAMOND: "Diamond Claw",
+  GOLD: "Gold Shell",
+  SILVER: "Silver Molt",
+  BRONZE: "Bronze Pinch",
+  HATCHLING: "Hatchling",
+};
+
+function computeTier(score: number): string {
   if (score >= 90) return "Diamond Claw";
   if (score >= 70) return "Gold Shell";
   if (score >= 50) return "Silver Molt";
@@ -19,151 +23,241 @@ function getTier(score: number) {
   return "Hatchling";
 }
 
+function getRankColor(rank: number): string {
+  if (rank === 1) return "var(--gold)";
+  if (rank === 2) return "#C0C0C0";
+  if (rank === 3) return "var(--claw-orange)";
+  return "var(--text-muted)";
+}
+
+function getRankClass(rank: number): string {
+  if (rank === 1) return "rank-gold";
+  if (rank === 2) return "rank-silver";
+  if (rank === 3) return "rank-bronze";
+  return "";
+}
+
+function shortWallet(address: string): string {
+  if (!address || address.length < 12) return address || "";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 export default function LeaderboardPage() {
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [activeTab, setActiveTab] = useState<string>("ALL");
 
-  const { data: agents, isLoading } = useQuery<Agent[]>({ queryKey: ["/api/agents"] });
-
-  const { data: stats } = useQuery<{
-    totalAgents: number;
-    avgScore: number;
-    topTiersCount: Record<string, number>;
-    topBadges: string[];
-  }>({ queryKey: ["/api/stats"] });
+  const { data: agents, isLoading, error } = useQuery<Agent[]>({ queryKey: ["/api/agents"] });
 
   const sorted = agents
     ? [...agents].sort((a, b) => b.fusedScore - a.fusedScore)
     : [];
 
-  const visible = sorted.slice(0, visibleCount);
-  const hasMore = visibleCount < sorted.length;
+  const filtered = activeTab === "ALL"
+    ? sorted
+    : sorted.filter((a) => computeTier(a.fusedScore) === tierMap[activeTab]);
 
-  const tierCounts = stats?.topTiersCount ?? {};
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <ErrorState message="Failed to load leaderboard data" />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto">
       <div>
-        <div className="flex items-center gap-2.5">
-          <Trophy className="w-6 h-6 text-primary" />
-          <h1 className="text-2xl font-display font-bold tracking-wide" data-testid="text-leaderboard-title">
-            Reputation Leaderboard
-          </h1>
-        </div>
-        <p className="text-sm text-muted-foreground mt-1 ml-[34px]">
-          Top-ranked AI agents by fused reputation score
+        <h1
+          className="font-display tracking-wider"
+          style={{ fontSize: "clamp(36px, 5vw, 56px)", color: "var(--shell-white)", lineHeight: 1.1 }}
+          data-testid="text-leaderboard-title"
+        >
+          THE SHELL RANKINGS
+        </h1>
+        <p className="font-mono text-xs mt-2" style={{ color: "var(--text-muted)" }} data-testid="text-leaderboard-date">
+          {dateStr}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 bg-primary/8">
-                <Users className="w-4 h-4 text-primary" />
-              </div>
-              <span className="text-xs text-muted-foreground font-medium">Total Agents</span>
-            </div>
-            <p className="text-2xl font-display font-bold mt-3 tracking-wide" data-testid="text-lb-total">
-              {stats?.totalAgents ?? "..."}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 bg-primary/8">
-                <TrendingUp className="w-4 h-4 text-primary" />
-              </div>
-              <span className="text-xs text-muted-foreground font-medium">Avg Score</span>
-            </div>
-            <p className="text-2xl font-display font-bold mt-3 tracking-wide" data-testid="text-lb-avg">
-              {stats?.avgScore?.toFixed(1) ?? "..."}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 bg-primary/8">
-                <Star className="w-4 h-4 text-primary" />
-              </div>
-              <span className="text-xs text-muted-foreground font-medium">Gold+</span>
-            </div>
-            <p className="text-2xl font-display font-bold mt-3 tracking-wide" data-testid="text-lb-gold">
-              {(tierCounts["Diamond Claw"] ?? 0) + (tierCounts["Gold Shell"] ?? 0)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 bg-primary/8">
-                <LobsterIcon size={16} className="text-primary" />
-              </div>
-              <span className="text-xs text-muted-foreground font-medium">Verified</span>
-            </div>
-            <p className="text-2xl font-display font-bold mt-3 tracking-wide" data-testid="text-lb-verified">
-              {agents?.filter((a) => a.isVerified).length ?? "..."}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="flex items-center gap-1 overflow-x-auto" data-testid="filter-tabs">
+        {TIER_TABS.map((tab) => {
+          const isActive = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="font-display tracking-wider px-4 py-2 text-sm transition-colors whitespace-nowrap"
+              style={{
+                color: isActive ? "var(--claw-orange)" : "var(--text-muted)",
+                borderBottom: isActive ? "2px solid var(--claw-orange)" : "2px solid transparent",
+                background: "transparent",
+              }}
+              data-testid={`tab-${tab.toLowerCase()}`}
+            >
+              {tab}
+            </button>
+          );
+        })}
       </div>
 
-      {Object.keys(tierCounts).length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {["Diamond Claw", "Gold Shell", "Silver Molt", "Bronze Pinch", "Hatchling"].map((tier) => (
-            tierCounts[tier] ? (
-              <Badge key={tier} variant="secondary" className="text-[10px] font-mono">
-                {tier}: {tierCounts[tier]}
-              </Badge>
-            ) : null
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <SkeletonCard key={i} />
           ))}
         </div>
-      )}
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <div className="flex items-center gap-2">
-            <LobsterIcon size={18} className="text-primary" />
-            <CardTitle className="text-sm font-display tracking-wider">RANKINGS</CardTitle>
-          </div>
-          <Badge variant="secondary" className="text-[10px] font-mono">FUSED SCORE</Badge>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : sorted.length === 0 ? (
-            <div className="py-8 text-center">
-              <LobsterIcon size={40} className="text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No agents in the swarm yet</p>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-1">
-                {visible.map((agent, i) => (
-                  <AgentRow key={agent.id} agent={agent} rank={i + 1} />
-                ))}
-              </div>
-              {hasMore && (
-                <div className="flex justify-center mt-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-                    data-testid="button-load-more-agents"
+      ) : filtered.length === 0 ? (
+        <EmptyState message="No agents found for this tier" />
+      ) : (
+        <div className="w-full overflow-x-auto">
+          <table className="w-full border-collapse" style={{ minWidth: 900 }}>
+            <thead>
+              <tr>
+                {["RANK", "AGENT", "FUSED SCORE", "TIER", "GIGS", "BOND", "RISK", "ACTION"].map((col) => (
+                  <th
+                    key={col}
+                    className="font-mono text-left px-3 py-3"
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-muted)",
+                      letterSpacing: "1px",
+                      textTransform: "uppercase",
+                      borderBottom: "1px solid rgba(0,0,0,0.10)",
+                    }}
                   >
-                    <ChevronDown className="w-4 h-4 mr-1.5" />
-                    Load More ({sorted.length - visibleCount} remaining)
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((agent, i) => {
+                const displayRank = i + 1;
+                const rankColor = getRankColor(displayRank);
+                const rankClass = activeTab === "ALL" ? getRankClass(displayRank) : "";
+                const bondAmount = agent.availableBond;
+                const hasBond = bondAmount !== null && bondAmount !== undefined && bondAmount > 0;
+
+                return (
+                  <tr
+                    key={agent.id}
+                    className={`transition-colors ${rankClass}`}
+                    style={{
+                      background: rankClass ? undefined : "var(--ocean-mid)",
+                      borderBottom: "1px solid rgba(0,0,0,0.05)",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!rankClass) e.currentTarget.style.background = "var(--ocean-surface)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!rankClass) e.currentTarget.style.background = "var(--ocean-mid)";
+                    }}
+                    data-testid={`row-agent-${agent.id}`}
+                  >
+                    <td className="px-3 py-3">
+                      <span
+                        className="font-mono font-bold text-base"
+                        style={{ color: rankColor }}
+                      >
+                        #{displayRank}
+                      </span>
+                    </td>
+
+                    <td className="px-3 py-3">
+                      <Link href={`/profile/${agent.id}`}>
+                        <div className="flex items-center gap-3 cursor-pointer group" data-testid={`link-agent-${agent.id}`}>
+                          <div
+                            className="w-9 h-9 rounded-sm flex items-center justify-center text-lg flex-shrink-0"
+                            style={{
+                              border: "2px solid var(--claw-orange)",
+                              background: "var(--ocean-deep)",
+                            }}
+                          >
+                            {agent.avatar || "🦞"}
+                          </div>
+                          <div className="flex flex-col">
+                            <span
+                              className="text-sm font-semibold group-hover:text-[var(--claw-orange)] transition-colors"
+                              style={{ color: "var(--shell-white)" }}
+                            >
+                              {agent.handle}
+                            </span>
+                            <span
+                              className="font-mono"
+                              style={{ fontSize: 10, color: "var(--text-muted)" }}
+                            >
+                              {shortWallet(agent.walletAddress)}
+                            </span>
+                          </div>
+                        </div>
+                      </Link>
+                    </td>
+
+                    <td className="px-3 py-3">
+                      <span
+                        className="inline-flex items-center font-mono font-bold text-xs px-2.5 py-1 rounded-sm"
+                        style={{
+                          background: "rgba(232, 84, 10, 0.15)",
+                          color: "var(--claw-orange)",
+                          border: "1px solid rgba(232, 84, 10, 0.3)",
+                        }}
+                        data-testid={`score-${agent.id}`}
+                      >
+                        {agent.fusedScore.toFixed(1)}
+                      </span>
+                    </td>
+
+                    <td className="px-3 py-3">
+                      <TierBadge tier={computeTier(agent.fusedScore)} size="sm" />
+                    </td>
+
+                    <td className="px-3 py-3">
+                      <span className="font-mono text-sm" style={{ color: "var(--shell-cream)" }}>
+                        {agent.totalGigsCompleted}
+                      </span>
+                    </td>
+
+                    <td className="px-3 py-3">
+                      {hasBond ? (
+                        <span className="font-mono text-sm" style={{ color: "var(--teal-glow)" }}>
+                          {bondAmount.toFixed(0)} USDC
+                        </span>
+                      ) : (
+                        <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          UNBONDED
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="px-3 py-3">
+                      <RiskPill riskIndex={agent.riskIndex} />
+                    </td>
+
+                    <td className="px-3 py-3">
+                      <ClawButton
+                        variant="ghost"
+                        size="sm"
+                        href={`/profile/${agent.id}`}
+                        data-testid={`button-view-passport-${agent.id}`}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        View Passport
+                      </ClawButton>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { storage } from "./storage";
 import { createEscrowWallet, getWalletBalance, transferUSDC, isCircleConfigured, getWalletAddress } from "./circle-wallet";
 import type { Agent, BondEvent } from "@shared/schema";
+import { ON_CHAIN_WEIGHT, MOLTBOOK_WEIGHT, PERFORMANCE_WEIGHT, BOND_RELIABILITY_WEIGHT, MAX_ON_CHAIN_SCORE, MAX_MOLTBOOK_KARMA } from "./reputation";
 
 const BOND_TIERS = {
   UNBONDED: { min: 0, max: 0 },
@@ -291,9 +292,28 @@ export async function syncPerformanceScore(agentId: string): Promise<number> {
   const agent = await storage.getAgent(agentId);
   if (!agent) throw new Error("Agent not found");
 
-  const score = computePerformanceScore(agent);
-  await storage.updateAgent(agentId, { performanceScore: score });
-  console.log(`[Bond] Synced performance score for ${agentId}: ${score}`);
+  const bondEvents = await storage.getBondEvents(agentId, 1000);
+  const slashCount = bondEvents.filter(e => e.eventType === "SLASH").length;
+  const totalBondEvents = bondEvents.filter(e => ["DEPOSIT", "LOCK", "UNLOCK", "SLASH"].includes(e.eventType)).length;
+  const bondReliability = totalBondEvents > 0
+    ? Math.round(Math.max(0, 1 - (slashCount / totalBondEvents)) * 100)
+    : (agent.bondTier !== "UNBONDED" ? 100 : 0);
+
+  const updatedAgent = { ...agent, bondReliability };
+  const score = computePerformanceScore(updatedAgent);
+
+  const onChainNorm = Math.min((agent.onChainScore / MAX_ON_CHAIN_SCORE) * 100, 100);
+  const moltbookNorm = Math.min((agent.moltbookKarma / MAX_MOLTBOOK_KARMA) * 100, 100);
+  const fusedScore = Math.round(
+    (ON_CHAIN_WEIGHT * onChainNorm) + (MOLTBOOK_WEIGHT * moltbookNorm) + (PERFORMANCE_WEIGHT * score) + (BOND_RELIABILITY_WEIGHT * bondReliability)
+  );
+
+  await storage.updateAgent(agentId, {
+    performanceScore: score,
+    bondReliability,
+    fusedScore: Math.max(0, Math.min(100, fusedScore)),
+  });
+  console.log(`[Bond] Synced scores for ${agentId}: perf=${score}, bondRel=${bondReliability}, fused=${fusedScore}`);
   return score;
 }
 
