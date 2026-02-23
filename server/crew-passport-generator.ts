@@ -4,8 +4,8 @@ import type { Crew, Agent } from "@shared/schema";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 
-const PASSPORT_WIDTH = 600;
-const PASSPORT_HEIGHT = 400;
+const PASSPORT_WIDTH = 800;
+const PASSPORT_HEIGHT = 450;
 
 export function getCrewTier(score: number): string {
   if (score >= 90) return "Diamond Fleet";
@@ -17,11 +17,11 @@ export function getCrewTier(score: number): string {
 
 export function getCrewTierColor(tier: string): string {
   switch (tier) {
-    case "Diamond Fleet": return "#38bdf8";
-    case "Gold Brigade": return "#eab308";
+    case "Diamond Fleet": return "#0aeeb8";
+    case "Gold Brigade": return "#d4a017";
     case "Silver Squad": return "#94a3b8";
     case "Bronze Pinch": return "#ea580c";
-    default: return "#52525b";
+    default: return "#71717a";
   }
 }
 
@@ -66,25 +66,20 @@ function buildScoreRingPath(radius: number, score: number): string {
   return `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${endX} ${endY}`;
 }
 
-function makeStat(label: string, value: string, color?: string) {
-  return {
-    type: "div",
-    props: {
-      style: { display: "flex", flexDirection: "column", alignItems: "center" },
-      children: [
-        { type: "div", props: { style: { fontSize: "9px", color: color || "#71717a", letterSpacing: "1px" }, children: label } },
-        { type: "div", props: { style: { fontSize: "16px", fontWeight: "bold", color: color ? "white" : "white" }, children: value } },
-      ],
-    },
-  };
-}
+const roleColorMap: Record<string, string> = {
+  LEAD: "#ea580c",
+  RESEARCHER: "#3b82f6",
+  CODER: "#22c55e",
+  DESIGNER: "#a855f7",
+  VALIDATOR: "#0aeeb8",
+};
 
 export async function generateCrewPassportImage(crew: Crew, members: Array<{ agent: Agent; role: string }>): Promise<Buffer> {
   const tier = getCrewTier(crew.fusedScore);
   const tierColor = getCrewTierColor(tier);
   const displayMembers = members.slice(0, 5);
 
-  const ringRadius = 50;
+  const ringRadius = 55;
   const ringSize = (ringRadius + 10) * 2;
   const bgCirclePath = `M ${ringRadius + 10} 10 A ${ringRadius} ${ringRadius} 0 1 1 ${ringRadius + 9.99} 10`;
   const scorePath = buildScoreRingPath(ringRadius, crew.fusedScore);
@@ -107,7 +102,7 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
                 props: {
                   d: bgCirclePath,
                   fill: "none",
-                  stroke: "#27272a",
+                  stroke: "#e2ddd5",
                   "stroke-width": "6",
                 },
               },
@@ -116,7 +111,7 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
                 props: {
                   d: scorePath,
                   fill: "none",
-                  stroke: "#F94144",
+                  stroke: "#ea580c",
                   "stroke-width": "8",
                   "stroke-linecap": "round",
                 },
@@ -129,8 +124,8 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
           props: {
             style: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "absolute", top: "0", left: "0", right: "0", bottom: "0" },
             children: [
-              { type: "div", props: { style: { fontSize: "28px", fontWeight: "bold", color: "white" }, children: Math.round(crew.fusedScore).toString() } },
-              { type: "div", props: { style: { fontSize: "9px", color: "#71717a", letterSpacing: "1px", marginTop: "2px" }, children: "FUSED" } },
+              { type: "div", props: { style: { fontSize: "30px", fontWeight: "bold", color: "#1a1a1a" }, children: Math.round(crew.fusedScore).toString() } },
+              { type: "div", props: { style: { fontSize: "9px", color: "#8a8580", letterSpacing: "2px", marginTop: "2px" }, children: "CREW" } },
             ],
           },
         },
@@ -138,51 +133,73 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
     },
   };
 
-  const memberAvatars = {
+  const memberChips = {
     type: "div",
     props: {
-      style: { display: "flex", gap: "12px", alignItems: "flex-start" },
-      children: displayMembers.map((m) => ({
-        type: "div",
-        props: {
-          style: { display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" },
-          children: [
-            {
-              type: "div",
-              props: {
-                style: {
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  background: "#27272a",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "18px",
-                  border: "2px solid #3f3f46",
-                },
-                children: m.agent.avatar || "L",
-              },
+      style: { display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "16px" },
+      children: displayMembers.map((m) => {
+        const roleColor = roleColorMap[m.role] || "#71717a";
+        return {
+          type: "div",
+          props: {
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "4px 10px",
+              borderRadius: "4px",
+              background: "#f0ece6",
+              border: "1px solid #e2ddd5",
             },
-            {
-              type: "div",
-              props: {
-                style: {
-                  fontSize: "8px",
-                  color: "#71717a",
-                  letterSpacing: "0.5px",
-                  padding: "1px 4px",
-                  borderRadius: "3px",
-                  background: "#1a1a1f",
+            children: [
+              {
+                type: "div",
+                props: {
+                  style: {
+                    width: "22px",
+                    height: "22px",
+                    borderRadius: "50%",
+                    background: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "11px",
+                    fontWeight: "bold",
+                    color: "#1a1a1a",
+                    border: `2px solid ${roleColor}`,
+                  },
+                  children: (m.agent.handle || "?")[0].toUpperCase(),
                 },
-                children: m.role,
               },
-            },
-          ],
-        },
-      })),
+              {
+                type: "div",
+                props: {
+                  style: { display: "flex", flexDirection: "column" },
+                  children: [
+                    { type: "div", props: { style: { fontSize: "11px", color: "#1a1a1a", fontWeight: "600" }, children: m.agent.handle } },
+                    { type: "div", props: { style: { fontSize: "8px", color: roleColor, letterSpacing: "1px", fontWeight: "bold" }, children: m.role } },
+                  ],
+                },
+              },
+            ],
+          },
+        };
+      }),
     },
   };
+
+  function makeStat(label: string, value: string, accent?: boolean) {
+    return {
+      type: "div",
+      props: {
+        style: { display: "flex", flexDirection: "column", alignItems: "center" },
+        children: [
+          { type: "div", props: { style: { fontSize: "9px", color: "#8a8580", letterSpacing: "1.5px", marginBottom: "2px" }, children: label } },
+          { type: "div", props: { style: { fontSize: "18px", fontWeight: "bold", color: accent ? "#0aeeb8" : "#1a1a1a" }, children: value } },
+        ],
+      },
+    };
+  }
 
   const jsx = {
     type: "div",
@@ -192,8 +209,8 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
         width: "100%",
         display: "flex",
         flexDirection: "column",
-        background: "#020203",
-        color: "white",
+        background: "#f7f5f2",
+        color: "#1a1a1a",
         fontFamily: "Inter, sans-serif",
         position: "relative",
         overflow: "hidden",
@@ -207,21 +224,8 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
               top: "0",
               left: "0",
               right: "0",
-              height: "2px",
-              background: "linear-gradient(90deg, #ea580c, #F94144, #ea580c)",
-            },
-          },
-        },
-        {
-          type: "div",
-          props: {
-            style: {
-              position: "absolute",
-              top: "0",
-              right: "0",
-              width: "250px",
-              height: "250px",
-              background: `radial-gradient(circle at top right, #ea580c15, transparent 70%)`,
+              height: "3px",
+              background: "linear-gradient(90deg, #ea580c, #d4a017, #ea580c)",
             },
           },
         },
@@ -231,7 +235,7 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
             style: {
               display: "flex",
               flexDirection: "column",
-              padding: "20px 28px",
+              padding: "24px 32px",
               flex: "1",
             },
             children: [
@@ -242,7 +246,7 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    marginBottom: "12px",
+                    marginBottom: "4px",
                   },
                   children: [
                     {
@@ -256,13 +260,14 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
                               style: {
                                 width: "28px",
                                 height: "28px",
-                                borderRadius: "6px",
-                                background: "#F94144",
+                                borderRadius: "4px",
+                                background: "#ea580c",
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                fontSize: "13px",
+                                fontSize: "12px",
                                 fontWeight: "bold",
+                                color: "white",
                               },
                               children: "CT",
                             },
@@ -270,7 +275,7 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
                           {
                             type: "span",
                             props: {
-                              style: { fontSize: "20px", fontWeight: "bold", color: "#F94144", letterSpacing: "2px" },
+                              style: { fontSize: "13px", fontWeight: "bold", color: "#ea580c", letterSpacing: "3px" },
                               children: "CREW PASSPORT",
                             },
                           },
@@ -282,10 +287,10 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
                       props: {
                         style: {
                           padding: "3px 10px",
-                          borderRadius: "5px",
+                          borderRadius: "4px",
                           border: `1px solid ${tierColor}66`,
                           background: `${tierColor}18`,
-                          fontSize: "11px",
+                          fontSize: "10px",
                           fontWeight: "bold",
                           color: tierColor,
                           letterSpacing: "1px",
@@ -299,27 +304,48 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
               {
                 type: "div",
                 props: {
-                  style: { fontSize: "36px", fontWeight: "bold", color: "white", marginBottom: "12px" },
-                  children: crew.name,
+                  style: { width: "100%", height: "1px", background: "#e2ddd5", margin: "10px 0 14px" },
                 },
               },
               {
                 type: "div",
                 props: {
-                  style: { display: "flex", justifyContent: "space-between", alignItems: "center", flex: "1" },
+                  style: { display: "flex", justifyContent: "space-between", flex: "1" },
                   children: [
                     {
                       type: "div",
                       props: {
-                        style: { display: "flex", flexDirection: "column", justifyContent: "space-between", flex: "1" },
+                        style: { display: "flex", flexDirection: "column", justifyContent: "space-between", flex: "1", paddingRight: "24px" },
                         children: [
-                          memberAvatars,
                           {
                             type: "div",
                             props: {
-                              style: { display: "flex", gap: "20px", marginTop: "auto" },
+                              style: { display: "flex", flexDirection: "column" },
                               children: [
-                                makeStat("BOND POOL", `$${crew.bondPool.toLocaleString()}`, "#00d4ff"),
+                                {
+                                  type: "div",
+                                  props: {
+                                    style: { fontSize: "28px", fontWeight: "bold", color: "#1a1a1a", marginBottom: "2px" },
+                                    children: crew.name,
+                                  },
+                                },
+                                {
+                                  type: "div",
+                                  props: {
+                                    style: { fontSize: "12px", color: "#8a8580", fontFamily: "monospace", marginBottom: "4px" },
+                                    children: `@${crew.handle}`,
+                                  },
+                                },
+                                memberChips,
+                              ],
+                            },
+                          },
+                          {
+                            type: "div",
+                            props: {
+                              style: { display: "flex", gap: "28px", marginTop: "auto", paddingTop: "12px" },
+                              children: [
+                                makeStat("BOND POOL", `$${crew.bondPool.toLocaleString()}`, true),
                                 makeStat("GIGS", crew.gigsCompleted.toString()),
                                 makeStat("EARNED", `$${crew.totalEarned.toLocaleString()}`),
                                 makeStat("MEMBERS", members.length.toString()),
@@ -332,7 +358,7 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
                     {
                       type: "div",
                       props: {
-                        style: { display: "flex", alignItems: "center", justifyContent: "center", marginLeft: "16px" },
+                        style: { display: "flex", alignItems: "center", justifyContent: "center" },
                         children: [scoreRing],
                       },
                     },
@@ -342,10 +368,19 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
               {
                 type: "div",
                 props: {
-                  style: { display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "10px", borderTop: "1px solid #1a1a1f", marginTop: "10px" },
+                  style: { display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "10px", borderTop: "1px solid #e2ddd5", marginTop: "10px" },
                   children: [
-                    { type: "span", props: { style: { fontSize: "9px", color: "#3f3f46", letterSpacing: "1px" }, children: "CLAWTRUST CREW PASSPORT" } },
-                    { type: "span", props: { style: { fontSize: "9px", color: "#3f3f46" }, children: "Base Sepolia" } },
+                    {
+                      type: "div",
+                      props: {
+                        style: { display: "flex", alignItems: "center", gap: "8px" },
+                        children: [
+                          { type: "span", props: { style: { fontSize: "9px", color: "#8a8580", letterSpacing: "1px" }, children: "CLAWTRUST CREW PASSPORT" } },
+                          { type: "span", props: { style: { fontSize: "9px", color: "#ea580c", fontWeight: "bold" }, children: "ERC-8004" } },
+                        ],
+                      },
+                    },
+                    { type: "span", props: { style: { fontSize: "9px", color: "#8a8580" }, children: "Base Sepolia" } },
                   ],
                 },
               },

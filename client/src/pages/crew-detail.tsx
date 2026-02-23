@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState, ChainBadge } from "@/components/ui-shared";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Shield, Users, Briefcase, DollarSign } from "lucide-react";
 
 function getCrewTier(score: number) {
   if (score >= 90) return "Diamond Fleet";
@@ -76,6 +76,144 @@ interface CrewDetail {
   memberCount: number;
   members: CrewMember[];
   gigs: CrewGig[];
+}
+
+function CrewPassportCard({ crew }: { crew: CrewDetail }) {
+  const tier = getCrewTier(crew.fusedScore);
+  const tierStyle = crewTierConfig[tier] || crewTierConfig["Hatchling Huddle"];
+  const displayMembers = crew.members.slice(0, 5);
+
+  return (
+    <div
+      className="relative w-full max-w-[520px] rounded-sm overflow-visible"
+      style={{
+        background: "var(--ocean-mid)",
+        border: "1px solid rgba(232, 84, 10, 0.35)",
+      }}
+      data-testid="passport-card"
+    >
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{ borderBottom: "1px solid rgba(107, 127, 163, 0.12)" }}
+      >
+        <span className="text-[10px] font-mono uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+          ClawTrust Crew Passport
+        </span>
+        <span className="flex items-center gap-1 text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
+          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: "var(--teal-glow)" }} />
+          Base Sepolia
+        </span>
+      </div>
+
+      <div className="px-4 py-4">
+        <div className="flex items-center gap-3 mb-4">
+          <div
+            className="w-14 h-14 rounded-sm flex items-center justify-center"
+            style={{ border: "2px solid var(--claw-orange)", background: "var(--ocean-surface)" }}
+          >
+            <Users className="w-7 h-7" style={{ color: "var(--claw-orange)" }} />
+          </div>
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="font-display text-lg truncate" style={{ color: "var(--shell-white)" }}>
+              {crew.name}
+            </span>
+            <span className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>
+              @{crew.handle}
+            </span>
+            <span
+              className="inline-flex items-center gap-1 rounded-sm font-mono text-[10px] px-1.5 py-0.5 w-fit"
+              style={{
+                background: tierStyle.bg,
+                color: tierStyle.color,
+                border: `1px solid ${tierStyle.border}`,
+              }}
+            >
+              {tier}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4 mb-4">
+          <div className="flex-shrink-0">
+            <ScoreRing score={crew.fusedScore} size={80} strokeWidth={6} label="CREW" />
+          </div>
+          <div className="flex-1 space-y-2">
+            <div className="flex items-center gap-1 flex-wrap">
+              {displayMembers.map((member) => {
+                const color = roleColors[member.role] || "var(--text-muted)";
+                return (
+                  <div
+                    key={member.id}
+                    className="flex items-center gap-1.5 rounded-sm px-2 py-1"
+                    style={{
+                      background: "var(--ocean-surface)",
+                      border: "1px solid rgba(0,0,0,0.06)",
+                    }}
+                  >
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-mono flex-shrink-0"
+                      style={{ border: `1.5px solid ${color}`, background: "var(--ocean-mid)", color: "var(--shell-cream)" }}
+                    >
+                      {(member.agent?.handle || "?")[0].toUpperCase()}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-mono truncate max-w-[80px]" style={{ color: "var(--shell-cream)" }}>
+                        {member.agent?.handle || "..."}
+                      </span>
+                      <span className="text-[8px] font-mono" style={{ color }}>{member.role}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {crew.members.length > 5 && (
+                <span className="text-[10px] font-mono px-1" style={{ color: "var(--text-muted)" }}>
+                  +{crew.members.length - 5}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3">
+          <div className="text-center">
+            <p className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Bond Pool</p>
+            <p className="text-sm font-bold font-mono" style={{ color: "var(--teal-glow)" }}>${crew.bondPool.toFixed(0)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Gigs</p>
+            <p className="text-sm font-bold font-mono" style={{ color: "var(--shell-white)" }}>{crew.gigsCompleted}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Earned</p>
+            <p className="text-sm font-bold font-mono" style={{ color: "var(--shell-white)" }}>${crew.totalEarned.toFixed(0)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Members</p>
+            <p className="text-sm font-bold font-mono" style={{ color: "var(--shell-white)" }}>{crew.memberCount}</p>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{ borderTop: "1px solid rgba(107, 127, 163, 0.12)" }}
+      >
+        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+          {crew.ownerWallet.slice(0, 6)}...{crew.ownerWallet.slice(-4)}
+        </span>
+        <span
+          className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+          style={{
+            color: "var(--teal-glow)",
+            background: "rgba(10, 236, 184, 0.08)",
+            border: "1px solid rgba(10, 236, 184, 0.25)",
+          }}
+        >
+          <Shield className="w-3 h-3" /> {crew.bondPool.toFixed(0)} USDC Bonded
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export default function CrewDetailPage() {
@@ -178,28 +316,16 @@ export default function CrewDetailPage() {
           </div>
 
           <div className="mt-6">
-            <img
-              src={`/api/crews/${id}/passport`}
-              alt={`${crew.name} Passport`}
-              className="rounded-sm"
-              style={{
-                width: 600,
-                height: 400,
-                maxWidth: "100%",
-                objectFit: "cover",
-                border: "1px solid rgba(0,0,0,0.06)",
-              }}
-              data-testid="img-crew-passport"
-            />
+            <CrewPassportCard crew={crew} />
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="MEMBERS" value={String(crew.memberCount)} testId="text-crew-stat-members" />
-        <StatCard label="BOND POOL" value={`$${crew.bondPool.toFixed(2)}`} testId="text-crew-stat-bond" teal />
-        <StatCard label="GIGS COMPLETED" value={String(crew.gigsCompleted)} testId="text-crew-stat-gigs" />
-        <StatCard label="TOTAL EARNED" value={`$${crew.totalEarned.toFixed(2)}`} testId="text-crew-stat-earned" />
+        <StatCard label="MEMBERS" value={String(crew.memberCount)} icon={<Users className="w-4 h-4" />} testId="text-crew-stat-members" />
+        <StatCard label="BOND POOL" value={`$${crew.bondPool.toFixed(2)}`} icon={<Shield className="w-4 h-4" />} testId="text-crew-stat-bond" teal />
+        <StatCard label="GIGS COMPLETED" value={String(crew.gigsCompleted)} icon={<Briefcase className="w-4 h-4" />} testId="text-crew-stat-gigs" />
+        <StatCard label="TOTAL EARNED" value={`$${crew.totalEarned.toFixed(2)}`} icon={<DollarSign className="w-4 h-4" />} testId="text-crew-stat-earned" />
       </div>
 
       <div className="space-y-4">
@@ -228,13 +354,14 @@ export default function CrewDetailPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-mono flex-shrink-0"
                         style={{
-                          border: "2px solid var(--claw-orange)",
+                          border: `2px solid ${color}`,
                           background: "var(--ocean-surface)",
+                          color: "var(--shell-cream)",
                         }}
                       >
-                        {member.agent?.avatar || "🦞"}
+                        {(member.agent?.handle || "?")[0].toUpperCase()}
                       </div>
                       <div className="min-w-0">
                         <Link href={`/profile/${member.agentId}`}>
@@ -328,11 +455,13 @@ function StatCard({
   value,
   testId,
   teal,
+  icon,
 }: {
   label: string;
   value: string;
   testId: string;
   teal?: boolean;
+  icon?: React.ReactNode;
 }) {
   return (
     <div
@@ -342,12 +471,15 @@ function StatCard({
         border: "1px solid rgba(0,0,0,0.08)",
       }}
     >
-      <p
-        className="uppercase text-[10px] tracking-widest font-mono"
-        style={{ color: "var(--text-muted)" }}
-      >
-        {label}
-      </p>
+      <div className="flex items-center gap-1.5 mb-1">
+        {icon && <span style={{ color: "var(--text-muted)" }}>{icon}</span>}
+        <p
+          className="uppercase text-[10px] tracking-widest font-mono"
+          style={{ color: "var(--text-muted)" }}
+        >
+          {label}
+        </p>
+      </div>
       <p
         className="font-bold text-2xl mt-1 font-mono"
         style={{ color: teal ? "var(--teal-glow)" : "var(--shell-white)" }}
