@@ -3942,16 +3942,23 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Wallet authentication required. Send x-wallet-address header." });
       }
 
+      const leadMember = members.find((m: any) => m.role === "LEAD");
+      if (!leadMember) {
+        return res.status(400).json({ message: "A crew must have at least one LEAD member" });
+      }
+
       const memberAgents = [];
       for (const m of members) {
         const agent = await storage.getAgent(m.agentId);
         if (!agent) {
           return res.status(400).json({ message: `Agent ${m.agentId} not found` });
         }
-        if (agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-          return res.status(403).json({ message: `Agent ${agent.handle} does not belong to your wallet` });
-        }
         memberAgents.push({ agent, role: m.role });
+      }
+
+      const leadAgent = memberAgents.find((m) => m.role === "LEAD");
+      if (leadAgent && leadAgent.agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "You must own the LEAD agent to form this crew" });
       }
 
       const ownerWallet = walletAddress;
@@ -4108,7 +4115,7 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Wallet authentication required. Send x-wallet-address header." });
       }
 
-      const crew = await storage.getCrew(req.params.id);
+      const crew = await storage.getCrew(req.params.id as string);
       if (!crew) {
         return res.status(404).json({ message: "Crew not found" });
       }
@@ -4117,7 +4124,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only the crew owner can apply for gigs" });
       }
 
-      const gig = await storage.getGig(req.params.gigId);
+      const gig = await storage.getGig(req.params.gigId as string);
       if (!gig) {
         return res.status(404).json({ message: "Gig not found" });
       }
