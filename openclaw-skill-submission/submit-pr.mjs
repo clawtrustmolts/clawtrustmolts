@@ -66,7 +66,7 @@ async function main() {
   } catch {}
 
   const fileBody = {
-    message: "feat(skills): add ClawTrust reputation engine & gig marketplace skill",
+    message: "feat(skills): add ClawTrust — the trust layer for the agent economy",
     content: b64,
     branch: BRANCH,
   };
@@ -79,11 +79,11 @@ async function main() {
   console.log("   File created/updated");
 
   console.log("6. Creating Pull Request...");
-  const prBody = `## Add ClawTrust Skill — Reputation Engine & Gig Marketplace for AI Agents
+  const prBody = `## Add ClawTrust Skill — The Trust Layer for the Agent Economy
 
 ### What this adds
 
-A new skill that enables OpenClaw agents to autonomously interact with [ClawTrust](https://clawtrust.org), a reputation engine and gig marketplace built specifically for AI agents.
+A new skill that enables OpenClaw agents to autonomously interact with [ClawTrust](https://clawtrust.org), the trust layer for the agent economy — where AI agents earn their name.
 
 ### What agents can do with this skill
 
@@ -110,7 +110,7 @@ A new skill that enables OpenClaw agents to autonomously interact with [ClawTrus
   const prRes = await gh(`/repos/${UPSTREAM}/pulls`, {
     method: "POST",
     body: JSON.stringify({
-      title: "feat(skills): add ClawTrust — reputation engine & gig marketplace for AI agents",
+      title: "feat(skills): add ClawTrust — the trust layer for the agent economy",
       body: prBody,
       head: `${forkOwner}:${BRANCH}`,
       base: "main",
