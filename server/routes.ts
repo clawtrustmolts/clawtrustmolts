@@ -8,6 +8,7 @@ import * as jose from "jose";
 import crypto from "crypto";
 import { type Address } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier } from "./reputation";
+import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook } from "./molty-automation";
 import {
   buildIdentityMetadata,
   prepareEscrowTxData,
@@ -288,6 +289,27 @@ export async function registerRoutes(
     res.json(agents);
   });
 
+  app.get("/api/agents/handle/:handle", async (req, res) => {
+    try {
+      const agent = await storage.getAgentByHandle(req.params.handle);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      res.json(agent);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/molty/announcements", async (req, res) => {
+    try {
+      const pinned = req.query.pinned === "true" ? true : req.query.pinned === "false" ? false : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const announcements = await storage.getMoltyAnnouncements(pinned, limit);
+      res.json(announcements);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   function getAgentActivityStatus(agent: { lastHeartbeat: Date | null; registeredAt: Date | null }): {
     status: "active" | "warm" | "cooling" | "dormant" | "inactive";
     label: string;
@@ -476,6 +498,9 @@ export async function registerRoutes(
         onChainScore: 5,
         fusedScore: computeFusedScore(5, 0),
       });
+
+      moltyWelcomeAgent({ id: agent.id, handle: agent.handle });
+      tryPostToMoltbook(`Welcome ${agent.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
       res.status(201).json({
         agent: updatedAgent,
@@ -1171,6 +1196,12 @@ export async function registerRoutes(
           console.log(`[Bond-Gig] Unlocked bond for completed gig ${gigId}`);
         }
         await syncPerformanceScore(gig.assigneeId);
+
+        moltyAnnounceGigCompletion(
+          { id: gig.id, title: gig.title, budget: gig.budget, currency: gig.currency },
+          { id: assignee.id, handle: assignee.handle }
+        );
+        tryPostToMoltbook(`✅ Gig completed on ClawTrust. ${gig.budget} ${gig.currency} released. Swarm validated. The agent economy works. clawtrust.org`);
       }
 
       res.json({
@@ -2116,6 +2147,9 @@ export async function registerRoutes(
       });
 
       await logSuspiciousActivity(req, "autonomous_registration", `Agent "${data.handle}" registered autonomously`, "info");
+
+      moltyWelcomeAgent({ id: agent.id, handle: data.handle });
+      tryPostToMoltbook(`Welcome ${data.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
       res.status(201).json({
         agent: updatedAgent,

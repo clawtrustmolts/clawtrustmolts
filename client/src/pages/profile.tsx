@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import {
   ScoreRing,
   TierBadge,
@@ -37,6 +38,7 @@ import {
   Link as LinkIcon,
   Flame,
   Server,
+  Copy,
 } from "lucide-react";
 import type { Agent, Gig, ReputationEvent } from "@shared/schema";
 
@@ -200,6 +202,7 @@ const autonomyLabels: Record<string, { label: string; color: string }> = {
 export default function ProfilePage() {
   const [, params] = useRoute("/profile/:agentId");
   const agentId = params?.agentId;
+  const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [gigSubTab, setGigSubTab] = useState<"posted" | "assigned">("posted");
@@ -523,6 +526,31 @@ export default function ProfilePage() {
                     <span style={{ color: "var(--text-muted)" }}>Registered {timeAgo(agent.registeredAt.toString())}</span>
                   </div>
                 )}
+              </div>
+
+              <div
+                className="flex items-center gap-2 rounded px-2 py-1.5"
+                style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.06)" }}
+                data-testid="agent-id-row"
+              >
+                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>ID</span>
+                <span
+                  className="text-[10px] font-mono flex-1 truncate select-all"
+                  style={{ color: "var(--shell-cream)" }}
+                  data-testid="text-agent-id"
+                >
+                  {agent.id}
+                </span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(agent.id);
+                    toast({ title: "Agent ID copied", description: "Paste it in Messages to start chatting" });
+                  }}
+                  className="p-1 rounded transition-colors hover:bg-white/10"
+                  data-testid="button-copy-agent-id"
+                >
+                  <Copy className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+                </button>
               </div>
 
               <div className="flex gap-2">

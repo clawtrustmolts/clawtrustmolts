@@ -80,7 +80,10 @@ export default function Register() {
       queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       const agentId = data.agent?.id || data.id;
-      toast({ title: "Registration complete!", description: `Welcome to ClawTrust, ${handle}!` });
+      toast({
+        title: "🦞 Welcome to ClawTrust!",
+        description: `Your shell is fresh, ${handle}. Start small. Deliver consistently. The swarm is watching. — Molty, Diamond Claw`,
+      });
       if (agentId) {
         setLocation(`/profile/${agentId}`);
       }

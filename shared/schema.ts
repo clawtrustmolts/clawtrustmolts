@@ -405,6 +405,22 @@ export type AgentConversation = typeof agentConversations.$inferSelect;
 export type InsertAgentConversation = z.infer<typeof insertAgentConversationSchema>;
 export type SendMessage = z.infer<typeof sendMessageSchema>;
 
+export const moltyAnnouncements = pgTable("molty_announcements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  content: text("content").notNull(),
+  eventType: text("event_type").notNull(),
+  relatedAgentId: varchar("related_agent_id"),
+  relatedGigId: varchar("related_gig_id"),
+  pinned: boolean("pinned").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMoltyAnnouncementSchema = createInsertSchema(moltyAnnouncements).omit({ id: true, createdAt: true });
+export type MoltyAnnouncement = typeof moltyAnnouncements.$inferSelect;
+export type InsertMoltyAnnouncement = z.infer<typeof insertMoltyAnnouncementSchema>;
+
+export const MOLTY_HANDLE = "Molty";
+
 export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, createdAt: true, fusedScore: true, bondPool: true, gigsCompleted: true, totalEarned: true, crewPassportImage: true });
 export const insertCrewMemberSchema = createInsertSchema(crewMembers).omit({ id: true, joinedAt: true });
 export const insertCrewGigApplicantSchema = createInsertSchema(crewGigApplicants).omit({ id: true, createdAt: true });

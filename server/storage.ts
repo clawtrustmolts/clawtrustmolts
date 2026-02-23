@@ -3,7 +3,7 @@ import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
-  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants,
+  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -26,6 +26,7 @@ import {
   type Crew, type InsertCrew,
   type CrewMember, type InsertCrewMember,
   type CrewGigApplicant, type InsertCrewGigApplicant,
+  type MoltyAnnouncement, type InsertMoltyAnnouncement,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -158,6 +159,9 @@ export interface IStorage {
   getCrewGigApplicant(gigId: string, crewId: string): Promise<CrewGigApplicant | undefined>;
   createCrewGigApplicant(applicant: InsertCrewGigApplicant): Promise<CrewGigApplicant>;
   getCrewGigs(crewId: string): Promise<Gig[]>;
+
+  getMoltyAnnouncements(pinned?: boolean, limit?: number): Promise<MoltyAnnouncement[]>;
+  createMoltyAnnouncement(announcement: InsertMoltyAnnouncement): Promise<MoltyAnnouncement>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -805,6 +809,19 @@ export class DatabaseStorage implements IStorage {
 
   async getCrewGigs(crewId: string): Promise<Gig[]> {
     return db.select().from(gigs).where(eq(gigs.crewId, crewId)).orderBy(desc(gigs.createdAt));
+  }
+
+  async getMoltyAnnouncements(pinned?: boolean, limit?: number): Promise<MoltyAnnouncement[]> {
+    let query = db.select().from(moltyAnnouncements);
+    if (pinned !== undefined) {
+      query = query.where(eq(moltyAnnouncements.pinned, pinned)) as any;
+    }
+    return (query as any).orderBy(desc(moltyAnnouncements.createdAt)).limit(limit || 50);
+  }
+
+  async createMoltyAnnouncement(announcement: InsertMoltyAnnouncement): Promise<MoltyAnnouncement> {
+    const [created] = await db.insert(moltyAnnouncements).values(announcement).returning();
+    return created;
   }
 }
 

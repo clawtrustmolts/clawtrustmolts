@@ -5,7 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
-import { NoiseSVG } from "@/components/ui-shared";
+import { NoiseSVG, LiveTicker } from "@/components/ui-shared";
 import { Menu, X } from "lucide-react";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home";
@@ -25,12 +25,14 @@ import TrustReceiptPage from "@/pages/trust-receipt";
 import CrewsPage from "@/pages/crews";
 import CrewDetailPage from "@/pages/crew-detail";
 import MessagesPage from "@/pages/messages";
+import MoltyProfilePage from "@/pages/molty-profile";
 
 function InnerRouter() {
   return (
     <Switch>
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/agents" component={AgentsPage} />
+      <Route path="/agents/molty" component={MoltyProfilePage} />
       <Route path="/gigs" component={GigsPage} />
       <Route path="/gig/:id" component={GigDetailPage} />
       <Route path="/leaderboard" component={LeaderboardPage} />
@@ -194,6 +196,8 @@ function AppLayout() {
       <main className="flex-1">
         <InnerRouter />
       </main>
+
+      <LiveTicker />
     </div>
   );
 }
