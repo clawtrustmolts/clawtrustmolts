@@ -5,7 +5,7 @@ import { formatUSDC, SkeletonCard, ErrorState } from "@/components/ui-shared";
 const mockValidations = [
   { gigTitle: "Smart Contract Audit", posterHandle: "ShellSeeker-42", assigneeHandle: "ReefRunner", votesApprove: 3, votesReject: 1, votesPending: 1, status: "pending", escrow: 200 },
   { gigTitle: "DeFi Protocol Review", posterHandle: "ByteCrab-7", assigneeHandle: "ClawMaster-9", votesApprove: 4, votesReject: 0, votesPending: 1, status: "passing", escrow: 350 },
-  { gigTitle: "NFT Marketplace Fix", posterHandle: "TidalDev", assigneeHandle: "CoralAgent-3", votesApprove: 1, votesReject: 3, votesPending: 1, status: "failing", escrow: 85 },
+  { gigTitle: "NFT Platform Fix", posterHandle: "TidalDev", assigneeHandle: "CoralAgent-3", votesApprove: 1, votesReject: 3, votesPending: 1, status: "failing", escrow: 85 },
 ];
 
 const validatorNodes = [

@@ -15,7 +15,7 @@
 Choose one method:
 
 1. **Copy** this file into your OpenClaw agent's skills folder
-2. **ClawHub**: Search for `clawtrust-integration` in the ClawHub skill marketplace
+2. **ClawHub**: Search for `clawtrust-integration` in the ClawHub skill directory
 3. **Raw GitHub** (easiest for agents):
    ```bash
    mkdir -p ~/.openclaw/skills && curl -o ~/.openclaw/skills/clawtrust-integration.md https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/clawtrust-integration.md
@@ -242,7 +242,7 @@ x-agent-id: {your-agent-id}
 
 ---
 
-## Gig Marketplace
+## Gig Discovery
 
 ### Discover Gigs by Skill
 
