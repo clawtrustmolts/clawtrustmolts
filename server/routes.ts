@@ -3787,5 +3787,136 @@ export async function registerRoutes(
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // AGENT REVIEWS
+  // ═══════════════════════════════════════════════════════════════
+
+  app.post("/api/reviews", apiLimiter, async (req, res) => {
+    try {
+      const { gigId, reviewerId, revieweeId, rating, content, tags } = req.body;
+      if (!gigId || !reviewerId || !revieweeId || !rating || !content) {
+        return res.status(400).json({ message: "Missing required fields: gigId, reviewerId, revieweeId, rating, content" });
+      }
+      if (rating < 1 || rating > 5) {
+        return res.status(400).json({ message: "Rating must be between 1 and 5" });
+      }
+      if (content.length > 1000) {
+        return res.status(400).json({ message: "Review content too long (max 1000 characters)" });
+      }
+      const reviewer = await storage.getAgent(reviewerId);
+      const reviewee = await storage.getAgent(revieweeId);
+      if (!reviewer || !reviewee) {
+        return res.status(404).json({ message: "Reviewer or reviewee not found" });
+      }
+      const gig = await storage.getGig(gigId);
+      if (!gig) {
+        return res.status(404).json({ message: "Gig not found" });
+      }
+      if (gig.status !== "completed") {
+        return res.status(400).json({ message: "Reviews can only be submitted for completed gigs" });
+      }
+      const existing = await storage.getReviewForGig(gigId, reviewerId);
+      if (existing) {
+        return res.status(409).json({ message: "You have already reviewed this gig" });
+      }
+      const review = await storage.createAgentReview({
+        gigId,
+        reviewerId,
+        revieweeId,
+        rating: Number(rating),
+        content,
+        tags: tags || [],
+      });
+      res.status(201).json(review);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/reviews/agent/:agentId", async (req, res) => {
+    try {
+      const { agentId } = req.params;
+      const limit = Math.min(Number(req.query.limit) || 20, 50);
+      const offset = Number(req.query.offset) || 0;
+      const reviews = await storage.getReviewsForAgent(agentId, limit, offset);
+      const count = await storage.getReviewCountForAgent(agentId);
+      const avgRating = await storage.getAverageRatingForAgent(agentId);
+
+      const enriched = await Promise.all(reviews.map(async (r) => {
+        const reviewer = await storage.getAgent(r.reviewerId);
+        return {
+          ...r,
+          reviewer: reviewer ? { id: reviewer.id, handle: reviewer.handle, avatar: reviewer.avatar, fusedScore: reviewer.fusedScore } : null,
+        };
+      }));
+
+      res.json({ reviews: enriched, total: count, averageRating: avgRating });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // TRUST RECEIPTS
+  // ═══════════════════════════════════════════════════════════════
+
+  app.post("/api/trust-receipts", apiLimiter, async (req, res) => {
+    try {
+      const { gigId, agentId, posterId, gigTitle, amount, currency, chain, swarmVerdict, scoreChange, tierBefore, tierAfter } = req.body;
+      if (!gigId || !agentId || !posterId || !gigTitle) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const existing = await storage.getTrustReceiptByGig(gigId, agentId);
+      if (existing) {
+        return res.status(409).json({ message: "Trust receipt already exists for this gig" });
+      }
+      const receipt = await storage.createTrustReceipt({
+        gigId,
+        agentId,
+        posterId,
+        gigTitle,
+        amount: amount || 0,
+        currency: currency || "USDC",
+        chain: chain || "BASE_SEPOLIA",
+        swarmVerdict: swarmVerdict || null,
+        scoreChange: scoreChange || 0,
+        tierBefore: tierBefore || null,
+        tierAfter: tierAfter || null,
+        completedAt: new Date(),
+      });
+      res.status(201).json(receipt);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/trust-receipts/:id", async (req, res) => {
+    try {
+      const receipt = await storage.getTrustReceipt(req.params.id);
+      if (!receipt) {
+        return res.status(404).json({ message: "Trust receipt not found" });
+      }
+      const agent = await storage.getAgent(receipt.agentId);
+      const poster = await storage.getAgent(receipt.posterId);
+      res.json({
+        ...receipt,
+        agent: agent ? { id: agent.id, handle: agent.handle, avatar: agent.avatar, fusedScore: agent.fusedScore } : null,
+        poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/trust-receipts/agent/:agentId", async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 20, 50);
+      const receipts = await storage.getTrustReceiptsForAgent(req.params.agentId, limit);
+      res.json({ receipts });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

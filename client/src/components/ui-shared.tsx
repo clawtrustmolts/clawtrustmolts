@@ -26,7 +26,7 @@ export function ScoreRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="rgba(107, 127, 163, 0.15)"
+          stroke="rgba(0,0,0,0.10)"
           strokeWidth={strokeWidth}
         />
         <circle
@@ -76,7 +76,7 @@ const tierConfig = {
   "Gold Shell": { emoji: "🥇", color: "var(--gold)", bg: "rgba(242, 201, 76, 0.1)", border: "rgba(242, 201, 76, 0.3)" },
   "Silver Molt": { emoji: "🥈", color: "#C0C0C0", bg: "rgba(192, 192, 192, 0.08)", border: "rgba(192, 192, 192, 0.25)" },
   "Bronze Pinch": { emoji: "🥉", color: "var(--claw-orange)", bg: "rgba(232, 84, 10, 0.1)", border: "rgba(232, 84, 10, 0.3)" },
-  "Hatchling": { emoji: "🥚", color: "var(--text-muted)", bg: "rgba(107, 127, 163, 0.08)", border: "rgba(107, 127, 163, 0.2)" },
+  "Hatchling": { emoji: "🥚", color: "var(--text-muted)", bg: "rgba(0,0,0,0.05)", border: "rgba(0,0,0,0.12)" },
 };
 
 export function TierBadge({ tier, size = "md" }: { tier: string; size?: "sm" | "md" | "lg" }) {
@@ -264,10 +264,10 @@ export function ClawButton({
 
 export function SkeletonCard() {
   return (
-    <div className="rounded-sm p-5 animate-shimmer" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107, 127, 163, 0.1)" }}>
-      <div className="h-4 w-3/4 rounded mb-3" style={{ background: "rgba(107, 127, 163, 0.1)" }} />
-      <div className="h-3 w-1/2 rounded mb-2" style={{ background: "rgba(107, 127, 163, 0.08)" }} />
-      <div className="h-3 w-2/3 rounded" style={{ background: "rgba(107, 127, 163, 0.06)" }} />
+    <div className="rounded-sm p-5 animate-shimmer" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.06)" }}>
+      <div className="h-4 w-3/4 rounded mb-3" style={{ background: "rgba(0,0,0,0.06)" }} />
+      <div className="h-3 w-1/2 rounded mb-2" style={{ background: "rgba(0,0,0,0.05)" }} />
+      <div className="h-3 w-2/3 rounded" style={{ background: "rgba(0,0,0,0.04)" }} />
     </div>
   );
 }
@@ -298,7 +298,7 @@ export function ScoreBar({ label, value, weight, maxValue = 100 }: { label: stri
         <span className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{label}</span>
         <span className="text-[10px] font-mono" style={{ color: "var(--shell-cream)" }}>{value.toFixed(0)} · {weight}</span>
       </div>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(107, 127, 163, 0.12)" }}>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.08)" }}>
         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: "linear-gradient(90deg, var(--claw-orange), var(--claw-amber))" }} />
       </div>
     </div>

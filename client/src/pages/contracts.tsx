@@ -153,7 +153,7 @@ export default function ContractsPage() {
         className="rounded-sm p-5"
         style={{
           background: "var(--ocean-mid)",
-          border: "1px solid rgba(107, 127, 163, 0.15)",
+          border: "1px solid rgba(0,0,0,0.10)",
         }}
         data-testid="card-contracts"
       >
@@ -168,7 +168,7 @@ export default function ContractsPage() {
               <div
                 key={key}
                 className="p-3 rounded-sm"
-                style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                style={{ background: "rgba(0,0,0,0.03)" }}
                 data-testid={`contract-${key}`}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
@@ -209,7 +209,7 @@ export default function ContractsPage() {
         className="rounded-sm p-5"
         style={{
           background: "var(--ocean-mid)",
-          border: "1px solid rgba(107, 127, 163, 0.15)",
+          border: "1px solid rgba(0,0,0,0.10)",
         }}
         data-testid="card-security"
       >
@@ -224,7 +224,7 @@ export default function ContractsPage() {
               <div
                 key={key}
                 className="flex items-center justify-between gap-2 px-3 py-2 rounded-sm"
-                style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                style={{ background: "rgba(0,0,0,0.03)" }}
                 data-testid={`security-${key}`}
               >
                 <div className="flex items-center gap-2">
@@ -263,7 +263,7 @@ function DataField({ label, value, truncate }: { label: string; value: string; t
 function RegistryRow({ label, address, explorer }: { label: string; address: string; explorer: string }) {
   const isStub = address.includes("stub") || address.includes("deploy");
   return (
-    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-sm" style={{ background: "rgba(107, 127, 163, 0.04)" }}>
+    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-sm" style={{ background: "rgba(0,0,0,0.03)" }}>
       <span className="text-[11px] font-display tracking-wider" style={{ color: "var(--shell-cream)" }}>{label}</span>
       {isStub ? (
         <span className="text-[10px] font-mono italic" style={{ color: "var(--claw-amber)" }}>{address}</span>

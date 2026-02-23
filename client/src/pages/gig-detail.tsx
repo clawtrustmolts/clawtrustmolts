@@ -47,7 +47,7 @@ const statusConfig: Record<string, { label: string; color: string; bg: string }>
   completed: { label: "COMPLETED", color: "#22c55e", bg: "rgba(34, 197, 94, 0.08)" },
   disputed: { label: "DISPUTED", color: "#ef4444", bg: "rgba(239, 68, 68, 0.08)" },
   pending_validation: { label: "PENDING VALIDATION", color: "var(--claw-orange)", bg: "rgba(232, 84, 10, 0.08)" },
-  cancelled: { label: "CANCELLED", color: "var(--text-muted)", bg: "rgba(107, 127, 163, 0.08)" },
+  cancelled: { label: "CANCELLED", color: "var(--text-muted)", bg: "rgba(0,0,0,0.05)" },
 };
 
 const escrowStatusConfig: Record<string, { label: string; color: string }> = {
@@ -235,7 +235,7 @@ export default function GigDetailPage() {
             className="rounded-sm p-5"
             style={{
               background: "var(--ocean-mid)",
-              border: "1px solid rgba(107, 127, 163, 0.15)",
+              border: "1px solid rgba(0,0,0,0.10)",
             }}
             data-testid="card-escrow"
           >
@@ -253,7 +253,7 @@ export default function GigDetailPage() {
                     <div
                       key={escrow.id}
                       className="flex items-center justify-between gap-3 p-3 rounded-sm"
-                      style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                      style={{ background: "rgba(0,0,0,0.03)" }}
                       data-testid={`escrow-${escrow.id}`}
                     >
                       <div className="flex-1 min-w-0">
@@ -294,7 +294,7 @@ export default function GigDetailPage() {
             className="rounded-sm p-5"
             style={{
               background: "var(--ocean-mid)",
-              border: "1px solid rgba(107, 127, 163, 0.15)",
+              border: "1px solid rgba(0,0,0,0.10)",
             }}
             data-testid="card-applicants"
           >
@@ -310,7 +310,7 @@ export default function GigDetailPage() {
                   <div
                     key={app.id}
                     className="p-3 rounded-sm"
-                    style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                    style={{ background: "rgba(0,0,0,0.03)" }}
                     data-testid={`applicant-${app.id}`}
                   >
                     {app.agent ? (
@@ -327,7 +327,7 @@ export default function GigDetailPage() {
                           {app.agent.skills.length > 0 && (
                             <div className="flex flex-wrap gap-1 mb-1">
                               {app.agent.skills.slice(0, 3).map((s) => (
-                                <span key={s} className="text-[9px] font-mono px-1 rounded-sm" style={{ background: "rgba(107,127,163,0.1)", color: "var(--text-muted)" }}>
+                                <span key={s} className="text-[9px] font-mono px-1 rounded-sm" style={{ background: "rgba(0,0,0,0.06)", color: "var(--text-muted)" }}>
                                   {s}
                                 </span>
                               ))}
@@ -366,7 +366,7 @@ function AgentCard({ agent, label, testId }: { agent?: Agent; label: string; tes
     return (
       <div
         className="rounded-sm p-4"
-        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107, 127, 163, 0.1)" }}
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.06)" }}
         data-testid={testId}
       >
         <p className="text-[10px] uppercase tracking-widest font-display mb-2" style={{ color: "var(--text-muted)" }}>
@@ -381,7 +381,7 @@ function AgentCard({ agent, label, testId }: { agent?: Agent; label: string; tes
     <Link href={`/profile/${agent.id}`}>
       <div
         className="rounded-sm p-4 cursor-pointer hover-elevate"
-        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107, 127, 163, 0.1)" }}
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.06)" }}
         data-testid={testId}
       >
         <p className="text-[10px] uppercase tracking-widest font-display mb-3" style={{ color: "var(--text-muted)" }}>

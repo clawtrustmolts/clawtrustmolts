@@ -12,7 +12,7 @@ function CodeBlock({ code }: { code: string }) {
     <div className="relative group">
       <pre
         className="rounded-sm p-3 overflow-x-auto text-xs font-mono leading-relaxed"
-        style={{ background: "var(--ocean-surface)", border: "1px solid rgba(107,127,163,0.1)" }}
+        style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.06)" }}
       >
         <code style={{ color: "var(--shell-cream)" }}>{code}</code>
       </pre>
@@ -98,7 +98,7 @@ export default function Register() {
 
   const inputStyle: React.CSSProperties = {
     background: "var(--ocean-surface)",
-    border: "1px solid rgba(107,127,163,0.15)",
+    border: "1px solid rgba(0,0,0,0.10)",
     color: "var(--shell-white)",
     borderRadius: "2px",
     width: "100%",
@@ -111,8 +111,8 @@ export default function Register() {
   const tabStyle = (active: boolean): React.CSSProperties => ({
     background: active ? "rgba(232, 84, 10, 0.1)" : "transparent",
     color: active ? "var(--claw-orange)" : "var(--text-muted)",
-    border: active ? "1px solid rgba(232, 84, 10, 0.25)" : "1px solid rgba(107,127,163,0.1)",
-    borderBottom: active ? "1px solid transparent" : "1px solid rgba(107,127,163,0.1)",
+    border: active ? "1px solid rgba(232, 84, 10, 0.25)" : "1px solid rgba(0,0,0,0.06)",
+    borderBottom: active ? "1px solid transparent" : "1px solid rgba(0,0,0,0.06)",
   });
 
   return (
@@ -174,7 +174,7 @@ export default function Register() {
                 placeholder="my-openclaw-agent"
                 style={inputStyle}
                 onFocus={(e) => (e.target.style.borderColor = "var(--claw-orange)")}
-                onBlur={(e) => (e.target.style.borderColor = "rgba(107,127,163,0.15)")}
+                onBlur={(e) => (e.target.style.borderColor = "rgba(0,0,0,0.10)")}
                 data-testid="input-handle"
                 required
               />
@@ -197,7 +197,7 @@ export default function Register() {
                 rows={3}
                 style={{ ...inputStyle, resize: "vertical" }}
                 onFocus={(e) => (e.target.style.borderColor = "var(--claw-orange)")}
-                onBlur={(e) => (e.target.style.borderColor = "rgba(107,127,163,0.15)")}
+                onBlur={(e) => (e.target.style.borderColor = "rgba(0,0,0,0.10)")}
                 data-testid="input-bio"
               />
             </div>
@@ -217,7 +217,7 @@ export default function Register() {
                 placeholder="Type a skill and press Enter"
                 style={inputStyle}
                 onFocus={(e) => (e.target.style.borderColor = "var(--claw-orange)")}
-                onBlur={(e) => (e.target.style.borderColor = "rgba(107,127,163,0.15)")}
+                onBlur={(e) => (e.target.style.borderColor = "rgba(0,0,0,0.10)")}
                 data-testid="input-skills"
               />
               {skills.length > 0 && (
@@ -258,7 +258,7 @@ export default function Register() {
                 placeholder="https://moltbook.com/@your-agent"
                 style={inputStyle}
                 onFocus={(e) => (e.target.style.borderColor = "var(--claw-orange)")}
-                onBlur={(e) => (e.target.style.borderColor = "rgba(107,127,163,0.15)")}
+                onBlur={(e) => (e.target.style.borderColor = "rgba(0,0,0,0.10)")}
                 data-testid="input-moltbook"
               />
               <p className="text-[10px] mt-1 font-mono" style={{ color: "var(--text-muted)" }}>

@@ -129,7 +129,7 @@ export default function LeaderboardPage() {
                       color: "var(--text-muted)",
                       letterSpacing: "1px",
                       textTransform: "uppercase",
-                      borderBottom: "1px solid rgba(107,127,163,0.15)",
+                      borderBottom: "1px solid rgba(0,0,0,0.10)",
                     }}
                   >
                     {col}
@@ -151,7 +151,7 @@ export default function LeaderboardPage() {
                     className={`transition-colors ${rankClass}`}
                     style={{
                       background: rankClass ? undefined : "var(--ocean-mid)",
-                      borderBottom: "1px solid rgba(107,127,163,0.08)",
+                      borderBottom: "1px solid rgba(0,0,0,0.05)",
                     }}
                     onMouseEnter={(e) => {
                       if (!rankClass) e.currentTarget.style.background = "var(--ocean-surface)";

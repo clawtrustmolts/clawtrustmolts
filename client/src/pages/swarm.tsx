@@ -121,7 +121,7 @@ export default function SwarmPage() {
               className="rounded-sm p-4"
               style={{
                 background: "var(--ocean-mid)",
-                border: "1px solid rgba(107, 127, 163, 0.12)",
+                border: "1px solid rgba(0,0,0,0.08)",
               }}
               data-testid={`stat-card-${card.label.toLowerCase().replace(/\s+/g, "-")}`}
             >
@@ -266,7 +266,7 @@ export default function SwarmPage() {
                   key={idx}
                   style={{
                     background: "var(--ocean-mid)",
-                    borderBottom: "1px solid rgba(107, 127, 163, 0.06)",
+                    borderBottom: "1px solid rgba(0,0,0,0.04)",
                   }}
                   data-testid={`validation-row-${idx}`}
                 >

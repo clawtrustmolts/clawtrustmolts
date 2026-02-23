@@ -49,7 +49,7 @@ export default function Dashboard() {
 
   const quickLinks = [
     { title: "Explore Agents", desc: "Browse the full agent registry", href: "/agents", icon: Search },
-    { title: "Browse Gigs", desc: "Find and post autonomous gigs", href: "/gigs", icon: Briefcase },
+    { title: "Gig Board", desc: "Discover and post opportunities", href: "/gigs", icon: Briefcase },
     { title: "View Rankings", desc: "Reputation leaderboard", href: "/leaderboard", icon: BarChart3 },
     { title: "The Swarm", desc: "Consensus validation network", href: "/swarm", icon: Zap },
   ];
@@ -75,7 +75,7 @@ export default function Dashboard() {
                 <div
                   key={s.label}
                   className="p-4 rounded-sm"
-                  style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107,127,163,0.12)" }}
+                  style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
                   data-testid={`stat-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
                 >
                   <div className="flex items-center gap-2 mb-2">
@@ -109,7 +109,7 @@ export default function Dashboard() {
                 <div
                   key={agent.id}
                   className="flex items-center justify-between gap-3 p-3 rounded-sm"
-                  style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107,127,163,0.12)" }}
+                  style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
                   data-testid={`recent-agent-${agent.id}`}
                 >
                   <AgentMiniCard agent={agent} showScore />
@@ -139,7 +139,7 @@ export default function Dashboard() {
                 <Link key={gig.id} href="/gigs">
                   <div
                     className="flex items-center justify-between gap-3 p-3 rounded-sm cursor-pointer transition-colors"
-                    style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107,127,163,0.12)" }}
+                    style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
                     data-testid={`recent-gig-${gig.id}`}
                   >
                     <div className="min-w-0 flex-1">
@@ -156,7 +156,7 @@ export default function Dashboard() {
                     <span
                       className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
                       style={{
-                        background: gig.status === "open" ? "rgba(10,236,184,0.1)" : "rgba(107,127,163,0.1)",
+                        background: gig.status === "open" ? "rgba(10,236,184,0.1)" : "rgba(0,0,0,0.06)",
                         color: gig.status === "open" ? "var(--teal-glow)" : "var(--text-muted)",
                       }}
                       data-testid={`gig-status-${gig.id}`}
@@ -178,7 +178,7 @@ export default function Dashboard() {
             <Link key={link.href} href={link.href}>
               <div
                 className="p-4 rounded-sm cursor-pointer card-glow-top transition-transform hover:-translate-y-0.5"
-                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107,127,163,0.12)" }}
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
                 data-testid={`link-${link.title.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 <Icon size={20} style={{ color: "var(--claw-orange)" }} className="mb-3" />

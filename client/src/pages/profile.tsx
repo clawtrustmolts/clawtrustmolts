@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import type { Agent, Gig, ReputationEvent } from "@shared/schema";
 
-type TabId = "overview" | "gigs" | "social" | "bond";
+type TabId = "overview" | "gigs" | "social" | "bond" | "reviews";
 
 interface RepData {
   fusedScore: number;
@@ -128,6 +128,24 @@ interface BondEvent {
 interface BondHistoryResponse {
   events: BondEvent[];
   total: number;
+}
+
+interface ReviewEntry {
+  id: string;
+  gigId: string;
+  reviewerId: string;
+  revieweeId: string;
+  rating: number;
+  content: string;
+  tags: string[];
+  createdAt: string | null;
+  reviewer: { id: string; handle: string; avatar: string | null; fusedScore: number } | null;
+}
+
+interface ReviewsResponse {
+  reviews: ReviewEntry[];
+  total: number;
+  averageRating: number;
 }
 
 interface AgentSkill {
@@ -231,6 +249,11 @@ export default function ProfilePage() {
     enabled: !!agentId,
   });
 
+  const { data: reviewsData } = useQuery<ReviewsResponse>({
+    queryKey: ["/api/reviews/agent", agentId],
+    enabled: !!agentId && activeTab === "reviews",
+  });
+
   if (agentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
@@ -281,6 +304,7 @@ export default function ProfilePage() {
   const tabs: { id: TabId; label: string }[] = [
     { id: "overview", label: "OVERVIEW" },
     { id: "gigs", label: "GIGS" },
+    { id: "reviews", label: "REVIEWS" },
     { id: "bond", label: "BOND & RISK" },
     { id: "social", label: "SOCIAL" },
   ];
@@ -379,6 +403,16 @@ export default function ProfilePage() {
 
               <TierBadge tier={tier} size="md" />
 
+              <Link href={`/agent-life/${agent.id}`}>
+                <span
+                  className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
+                  style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                  data-testid="link-agent-life"
+                >
+                  Your Agent's Life →
+                </span>
+              </Link>
+
               <div className="flex justify-center">
                 <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
               </div>
@@ -397,9 +431,9 @@ export default function ProfilePage() {
                       key={skill}
                       className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
                       style={{
-                        background: "rgba(107, 127, 163, 0.1)",
+                        background: "rgba(0,0,0,0.06)",
                         color: "var(--shell-cream)",
-                        border: "1px solid rgba(107, 127, 163, 0.2)",
+                        border: "1px solid rgba(0,0,0,0.12)",
                       }}
                     >
                       {skill}
@@ -480,7 +514,7 @@ export default function ProfilePage() {
             className="rounded-sm overflow-hidden"
             style={{
               background: "var(--ocean-mid)",
-              border: "1px solid rgba(107, 127, 163, 0.15)",
+              border: "1px solid rgba(0,0,0,0.10)",
             }}
             data-testid="card-claw-card"
           >
@@ -492,7 +526,7 @@ export default function ProfilePage() {
                 src={`/api/agents/${agentId}/card`}
                 alt={`${agent.handle} Claw Card`}
                 className="w-full rounded-sm"
-                style={{ border: "1px solid rgba(107, 127, 163, 0.1)" }}
+                style={{ border: "1px solid rgba(0,0,0,0.06)" }}
                 data-testid="img-claw-card"
               />
             </div>
@@ -503,7 +537,7 @@ export default function ProfilePage() {
               className="rounded-sm p-4"
               style={{
                 background: "var(--ocean-mid)",
-                border: "1px solid rgba(107, 127, 163, 0.15)",
+                border: "1px solid rgba(0,0,0,0.10)",
               }}
               data-testid="badges-row"
             >
@@ -535,7 +569,7 @@ export default function ProfilePage() {
         <div className="flex-1 min-w-0">
           <div
             className="flex gap-0 mb-6 overflow-x-auto"
-            style={{ borderBottom: "1px solid rgba(107, 127, 163, 0.15)" }}
+            style={{ borderBottom: "1px solid rgba(0,0,0,0.10)" }}
             data-testid="tab-bar"
           >
             {tabs.map((tab) => (
@@ -579,6 +613,13 @@ export default function ProfilePage() {
               bondHistory={bondHistory}
             />
           )}
+          {activeTab === "reviews" && (
+            <ReviewsTab
+              reviews={reviewsData?.reviews || []}
+              total={reviewsData?.total || 0}
+              averageRating={reviewsData?.averageRating || 0}
+            />
+          )}
           {activeTab === "social" && (
             <SocialTab
               followers={followersData?.followers || []}
@@ -597,7 +638,7 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   return (
     <div
       className="flex items-center justify-between text-[11px] font-mono px-3 py-1.5 rounded-sm"
-      style={{ background: "rgba(107, 127, 163, 0.04)" }}
+      style={{ background: "rgba(0,0,0,0.03)" }}
     >
       <div className="flex items-center gap-2">
         <span style={{ color: "var(--claw-orange)" }}>{icon}</span>
@@ -614,7 +655,7 @@ function SectionCard({ children, testId, teal }: { children: React.ReactNode; te
       className="rounded-sm p-5"
       style={{
         background: teal ? "rgba(10, 236, 184, 0.04)" : "var(--ocean-mid)",
-        border: teal ? "1px solid rgba(10, 236, 184, 0.2)" : "1px solid rgba(107, 127, 163, 0.15)",
+        border: teal ? "1px solid rgba(10, 236, 184, 0.2)" : "1px solid rgba(0,0,0,0.10)",
       }}
       data-testid={testId}
     >
@@ -699,7 +740,7 @@ function OverviewTab({
               <div
                 key={skill.id}
                 className="p-3 rounded-sm"
-                style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                style={{ background: "rgba(0,0,0,0.03)" }}
                 data-testid={`mcp-skill-${skill.id}`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -743,7 +784,7 @@ function OverviewTab({
               <div
                 key={event.id}
                 className="flex items-center gap-3 p-3 rounded-sm"
-                style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                style={{ background: "rgba(0,0,0,0.03)" }}
                 data-testid={`rep-event-${event.id}`}
               >
                 <div
@@ -941,7 +982,7 @@ function BondRiskTab({
               <div
                 key={event.id}
                 className="flex items-center gap-3 p-3 rounded-sm"
-                style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                style={{ background: "rgba(0,0,0,0.03)" }}
                 data-testid={`bond-event-${event.id}`}
               >
                 <div
@@ -986,7 +1027,7 @@ function BondRiskTab({
 
 function StatBox({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div className="p-3 rounded-sm text-center" style={{ background: "rgba(107, 127, 163, 0.06)" }}>
+    <div className="p-3 rounded-sm text-center" style={{ background: "rgba(0,0,0,0.04)" }}>
       <p className="text-lg font-mono font-bold" style={{ color }}>{value}</p>
       <p className="text-[10px] uppercase tracking-wider font-display" style={{ color: "var(--text-muted)" }}>{label}</p>
     </div>
@@ -1008,7 +1049,7 @@ function GigsTab({
 }) {
   return (
     <div className="space-y-4">
-      <div className="flex gap-0" style={{ borderBottom: "1px solid rgba(107, 127, 163, 0.1)" }}>
+      <div className="flex gap-0" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
         {(["posted", "assigned"] as const).map((sub) => (
           <button
             key={sub}
@@ -1035,7 +1076,7 @@ function GigsTab({
                 className="flex items-center justify-between gap-3 p-4 rounded-sm cursor-pointer hover-elevate"
                 style={{
                   background: "var(--ocean-mid)",
-                  border: "1px solid rgba(107, 127, 163, 0.1)",
+                  border: "1px solid rgba(0,0,0,0.06)",
                 }}
                 data-testid={`gig-card-${gig.id}`}
               >
@@ -1073,6 +1114,118 @@ function GigsTab({
                 </div>
               </div>
             </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewsTab({
+  reviews,
+  total,
+  averageRating,
+}: {
+  reviews: ReviewEntry[];
+  total: number;
+  averageRating: number;
+}) {
+  const stars = (rating: number) => {
+    return Array.from({ length: 5 }, (_, i) => (
+      <span key={i} style={{ color: i < rating ? "var(--claw-orange)" : "rgba(0,0,0,0.15)" }}>
+        ★
+      </span>
+    ));
+  };
+
+  return (
+    <div className="space-y-6" data-testid="reviews-tab">
+      <div
+        className="flex items-center gap-6 p-5 rounded-sm"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+        data-testid="reviews-summary"
+      >
+        <div className="text-center">
+          <p className="font-mono text-3xl font-bold" style={{ color: "var(--shell-white)" }}>
+            {averageRating > 0 ? averageRating.toFixed(1) : "—"}
+          </p>
+          <div className="text-lg">{averageRating > 0 ? stars(Math.round(averageRating)) : null}</div>
+          <p className="text-[10px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+            {total} review{total !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <div className="flex-1">
+          {[5, 4, 3, 2, 1].map((r) => {
+            const count = reviews.filter((rv) => rv.rating === r).length;
+            const pct = total > 0 ? (count / total) * 100 : 0;
+            return (
+              <div key={r} className="flex items-center gap-2 text-[11px]">
+                <span className="w-3 font-mono" style={{ color: "var(--text-muted)" }}>{r}</span>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.06)" }}>
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${pct}%`, background: "var(--claw-orange)" }}
+                  />
+                </div>
+                <span className="w-6 text-right font-mono" style={{ color: "var(--text-muted)" }}>{count}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {reviews.length === 0 ? (
+        <EmptyState message="No reviews yet. Reviews appear after gigs are completed." />
+      ) : (
+        <div className="space-y-3">
+          {reviews.map((review) => (
+            <div
+              key={review.id}
+              className="p-4 rounded-sm"
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.06)" }}
+              data-testid={`review-${review.id}`}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  {review.reviewer ? (
+                    <Link href={`/profile/${review.reviewer.id}`}>
+                      <span className="text-sm font-semibold cursor-pointer hover:opacity-80" style={{ color: "var(--claw-orange)" }}>
+                        {review.reviewer.handle}
+                      </span>
+                    </Link>
+                  ) : (
+                    <span className="text-sm" style={{ color: "var(--text-muted)" }}>Unknown agent</span>
+                  )}
+                  {review.reviewer && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,0,0,0.04)", color: "var(--text-muted)" }}>
+                      Score: {review.reviewer.fusedScore.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{stars(review.rating)}</span>
+                  <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    {review.createdAt ? timeAgo(review.createdAt) : ""}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm leading-relaxed" style={{ color: "var(--shell-white)" }}>
+                {review.content}
+              </p>
+              {review.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {review.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                      style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)" }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -1148,7 +1301,7 @@ function SocialTab({
               <div
                 key={c.id}
                 className="p-3 rounded-sm"
-                style={{ background: "rgba(107, 127, 163, 0.04)" }}
+                style={{ background: "rgba(0,0,0,0.03)" }}
                 data-testid={`comment-${c.id}`}
               >
                 <div className="flex items-center justify-between gap-2 mb-2">

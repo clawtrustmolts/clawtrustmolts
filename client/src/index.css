@@ -8,49 +8,49 @@
   --claw-red: #C8391A;
   --claw-orange: #E8540A;
   --claw-amber: #F2820A;
-  --ocean-deep: #080E1A;
-  --ocean-mid: #0D1829;
-  --ocean-surface: #122035;
+  --ocean-deep: #F7F5F2;
+  --ocean-mid: #FFFFFF;
+  --ocean-surface: #EEEAE5;
   --teal-glow: #0AECB8;
   --teal-dim: #0A8A6A;
-  --shell-white: #EEE8DC;
-  --shell-cream: #C4B99A;
-  --text-muted: #6B7FA3;
+  --shell-white: #1A1D26;
+  --shell-cream: #4A4F5C;
+  --text-muted: #8B919E;
   --gold: #F2C94C;
 
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  --button-outline: rgba(0,0,0, .10);
+  --badge-outline: rgba(0,0,0, .05);
   --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
-  --background: 216 45% 7%;
-  --foreground: 30 25% 90%;
-  --border: 216 30% 16%;
-  --card: 216 40% 8%;
-  --card-foreground: 30 20% 88%;
-  --card-border: 216 30% 14%;
-  --sidebar: 216 45% 6%;
-  --sidebar-foreground: 30 15% 88%;
-  --sidebar-border: 216 30% 14%;
+  --elevate-1: rgba(0,0,0, .03);
+  --elevate-2: rgba(0,0,0, .06);
+  --background: 40 14% 96%;
+  --foreground: 224 18% 12%;
+  --border: 30 8% 85%;
+  --card: 0 0% 100%;
+  --card-foreground: 224 18% 14%;
+  --card-border: 30 8% 88%;
+  --sidebar: 40 12% 94%;
+  --sidebar-foreground: 224 12% 14%;
+  --sidebar-border: 30 8% 85%;
   --sidebar-primary: 16 92% 48%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 216 30% 14%;
-  --sidebar-accent-foreground: 30 15% 88%;
+  --sidebar-accent: 30 8% 92%;
+  --sidebar-accent-foreground: 224 12% 18%;
   --sidebar-ring: 16 92% 48%;
-  --popover: 216 40% 8%;
-  --popover-foreground: 30 15% 88%;
-  --popover-border: 216 30% 16%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 12% 14%;
+  --popover-border: 30 8% 85%;
   --primary: 16 92% 48%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 216 25% 14%;
-  --secondary-foreground: 30 12% 88%;
-  --muted: 216 25% 12%;
-  --muted-foreground: 216 20% 50%;
-  --accent: 216 25% 14%;
-  --accent-foreground: 30 12% 86%;
+  --secondary: 30 8% 92%;
+  --secondary-foreground: 224 12% 18%;
+  --muted: 30 8% 92%;
+  --muted-foreground: 224 10% 50%;
+  --accent: 30 8% 92%;
+  --accent-foreground: 224 12% 18%;
   --destructive: 0 72% 42%;
   --destructive-foreground: 0 20% 98%;
-  --input: 216 25% 16%;
+  --input: 30 8% 88%;
   --ring: 16 92% 48%;
   --chart-1: 16 92% 48%;
   --chart-2: 166 93% 48%;
@@ -64,14 +64,14 @@
   --font-display: "Bebas Neue", "Impact", sans-serif;
   --radius: .375rem;
 
-  --shadow-2xs: 0px 2px 4px 0px hsl(216 45% 5% / 0.3);
-  --shadow-xs: 0px 2px 4px 0px hsl(216 45% 5% / 0.3);
-  --shadow-sm: 0px 2px 4px 0px hsl(216 45% 5% / 0.3);
-  --shadow: 0px 2px 6px 0px hsl(216 45% 5% / 0.4);
-  --shadow-md: 0px 4px 8px -1px hsl(216 45% 5% / 0.4);
-  --shadow-lg: 0px 8px 16px -2px hsl(216 45% 5% / 0.5);
-  --shadow-xl: 0px 12px 24px -4px hsl(216 45% 5% / 0.5);
-  --shadow-2xl: 0px 16px 32px -8px hsl(216 45% 5% / 0.6);
+  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.04);
+  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,0.05);
+  --shadow-sm: 0px 2px 4px 0px rgba(0,0,0,0.05);
+  --shadow: 0px 2px 6px 0px rgba(0,0,0,0.06);
+  --shadow-md: 0px 4px 8px -1px rgba(0,0,0,0.07);
+  --shadow-lg: 0px 8px 16px -2px rgba(0,0,0,0.08);
+  --shadow-xl: 0px 12px 24px -4px rgba(0,0,0,0.10);
+  --shadow-2xl: 0px 16px 32px -8px rgba(0,0,0,0.12);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -85,31 +85,31 @@
 }
 
 .dark {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  --button-outline: rgba(0,0,0, .10);
+  --badge-outline: rgba(0,0,0, .05);
   --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
-  --background: 216 45% 7%;
-  --foreground: 30 25% 90%;
-  --border: 216 30% 16%;
-  --card: 216 40% 8%;
-  --card-foreground: 30 20% 88%;
-  --card-border: 216 30% 14%;
-  --popover: 216 40% 8%;
-  --popover-foreground: 30 15% 88%;
-  --popover-border: 216 30% 16%;
+  --elevate-1: rgba(0,0,0, .03);
+  --elevate-2: rgba(0,0,0, .06);
+  --background: 40 14% 96%;
+  --foreground: 224 18% 12%;
+  --border: 30 8% 85%;
+  --card: 0 0% 100%;
+  --card-foreground: 224 18% 14%;
+  --card-border: 30 8% 88%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 12% 14%;
+  --popover-border: 30 8% 85%;
   --primary: 16 92% 48%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 216 25% 14%;
-  --secondary-foreground: 30 12% 88%;
-  --muted: 216 25% 12%;
-  --muted-foreground: 216 20% 50%;
-  --accent: 216 25% 14%;
-  --accent-foreground: 30 12% 86%;
+  --secondary: 30 8% 92%;
+  --secondary-foreground: 224 12% 18%;
+  --muted: 30 8% 92%;
+  --muted-foreground: 224 10% 50%;
+  --accent: 30 8% 92%;
+  --accent-foreground: 224 12% 18%;
   --destructive: 0 72% 42%;
   --destructive-foreground: 0 20% 98%;
-  --input: 216 25% 16%;
+  --input: 30 8% 88%;
   --ring: 16 92% 48%;
 
   --sidebar-primary-border: hsl(var(--sidebar-primary));
@@ -165,8 +165,8 @@
 
 .grid-bg {
   background-image:
-    linear-gradient(rgba(200, 57, 26, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(200, 57, 26, 0.05) 1px, transparent 1px);
+    linear-gradient(rgba(200, 57, 26, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 57, 26, 0.06) 1px, transparent 1px);
   background-size: 60px 60px;
 }
 
@@ -261,18 +261,18 @@
 }
 
 .rank-gold {
-  background: rgba(242, 201, 76, 0.08);
-  border-left: 2px solid rgba(242, 201, 76, 0.4);
+  background: rgba(242, 201, 76, 0.12);
+  border-left: 2px solid rgba(242, 201, 76, 0.5);
 }
 
 .rank-silver {
-  background: rgba(192, 192, 192, 0.06);
-  border-left: 2px solid rgba(192, 192, 192, 0.3);
+  background: rgba(192, 192, 192, 0.1);
+  border-left: 2px solid rgba(192, 192, 192, 0.4);
 }
 
 .rank-bronze {
-  background: rgba(232, 84, 10, 0.06);
-  border-left: 2px solid rgba(232, 84, 10, 0.3);
+  background: rgba(232, 84, 10, 0.1);
+  border-left: 2px solid rgba(232, 84, 10, 0.4);
 }
 
 ::-webkit-scrollbar {
@@ -285,17 +285,26 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(107, 127, 163, 0.3);
+  background: rgba(0, 0, 0, 0.15);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 127, 163, 0.5);
+  background: rgba(0, 0, 0, 0.25);
 }
 
 ::selection {
   background: rgba(200, 57, 26, 0.25);
   color: inherit;
+}
+
+.dark-section {
+  --ocean-deep: #080E1A;
+  --ocean-mid: #0D1829;
+  --ocean-surface: #122035;
+  --shell-white: #EEE8DC;
+  --shell-cream: #C4B99A;
+  --text-muted: #6B7FA3;
 }
 
 @layer utilities {

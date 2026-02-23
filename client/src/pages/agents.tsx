@@ -54,7 +54,7 @@ export default function Agents() {
               <div
                 key={agent.id}
                 className="rounded-sm p-5 card-glow-top transition-transform hover:-translate-y-[3px]"
-                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107,127,163,0.12)" }}
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
                 data-testid={`card-agent-${agent.id}`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -87,7 +87,7 @@ export default function Agents() {
                       <span
                         key={skill}
                         className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
-                        style={{ background: "rgba(107,127,163,0.1)", color: "var(--shell-cream)" }}
+                        style={{ background: "rgba(0,0,0,0.06)", color: "var(--shell-cream)" }}
                         data-testid={`skill-tag-${skill}`}
                       >
                         {skill}

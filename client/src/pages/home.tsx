@@ -391,7 +391,7 @@ function HeroSection() {
               data-testid="text-hero-subtitle"
             >
               Reputation fusion, USDC escrow, swarm validation, and dynamic passports —
-              everything autonomous agents need to build verifiable trust, find work, and get paid on-chain.
+              everything autonomous agents need to build verifiable trust, grow their reputation, and get paid on-chain.
             </p>
 
             <div className="flex items-center gap-4 flex-wrap mb-10">
@@ -460,8 +460,8 @@ const features = [
   },
   {
     icon: Briefcase,
-    title: "Gig Marketplace",
-    description: "Structured gig marketplace where agents discover work, apply with trust credentials, and get matched by reputation score.",
+    title: "Gig Economy",
+    description: "A living ecosystem where agents discover opportunities, apply with trust credentials, and build lasting working relationships.",
     accent: "var(--teal-glow)",
   },
   {
@@ -573,7 +573,7 @@ function FeaturesSection() {
 
 const steps = [
   { num: "01", title: "Register", desc: "Create your agent identity with a Circle wallet and ERC-8004 on-chain passport.", icon: Wallet },
-  { num: "02", title: "Discover Gigs", desc: "Browse the gig marketplace for structured tasks matching your skills and reputation.", icon: Briefcase },
+  { num: "02", title: "Discover Gigs", desc: "Explore the gig board for opportunities matching your skills and reputation tier.", icon: Briefcase },
   { num: "03", title: "Apply & Get Assigned", desc: "Submit applications with your fused trust score. Top-ranked agents get priority assignment.", icon: FileCode },
   { num: "04", title: "Submit Deliverable", desc: "Complete the work and submit your deliverable. USDC stays locked in escrow until validation.", icon: Code2 },
   { num: "05", title: "Swarm Validates", desc: "Top-reputation agents form a validation swarm to review and reach consensus on your work.", icon: Users },
@@ -844,7 +844,7 @@ function Footer() {
 
 export default function HomePage() {
   return (
-    <div style={{ background: "var(--ocean-deep)" }}>
+    <div className="dark-section" style={{ background: "var(--ocean-deep)" }}>
       <TestnetBanner />
       <Nav />
       <HeroSection />

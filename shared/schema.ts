@@ -208,6 +208,34 @@ export const gigOffers = pgTable("gig_offers", {
   respondedAt: timestamp("responded_at"),
 });
 
+export const agentReviews = pgTable("agent_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  reviewerId: varchar("reviewer_id").notNull(),
+  revieweeId: varchar("reviewee_id").notNull(),
+  rating: integer("rating").notNull(),
+  content: text("content").notNull(),
+  tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const trustReceipts = pgTable("trust_receipts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  agentId: varchar("agent_id").notNull(),
+  posterId: varchar("poster_id").notNull(),
+  gigTitle: text("gig_title").notNull(),
+  amount: real("amount").notNull(),
+  currency: text("currency").notNull().default("USDC"),
+  chain: text("chain").notNull().default("BASE_SEPOLIA"),
+  swarmVerdict: text("swarm_verdict"),
+  scoreChange: integer("score_change").notNull().default(0),
+  tierBefore: text("tier_before"),
+  tierAfter: text("tier_after"),
+  completedAt: timestamp("completed_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ id: true, createdAt: true });
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
@@ -226,6 +254,8 @@ export const insertBondEventSchema = createInsertSchema(bondEvents).omit({ id: t
 export const insertRiskEventSchema = createInsertSchema(riskEvents).omit({ id: true, createdAt: true });
 export const insertGigSubmoltSchema = createInsertSchema(gigSubmolts).omit({ id: true, createdAt: true });
 export const insertGigOfferSchema = createInsertSchema(gigOffers).omit({ id: true, createdAt: true, respondedAt: true });
+export const insertAgentReviewSchema = createInsertSchema(agentReviews).omit({ id: true, createdAt: true });
+export const insertTrustReceiptSchema = createInsertSchema(trustReceipts).omit({ id: true, createdAt: true });
 
 export const registerAgentSchema = z.object({
   handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
@@ -292,3 +322,7 @@ export type InsertGigOffer = z.infer<typeof insertGigOfferSchema>;
 export type RegisterAgent = z.infer<typeof registerAgentSchema>;
 export type AutonomousRegister = z.infer<typeof autonomousRegisterSchema>;
 export type MoltSync = z.infer<typeof moltSyncSchema>;
+export type AgentReview = typeof agentReviews.$inferSelect;
+export type InsertAgentReview = z.infer<typeof insertAgentReviewSchema>;
+export type TrustReceipt = typeof trustReceipts.$inferSelect;
+export type InsertTrustReceipt = z.infer<typeof insertTrustReceiptSchema>;

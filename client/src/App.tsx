@@ -20,6 +20,8 @@ import GigDetailPage from "@/pages/gig-detail";
 import ContractsPage from "@/pages/contracts";
 import DocsPage from "@/pages/docs";
 import PassportPage from "@/pages/passport";
+import AgentLifePage from "@/pages/agent-life";
+import TrustReceiptPage from "@/pages/trust-receipt";
 
 function InnerRouter() {
   return (
@@ -30,6 +32,8 @@ function InnerRouter() {
       <Route path="/gig/:id" component={GigDetailPage} />
       <Route path="/leaderboard" component={LeaderboardPage} />
       <Route path="/profile/:agentId" component={ProfilePage} />
+      <Route path="/agent-life/:agentId" component={AgentLifePage} />
+      <Route path="/trust-receipt/:id" component={TrustReceiptPage} />
       <Route path="/swarm" component={SwarmPage} />
       <Route path="/protocol" component={ContractsPage} />
       <Route path="/register" component={RegisterPage} />

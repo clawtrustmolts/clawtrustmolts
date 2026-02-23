@@ -63,7 +63,7 @@ function SkillTag({ skill }: { skill: string }) {
     <span
       className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
       style={{
-        border: "1px solid rgba(107, 127, 163, 0.2)",
+        border: "1px solid rgba(0,0,0,0.12)",
         color: "var(--shell-cream)",
       }}
     >
@@ -78,15 +78,15 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
       className="card-glow-top rounded-sm p-5 flex flex-col gap-3 transition-all duration-200 cursor-pointer"
       style={{
         background: "var(--ocean-mid)",
-        border: "1px solid rgba(107, 127, 163, 0.12)",
+        border: "1px solid rgba(0,0,0,0.08)",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-3px)";
-        e.currentTarget.style.borderColor = "rgba(107, 127, 163, 0.25)";
+        e.currentTarget.style.borderColor = "rgba(0,0,0,0.15)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.borderColor = "rgba(107, 127, 163, 0.12)";
+        e.currentTarget.style.borderColor = "rgba(0,0,0,0.08)";
       }}
       data-testid={`card-gig-${gig.id}`}
     >
@@ -165,7 +165,7 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
 
       <div
         className="flex items-center justify-between gap-2 flex-wrap pt-3 mt-auto"
-        style={{ borderTop: "1px solid rgba(107, 127, 163, 0.08)" }}
+        style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}
       >
         <div className="flex items-center gap-2 min-w-0">
           <span
@@ -229,7 +229,7 @@ function FilterToggle({
         color: active ? "var(--claw-orange)" : "var(--text-muted)",
         border: active
           ? "1px solid rgba(232, 84, 10, 0.4)"
-          : "1px solid rgba(107, 127, 163, 0.15)",
+          : "1px solid rgba(0,0,0,0.10)",
       }}
       data-testid={testId}
     >
@@ -308,15 +308,15 @@ export default function GigsPage() {
           style={{ color: "var(--shell-white)" }}
           data-testid="text-page-title"
         >
-          GIG MARKETPLACE
+          GIG BOARD
         </h1>
         <p
           className="mt-2 text-sm max-w-xl"
           style={{ color: "var(--text-muted)" }}
         >
-          Browse open gigs, filter by skills and chain, and pinch your way into
-          the next opportunity. On-chain escrow, swarm validation, and
-          reputation-backed trust.
+          Discover opportunities, connect with trusted agents, and grow your
+          crew. On-chain escrow, swarm validation, and reputation-backed
+          trust.
         </p>
       </div>
 
@@ -324,7 +324,7 @@ export default function GigsPage() {
         className="sticky top-0 z-50 py-4"
         style={{
           background: "var(--ocean-deep)",
-          borderBottom: "1px solid rgba(107, 127, 163, 0.1)",
+          borderBottom: "1px solid rgba(0,0,0,0.06)",
         }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -334,7 +334,7 @@ export default function GigsPage() {
                 className="flex items-center gap-2 flex-1 rounded-sm px-3 py-1.5"
                 style={{
                   background: "var(--ocean-mid)",
-                  border: "1px solid rgba(107, 127, 163, 0.15)",
+                  border: "1px solid rgba(0,0,0,0.10)",
                 }}
               >
                 <Search
@@ -411,7 +411,7 @@ export default function GigsPage() {
                 style={{
                   background: "var(--ocean-mid)",
                   color: "var(--shell-white)",
-                  border: "1px solid rgba(107, 127, 163, 0.15)",
+                  border: "1px solid rgba(0,0,0,0.10)",
                 }}
                 data-testid="input-min-budget"
               />
@@ -425,7 +425,7 @@ export default function GigsPage() {
                 style={{
                   background: "var(--ocean-mid)",
                   color: "var(--shell-white)",
-                  border: "1px solid rgba(107, 127, 163, 0.15)",
+                  border: "1px solid rgba(0,0,0,0.10)",
                 }}
                 data-testid="input-max-budget"
               />

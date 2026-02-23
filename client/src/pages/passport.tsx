@@ -79,7 +79,7 @@ export default function PassportPage() {
 
   const inputStyle: React.CSSProperties = {
     background: "var(--ocean-surface)",
-    border: "1px solid rgba(107,127,163,0.15)",
+    border: "1px solid rgba(0,0,0,0.10)",
     color: "var(--shell-white)",
     borderRadius: "2px",
     padding: "12px 16px",
@@ -123,7 +123,7 @@ export default function PassportPage() {
           placeholder="Enter wallet address (0x...)"
           style={inputStyle}
           onFocus={(e) => (e.target.style.borderColor = "var(--claw-orange)")}
-          onBlur={(e) => (e.target.style.borderColor = "rgba(107,127,163,0.15)")}
+          onBlur={(e) => (e.target.style.borderColor = "rgba(0,0,0,0.10)")}
           data-testid="input-passport-wallet"
         />
         <ClawButton
@@ -175,7 +175,7 @@ export default function PassportPage() {
           >
             <div
               className="flex items-center justify-between px-5 py-3"
-              style={{ borderBottom: "1px solid rgba(107, 127, 163, 0.12)" }}
+              style={{ borderBottom: "1px solid rgba(0,0,0,0.08)" }}
             >
               <span className="text-[10px] font-mono uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                 ClawTrust Passport · ERC-8004
@@ -228,7 +228,7 @@ export default function PassportPage() {
                           className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
                           style={{
                             color: "var(--shell-cream)",
-                            border: "1px solid rgba(107, 127, 163, 0.25)",
+                            border: "1px solid rgba(0,0,0,0.15)",
                           }}
                           data-testid={`tag-passport-skill-${skill}`}
                         >
@@ -243,7 +243,7 @@ export default function PassportPage() {
 
             <div
               className="flex items-center justify-between px-5 py-3 flex-wrap gap-3"
-              style={{ borderTop: "1px solid rgba(107, 127, 163, 0.12)" }}
+              style={{ borderTop: "1px solid rgba(0,0,0,0.08)" }}
             >
               <div className="flex items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-1.5" data-testid="stat-passport-gigs">
@@ -265,7 +265,7 @@ export default function PassportPage() {
                   className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm transition-colors"
                   style={{
                     color: "var(--text-muted)",
-                    border: "1px solid rgba(107,127,163,0.2)",
+                    border: "1px solid rgba(0,0,0,0.12)",
                     background: "transparent",
                   }}
                   data-testid="button-copy-passport-link"
@@ -293,7 +293,7 @@ export default function PassportPage() {
             className="rounded-sm p-5"
             style={{
               background: "var(--ocean-mid)",
-              border: "1px solid rgba(107, 127, 163, 0.12)",
+              border: "1px solid rgba(0,0,0,0.08)",
             }}
             data-testid="card-passport-metadata"
           >
@@ -305,7 +305,7 @@ export default function PassportPage() {
                 <div
                   key={attr.trait_type}
                   className="flex items-center justify-between px-3 py-2 rounded-sm"
-                  style={{ background: "var(--ocean-surface)", border: "1px solid rgba(107,127,163,0.08)" }}
+                  style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.05)" }}
                   data-testid={`attr-${attr.trait_type.toLowerCase().replace(/\s+/g, "-")}`}
                 >
                   <span className="text-[10px] font-mono uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
@@ -346,7 +346,7 @@ export default function PassportPage() {
             className="rounded-sm p-6"
             style={{
               background: "var(--ocean-mid)",
-              border: "1px solid rgba(107, 127, 163, 0.12)",
+              border: "1px solid rgba(0,0,0,0.08)",
             }}
             data-testid="card-passport-info"
           >
@@ -364,12 +364,12 @@ export default function PassportPage() {
                   { title: "Dynamic Artwork", desc: "Server-generated images update in real-time based on reputation score, tier, and badges." },
                   { title: "Verifiable Credentials", desc: "On-chain ERC-8004 verification proves agent identity and reputation history." },
                   { title: "Portable Identity", desc: "Use across any dApp — the SDK resolves passport data from any wallet address." },
-                  { title: "NFT Metadata", desc: "Standard ERC-721 tokenURI with full attributes for marketplace display." },
+                  { title: "NFT Metadata", desc: "Standard ERC-721 tokenURI with full attributes for ecosystem-wide display." },
                 ].map((item) => (
                   <div
                     key={item.title}
                     className="p-3 rounded-sm"
-                    style={{ background: "var(--ocean-surface)", border: "1px solid rgba(107,127,163,0.08)" }}
+                    style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.05)" }}
                   >
                     <span className="font-display text-xs font-semibold block mb-1" style={{ color: "var(--claw-orange)" }}>
                       {item.title}
@@ -385,7 +385,7 @@ export default function PassportPage() {
             className="rounded-sm p-6"
             style={{
               background: "var(--ocean-mid)",
-              border: "1px solid rgba(107, 127, 163, 0.12)",
+              border: "1px solid rgba(0,0,0,0.08)",
             }}
             data-testid="card-passport-api"
           >

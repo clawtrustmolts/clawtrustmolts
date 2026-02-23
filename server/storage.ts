@@ -3,6 +3,7 @@ import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
+  agentReviews, trustReceipts,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -18,6 +19,8 @@ import {
   type BondEvent, type InsertBondEvent,
   type RiskEvent, type InsertRiskEvent,
   type GigOffer, type InsertGigOffer,
+  type AgentReview, type InsertAgentReview,
+  type TrustReceipt, type InsertTrustReceipt,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -112,6 +115,18 @@ export interface IStorage {
     limit?: number;
     offset?: number;
   }): Promise<{ agents: Agent[]; total: number }>;
+
+  createAgentReview(review: InsertAgentReview): Promise<AgentReview>;
+  getReviewsForAgent(revieweeId: string, limit?: number, offset?: number): Promise<AgentReview[]>;
+  getReviewsByAgent(reviewerId: string): Promise<AgentReview[]>;
+  getReviewForGig(gigId: string, reviewerId: string): Promise<AgentReview | undefined>;
+  getReviewCountForAgent(revieweeId: string): Promise<number>;
+  getAverageRatingForAgent(revieweeId: string): Promise<number>;
+
+  createTrustReceipt(receipt: InsertTrustReceipt): Promise<TrustReceipt>;
+  getTrustReceipt(id: string): Promise<TrustReceipt | undefined>;
+  getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined>;
+  getTrustReceiptsForAgent(agentId: string, limit?: number): Promise<TrustReceipt[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -523,6 +538,67 @@ export class DatabaseStorage implements IStorage {
     const paged = allMatching.slice(offset, offset + limit);
 
     return { agents: paged, total };
+  }
+
+  async createAgentReview(review: InsertAgentReview): Promise<AgentReview> {
+    const [r] = await db.insert(agentReviews).values(review).returning();
+    return r;
+  }
+
+  async getReviewsForAgent(revieweeId: string, limit = 20, offset = 0): Promise<AgentReview[]> {
+    return db.select().from(agentReviews)
+      .where(eq(agentReviews.revieweeId, revieweeId))
+      .orderBy(desc(agentReviews.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getReviewsByAgent(reviewerId: string): Promise<AgentReview[]> {
+    return db.select().from(agentReviews)
+      .where(eq(agentReviews.reviewerId, reviewerId))
+      .orderBy(desc(agentReviews.createdAt));
+  }
+
+  async getReviewForGig(gigId: string, reviewerId: string): Promise<AgentReview | undefined> {
+    const [r] = await db.select().from(agentReviews)
+      .where(and(eq(agentReviews.gigId, gigId), eq(agentReviews.reviewerId, reviewerId)));
+    return r;
+  }
+
+  async getReviewCountForAgent(revieweeId: string): Promise<number> {
+    const [r] = await db.select({ count: count() }).from(agentReviews)
+      .where(eq(agentReviews.revieweeId, revieweeId));
+    return r?.count ?? 0;
+  }
+
+  async getAverageRatingForAgent(revieweeId: string): Promise<number> {
+    const [r] = await db.select({ avg: sql<number>`COALESCE(AVG(${agentReviews.rating}), 0)` })
+      .from(agentReviews)
+      .where(eq(agentReviews.revieweeId, revieweeId));
+    return Number(r?.avg ?? 0);
+  }
+
+  async createTrustReceipt(receipt: InsertTrustReceipt): Promise<TrustReceipt> {
+    const [r] = await db.insert(trustReceipts).values(receipt).returning();
+    return r;
+  }
+
+  async getTrustReceipt(id: string): Promise<TrustReceipt | undefined> {
+    const [r] = await db.select().from(trustReceipts).where(eq(trustReceipts.id, id));
+    return r;
+  }
+
+  async getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined> {
+    const [r] = await db.select().from(trustReceipts)
+      .where(and(eq(trustReceipts.gigId, gigId), eq(trustReceipts.agentId, agentId)));
+    return r;
+  }
+
+  async getTrustReceiptsForAgent(agentId: string, limit = 20): Promise<TrustReceipt[]> {
+    return db.select().from(trustReceipts)
+      .where(eq(trustReceipts.agentId, agentId))
+      .orderBy(desc(trustReceipts.createdAt))
+      .limit(limit);
   }
 }
 
