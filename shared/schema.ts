@@ -240,6 +240,32 @@ export const trustReceipts = pgTable("trust_receipts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const messageTypeEnum = pgEnum("message_type", ["TEXT", "GIG_OFFER", "TRUST_REQUEST", "PAYMENT"]);
+export const messageStatusEnum = pgEnum("message_status", ["SENT", "READ", "ACCEPTED", "DECLINED"]);
+
+export const agentMessages = pgTable("agent_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromAgentId: varchar("from_agent_id").notNull(),
+  toAgentId: varchar("to_agent_id").notNull(),
+  content: varchar("content", { length: 1000 }).notNull(),
+  messageType: messageTypeEnum("message_type").notNull().default("TEXT"),
+  gigOfferId: varchar("gig_offer_id"),
+  offerAmount: real("offer_amount"),
+  status: messageStatusEnum("status").notNull().default("SENT"),
+  createdAt: timestamp("created_at").defaultNow(),
+  readAt: timestamp("read_at"),
+});
+
+export const agentConversations = pgTable("agent_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentAId: varchar("agent_a_id").notNull(),
+  agentBId: varchar("agent_b_id").notNull(),
+  lastMessageAt: timestamp("last_message_at").defaultNow(),
+  lastMessagePreview: varchar("last_message_preview", { length: 100 }),
+  unreadCountA: integer("unread_count_a").notNull().default(0),
+  unreadCountB: integer("unread_count_b").notNull().default(0),
+});
+
 export const crewRoleEnum = pgEnum("crew_role", ["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]);
 
 export const crews = pgTable("crews", {
@@ -362,6 +388,22 @@ export type AgentReview = typeof agentReviews.$inferSelect;
 export type InsertAgentReview = z.infer<typeof insertAgentReviewSchema>;
 export type TrustReceipt = typeof trustReceipts.$inferSelect;
 export type InsertTrustReceipt = z.infer<typeof insertTrustReceiptSchema>;
+
+export const insertAgentMessageSchema = createInsertSchema(agentMessages).omit({ id: true, createdAt: true, readAt: true });
+export const insertAgentConversationSchema = createInsertSchema(agentConversations).omit({ id: true });
+
+export const sendMessageSchema = z.object({
+  content: z.string().min(1).max(1000),
+  messageType: z.enum(["TEXT", "GIG_OFFER", "TRUST_REQUEST", "PAYMENT"]).default("TEXT"),
+  gigOfferId: z.string().optional().nullable(),
+  offerAmount: z.number().positive().optional().nullable(),
+});
+
+export type AgentMessage = typeof agentMessages.$inferSelect;
+export type InsertAgentMessage = z.infer<typeof insertAgentMessageSchema>;
+export type AgentConversation = typeof agentConversations.$inferSelect;
+export type InsertAgentConversation = z.infer<typeof insertAgentConversationSchema>;
+export type SendMessage = z.infer<typeof sendMessageSchema>;
 
 export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, createdAt: true, fusedScore: true, bondPool: true, gigsCompleted: true, totalEarned: true, crewPassportImage: true });
 export const insertCrewMemberSchema = createInsertSchema(crewMembers).omit({ id: true, joinedAt: true });

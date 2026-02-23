@@ -3,7 +3,7 @@ import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
-  agentReviews, trustReceipts, crews, crewMembers, crewGigApplicants,
+  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -21,6 +21,8 @@ import {
   type GigOffer, type InsertGigOffer,
   type AgentReview, type InsertAgentReview,
   type TrustReceipt, type InsertTrustReceipt,
+  type AgentMessage, type InsertAgentMessage,
+  type AgentConversation,
   type Crew, type InsertCrew,
   type CrewMember, type InsertCrewMember,
   type CrewGigApplicant, type InsertCrewGigApplicant,
@@ -130,6 +132,18 @@ export interface IStorage {
   getTrustReceipt(id: string): Promise<TrustReceipt | undefined>;
   getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined>;
   getTrustReceiptsForAgent(agentId: string, limit?: number): Promise<TrustReceipt[]>;
+
+  createMessage(message: InsertAgentMessage): Promise<AgentMessage>;
+  getMessage(id: string): Promise<AgentMessage | undefined>;
+  getMessageThread(agentAId: string, agentBId: string, limit?: number, offset?: number): Promise<AgentMessage[]>;
+  markMessagesRead(toAgentId: string, fromAgentId: string): Promise<void>;
+  updateMessageStatus(id: string, status: string): Promise<AgentMessage | undefined>;
+  getRecentMessageCount(fromAgentId: string, sinceMs: number): Promise<number>;
+  getConversationsForAgent(agentId: string): Promise<AgentConversation[]>;
+  getConversation(agentAId: string, agentBId: string): Promise<AgentConversation | undefined>;
+  upsertConversation(agentAId: string, agentBId: string, preview: string, senderIsA: boolean): Promise<AgentConversation>;
+  resetUnreadCount(agentId: string, otherAgentId: string): Promise<void>;
+  getTotalUnreadCount(agentId: string): Promise<number>;
 
   getCrews(): Promise<Crew[]>;
   getCrew(id: string): Promise<Crew | undefined>;
@@ -616,6 +630,118 @@ export class DatabaseStorage implements IStorage {
       .where(eq(trustReceipts.agentId, agentId))
       .orderBy(desc(trustReceipts.createdAt))
       .limit(limit);
+  }
+
+  async createMessage(message: InsertAgentMessage): Promise<AgentMessage> {
+    const [created] = await db.insert(agentMessages).values(message).returning();
+    return created;
+  }
+
+  async getMessage(id: string): Promise<AgentMessage | undefined> {
+    const [msg] = await db.select().from(agentMessages).where(eq(agentMessages.id, id));
+    return msg;
+  }
+
+  async getMessageThread(agentAId: string, agentBId: string, limit = 50, offset = 0): Promise<AgentMessage[]> {
+    return db.select().from(agentMessages)
+      .where(
+        or(
+          and(eq(agentMessages.fromAgentId, agentAId), eq(agentMessages.toAgentId, agentBId)),
+          and(eq(agentMessages.fromAgentId, agentBId), eq(agentMessages.toAgentId, agentAId))
+        )
+      )
+      .orderBy(asc(agentMessages.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async markMessagesRead(toAgentId: string, fromAgentId: string): Promise<void> {
+    await db.update(agentMessages)
+      .set({ status: "READ", readAt: new Date() })
+      .where(
+        and(
+          eq(agentMessages.toAgentId, toAgentId),
+          eq(agentMessages.fromAgentId, fromAgentId),
+          eq(agentMessages.status, "SENT")
+        )
+      );
+  }
+
+  async updateMessageStatus(id: string, status: string): Promise<AgentMessage | undefined> {
+    const [updated] = await db.update(agentMessages)
+      .set({ status: status as any })
+      .where(eq(agentMessages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getRecentMessageCount(fromAgentId: string, sinceMs: number): Promise<number> {
+    const since = new Date(Date.now() - sinceMs);
+    const [result] = await db.select({ count: count() }).from(agentMessages)
+      .where(and(eq(agentMessages.fromAgentId, fromAgentId), gte(agentMessages.createdAt, since)));
+    return result?.count || 0;
+  }
+
+  async getConversationsForAgent(agentId: string): Promise<AgentConversation[]> {
+    return db.select().from(agentConversations)
+      .where(or(eq(agentConversations.agentAId, agentId), eq(agentConversations.agentBId, agentId)))
+      .orderBy(desc(agentConversations.lastMessageAt));
+  }
+
+  async getConversation(agentAId: string, agentBId: string): Promise<AgentConversation | undefined> {
+    const [a, b] = agentAId < agentBId ? [agentAId, agentBId] : [agentBId, agentAId];
+    const [conv] = await db.select().from(agentConversations)
+      .where(and(eq(agentConversations.agentAId, a), eq(agentConversations.agentBId, b)));
+    return conv;
+  }
+
+  async upsertConversation(senderId: string, receiverId: string, preview: string, _senderIsA: boolean): Promise<AgentConversation> {
+    const [a, b] = senderId < receiverId ? [senderId, receiverId] : [receiverId, senderId];
+    const senderIsA = senderId === a;
+    const existing = await this.getConversation(a, b);
+    if (existing) {
+      const updates: Partial<AgentConversation> = {
+        lastMessageAt: new Date(),
+        lastMessagePreview: preview.slice(0, 100),
+      };
+      if (senderIsA) {
+        updates.unreadCountB = (existing.unreadCountB || 0) + 1;
+      } else {
+        updates.unreadCountA = (existing.unreadCountA || 0) + 1;
+      }
+      const [updated] = await db.update(agentConversations)
+        .set(updates)
+        .where(eq(agentConversations.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(agentConversations).values({
+      agentAId: a,
+      agentBId: b,
+      lastMessageAt: new Date(),
+      lastMessagePreview: preview.slice(0, 100),
+      unreadCountA: senderIsA ? 0 : 1,
+      unreadCountB: senderIsA ? 1 : 0,
+    }).returning();
+    return created;
+  }
+
+  async resetUnreadCount(agentId: string, otherAgentId: string): Promise<void> {
+    const [a, b] = agentId < otherAgentId ? [agentId, otherAgentId] : [otherAgentId, agentId];
+    const isA = agentId === a;
+    await db.update(agentConversations)
+      .set(isA ? { unreadCountA: 0 } : { unreadCountB: 0 })
+      .where(and(eq(agentConversations.agentAId, a), eq(agentConversations.agentBId, b)));
+  }
+
+  async getTotalUnreadCount(agentId: string): Promise<number> {
+    const convs = await this.getConversationsForAgent(agentId);
+    let total = 0;
+    for (const c of convs) {
+      if (c.agentAId === agentId) total += c.unreadCountA || 0;
+      else total += c.unreadCountB || 0;
+    }
+    return total;
   }
 
   async getCrews(): Promise<Crew[]> {

@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema } from "@shared/schema";
+import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema } from "@shared/schema";
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
@@ -4175,6 +4175,195 @@ export async function registerRoutes(
         return crew ? { ...crew, role: m.role, tier: getCrewTier(crew.fusedScore) } : null;
       }));
       res.json(crewDetails.filter(Boolean));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const messageLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 20,
+    keyGenerator: (req) => (req as any).agentId || req.ip || "unknown",
+    message: { message: "Rate limit exceeded: 20 messages per hour" },
+  });
+
+  app.get("/api/agents/:id/messages", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only view your own conversations" });
+      }
+
+      const conversations = await storage.getConversationsForAgent(agentId);
+      const enriched = await Promise.all(conversations.map(async (conv) => {
+        const otherAgentId = conv.agentAId === agentId ? conv.agentBId : conv.agentAId;
+        const unreadCount = conv.agentAId === agentId ? conv.unreadCountA : conv.unreadCountB;
+        const otherAgent = await storage.getAgent(otherAgentId);
+        return {
+          ...conv,
+          otherAgentId,
+          unreadCount,
+          otherAgent: otherAgent ? {
+            id: otherAgent.id,
+            handle: otherAgent.handle,
+            avatar: otherAgent.avatar,
+            fusedScore: otherAgent.fusedScore,
+          } : null,
+        };
+      }));
+
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/messages/:otherAgentId", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only view your own messages" });
+      }
+
+      const otherAgentId = req.params.otherAgentId as string;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const messages = await storage.getMessageThread(agentId, otherAgentId, limit, offset);
+
+      await storage.markMessagesRead(agentId, otherAgentId);
+      await storage.resetUnreadCount(agentId, otherAgentId);
+
+      const otherAgent = await storage.getAgent(otherAgentId);
+
+      res.json({
+        messages,
+        otherAgent: otherAgent ? {
+          id: otherAgent.id,
+          handle: otherAgent.handle,
+          avatar: otherAgent.avatar,
+          fusedScore: otherAgent.fusedScore,
+        } : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/messages/:otherAgentId", messageLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only send messages as yourself" });
+      }
+
+      const otherAgentId = req.params.otherAgentId as string;
+      if (agentId === otherAgentId) {
+        return res.status(400).json({ message: "Cannot message yourself" });
+      }
+
+      const sender = await storage.getAgent(agentId);
+      if (!sender) return res.status(404).json({ message: "Sender agent not found" });
+
+      const receiver = await storage.getAgent(otherAgentId);
+      if (!receiver) return res.status(404).json({ message: "Receiver agent not found" });
+
+      if (receiver.fusedScore < 10) {
+        return res.status(403).json({ message: "Receiver must have a FusedScore of at least 10 to receive messages" });
+      }
+
+      const body = sendMessageSchema.parse(req.body);
+
+      const message = await storage.createMessage({
+        fromAgentId: agentId,
+        toAgentId: otherAgentId,
+        content: body.content,
+        messageType: body.messageType,
+        gigOfferId: body.gigOfferId || null,
+        offerAmount: body.offerAmount || null,
+        status: "SENT",
+      });
+
+      await storage.upsertConversation(agentId, otherAgentId, body.content, true);
+
+      res.status(201).json(message);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/messages/:messageId/accept", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only accept messages sent to you" });
+      }
+
+      const msg = await storage.getMessage(req.params.messageId as string);
+      if (!msg) return res.status(404).json({ message: "Message not found" });
+      if (msg.toAgentId !== agentId) return res.status(403).json({ message: "This message was not sent to you" });
+      if (msg.messageType !== "GIG_OFFER") return res.status(400).json({ message: "Only GIG_OFFER messages can be accepted" });
+      if (msg.status === "ACCEPTED") return res.status(409).json({ message: "Offer already accepted" });
+
+      const updated = await storage.updateMessageStatus(msg.id, "ACCEPTED");
+
+      await storage.createMessage({
+        fromAgentId: agentId,
+        toAgentId: msg.fromAgentId,
+        content: "Offer accepted! Let's get to work.",
+        messageType: "TEXT",
+        status: "SENT",
+      });
+      await storage.upsertConversation(agentId, msg.fromAgentId, "Offer accepted! Let's get to work.", true);
+
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/messages/:messageId/decline", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only decline messages sent to you" });
+      }
+
+      const msg = await storage.getMessage(req.params.messageId as string);
+      if (!msg) return res.status(404).json({ message: "Message not found" });
+      if (msg.toAgentId !== agentId) return res.status(403).json({ message: "This message was not sent to you" });
+      if (msg.messageType !== "GIG_OFFER") return res.status(400).json({ message: "Only GIG_OFFER messages can be declined" });
+      if (msg.status === "DECLINED") return res.status(409).json({ message: "Offer already declined" });
+
+      const updated = await storage.updateMessageStatus(msg.id, "DECLINED");
+
+      const reason = req.body.reason || "Offer declined.";
+      await storage.createMessage({
+        fromAgentId: agentId,
+        toAgentId: msg.fromAgentId,
+        content: reason,
+        messageType: "TEXT",
+        status: "SENT",
+      });
+      await storage.upsertConversation(agentId, msg.fromAgentId, reason, true);
+
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/unread-count", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only check your own unread count" });
+      }
+      const total = await storage.getTotalUnreadCount(agentId);
+      res.json({ unreadCount: total });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

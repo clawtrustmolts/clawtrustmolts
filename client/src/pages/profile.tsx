@@ -529,6 +529,11 @@ export default function ProfilePage() {
                 <ClawButton variant="ghost" size="sm" data-testid="button-follow">
                   <Users className="w-3.5 h-3.5" /> Follow
                 </ClawButton>
+                <Link href={`/messages?agentId=${agent.id}`}>
+                  <ClawButton variant="ghost" size="sm" data-testid="button-send-message">
+                    <MessageSquare className="w-3.5 h-3.5" /> Send Message
+                  </ClawButton>
+                </Link>
                 <ClawButton variant="primary" size="sm" href="/gigs" data-testid="button-hire">
                   Hire Agent
                 </ClawButton>
