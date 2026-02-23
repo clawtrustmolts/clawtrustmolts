@@ -3,7 +3,7 @@ import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
-  agentReviews, trustReceipts,
+  agentReviews, trustReceipts, crews, crewMembers, crewGigApplicants,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -21,6 +21,9 @@ import {
   type GigOffer, type InsertGigOffer,
   type AgentReview, type InsertAgentReview,
   type TrustReceipt, type InsertTrustReceipt,
+  type Crew, type InsertCrew,
+  type CrewMember, type InsertCrewMember,
+  type CrewGigApplicant, type InsertCrewGigApplicant,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -127,6 +130,20 @@ export interface IStorage {
   getTrustReceipt(id: string): Promise<TrustReceipt | undefined>;
   getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined>;
   getTrustReceiptsForAgent(agentId: string, limit?: number): Promise<TrustReceipt[]>;
+
+  getCrews(): Promise<Crew[]>;
+  getCrew(id: string): Promise<Crew | undefined>;
+  getCrewByHandle(handle: string): Promise<Crew | undefined>;
+  createCrew(crew: InsertCrew): Promise<Crew>;
+  updateCrew(id: string, data: Partial<Crew>): Promise<Crew | undefined>;
+  getCrewMembers(crewId: string): Promise<CrewMember[]>;
+  getCrewsForAgent(agentId: string): Promise<CrewMember[]>;
+  addCrewMember(member: InsertCrewMember): Promise<CrewMember>;
+  removeCrewMember(crewId: string, agentId: string): Promise<void>;
+  getCrewGigApplicants(gigId: string): Promise<CrewGigApplicant[]>;
+  getCrewGigApplicant(gigId: string, crewId: string): Promise<CrewGigApplicant | undefined>;
+  createCrewGigApplicant(applicant: InsertCrewGigApplicant): Promise<CrewGigApplicant>;
+  getCrewGigs(crewId: string): Promise<Gig[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -599,6 +616,69 @@ export class DatabaseStorage implements IStorage {
       .where(eq(trustReceipts.agentId, agentId))
       .orderBy(desc(trustReceipts.createdAt))
       .limit(limit);
+  }
+
+  async getCrews(): Promise<Crew[]> {
+    return db.select().from(crews).orderBy(desc(crews.fusedScore));
+  }
+
+  async getCrew(id: string): Promise<Crew | undefined> {
+    const [crew] = await db.select().from(crews).where(eq(crews.id, id));
+    return crew;
+  }
+
+  async getCrewByHandle(handle: string): Promise<Crew | undefined> {
+    const [crew] = await db.select().from(crews).where(eq(crews.handle, handle));
+    return crew;
+  }
+
+  async createCrew(crew: InsertCrew): Promise<Crew> {
+    const [created] = await db.insert(crews).values(crew).returning();
+    return created;
+  }
+
+  async updateCrew(id: string, data: Partial<Crew>): Promise<Crew | undefined> {
+    const [updated] = await db.update(crews).set(data).where(eq(crews.id, id)).returning();
+    return updated;
+  }
+
+  async getCrewMembers(crewId: string): Promise<CrewMember[]> {
+    return db.select().from(crewMembers).where(eq(crewMembers.crewId, crewId)).orderBy(asc(crewMembers.joinedAt));
+  }
+
+  async getCrewsForAgent(agentId: string): Promise<CrewMember[]> {
+    return db.select().from(crewMembers).where(eq(crewMembers.agentId, agentId));
+  }
+
+  async addCrewMember(member: InsertCrewMember): Promise<CrewMember> {
+    const [created] = await db.insert(crewMembers).values(member).returning();
+    return created;
+  }
+
+  async removeCrewMember(crewId: string, agentId: string): Promise<void> {
+    await db.delete(crewMembers).where(
+      and(eq(crewMembers.crewId, crewId), eq(crewMembers.agentId, agentId))
+    );
+  }
+
+  async getCrewGigApplicants(gigId: string): Promise<CrewGigApplicant[]> {
+    return db.select().from(crewGigApplicants).where(eq(crewGigApplicants.gigId, gigId)).orderBy(desc(crewGigApplicants.createdAt));
+  }
+
+  async getCrewGigApplicant(gigId: string, crewId: string): Promise<CrewGigApplicant | undefined> {
+    const [applicant] = await db.select().from(crewGigApplicants).where(
+      and(eq(crewGigApplicants.gigId, gigId), eq(crewGigApplicants.crewId, crewId))
+    );
+    return applicant;
+  }
+
+  async createCrewGigApplicant(applicant: InsertCrewGigApplicant): Promise<CrewGigApplicant> {
+    const [created] = await db.insert(crewGigApplicants).values(applicant).returning();
+    return created;
+  }
+
+  async getCrewGigs(crewId: string): Promise<Gig[]> {
+    return db.select().from(gigs).where(eq(gigs.crewId, crewId)).orderBy(desc(gigs.createdAt));
   }
 }
 

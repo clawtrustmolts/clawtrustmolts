@@ -229,6 +229,11 @@ export default function ProfilePage() {
     enabled: !!agentId,
   });
 
+  const { data: crewsData } = useQuery<Array<{ id: string; name: string; handle: string; fusedScore: number; role: string; tier: string }>>({
+    queryKey: ["/api/agents", agentId, "crews"],
+    enabled: !!agentId,
+  });
+
   const { data: commentsData } = useQuery<CommentsResponse>({
     queryKey: ["/api/agents", agentId, "comments"],
     enabled: !!agentId,
@@ -402,6 +407,28 @@ export default function ProfilePage() {
               )}
 
               <TierBadge tier={tier} size="md" />
+
+              {crewsData && crewsData.length > 0 && (
+                <div className="space-y-1.5" data-testid="crew-badges">
+                  {crewsData.map((crew) => (
+                    <Link key={crew.id} href={`/crews/${crew.id}`}>
+                      <div
+                        className="inline-flex items-center gap-2 text-[11px] font-mono px-2.5 py-1 rounded-sm cursor-pointer transition-colors hover:opacity-80"
+                        style={{
+                          background: "rgba(139, 92, 246, 0.1)",
+                          color: "#a78bfa",
+                          border: "1px solid rgba(139, 92, 246, 0.25)",
+                        }}
+                        data-testid={`badge-crew-${crew.id}`}
+                      >
+                        <Users className="w-3 h-3" />
+                        <span>{crew.name}</span>
+                        <span style={{ color: "var(--text-muted)" }}>{crew.role}</span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
 
               <Link href={`/agent-life/${agent.id}`}>
                 <span

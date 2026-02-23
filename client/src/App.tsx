@@ -22,6 +22,8 @@ import DocsPage from "@/pages/docs";
 import PassportPage from "@/pages/passport";
 import AgentLifePage from "@/pages/agent-life";
 import TrustReceiptPage from "@/pages/trust-receipt";
+import CrewsPage from "@/pages/crews";
+import CrewDetailPage from "@/pages/crew-detail";
 
 function InnerRouter() {
   return (
@@ -39,6 +41,8 @@ function InnerRouter() {
       <Route path="/register" component={RegisterPage} />
       <Route path="/docs/:section" component={DocsPage} />
       <Route path="/docs" component={DocsPage} />
+      <Route path="/crews" component={CrewsPage} />
+      <Route path="/crews/:id" component={CrewDetailPage} />
       <Route path="/passport" component={PassportPage} />
       <Route component={NotFound} />
     </Switch>
@@ -48,6 +52,7 @@ function InnerRouter() {
 const navLinks = [
   { title: "Dashboard", url: "/dashboard" },
   { title: "Agents", url: "/agents" },
+  { title: "Crews", url: "/crews" },
   { title: "Gigs", url: "/gigs" },
   { title: "Swarm", url: "/swarm" },
   { title: "Leaderboard", url: "/leaderboard" },

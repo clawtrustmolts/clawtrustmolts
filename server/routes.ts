@@ -24,6 +24,7 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
+import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
@@ -3913,6 +3914,260 @@ export async function registerRoutes(
       const limit = Math.min(Number(req.query.limit) || 20, 50);
       const receipts = await storage.getTrustReceiptsForAgent(req.params.agentId, limit);
       res.json({ receipts });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // AGENT CREWS
+  // ═══════════════════════════════════════════════════════════════
+
+  app.post("/api/crews", apiLimiter, async (req, res) => {
+    try {
+      const { createCrewSchema } = await import("@shared/schema");
+      const parsed = createCrewSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid crew data", errors: parsed.error.flatten() });
+      }
+      const { name, handle, description, members } = parsed.data;
+
+      const existingCrew = await storage.getCrewByHandle(handle);
+      if (existingCrew) {
+        return res.status(409).json({ message: "Crew handle already taken" });
+      }
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) {
+        return res.status(401).json({ message: "Wallet authentication required. Send x-wallet-address header." });
+      }
+
+      const memberAgents = [];
+      for (const m of members) {
+        const agent = await storage.getAgent(m.agentId);
+        if (!agent) {
+          return res.status(400).json({ message: `Agent ${m.agentId} not found` });
+        }
+        if (agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+          return res.status(403).json({ message: `Agent ${agent.handle} does not belong to your wallet` });
+        }
+        memberAgents.push({ agent, role: m.role });
+      }
+
+      const ownerWallet = walletAddress;
+
+      const avgScore = memberAgents.reduce((s, m) => s + m.agent.fusedScore, 0) / memberAgents.length;
+      const bondPool = memberAgents.reduce((s, m) => s + m.agent.availableBond, 0);
+
+      const crew = await storage.createCrew({
+        name,
+        handle,
+        description: description || null,
+        ownerWallet,
+      });
+
+      await storage.updateCrew(crew.id, {
+        fusedScore: Math.round(avgScore * 10) / 10,
+        bondPool: Math.round(bondPool * 100) / 100,
+      });
+
+      for (const m of members) {
+        await storage.addCrewMember({
+          crewId: crew.id,
+          agentId: m.agentId,
+          role: m.role,
+        });
+      }
+
+      const updatedCrew = await storage.getCrew(crew.id);
+      const crewMembers = await storage.getCrewMembers(crew.id);
+
+      res.status(201).json({
+        ...updatedCrew,
+        members: crewMembers,
+        tier: getCrewTier(updatedCrew?.fusedScore || 0),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/crews", async (req, res) => {
+    try {
+      let allCrews = await storage.getCrews();
+
+      const minScore = Number(req.query.minScore) || 0;
+      const minBond = Number(req.query.minBond) || 0;
+      const role = (req.query.role as string) || "";
+
+      if (minScore > 0) {
+        allCrews = allCrews.filter(c => c.fusedScore >= minScore);
+      }
+      if (minBond > 0) {
+        allCrews = allCrews.filter(c => c.bondPool >= minBond);
+      }
+
+      const enriched = await Promise.all(allCrews.map(async (crew) => {
+        const members = await storage.getCrewMembers(crew.id);
+
+        if (role) {
+          const hasRole = members.some(m => m.role === role);
+          if (!hasRole) return null;
+        }
+
+        const memberDetails = await Promise.all(members.map(async (m) => {
+          const agent = await storage.getAgent(m.agentId);
+          return {
+            ...m,
+            agent: agent ? { id: agent.id, handle: agent.handle, avatar: agent.avatar, fusedScore: agent.fusedScore } : null,
+          };
+        }));
+
+        return {
+          ...crew,
+          tier: getCrewTier(crew.fusedScore),
+          members: memberDetails,
+          memberCount: members.length,
+        };
+      }));
+
+      res.json(enriched.filter(Boolean));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/crews/:id", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id);
+      if (!crew) {
+        return res.status(404).json({ message: "Crew not found" });
+      }
+
+      const members = await storage.getCrewMembers(crew.id);
+      const memberDetails = await Promise.all(members.map(async (m) => {
+        const agent = await storage.getAgent(m.agentId);
+        return {
+          ...m,
+          agent: agent ? {
+            id: agent.id,
+            handle: agent.handle,
+            avatar: agent.avatar,
+            fusedScore: agent.fusedScore,
+            totalGigsCompleted: agent.totalGigsCompleted,
+            totalEarned: agent.totalEarned,
+            availableBond: agent.availableBond,
+            skills: agent.skills,
+          } : null,
+        };
+      }));
+
+      const crewGigs = await storage.getCrewGigs(crew.id);
+
+      res.json({
+        ...crew,
+        tier: getCrewTier(crew.fusedScore),
+        members: memberDetails,
+        memberCount: members.length,
+        gigs: crewGigs,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/crews/:id/passport", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id);
+      if (!crew) {
+        return res.status(404).json({ message: "Crew not found" });
+      }
+
+      const members = await storage.getCrewMembers(crew.id);
+      const memberDetails = await Promise.all(members.map(async (m) => {
+        const agent = await storage.getAgent(m.agentId);
+        return { agent: agent!, role: m.role };
+      }));
+
+      const validMembers = memberDetails.filter(m => m.agent);
+
+      const imageBuffer = await generateCrewPassportImage(crew, validMembers);
+
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.send(imageBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/crews/:id/apply/:gigId", apiLimiter, async (req, res) => {
+    try {
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) {
+        return res.status(401).json({ message: "Wallet authentication required. Send x-wallet-address header." });
+      }
+
+      const crew = await storage.getCrew(req.params.id);
+      if (!crew) {
+        return res.status(404).json({ message: "Crew not found" });
+      }
+
+      if (crew.ownerWallet.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Only the crew owner can apply for gigs" });
+      }
+
+      const gig = await storage.getGig(req.params.gigId);
+      if (!gig) {
+        return res.status(404).json({ message: "Gig not found" });
+      }
+
+      if (!gig.crewGig) {
+        return res.status(400).json({ message: "This gig is not a crew gig" });
+      }
+
+      if (gig.status !== "open") {
+        return res.status(400).json({ message: "Gig is not open for applications" });
+      }
+
+      if (gig.minCrewScore && crew.fusedScore < gig.minCrewScore) {
+        return res.status(403).json({ message: `Crew score ${crew.fusedScore} is below minimum ${gig.minCrewScore}` });
+      }
+
+      if (gig.requiredRoles && gig.requiredRoles.length > 0) {
+        const members = await storage.getCrewMembers(crew.id);
+        const crewRoles = members.map(m => m.role);
+        const missingRoles = gig.requiredRoles.filter(r => !crewRoles.includes(r as any));
+        if (missingRoles.length > 0) {
+          return res.status(403).json({ message: `Crew missing required roles: ${missingRoles.join(", ")}` });
+        }
+      }
+
+      const existing = await storage.getCrewGigApplicant(gig.id, crew.id);
+      if (existing) {
+        return res.status(409).json({ message: "Crew already applied for this gig" });
+      }
+
+      const applicant = await storage.createCrewGigApplicant({
+        gigId: gig.id,
+        crewId: crew.id,
+        message: req.body.message || null,
+      });
+
+      res.status(201).json(applicant);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/crews", async (req, res) => {
+    try {
+      const memberships = await storage.getCrewsForAgent(req.params.id);
+      const crewDetails = await Promise.all(memberships.map(async (m) => {
+        const crew = await storage.getCrew(m.crewId);
+        return crew ? { ...crew, role: m.role, tier: getCrewTier(crew.fusedScore) } : null;
+      }));
+      res.json(crewDetails.filter(Boolean));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
