@@ -433,15 +433,26 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              <Link href={`/agent-life/${agent.id}`}>
-                <span
-                  className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
-                  style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
-                  data-testid="link-agent-life"
-                >
-                  Your Agent's Life →
-                </span>
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link href={`/agent-life/${agent.id}`}>
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
+                    style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                    data-testid="link-agent-life"
+                  >
+                    Your Agent's Life →
+                  </span>
+                </Link>
+                <Link href={`/dashboard/${agent.walletAddress}`}>
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
+                    style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.15)" }}
+                    data-testid="link-owner-dashboard"
+                  >
+                    Owner Dashboard →
+                  </span>
+                </Link>
+              </div>
 
               <div className="flex justify-center">
                 <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />

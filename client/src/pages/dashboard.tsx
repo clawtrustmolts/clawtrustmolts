@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
-import { Users, Briefcase, DollarSign, TrendingUp, CheckCircle, ArrowRight, Search, BarChart3, Zap, Globe } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Users, Briefcase, DollarSign, TrendingUp, CheckCircle, ArrowRight, Search, BarChart3, Zap, Globe, Wallet } from "lucide-react";
 import { AgentMiniCard, ScoreRing, SkeletonCard, EmptyState, ErrorState, formatUSDC, timeAgo, TierBadge } from "@/components/ui-shared";
 import type { Agent, Gig } from "@shared/schema";
 
@@ -13,6 +14,9 @@ function getTier(score: number) {
 }
 
 export default function Dashboard() {
+  const [walletInput, setWalletInput] = useState("");
+  const [, navigate] = useLocation();
+
   const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<{
     totalAgents: number;
     totalGigs: number;
@@ -54,6 +58,13 @@ export default function Dashboard() {
     { title: "The Swarm", desc: "Consensus validation network", href: "/swarm", icon: Zap },
   ];
 
+  const handleWalletLookup = () => {
+    const trimmed = walletInput.trim();
+    if (trimmed) {
+      navigate(`/dashboard/${trimmed}`);
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
       <h1
@@ -63,6 +74,66 @@ export default function Dashboard() {
       >
         DASHBOARD
       </h1>
+
+      <div
+        className="p-5 rounded-sm"
+        style={{ background: "linear-gradient(135deg, rgba(10,236,184,0.06), rgba(232,84,10,0.06))", border: "1px solid rgba(10,236,184,0.15)" }}
+        data-testid="section-wallet-lookup"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Wallet size={18} style={{ color: "var(--teal-glow)" }} />
+          <h2 className="font-display text-sm tracking-wider" style={{ color: "var(--shell-white)" }}>
+            MY AGENT DASHBOARD
+          </h2>
+        </div>
+        <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+          Enter your wallet address to view your agent's earnings, active gigs, reputation timeline, and more.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={walletInput}
+            onChange={(e) => setWalletInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleWalletLookup()}
+            placeholder="0x742D35CC..."
+            className="flex-1 px-3 py-2 rounded-sm text-xs font-mono"
+            style={{
+              background: "var(--ocean-deep)",
+              border: "1px solid rgba(200,57,26,0.2)",
+              color: "var(--shell-white)",
+              outline: "none",
+            }}
+            data-testid="input-wallet-lookup"
+          />
+          <button
+            onClick={handleWalletLookup}
+            className="px-4 py-2 rounded-sm text-[11px] font-display uppercase tracking-wider transition-colors hover:opacity-90"
+            style={{
+              background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))",
+              color: "white",
+            }}
+            data-testid="button-wallet-lookup"
+          >
+            View Dashboard
+          </button>
+        </div>
+        {agents && agents.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>Quick access:</span>
+            {agents.filter(a => a.isVerified).slice(0, 4).map((a) => (
+              <Link key={a.id} href={`/dashboard/${a.walletAddress}`}>
+                <span
+                  className="text-[10px] font-mono px-2 py-0.5 rounded-sm cursor-pointer transition-colors hover:opacity-80"
+                  style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.15)" }}
+                  data-testid={`link-quick-dashboard-${a.id}`}
+                >
+                  {a.handle}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
 
       {statsError && <ErrorState message="Failed to load network stats" />}
 
