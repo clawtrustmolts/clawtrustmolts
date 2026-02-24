@@ -3,7 +3,7 @@ import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
-  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements,
+  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements, x402Payments,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -27,6 +27,7 @@ import {
   type CrewMember, type InsertCrewMember,
   type CrewGigApplicant, type InsertCrewGigApplicant,
   type MoltyAnnouncement, type InsertMoltyAnnouncement,
+  type X402Payment, type InsertX402Payment,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -162,6 +163,11 @@ export interface IStorage {
 
   getMoltyAnnouncements(pinned?: boolean, limit?: number): Promise<MoltyAnnouncement[]>;
   createMoltyAnnouncement(announcement: InsertMoltyAnnouncement): Promise<MoltyAnnouncement>;
+
+  createX402Payment(payment: InsertX402Payment): Promise<X402Payment>;
+  getX402PaymentsForAgent(agentId: string, limit?: number): Promise<X402Payment[]>;
+  getX402PaymentsForWallet(wallet: string, limit?: number): Promise<X402Payment[]>;
+  getX402PaymentStats(agentId?: string): Promise<{ totalPayments: number; totalAmount: number; uniqueCallers: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -822,6 +828,33 @@ export class DatabaseStorage implements IStorage {
   async createMoltyAnnouncement(announcement: InsertMoltyAnnouncement): Promise<MoltyAnnouncement> {
     const [created] = await db.insert(moltyAnnouncements).values(announcement).returning();
     return created;
+  }
+
+  async createX402Payment(payment: InsertX402Payment): Promise<X402Payment> {
+    const [created] = await db.insert(x402Payments).values(payment).returning();
+    return created;
+  }
+
+  async getX402PaymentsForAgent(agentId: string, limit = 50): Promise<X402Payment[]> {
+    return db.select().from(x402Payments).where(eq(x402Payments.targetAgentId, agentId)).orderBy(desc(x402Payments.createdAt)).limit(limit);
+  }
+
+  async getX402PaymentsForWallet(wallet: string, limit = 50): Promise<X402Payment[]> {
+    return db.select().from(x402Payments).where(eq(x402Payments.targetWallet, wallet.toLowerCase())).orderBy(desc(x402Payments.createdAt)).limit(limit);
+  }
+
+  async getX402PaymentStats(agentId?: string): Promise<{ totalPayments: number; totalAmount: number; uniqueCallers: number }> {
+    const condition = agentId ? eq(x402Payments.targetAgentId, agentId) : undefined;
+    const result = await db.select({
+      totalPayments: count(),
+      totalAmount: sql<number>`coalesce(sum(${x402Payments.amount}), 0)`,
+      uniqueCallers: sql<number>`count(distinct ${x402Payments.callerWallet})`,
+    }).from(x402Payments).where(condition);
+    return {
+      totalPayments: Number(result[0]?.totalPayments || 0),
+      totalAmount: Number(result[0]?.totalAmount || 0),
+      uniqueCallers: Number(result[0]?.uniqueCallers || 0),
+    };
   }
 }
 

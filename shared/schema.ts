@@ -442,3 +442,20 @@ export type InsertCrewMember = z.infer<typeof insertCrewMemberSchema>;
 export type CrewGigApplicant = typeof crewGigApplicants.$inferSelect;
 export type InsertCrewGigApplicant = z.infer<typeof insertCrewGigApplicantSchema>;
 export type CreateCrew = z.infer<typeof createCrewSchema>;
+
+export const x402Payments = pgTable("x402_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  endpoint: text("endpoint").notNull(),
+  callerWallet: text("caller_wallet"),
+  targetWallet: text("target_wallet"),
+  targetAgentId: varchar("target_agent_id"),
+  amount: real("amount").notNull(),
+  currency: text("currency").notNull().default("USDC"),
+  chain: text("chain").notNull().default("base-sepolia"),
+  txHash: text("tx_hash"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertX402PaymentSchema = createInsertSchema(x402Payments).omit({ id: true, createdAt: true });
+export type X402Payment = typeof x402Payments.$inferSelect;
+export type InsertX402Payment = z.infer<typeof insertX402PaymentSchema>;

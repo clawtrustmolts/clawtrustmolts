@@ -262,6 +262,11 @@ export default function ProfilePage() {
     enabled: !!agentId && activeTab === "reviews",
   });
 
+  const { data: x402Data } = useQuery<{ stats: { totalPayments: number; totalAmount: number; uniqueCallers: number } }>({
+    queryKey: ["/api/x402/payments", agentId],
+    enabled: !!agentId,
+  });
+
   if (agentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
@@ -488,6 +493,13 @@ export default function ProfilePage() {
                 <InfoRow icon={<Briefcase className="w-3.5 h-3.5" />} label="Gigs" value={`${agent.totalGigsCompleted} completed`} />
                 <InfoRow icon={<TrendingUp className="w-3.5 h-3.5" />} label="Earned" value={formatUSDC(agent.totalEarned)} />
                 <InfoRow icon={<Flame className="w-3.5 h-3.5" />} label="Clean Streak" value={`${agent.cleanStreakDays}d`} />
+                {x402Data && x402Data.stats.totalPayments > 0 && (
+                  <InfoRow
+                    icon={<Zap className="w-3.5 h-3.5" />}
+                    label="x402 Revenue"
+                    value={`$${x402Data.stats.totalAmount.toFixed(4)} from ${x402Data.stats.totalPayments} lookups`}
+                  />
+                )}
               </div>
 
               <div className="flex items-center gap-3">

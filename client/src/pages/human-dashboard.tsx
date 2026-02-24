@@ -106,6 +106,22 @@ interface DashboardData {
     swarmVerdict: string | null;
     scoreChange: number;
   }>;
+  x402: {
+    payments: Array<{
+      id: string;
+      endpoint: string;
+      callerWallet: string | null;
+      amount: number;
+      currency: string;
+      chain: string;
+      createdAt: string | null;
+    }>;
+    stats: {
+      totalPayments: number;
+      totalAmount: number;
+      uniqueCallers: number;
+    };
+  };
 }
 
 function shortenWallet(addr: string) {
@@ -506,6 +522,91 @@ export default function HumanDashboard() {
         <div className="lg:col-span-2 space-y-6">
           <div className="flex justify-center">
             <ScoreRing score={agent.fusedScore} size={100} strokeWidth={7} label="FUSED" />
+          </div>
+
+          <div
+            className="p-4 rounded-sm"
+            style={{ background: "rgba(10,236,184,0.04)", border: "1px solid rgba(10,236,184,0.12)" }}
+            data-testid="section-x402-payments"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Zap size={16} style={{ color: "var(--teal-glow)" }} />
+              <h2 className="font-display text-sm tracking-wider" style={{ color: "var(--shell-white)" }}>
+                x402 MICROPAYMENTS
+              </h2>
+              <span
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)" }}
+              >
+                PROTOCOL
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="text-center">
+                <p className="font-mono text-lg font-bold" style={{ color: "var(--teal-glow)" }} data-testid="text-x402-total-amount">
+                  ${data.x402.stats.totalAmount.toFixed(4)}
+                </p>
+                <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>EARNED</p>
+              </div>
+              <div className="text-center">
+                <p className="font-mono text-lg font-bold" style={{ color: "var(--shell-white)" }} data-testid="text-x402-total-payments">
+                  {data.x402.stats.totalPayments}
+                </p>
+                <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>LOOKUPS</p>
+              </div>
+              <div className="text-center">
+                <p className="font-mono text-lg font-bold" style={{ color: "var(--shell-white)" }} data-testid="text-x402-unique-callers">
+                  {data.x402.stats.uniqueCallers}
+                </p>
+                <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>CALLERS</p>
+              </div>
+            </div>
+
+            {data.x402.payments.length > 0 ? (
+              <div className="space-y-1">
+                {data.x402.payments.slice(0, 8).map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between p-2 rounded-sm"
+                    style={{ background: "var(--ocean-mid)" }}
+                    data-testid={`x402-payment-${p.id}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">💸</span>
+                      <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>
+                        {p.endpoint === "/api/trust-check" ? "Trust Check" : "Reputation Lookup"}
+                      </span>
+                      {p.callerWallet && (
+                        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          from {p.callerWallet.slice(0, 6)}...{p.callerWallet.slice(-4)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold" style={{ color: "var(--teal-glow)" }}>
+                        +${p.amount.toFixed(3)}
+                      </span>
+                      {p.createdAt && (
+                        <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          {timeAgo(p.createdAt)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-center py-2" style={{ color: "var(--text-muted)" }}>
+                No x402 payments received yet — other agents pay USDC to look up your trust data
+              </p>
+            )}
+
+            <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(10,236,184,0.08)" }}>
+              <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                Trust-check: $0.001 · Reputation: $0.002 · Protocol: x402 · Chain: Base Sepolia
+              </p>
+            </div>
           </div>
 
           <div data-testid="section-activity-feed">

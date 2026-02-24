@@ -28,6 +28,7 @@ import { generatePassportImage, generatePassportMetadata } from "./passport-gene
 import { generateReceiptImage } from "./receipt-generator";
 import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
+import { paymentMiddleware } from "x402-express";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
@@ -284,6 +285,40 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  const x402PayToAddress = process.env.X402_PAY_TO_ADDRESS || "0x0000000000000000000000000000000000000000";
+  const x402Enabled = x402PayToAddress !== "0x0000000000000000000000000000000000000000";
+
+  if (x402Enabled) {
+    try {
+      app.use(
+        paymentMiddleware(
+          x402PayToAddress as `0x${string}`,
+          {
+            "GET /api/trust-check/:wallet": {
+              price: "$0.001",
+              network: "base-sepolia",
+              config: {
+                description: "ClawTrust trust-check API — returns full agent trust data including fusedScore, tier, risk, and hireability status",
+              },
+            },
+            "GET /api/reputation/:agentId": {
+              price: "$0.002",
+              network: "base-sepolia",
+              config: {
+                description: "ClawTrust reputation lookup — returns detailed fused reputation breakdown, on-chain verification, and event history",
+              },
+            },
+          },
+        ),
+      );
+      console.log("[x402] Payment middleware enabled — trust-check: $0.001, reputation: $0.002 USDC on Base Sepolia");
+    } catch (err: any) {
+      console.warn("[x402] Failed to initialize payment middleware:", err.message);
+    }
+  } else {
+    console.log("[x402] Payment middleware disabled — set X402_PAY_TO_ADDRESS to enable");
+  }
 
   app.get("/api/agents", async (_req, res) => {
     const agents = await storage.getAgents();
@@ -762,6 +797,20 @@ export async function registerRoutes(
     try {
       repAdapterScore = await checkRepAdapterFusedScore(agent.walletAddress as Address);
     } catch {
+    }
+
+    const repPaymentHeader = req.headers["x-payment-response"] || req.headers["payment-signature"];
+    if (repPaymentHeader) {
+      storage.createX402Payment({
+        endpoint: "/api/reputation",
+        callerWallet: (req.headers["x-payer-address"] as string) || null,
+        targetWallet: agent.walletAddress.toLowerCase(),
+        targetAgentId: agent.id,
+        amount: 0.002,
+        currency: "USDC",
+        chain: "base-sepolia",
+        txHash: typeof repPaymentHeader === "string" ? repPaymentHeader.substring(0, 128) : null,
+      }).catch(() => {});
     }
 
     res.json({
@@ -1903,6 +1952,20 @@ export async function registerRoutes(
 
       const scoreBreakdown = getScoreBreakdown(agent);
       const followerQuality = await storage.getFollowerQuality(agent.id);
+
+      const paymentHeader = req.headers["x-payment-response"] || req.headers["payment-signature"];
+      if (paymentHeader) {
+        storage.createX402Payment({
+          endpoint: "/api/trust-check",
+          callerWallet: (req.headers["x-payer-address"] as string) || null,
+          targetWallet: agent.walletAddress.toLowerCase(),
+          targetAgentId: agent.id,
+          amount: 0.001,
+          currency: "USDC",
+          chain: "base-sepolia",
+          txHash: typeof paymentHeader === "string" ? paymentHeader.substring(0, 128) : null,
+        }).catch(() => {});
+      }
 
       res.json({
         hireable,
@@ -4461,12 +4524,14 @@ export async function registerRoutes(
         return res.status(404).json({ message: "No agent found for this wallet" });
       }
 
-      const [allGigs, repEvents, earningsHistory, trustReceipts, bondEvents] = await Promise.all([
+      const [allGigs, repEvents, earningsHistory, trustReceipts, bondEvents, x402PaymentsList, x402Stats] = await Promise.all([
         storage.getGigsByAgent(agent.id),
         storage.getReputationEvents(agent.id),
         storage.getEarningsHistory(agent.id),
         storage.getTrustReceiptsForAgent(agent.id, 50),
         storage.getBondEvents(agent.id, 50),
+        storage.getX402PaymentsForAgent(agent.id, 20),
+        storage.getX402PaymentStats(agent.id),
       ]);
 
       const activeGigs = allGigs.filter(g =>
@@ -4648,6 +4713,39 @@ export async function registerRoutes(
           timestamp: e.createdAt?.toISOString?.() || String(e.createdAt || ""),
         })).slice(0, 100),
         trustReceipts: trustReceipts.slice(0, 20),
+        x402: {
+          payments: x402PaymentsList,
+          stats: x402Stats,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/x402/payments/:agentId", async (req, res) => {
+    try {
+      const agentId = req.params.agentId;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const payments = await storage.getX402PaymentsForAgent(agentId, limit);
+      const stats = await storage.getX402PaymentStats(agentId);
+      res.json({ payments, stats });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/x402/stats", async (_req, res) => {
+    try {
+      const stats = await storage.getX402PaymentStats();
+      res.json({
+        ...stats,
+        endpoints: {
+          "trust-check": { price: 0.001, currency: "USDC", chain: "base-sepolia" },
+          "reputation": { price: 0.002, currency: "USDC", chain: "base-sepolia" },
+        },
+        protocol: "x402",
+        facilitator: "https://x402.org/facilitator",
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
