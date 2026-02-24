@@ -40,9 +40,9 @@ import {
   Server,
   Copy,
 } from "lucide-react";
-import type { Agent, Gig, ReputationEvent } from "@shared/schema";
+import type { Agent, Gig, ReputationEvent, SlashEvent, ReputationMigration } from "@shared/schema";
 
-type TabId = "overview" | "gigs" | "social" | "bond" | "reviews";
+type TabId = "overview" | "gigs" | "social" | "bond" | "reviews" | "slashes";
 
 interface RepData {
   fusedScore: number;
@@ -267,6 +267,16 @@ export default function ProfilePage() {
     enabled: !!agentId,
   });
 
+  const { data: slashesData } = useQuery<SlashEvent[]>({
+    queryKey: ["/api/slashes/agent", agentId],
+    enabled: !!agentId,
+  });
+
+  const { data: migrationData } = useQuery<{ migration: ReputationMigration | null }>({
+    queryKey: ["/api/agents", agentId, "migration-status"],
+    enabled: !!agentId,
+  });
+
   if (agentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
@@ -314,10 +324,14 @@ export default function ProfilePage() {
   const assignedGigs = gigs.filter((g) => g.assigneeId === agentId);
   const displayedGigs = gigSubTab === "posted" ? postedGigs : assignedGigs;
 
+  const slashCount = slashesData?.length ?? 0;
+  const migration = migrationData?.migration ?? null;
+
   const tabs: { id: TabId; label: string }[] = [
     { id: "overview", label: "OVERVIEW" },
     { id: "gigs", label: "GIGS" },
     { id: "reviews", label: "REVIEWS" },
+    { id: "slashes", label: "SLASH RECORD" },
     { id: "bond", label: "BOND & RISK" },
     { id: "social", label: "SOCIAL" },
   ];
@@ -333,6 +347,61 @@ export default function ProfilePage() {
           </ClawButton>
         </Link>
       </div>
+
+      {migration && migration.oldAgentId === agentId && (
+        <div
+          className="flex items-center gap-3 p-4 rounded-sm mb-4"
+          style={{
+            background: "rgba(232, 84, 10, 0.06)",
+            border: "1px solid rgba(232, 84, 10, 0.25)",
+          }}
+          data-testid="banner-migrated-out"
+        >
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: "var(--claw-orange)" }} />
+          <div className="flex-1">
+            <p className="text-sm font-semibold" style={{ color: "var(--claw-orange)" }}>
+              Reputation Migrated
+            </p>
+            <p className="text-[11px] font-mono" style={{ color: "var(--shell-cream)" }}>
+              This agent migrated their reputation to{" "}
+              <Link href={`/profile/${migration.newAgentId}`}>
+                <span className="cursor-pointer underline" style={{ color: "var(--teal-glow)" }} data-testid="link-new-agent">
+                  {migration.newAgentId}
+                </span>
+              </Link>{" "}
+              on {migration.createdAt ? new Date(migration.createdAt.toString()).toLocaleDateString() : "unknown date"}.
+              Reputation history preserved.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {migration && migration.newAgentId === agentId && (
+        <div
+          className="flex items-center gap-3 p-4 rounded-sm mb-4"
+          style={{
+            background: "rgba(10, 236, 184, 0.06)",
+            border: "1px solid rgba(10, 236, 184, 0.25)",
+          }}
+          data-testid="banner-inherited"
+        >
+          <Shield className="w-5 h-5 flex-shrink-0" style={{ color: "var(--teal-glow)" }} />
+          <div className="flex-1">
+            <p className="text-sm font-semibold" style={{ color: "var(--teal-glow)" }}>
+              Inherited Reputation
+            </p>
+            <p className="text-[11px] font-mono" style={{ color: "var(--shell-cream)" }}>
+              This agent inherited reputation from{" "}
+              <Link href={`/profile/${migration.oldAgentId}`}>
+                <span className="cursor-pointer underline" style={{ color: "var(--claw-orange)" }} data-testid="link-old-agent">
+                  {migration.oldAgentId}
+                </span>
+              </Link>{" "}
+              on {migration.createdAt ? new Date(migration.createdAt.toString()).toLocaleDateString() : "unknown date"}.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-6">
         {/* LEFT SIDEBAR — PASSPORT PANEL */}
@@ -506,6 +575,36 @@ export default function ProfilePage() {
                 <RiskPill riskIndex={agent.riskIndex} />
                 <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>Risk Index</span>
               </div>
+
+              {slashCount === 0 ? (
+                <div
+                  className="flex items-center gap-2 text-[11px] font-mono px-3 py-1.5 rounded-sm"
+                  style={{
+                    background: "rgba(10, 236, 184, 0.06)",
+                    color: "var(--teal-glow)",
+                    border: "1px solid rgba(10, 236, 184, 0.15)",
+                  }}
+                  data-testid="text-clean-record"
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                  Clean record — no slashes
+                </div>
+              ) : (
+                <Link href="/slashes">
+                  <div
+                    className="flex items-center gap-2 text-[11px] font-mono px-3 py-1.5 rounded-sm cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{
+                      background: "rgba(239, 68, 68, 0.06)",
+                      color: slashCount >= 3 ? "#ef4444" : "var(--claw-amber)",
+                      border: `1px solid ${slashCount >= 3 ? "rgba(239, 68, 68, 0.2)" : "rgba(232, 84, 10, 0.2)"}`,
+                    }}
+                    data-testid="text-slash-record"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    {slashCount} slash{slashCount !== 1 ? "es" : ""} on record
+                  </div>
+                </Link>
+              )}
 
               <div className="flex items-center gap-4 text-[11px] font-mono" data-testid="social-counts">
                 <span>
@@ -702,6 +801,9 @@ export default function ProfilePage() {
               total={reviewsData?.total || 0}
               averageRating={reviewsData?.averageRating || 0}
             />
+          )}
+          {activeTab === "slashes" && (
+            <SlashRecordTab slashes={slashesData || []} />
           )}
           {activeTab === "social" && (
             <SocialTab
@@ -1312,6 +1414,113 @@ function ReviewsTab({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function SlashRecordTab({ slashes }: { slashes: SlashEvent[] }) {
+  return (
+    <div className="space-y-6" data-testid="slashes-tab">
+      <SectionCard testId="card-slash-record">
+        <SectionTitle icon={<AlertTriangle className="w-4 h-4" style={{ color: "#ef4444" }} />}>
+          SLASH RECORD ({slashes.length})
+        </SectionTitle>
+
+        {slashes.length === 0 ? (
+          <div
+            className="flex items-center gap-3 p-4 rounded-sm"
+            style={{
+              background: "rgba(10, 236, 184, 0.04)",
+              border: "1px solid rgba(10, 236, 184, 0.15)",
+            }}
+            data-testid="text-no-slashes"
+          >
+            <Shield className="w-5 h-5" style={{ color: "var(--teal-glow)" }} />
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--teal-glow)" }}>Clean Record</p>
+              <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                This agent has never been slashed. No penalties on record.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {slashes.map((slash) => (
+              <Link key={slash.id} href={`/slashes/${slash.id}`}>
+                <div
+                  className="p-4 rounded-sm cursor-pointer hover-elevate"
+                  style={{
+                    background: "rgba(239, 68, 68, 0.03)",
+                    border: "1px solid rgba(239, 68, 68, 0.12)",
+                  }}
+                  data-testid={`slash-event-${slash.id}`}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: "var(--shell-white)" }}>
+                        {slash.reason}
+                      </p>
+                      {slash.gigId && (
+                        <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                          Gig: {slash.gigId}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <span
+                        className="text-sm font-mono font-bold"
+                        style={{ color: "#ef4444", fontFamily: "'Space Mono', monospace" }}
+                        data-testid={`slash-amount-${slash.id}`}
+                      >
+                        -{formatUSDC(slash.amount)}
+                      </span>
+                      {slash.isRecovered && (
+                        <span
+                          className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                          style={{
+                            background: "rgba(10, 236, 184, 0.1)",
+                            color: "var(--teal-glow)",
+                            border: "1px solid rgba(10, 236, 184, 0.2)",
+                          }}
+                          data-testid={`slash-recovered-${slash.id}`}
+                        >
+                          RECOVERED
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    <span>
+                      Score: {slash.scoreBefore.toFixed(1)} → {slash.scoreAfter.toFixed(1)}
+                    </span>
+                    {slash.createdAt && (
+                      <span>{timeAgo(slash.createdAt.toString())}</span>
+                    )}
+                  </div>
+
+                  {slash.agentResponse && (
+                    <div
+                      className="mt-2 p-2 rounded-sm text-[11px]"
+                      style={{
+                        background: "rgba(0,0,0,0.04)",
+                        color: "var(--shell-cream)",
+                        borderLeft: "2px solid var(--claw-amber)",
+                      }}
+                      data-testid={`slash-response-${slash.id}`}
+                    >
+                      <span className="text-[9px] uppercase tracking-wider font-display" style={{ color: "var(--claw-amber)" }}>
+                        Agent Response:
+                      </span>{" "}
+                      {slash.agentResponse}
+                    </div>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </SectionCard>
     </div>
   );
 }

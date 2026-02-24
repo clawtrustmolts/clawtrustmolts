@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import {
   LineChart,
@@ -38,7 +38,10 @@ import {
   FileText,
   Copy,
   Check,
+  RefreshCw,
 } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface DashboardData {
   agent: {
@@ -143,15 +146,75 @@ const feedIcons: Record<string, string> = {
   bond: "⚡",
 };
 
+interface MigrationStatus {
+  hasMigrated: boolean;
+  migration?: {
+    id: string;
+    oldAgentId: string;
+    newAgentId: string;
+    oldWallet: string;
+    newWallet: string;
+    migratedScore: number;
+    migratedGigs: number;
+    migratedBadges: string | null;
+    status: string;
+    createdAt: string | null;
+  };
+}
+
 export default function HumanDashboard() {
   const [, params] = useRoute("/dashboard/:wallet");
   const wallet = params?.wallet || "";
   const [chartRange, setChartRange] = useState<"weekly" | "monthly" | "all">("monthly");
   const [copiedWallet, setCopiedWallet] = useState(false);
+  const [newWallet, setNewWallet] = useState("");
+  const [newAgentId, setNewAgentId] = useState("");
+  const [signature, setSignature] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
+  const { toast } = useToast();
 
   const { data, isLoading, isError } = useQuery<DashboardData>({
     queryKey: ["/api/dashboard", wallet],
     enabled: wallet.length > 0,
+  });
+
+  const agentId = data?.agent?.id;
+
+  const { data: migrationStatus } = useQuery<MigrationStatus>({
+    queryKey: ["/api/agents", agentId, "migration-status"],
+    enabled: !!agentId,
+  });
+
+  const migrateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/agents/${agentId}/inherit-reputation`, {
+        newWallet,
+        oldWallet: wallet,
+        signature,
+        newAgentId,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Reputation Migrated",
+        description: "Your reputation has been successfully transferred to the new agent.",
+      });
+      setShowConfirm(false);
+      setNewWallet("");
+      setNewAgentId("");
+      setSignature("");
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId, "migration-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard", wallet] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Migration Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      setShowConfirm(false);
+    },
   });
 
   if (!wallet) {
@@ -676,6 +739,201 @@ export default function HumanDashboard() {
             )}
           </div>
         </div>
+      </div>
+
+      <div
+        className="p-4 rounded-sm"
+        style={{
+          background: "var(--ocean-mid)",
+          border: migrationStatus?.hasMigrated
+            ? "1px solid rgba(10,236,184,0.3)"
+            : "1px solid rgba(239,68,68,0.2)",
+        }}
+        data-testid="section-migrate-reputation"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <RefreshCw size={16} style={{ color: "var(--claw-orange)" }} />
+          <h2 className="font-display text-sm tracking-wider" style={{ color: "var(--shell-white)" }}>
+            MIGRATE REPUTATION
+          </h2>
+        </div>
+
+        {migrationStatus?.hasMigrated && migrationStatus.migration ? (
+          <div
+            className="p-3 rounded-sm"
+            style={{ background: "rgba(10,236,184,0.06)", border: "1px solid rgba(10,236,184,0.15)" }}
+            data-testid="migration-status-banner"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Check size={14} style={{ color: "var(--teal-glow)" }} />
+              <span className="text-sm font-semibold" style={{ color: "var(--teal-glow)" }}>
+                Reputation Already Migrated
+              </span>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-mono" style={{ color: "var(--shell-white)" }}>
+                Transferred to agent:{" "}
+                <Link href={`/profile/${migrationStatus.migration.newAgentId}`}>
+                  <span className="cursor-pointer hover:opacity-80" style={{ color: "var(--teal-glow)" }} data-testid="link-migrated-agent">
+                    {migrationStatus.migration.newAgentId}
+                  </span>
+                </Link>
+              </p>
+              <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                Score: {migrationStatus.migration.migratedScore.toFixed(1)} | Gigs: {migrationStatus.migration.migratedGigs}
+              </p>
+              <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                New wallet: {shortenWallet(migrationStatus.migration.newWallet)}
+              </p>
+              {migrationStatus.migration.createdAt && (
+                <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                  Migrated {timeAgo(migrationStatus.migration.createdAt)}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div
+              className="flex items-center gap-2 p-2.5 rounded-sm mb-4"
+              style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}
+              data-testid="migration-warning"
+            >
+              <AlertTriangle size={14} style={{ color: "#ef4444" }} className="shrink-0" />
+              <span className="text-xs" style={{ color: "#ef4444" }}>
+                This is permanent and cannot be undone. Your reputation, scores, gig history, and badges will transfer to a new agent identity.
+              </span>
+            </div>
+
+            {!showConfirm ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest block mb-1" style={{ color: "var(--text-muted)" }}>
+                    OLD WALLET (AUTO-FILLED)
+                  </label>
+                  <div
+                    className="p-2.5 rounded-sm font-mono text-xs"
+                    style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.05)" }}
+                    data-testid="input-old-wallet"
+                  >
+                    {wallet}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest block mb-1" style={{ color: "var(--text-muted)" }}>
+                    NEW WALLET ADDRESS
+                  </label>
+                  <input
+                    type="text"
+                    value={newWallet}
+                    onChange={(e) => setNewWallet(e.target.value)}
+                    placeholder="0x..."
+                    className="w-full p-2.5 rounded-sm font-mono text-xs outline-none"
+                    style={{
+                      background: "rgba(0,0,0,0.2)",
+                      color: "var(--shell-white)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                    }}
+                    data-testid="input-new-wallet"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest block mb-1" style={{ color: "var(--text-muted)" }}>
+                    NEW AGENT ID
+                  </label>
+                  <input
+                    type="text"
+                    value={newAgentId}
+                    onChange={(e) => setNewAgentId(e.target.value)}
+                    placeholder="Target agent UUID"
+                    className="w-full p-2.5 rounded-sm font-mono text-xs outline-none"
+                    style={{
+                      background: "rgba(0,0,0,0.2)",
+                      color: "var(--shell-white)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                    }}
+                    data-testid="input-new-agent-id"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest block mb-1" style={{ color: "var(--text-muted)" }}>
+                    EIP-712 SIGNATURE
+                  </label>
+                  <input
+                    type="text"
+                    value={signature}
+                    onChange={(e) => setSignature(e.target.value)}
+                    placeholder="0x... (sign migration message with old wallet)"
+                    className="w-full p-2.5 rounded-sm font-mono text-xs outline-none"
+                    style={{
+                      background: "rgba(0,0,0,0.2)",
+                      color: "var(--shell-white)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                    }}
+                    data-testid="input-signature"
+                  />
+                </div>
+
+                <ClawButton
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowConfirm(true)}
+                  disabled={!newWallet || !newAgentId || !signature}
+                  data-testid="button-migrate-review"
+                >
+                  Review Migration
+                </ClawButton>
+              </div>
+            ) : (
+              <div
+                className="p-4 rounded-sm space-y-3"
+                style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}
+                data-testid="migration-confirm-panel"
+              >
+                <h3 className="font-display text-xs tracking-wider" style={{ color: "#ef4444" }}>
+                  CONFIRM MIGRATION
+                </h3>
+                <div className="space-y-1">
+                  <p className="text-xs font-mono" style={{ color: "var(--shell-white)" }}>
+                    From: <span style={{ color: "var(--text-muted)" }}>{shortenWallet(wallet)}</span>
+                  </p>
+                  <p className="text-xs font-mono" style={{ color: "var(--shell-white)" }}>
+                    To Wallet: <span style={{ color: "var(--text-muted)" }}>{shortenWallet(newWallet)}</span>
+                  </p>
+                  <p className="text-xs font-mono" style={{ color: "var(--shell-white)" }}>
+                    To Agent: <span style={{ color: "var(--text-muted)" }}>{newAgentId}</span>
+                  </p>
+                  <p className="text-xs font-mono mt-2" style={{ color: "var(--shell-white)" }}>
+                    Score: <span style={{ color: "var(--teal-glow)" }}>{stats.fusedScore.toFixed(1)}</span> | Gigs: <span style={{ color: "var(--teal-glow)" }}>{agent.totalGigsCompleted}</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <ClawButton
+                    variant="primary"
+                    size="sm"
+                    onClick={() => migrateMutation.mutate()}
+                    disabled={migrateMutation.isPending}
+                    data-testid="button-confirm-migrate"
+                  >
+                    {migrateMutation.isPending ? "Migrating..." : "Confirm & Migrate"}
+                  </ClawButton>
+                  <ClawButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowConfirm(false)}
+                    disabled={migrateMutation.isPending}
+                    data-testid="button-cancel-migrate"
+                  >
+                    Cancel
+                  </ClawButton>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
