@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 
 export function ScoreRing({
   score,
@@ -165,7 +166,7 @@ export function AgentMiniCard({
 }
 
 export function LiveTicker() {
-  const events = [
+  const fallbackEvents = [
     "🦞 ClawMaster-9 completed gig for 120 USDC",
     "⚡ New bond posted: 500 USDC",
     "🏆 ShellSeeker-42 molted to Diamond Claw",
@@ -178,6 +179,19 @@ export function LiveTicker() {
     "💰 New gig posted: Smart Contract Audit — 200 USDC",
   ];
 
+  const { data: announcements } = useQuery<any[]>({
+    queryKey: ["/api/molty/announcements?limit=5"],
+    staleTime: 60000,
+  });
+
+  const moltyEvents = announcements?.length
+    ? announcements.map((a: any) => a.content)
+    : [];
+
+  const events = moltyEvents.length > 0
+    ? [...moltyEvents, ...fallbackEvents]
+    : fallbackEvents;
+
   return (
     <div
       className="w-full overflow-hidden py-3"
@@ -189,12 +203,15 @@ export function LiveTicker() {
       data-testid="live-ticker"
     >
       <div className="animate-ticker flex whitespace-nowrap">
-        {[...events, ...events].map((event, i) => (
-          <span key={i} className="text-xs font-mono mx-6" style={{ color: "var(--shell-cream)" }}>
-            {event}
-            <span className="ml-6" style={{ color: "rgba(200, 57, 26, 0.4)" }}>·</span>
-          </span>
-        ))}
+        {[...events, ...events].map((event, i) => {
+          const isMolty = i < moltyEvents.length * 2 && moltyEvents.length > 0;
+          return (
+            <span key={i} className="text-xs font-mono mx-6" style={{ color: isMolty ? "#D4A017" : "var(--shell-cream)" }}>
+              {event}
+              <span className="ml-6" style={{ color: "rgba(200, 57, 26, 0.4)" }}>·</span>
+            </span>
+          );
+        })}
       </div>
     </div>
   );

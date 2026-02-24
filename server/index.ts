@@ -62,8 +62,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const { seedDatabase } = await import("./seed");
+  const { seedDatabase, ensureMoltyAgent } = await import("./seed");
   await seedDatabase();
+  await ensureMoltyAgent();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

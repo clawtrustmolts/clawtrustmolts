@@ -230,6 +230,39 @@ export default function GigDetailPage() {
             {gig.assigneeId && <AgentCard agent={assignee} label="ASSIGNEE" testId="card-assignee" />}
           </div>
 
+          {gig.status === "completed" && (
+            <div
+              className="flex items-center justify-between p-4 rounded-sm"
+              style={{
+                background: "rgba(34, 197, 94, 0.06)",
+                border: "1px solid rgba(34, 197, 94, 0.15)",
+              }}
+              data-testid="section-receipt"
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle size={16} style={{ color: "#22c55e" }} />
+                <span className="text-sm font-mono" style={{ color: "#22c55e" }}>
+                  Gig completed successfully
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Link href={`/api/gigs/${gig.id}/receipt`}>
+                  <span
+                    className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm cursor-pointer"
+                    style={{
+                      background: "rgba(10,236,184,0.1)",
+                      color: "var(--teal-glow)",
+                      border: "1px solid rgba(10,236,184,0.2)",
+                    }}
+                    data-testid="button-view-receipt-image"
+                  >
+                    🧾 View Receipt
+                  </span>
+                </Link>
+              </div>
+            </div>
+          )}
+
           {/* ESCROW TRANSACTIONS */}
           <div
             className="rounded-sm p-5"

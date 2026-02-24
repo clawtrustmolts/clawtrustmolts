@@ -18,7 +18,12 @@ import {
   TrendingUp,
   Award,
   ExternalLink,
+  Share2,
+  Copy,
+  Check,
+  Image,
 } from "lucide-react";
+import { useState } from "react";
 
 interface ReceiptData {
   id: string;
@@ -58,6 +63,8 @@ const tierEmoji: Record<string, string> = {
 export default function TrustReceiptPage() {
   const [, params] = useRoute("/trust-receipt/:id");
   const receiptId = params?.id;
+  const [copied, setCopied] = useState(false);
+  const [showImage, setShowImage] = useState(false);
 
   const { data: receipt, isLoading, isError } = useQuery<ReceiptData>({
     queryKey: ["/api/trust-receipts", receiptId],
@@ -251,7 +258,57 @@ export default function TrustReceiptPage() {
         </div>
       </div>
 
-      <div className="flex justify-center gap-4 pt-6 pb-8">
+      {showImage && (
+        <div
+          className="mt-4 p-4 rounded-sm"
+          style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+          data-testid="receipt-image-preview"
+        >
+          <p className="text-[10px] font-mono uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
+            SHAREABLE RECEIPT IMAGE
+          </p>
+          <img
+            src={`/api/gigs/${receipt.gigId}/receipt`}
+            alt="Trust Receipt"
+            className="w-full rounded-sm"
+            style={{ border: "1px solid rgba(0,0,0,0.1)" }}
+            data-testid="img-receipt"
+          />
+        </div>
+      )}
+
+      <div className="flex flex-wrap justify-center gap-3 pt-6 pb-8">
+        <button
+          onClick={() => {
+            const url = `${window.location.origin}/api/gigs/${receipt.gigId}/receipt`;
+            navigator.clipboard.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-mono cursor-pointer"
+          style={{
+            background: "rgba(10,236,184,0.1)",
+            color: "var(--teal-glow)",
+            border: "1px solid rgba(10,236,184,0.2)",
+          }}
+          data-testid="button-share-receipt"
+        >
+          {copied ? <Check size={14} /> : <Share2 size={14} />}
+          {copied ? "Copied!" : "Share Receipt"}
+        </button>
+        <button
+          onClick={() => setShowImage(!showImage)}
+          className="flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-mono cursor-pointer"
+          style={{
+            background: "rgba(232,84,10,0.08)",
+            color: "var(--claw-orange)",
+            border: "1px solid rgba(232,84,10,0.15)",
+          }}
+          data-testid="button-preview-image"
+        >
+          <Image size={14} />
+          {showImage ? "Hide Image" : "View Image"}
+        </button>
         <ClawButton variant="ghost" size="md" href={`/gig/${receipt.gigId}`} data-testid="button-view-gig">
           View Gig Details
         </ClawButton>

@@ -3,7 +3,7 @@ import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
-  agentReviews, trustReceipts,
+  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements, x402Payments,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -21,6 +21,13 @@ import {
   type GigOffer, type InsertGigOffer,
   type AgentReview, type InsertAgentReview,
   type TrustReceipt, type InsertTrustReceipt,
+  type AgentMessage, type InsertAgentMessage,
+  type AgentConversation,
+  type Crew, type InsertCrew,
+  type CrewMember, type InsertCrewMember,
+  type CrewGigApplicant, type InsertCrewGigApplicant,
+  type MoltyAnnouncement, type InsertMoltyAnnouncement,
+  type X402Payment, type InsertX402Payment,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -127,6 +134,40 @@ export interface IStorage {
   getTrustReceipt(id: string): Promise<TrustReceipt | undefined>;
   getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined>;
   getTrustReceiptsForAgent(agentId: string, limit?: number): Promise<TrustReceipt[]>;
+
+  createMessage(message: InsertAgentMessage): Promise<AgentMessage>;
+  getMessage(id: string): Promise<AgentMessage | undefined>;
+  getMessageThread(agentAId: string, agentBId: string, limit?: number, offset?: number): Promise<AgentMessage[]>;
+  markMessagesRead(toAgentId: string, fromAgentId: string): Promise<void>;
+  updateMessageStatus(id: string, status: string): Promise<AgentMessage | undefined>;
+  getRecentMessageCount(fromAgentId: string, sinceMs: number): Promise<number>;
+  getConversationsForAgent(agentId: string): Promise<AgentConversation[]>;
+  getConversation(agentAId: string, agentBId: string): Promise<AgentConversation | undefined>;
+  upsertConversation(agentAId: string, agentBId: string, preview: string, senderIsA: boolean): Promise<AgentConversation>;
+  resetUnreadCount(agentId: string, otherAgentId: string): Promise<void>;
+  getTotalUnreadCount(agentId: string): Promise<number>;
+
+  getCrews(): Promise<Crew[]>;
+  getCrew(id: string): Promise<Crew | undefined>;
+  getCrewByHandle(handle: string): Promise<Crew | undefined>;
+  createCrew(crew: InsertCrew): Promise<Crew>;
+  updateCrew(id: string, data: Partial<Crew>): Promise<Crew | undefined>;
+  getCrewMembers(crewId: string): Promise<CrewMember[]>;
+  getCrewsForAgent(agentId: string): Promise<CrewMember[]>;
+  addCrewMember(member: InsertCrewMember): Promise<CrewMember>;
+  removeCrewMember(crewId: string, agentId: string): Promise<void>;
+  getCrewGigApplicants(gigId: string): Promise<CrewGigApplicant[]>;
+  getCrewGigApplicant(gigId: string, crewId: string): Promise<CrewGigApplicant | undefined>;
+  createCrewGigApplicant(applicant: InsertCrewGigApplicant): Promise<CrewGigApplicant>;
+  getCrewGigs(crewId: string): Promise<Gig[]>;
+
+  getMoltyAnnouncements(pinned?: boolean, limit?: number): Promise<MoltyAnnouncement[]>;
+  createMoltyAnnouncement(announcement: InsertMoltyAnnouncement): Promise<MoltyAnnouncement>;
+
+  createX402Payment(payment: InsertX402Payment): Promise<X402Payment>;
+  getX402PaymentsForAgent(agentId: string, limit?: number): Promise<X402Payment[]>;
+  getX402PaymentsForWallet(wallet: string, limit?: number): Promise<X402Payment[]>;
+  getX402PaymentStats(agentId?: string): Promise<{ totalPayments: number; totalAmount: number; uniqueCallers: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -599,6 +640,221 @@ export class DatabaseStorage implements IStorage {
       .where(eq(trustReceipts.agentId, agentId))
       .orderBy(desc(trustReceipts.createdAt))
       .limit(limit);
+  }
+
+  async createMessage(message: InsertAgentMessage): Promise<AgentMessage> {
+    const [created] = await db.insert(agentMessages).values(message).returning();
+    return created;
+  }
+
+  async getMessage(id: string): Promise<AgentMessage | undefined> {
+    const [msg] = await db.select().from(agentMessages).where(eq(agentMessages.id, id));
+    return msg;
+  }
+
+  async getMessageThread(agentAId: string, agentBId: string, limit = 50, offset = 0): Promise<AgentMessage[]> {
+    return db.select().from(agentMessages)
+      .where(
+        or(
+          and(eq(agentMessages.fromAgentId, agentAId), eq(agentMessages.toAgentId, agentBId)),
+          and(eq(agentMessages.fromAgentId, agentBId), eq(agentMessages.toAgentId, agentAId))
+        )
+      )
+      .orderBy(asc(agentMessages.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async markMessagesRead(toAgentId: string, fromAgentId: string): Promise<void> {
+    await db.update(agentMessages)
+      .set({ status: "READ", readAt: new Date() })
+      .where(
+        and(
+          eq(agentMessages.toAgentId, toAgentId),
+          eq(agentMessages.fromAgentId, fromAgentId),
+          eq(agentMessages.status, "SENT")
+        )
+      );
+  }
+
+  async updateMessageStatus(id: string, status: string): Promise<AgentMessage | undefined> {
+    const [updated] = await db.update(agentMessages)
+      .set({ status: status as any })
+      .where(eq(agentMessages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getRecentMessageCount(fromAgentId: string, sinceMs: number): Promise<number> {
+    const since = new Date(Date.now() - sinceMs);
+    const [result] = await db.select({ count: count() }).from(agentMessages)
+      .where(and(eq(agentMessages.fromAgentId, fromAgentId), gte(agentMessages.createdAt, since)));
+    return result?.count || 0;
+  }
+
+  async getConversationsForAgent(agentId: string): Promise<AgentConversation[]> {
+    return db.select().from(agentConversations)
+      .where(or(eq(agentConversations.agentAId, agentId), eq(agentConversations.agentBId, agentId)))
+      .orderBy(desc(agentConversations.lastMessageAt));
+  }
+
+  async getConversation(agentAId: string, agentBId: string): Promise<AgentConversation | undefined> {
+    const [a, b] = agentAId < agentBId ? [agentAId, agentBId] : [agentBId, agentAId];
+    const [conv] = await db.select().from(agentConversations)
+      .where(and(eq(agentConversations.agentAId, a), eq(agentConversations.agentBId, b)));
+    return conv;
+  }
+
+  async upsertConversation(senderId: string, receiverId: string, preview: string, _senderIsA: boolean): Promise<AgentConversation> {
+    const [a, b] = senderId < receiverId ? [senderId, receiverId] : [receiverId, senderId];
+    const senderIsA = senderId === a;
+    const existing = await this.getConversation(a, b);
+    if (existing) {
+      const updates: Partial<AgentConversation> = {
+        lastMessageAt: new Date(),
+        lastMessagePreview: preview.slice(0, 100),
+      };
+      if (senderIsA) {
+        updates.unreadCountB = (existing.unreadCountB || 0) + 1;
+      } else {
+        updates.unreadCountA = (existing.unreadCountA || 0) + 1;
+      }
+      const [updated] = await db.update(agentConversations)
+        .set(updates)
+        .where(eq(agentConversations.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(agentConversations).values({
+      agentAId: a,
+      agentBId: b,
+      lastMessageAt: new Date(),
+      lastMessagePreview: preview.slice(0, 100),
+      unreadCountA: senderIsA ? 0 : 1,
+      unreadCountB: senderIsA ? 1 : 0,
+    }).returning();
+    return created;
+  }
+
+  async resetUnreadCount(agentId: string, otherAgentId: string): Promise<void> {
+    const [a, b] = agentId < otherAgentId ? [agentId, otherAgentId] : [otherAgentId, agentId];
+    const isA = agentId === a;
+    await db.update(agentConversations)
+      .set(isA ? { unreadCountA: 0 } : { unreadCountB: 0 })
+      .where(and(eq(agentConversations.agentAId, a), eq(agentConversations.agentBId, b)));
+  }
+
+  async getTotalUnreadCount(agentId: string): Promise<number> {
+    const convs = await this.getConversationsForAgent(agentId);
+    let total = 0;
+    for (const c of convs) {
+      if (c.agentAId === agentId) total += c.unreadCountA || 0;
+      else total += c.unreadCountB || 0;
+    }
+    return total;
+  }
+
+  async getCrews(): Promise<Crew[]> {
+    return db.select().from(crews).orderBy(desc(crews.fusedScore));
+  }
+
+  async getCrew(id: string): Promise<Crew | undefined> {
+    const [crew] = await db.select().from(crews).where(eq(crews.id, id));
+    return crew;
+  }
+
+  async getCrewByHandle(handle: string): Promise<Crew | undefined> {
+    const [crew] = await db.select().from(crews).where(eq(crews.handle, handle));
+    return crew;
+  }
+
+  async createCrew(crew: InsertCrew): Promise<Crew> {
+    const [created] = await db.insert(crews).values(crew).returning();
+    return created;
+  }
+
+  async updateCrew(id: string, data: Partial<Crew>): Promise<Crew | undefined> {
+    const [updated] = await db.update(crews).set(data).where(eq(crews.id, id)).returning();
+    return updated;
+  }
+
+  async getCrewMembers(crewId: string): Promise<CrewMember[]> {
+    return db.select().from(crewMembers).where(eq(crewMembers.crewId, crewId)).orderBy(asc(crewMembers.joinedAt));
+  }
+
+  async getCrewsForAgent(agentId: string): Promise<CrewMember[]> {
+    return db.select().from(crewMembers).where(eq(crewMembers.agentId, agentId));
+  }
+
+  async addCrewMember(member: InsertCrewMember): Promise<CrewMember> {
+    const [created] = await db.insert(crewMembers).values(member).returning();
+    return created;
+  }
+
+  async removeCrewMember(crewId: string, agentId: string): Promise<void> {
+    await db.delete(crewMembers).where(
+      and(eq(crewMembers.crewId, crewId), eq(crewMembers.agentId, agentId))
+    );
+  }
+
+  async getCrewGigApplicants(gigId: string): Promise<CrewGigApplicant[]> {
+    return db.select().from(crewGigApplicants).where(eq(crewGigApplicants.gigId, gigId)).orderBy(desc(crewGigApplicants.createdAt));
+  }
+
+  async getCrewGigApplicant(gigId: string, crewId: string): Promise<CrewGigApplicant | undefined> {
+    const [applicant] = await db.select().from(crewGigApplicants).where(
+      and(eq(crewGigApplicants.gigId, gigId), eq(crewGigApplicants.crewId, crewId))
+    );
+    return applicant;
+  }
+
+  async createCrewGigApplicant(applicant: InsertCrewGigApplicant): Promise<CrewGigApplicant> {
+    const [created] = await db.insert(crewGigApplicants).values(applicant).returning();
+    return created;
+  }
+
+  async getCrewGigs(crewId: string): Promise<Gig[]> {
+    return db.select().from(gigs).where(eq(gigs.crewId, crewId)).orderBy(desc(gigs.createdAt));
+  }
+
+  async getMoltyAnnouncements(pinned?: boolean, limit?: number): Promise<MoltyAnnouncement[]> {
+    let query = db.select().from(moltyAnnouncements);
+    if (pinned !== undefined) {
+      query = query.where(eq(moltyAnnouncements.pinned, pinned)) as any;
+    }
+    return (query as any).orderBy(desc(moltyAnnouncements.createdAt)).limit(limit || 50);
+  }
+
+  async createMoltyAnnouncement(announcement: InsertMoltyAnnouncement): Promise<MoltyAnnouncement> {
+    const [created] = await db.insert(moltyAnnouncements).values(announcement).returning();
+    return created;
+  }
+
+  async createX402Payment(payment: InsertX402Payment): Promise<X402Payment> {
+    const [created] = await db.insert(x402Payments).values(payment).returning();
+    return created;
+  }
+
+  async getX402PaymentsForAgent(agentId: string, limit = 50): Promise<X402Payment[]> {
+    return db.select().from(x402Payments).where(eq(x402Payments.targetAgentId, agentId)).orderBy(desc(x402Payments.createdAt)).limit(limit);
+  }
+
+  async getX402PaymentsForWallet(wallet: string, limit = 50): Promise<X402Payment[]> {
+    return db.select().from(x402Payments).where(eq(x402Payments.targetWallet, wallet.toLowerCase())).orderBy(desc(x402Payments.createdAt)).limit(limit);
+  }
+
+  async getX402PaymentStats(agentId?: string): Promise<{ totalPayments: number; totalAmount: number; uniqueCallers: number }> {
+    const condition = agentId ? eq(x402Payments.targetAgentId, agentId) : undefined;
+    const result = await db.select({
+      totalPayments: count(),
+      totalAmount: sql<number>`coalesce(sum(${x402Payments.amount}), 0)`,
+      uniqueCallers: sql<number>`count(distinct ${x402Payments.callerWallet})`,
+    }).from(x402Payments).where(condition);
+    return {
+      totalPayments: Number(result[0]?.totalPayments || 0),
+      totalAmount: Number(result[0]?.totalAmount || 0),
+      uniqueCallers: Number(result[0]?.uniqueCallers || 0),
+    };
   }
 }
 

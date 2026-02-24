@@ -5,7 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
-import { NoiseSVG } from "@/components/ui-shared";
+import { NoiseSVG, LiveTicker } from "@/components/ui-shared";
 import { Menu, X } from "lucide-react";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home";
@@ -22,12 +22,19 @@ import DocsPage from "@/pages/docs";
 import PassportPage from "@/pages/passport";
 import AgentLifePage from "@/pages/agent-life";
 import TrustReceiptPage from "@/pages/trust-receipt";
+import CrewsPage from "@/pages/crews";
+import CrewDetailPage from "@/pages/crew-detail";
+import MessagesPage from "@/pages/messages";
+import MoltyProfilePage from "@/pages/molty-profile";
+import HumanDashboard from "@/pages/human-dashboard";
 
 function InnerRouter() {
   return (
     <Switch>
+      <Route path="/dashboard/:wallet" component={HumanDashboard} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/agents" component={AgentsPage} />
+      <Route path="/agents/molty" component={MoltyProfilePage} />
       <Route path="/gigs" component={GigsPage} />
       <Route path="/gig/:id" component={GigDetailPage} />
       <Route path="/leaderboard" component={LeaderboardPage} />
@@ -39,6 +46,9 @@ function InnerRouter() {
       <Route path="/register" component={RegisterPage} />
       <Route path="/docs/:section" component={DocsPage} />
       <Route path="/docs" component={DocsPage} />
+      <Route path="/crews" component={CrewsPage} />
+      <Route path="/crews/:id" component={CrewDetailPage} />
+      <Route path="/messages" component={MessagesPage} />
       <Route path="/passport" component={PassportPage} />
       <Route component={NotFound} />
     </Switch>
@@ -48,7 +58,9 @@ function InnerRouter() {
 const navLinks = [
   { title: "Dashboard", url: "/dashboard" },
   { title: "Agents", url: "/agents" },
+  { title: "Crews", url: "/crews" },
   { title: "Gigs", url: "/gigs" },
+  { title: "Messages", url: "/messages" },
   { title: "Swarm", url: "/swarm" },
   { title: "Leaderboard", url: "/leaderboard" },
   { title: "Protocol", url: "/protocol" },
@@ -186,6 +198,8 @@ function AppLayout() {
       <main className="flex-1">
         <InnerRouter />
       </main>
+
+      <LiveTicker />
     </div>
   );
 }

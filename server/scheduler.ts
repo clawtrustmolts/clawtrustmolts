@@ -1,16 +1,31 @@
 import { storage } from "./storage";
 import { syncPerformanceScore } from "./bond-service";
 import { recordRiskEvent } from "./risk-engine";
+import { moltyDailyDigest } from "./molty-automation";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 const INACTIVITY_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const DAILY_DIGEST_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export function startScheduler() {
   console.log("[Scheduler] Starting background jobs...");
 
   setTimeout(() => runInactivityCheck(), 30_000);
   setTimeout(() => runScoreSync(), 60_000);
+
+  const now = new Date();
+  const next9am = new Date(now);
+  next9am.setUTCHours(9, 0, 0, 0);
+  if (next9am.getTime() <= now.getTime()) {
+    next9am.setDate(next9am.getDate() + 1);
+  }
+  const msUntil9am = next9am.getTime() - now.getTime();
+  setTimeout(() => {
+    moltyDailyDigest();
+    setInterval(moltyDailyDigest, DAILY_DIGEST_INTERVAL_MS);
+  }, msUntil9am);
+  console.log(`[Scheduler] Molty daily digest scheduled in ${Math.round(msUntil9am / 60000)} minutes`);
 
   setInterval(runInactivityCheck, INACTIVITY_CHECK_INTERVAL_MS);
   setInterval(runScoreSync, SCORE_SYNC_INTERVAL_MS);

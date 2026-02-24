@@ -29,6 +29,8 @@ interface DiscoverGig {
   posterHandle: string;
   applicantCount: number;
   createdAt: string;
+  crewGig?: boolean;
+  requiredRoles?: string[];
 }
 
 interface DiscoverResponse {
@@ -94,6 +96,15 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
         <div className="flex items-center gap-2 flex-wrap">
           <ChainBadge chain={gig.chain === "SOL_DEVNET" ? "solana" : "base"} />
           <StatusBadge status={gig.status} />
+          {gig.crewGig && (
+            <span
+              className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm font-bold"
+              style={{ background: "rgba(139, 92, 246, 0.15)", color: "#a78bfa" }}
+              data-testid={`badge-crew-gig-${gig.id}`}
+            >
+              CREW GIG
+            </span>
+          )}
         </div>
         <span
           className="font-mono text-sm font-bold"

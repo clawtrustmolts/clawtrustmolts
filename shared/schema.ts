@@ -64,6 +64,10 @@ export const gigs = pgTable("gigs", {
   escrowTxHash: text("escrow_tx_hash"),
   bondRequired: real("bond_required").notNull().default(0),
   bondLocked: boolean("bond_locked").notNull().default(false),
+  crewGig: boolean("crew_gig").notNull().default(false),
+  crewId: varchar("crew_id"),
+  minCrewScore: real("min_crew_score"),
+  requiredRoles: text("required_roles").array().notNull().default(sql`'{}'::text[]`),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -236,6 +240,64 @@ export const trustReceipts = pgTable("trust_receipts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const messageTypeEnum = pgEnum("message_type", ["TEXT", "GIG_OFFER", "TRUST_REQUEST", "PAYMENT"]);
+export const messageStatusEnum = pgEnum("message_status", ["SENT", "READ", "ACCEPTED", "DECLINED"]);
+
+export const agentMessages = pgTable("agent_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromAgentId: varchar("from_agent_id").notNull(),
+  toAgentId: varchar("to_agent_id").notNull(),
+  content: varchar("content", { length: 1000 }).notNull(),
+  messageType: messageTypeEnum("message_type").notNull().default("TEXT"),
+  gigOfferId: varchar("gig_offer_id"),
+  offerAmount: real("offer_amount"),
+  status: messageStatusEnum("status").notNull().default("SENT"),
+  createdAt: timestamp("created_at").defaultNow(),
+  readAt: timestamp("read_at"),
+});
+
+export const agentConversations = pgTable("agent_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentAId: varchar("agent_a_id").notNull(),
+  agentBId: varchar("agent_b_id").notNull(),
+  lastMessageAt: timestamp("last_message_at").defaultNow(),
+  lastMessagePreview: varchar("last_message_preview", { length: 100 }),
+  unreadCountA: integer("unread_count_a").notNull().default(0),
+  unreadCountB: integer("unread_count_b").notNull().default(0),
+});
+
+export const crewRoleEnum = pgEnum("crew_role", ["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]);
+
+export const crews = pgTable("crews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  handle: text("handle").notNull().unique(),
+  description: text("description"),
+  ownerWallet: text("owner_wallet").notNull(),
+  crewPassportImage: text("crew_passport_image"),
+  fusedScore: real("fused_score").notNull().default(0),
+  bondPool: real("bond_pool").notNull().default(0),
+  gigsCompleted: integer("gigs_completed").notNull().default(0),
+  totalEarned: real("total_earned").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const crewMembers = pgTable("crew_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  crewId: varchar("crew_id").notNull(),
+  agentId: varchar("agent_id").notNull(),
+  role: crewRoleEnum("role").notNull().default("CODER"),
+  joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+export const crewGigApplicants = pgTable("crew_gig_applicants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  crewId: varchar("crew_id").notNull(),
+  message: text("message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ id: true, createdAt: true });
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
@@ -326,3 +388,74 @@ export type AgentReview = typeof agentReviews.$inferSelect;
 export type InsertAgentReview = z.infer<typeof insertAgentReviewSchema>;
 export type TrustReceipt = typeof trustReceipts.$inferSelect;
 export type InsertTrustReceipt = z.infer<typeof insertTrustReceiptSchema>;
+
+export const insertAgentMessageSchema = createInsertSchema(agentMessages).omit({ id: true, createdAt: true, readAt: true });
+export const insertAgentConversationSchema = createInsertSchema(agentConversations).omit({ id: true });
+
+export const sendMessageSchema = z.object({
+  content: z.string().min(1).max(1000),
+  messageType: z.enum(["TEXT", "GIG_OFFER", "TRUST_REQUEST", "PAYMENT"]).default("TEXT"),
+  gigOfferId: z.string().optional().nullable(),
+  offerAmount: z.number().positive().optional().nullable(),
+});
+
+export type AgentMessage = typeof agentMessages.$inferSelect;
+export type InsertAgentMessage = z.infer<typeof insertAgentMessageSchema>;
+export type AgentConversation = typeof agentConversations.$inferSelect;
+export type InsertAgentConversation = z.infer<typeof insertAgentConversationSchema>;
+export type SendMessage = z.infer<typeof sendMessageSchema>;
+
+export const moltyAnnouncements = pgTable("molty_announcements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  content: text("content").notNull(),
+  eventType: text("event_type").notNull(),
+  relatedAgentId: varchar("related_agent_id"),
+  relatedGigId: varchar("related_gig_id"),
+  pinned: boolean("pinned").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMoltyAnnouncementSchema = createInsertSchema(moltyAnnouncements).omit({ id: true, createdAt: true });
+export type MoltyAnnouncement = typeof moltyAnnouncements.$inferSelect;
+export type InsertMoltyAnnouncement = z.infer<typeof insertMoltyAnnouncementSchema>;
+
+export const MOLTY_HANDLE = "Molty";
+
+export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, createdAt: true, fusedScore: true, bondPool: true, gigsCompleted: true, totalEarned: true, crewPassportImage: true });
+export const insertCrewMemberSchema = createInsertSchema(crewMembers).omit({ id: true, joinedAt: true });
+export const insertCrewGigApplicantSchema = createInsertSchema(crewGigApplicants).omit({ id: true, createdAt: true });
+
+export const createCrewSchema = z.object({
+  name: z.string().min(2).max(64),
+  handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
+  description: z.string().max(500).optional(),
+  members: z.array(z.object({
+    agentId: z.string(),
+    role: z.enum(["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]),
+  })).min(2, "A crew needs at least 2 agents").max(10),
+});
+
+export type Crew = typeof crews.$inferSelect;
+export type InsertCrew = z.infer<typeof insertCrewSchema>;
+export type CrewMember = typeof crewMembers.$inferSelect;
+export type InsertCrewMember = z.infer<typeof insertCrewMemberSchema>;
+export type CrewGigApplicant = typeof crewGigApplicants.$inferSelect;
+export type InsertCrewGigApplicant = z.infer<typeof insertCrewGigApplicantSchema>;
+export type CreateCrew = z.infer<typeof createCrewSchema>;
+
+export const x402Payments = pgTable("x402_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  endpoint: text("endpoint").notNull(),
+  callerWallet: text("caller_wallet"),
+  targetWallet: text("target_wallet"),
+  targetAgentId: varchar("target_agent_id"),
+  amount: real("amount").notNull(),
+  currency: text("currency").notNull().default("USDC"),
+  chain: text("chain").notNull().default("base-sepolia"),
+  txHash: text("tx_hash"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertX402PaymentSchema = createInsertSchema(x402Payments).omit({ id: true, createdAt: true });
+export type X402Payment = typeof x402Payments.$inferSelect;
+export type InsertX402Payment = z.infer<typeof insertX402PaymentSchema>;

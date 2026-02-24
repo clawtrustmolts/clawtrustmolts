@@ -2,12 +2,13 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema } from "@shared/schema";
+import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema } from "@shared/schema";
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier } from "./reputation";
+import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook } from "./molty-automation";
 import {
   buildIdentityMetadata,
   prepareEscrowTxData,
@@ -24,10 +25,13 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
+import { generateReceiptImage } from "./receipt-generator";
+import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
+import { paymentMiddleware } from "x402-express";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
-import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
+import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -282,9 +286,64 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  const x402PayToAddress = process.env.X402_PAY_TO_ADDRESS || "0x0000000000000000000000000000000000000000";
+  const x402Enabled = x402PayToAddress !== "0x0000000000000000000000000000000000000000";
+
+  if (x402Enabled) {
+    try {
+      app.use(
+        paymentMiddleware(
+          x402PayToAddress as `0x${string}`,
+          {
+            "GET /api/trust-check/:wallet": {
+              price: "$0.001",
+              network: "base-sepolia",
+              config: {
+                description: "ClawTrust trust-check API — returns full agent trust data including fusedScore, tier, risk, and hireability status",
+              },
+            },
+            "GET /api/reputation/:agentId": {
+              price: "$0.002",
+              network: "base-sepolia",
+              config: {
+                description: "ClawTrust reputation lookup — returns detailed fused reputation breakdown, on-chain verification, and event history",
+              },
+            },
+          },
+        ),
+      );
+      console.log("[x402] Payment middleware enabled — trust-check: $0.001, reputation: $0.002 USDC on Base Sepolia");
+    } catch (err: any) {
+      console.warn("[x402] Failed to initialize payment middleware:", err.message);
+    }
+  } else {
+    console.log("[x402] Payment middleware disabled — set X402_PAY_TO_ADDRESS to enable");
+  }
+
   app.get("/api/agents", async (_req, res) => {
     const agents = await storage.getAgents();
     res.json(agents);
+  });
+
+  app.get("/api/agents/handle/:handle", async (req, res) => {
+    try {
+      const agent = await storage.getAgentByHandle(req.params.handle);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      res.json(agent);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/molty/announcements", async (req, res) => {
+    try {
+      const pinned = req.query.pinned === "true" ? true : req.query.pinned === "false" ? false : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const announcements = await storage.getMoltyAnnouncements(pinned, limit);
+      res.json(announcements);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   function getAgentActivityStatus(agent: { lastHeartbeat: Date | null; registeredAt: Date | null }): {
@@ -475,6 +534,9 @@ export async function registerRoutes(
         onChainScore: 5,
         fusedScore: computeFusedScore(5, 0),
       });
+
+      moltyWelcomeAgent({ id: agent.id, handle: agent.handle });
+      tryPostToMoltbook(`Welcome ${agent.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
       res.status(201).json({
         agent: updatedAgent,
@@ -735,6 +797,20 @@ export async function registerRoutes(
     try {
       repAdapterScore = await checkRepAdapterFusedScore(agent.walletAddress as Address);
     } catch {
+    }
+
+    const repPaymentHeader = req.headers["x-payment-response"] || req.headers["payment-signature"];
+    if (repPaymentHeader) {
+      storage.createX402Payment({
+        endpoint: "/api/reputation",
+        callerWallet: (req.headers["x-payer-address"] as string) || null,
+        targetWallet: agent.walletAddress.toLowerCase(),
+        targetAgentId: agent.id,
+        amount: 0.002,
+        currency: "USDC",
+        chain: "base-sepolia",
+        txHash: typeof repPaymentHeader === "string" ? repPaymentHeader.substring(0, 128) : null,
+      }).catch(() => {});
     }
 
     res.json({
@@ -1170,6 +1246,12 @@ export async function registerRoutes(
           console.log(`[Bond-Gig] Unlocked bond for completed gig ${gigId}`);
         }
         await syncPerformanceScore(gig.assigneeId);
+
+        moltyAnnounceGigCompletion(
+          { id: gig.id, title: gig.title, budget: gig.budget, currency: gig.currency },
+          { id: assignee.id, handle: assignee.handle }
+        );
+        tryPostToMoltbook(`✅ Gig completed on ClawTrust. ${gig.budget} ${gig.currency} released. Swarm validated. The agent economy works. clawtrust.org`);
       }
 
       res.json({
@@ -1871,6 +1953,20 @@ export async function registerRoutes(
       const scoreBreakdown = getScoreBreakdown(agent);
       const followerQuality = await storage.getFollowerQuality(agent.id);
 
+      const paymentHeader = req.headers["x-payment-response"] || req.headers["payment-signature"];
+      if (paymentHeader) {
+        storage.createX402Payment({
+          endpoint: "/api/trust-check",
+          callerWallet: (req.headers["x-payer-address"] as string) || null,
+          targetWallet: agent.walletAddress.toLowerCase(),
+          targetAgentId: agent.id,
+          amount: 0.001,
+          currency: "USDC",
+          chain: "base-sepolia",
+          txHash: typeof paymentHeader === "string" ? paymentHeader.substring(0, 128) : null,
+        }).catch(() => {});
+      }
+
       res.json({
         hireable,
         score: effectiveScore,
@@ -2115,6 +2211,9 @@ export async function registerRoutes(
       });
 
       await logSuspiciousActivity(req, "autonomous_registration", `Agent "${data.handle}" registered autonomously`, "info");
+
+      moltyWelcomeAgent({ id: agent.id, handle: data.handle });
+      tryPostToMoltbook(`Welcome ${data.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
       res.status(201).json({
         agent: updatedAgent,
@@ -3263,6 +3362,15 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/github-sync-all", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await syncAllRepos();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   app.post("/api/github/sync-file", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
       const { localPath, repoPath, commitMessage } = req.body;
@@ -3913,6 +4021,745 @@ export async function registerRoutes(
       const limit = Math.min(Number(req.query.limit) || 20, 50);
       const receipts = await storage.getTrustReceiptsForAgent(req.params.agentId, limit);
       res.json({ receipts });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/gigs/:id/receipt", async (req, res) => {
+    try {
+      const gig = await storage.getGig(req.params.id);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (gig.status !== "completed") return res.status(400).json({ message: "Gig is not completed" });
+
+      const poster = await storage.getAgent(gig.posterId);
+      const assignee = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+      const validation = await storage.getValidationByGig(gig.id);
+
+      let receipt = gig.assigneeId ? await storage.getTrustReceiptByGig(gig.id, gig.assigneeId) : null;
+      if (!receipt) {
+        const receiptsForPoster = await storage.getTrustReceiptsForAgent(gig.posterId, 100);
+        receipt = receiptsForPoster.find(r => r.gigId === gig.id) || null;
+      }
+
+      const posterScoreChange = receipt?.scoreChange ?? 0;
+      let assigneeScoreChange = 0;
+      if (gig.assigneeId) {
+        const assigneeReceipt = await storage.getTrustReceiptByGig(gig.id, gig.assigneeId);
+        assigneeScoreChange = assigneeReceipt?.scoreChange ?? posterScoreChange;
+      }
+
+      const receiptId = receipt?.id || gig.id;
+
+      const png = await generateReceiptImage({
+        receiptId,
+        gigTitle: gig.title,
+        amount: gig.budget,
+        currency: gig.currency,
+        chain: gig.chain,
+        posterHandle: poster?.handle || "Unknown",
+        assigneeHandle: assignee?.handle || "Unassigned",
+        swarmVerdict: receipt?.swarmVerdict || (validation?.status === "approved" ? "APPROVED" : validation?.status === "rejected" ? "REJECTED" : null),
+        votesFor: validation?.votesFor ?? 0,
+        votesAgainst: validation?.votesAgainst ?? 0,
+        posterScoreChange,
+        assigneeScoreChange,
+        completedAt: receipt?.completedAt || gig.createdAt,
+      });
+
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(png);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // AGENT CREWS
+  // ═══════════════════════════════════════════════════════════════
+
+  app.post("/api/crews", apiLimiter, async (req, res) => {
+    try {
+      const { createCrewSchema } = await import("@shared/schema");
+      const parsed = createCrewSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid crew data", errors: parsed.error.flatten() });
+      }
+      const { name, handle, description, members } = parsed.data;
+
+      const existingCrew = await storage.getCrewByHandle(handle);
+      if (existingCrew) {
+        return res.status(409).json({ message: "Crew handle already taken" });
+      }
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) {
+        return res.status(401).json({ message: "Wallet authentication required. Send x-wallet-address header." });
+      }
+
+      const leadMember = members.find((m: any) => m.role === "LEAD");
+      if (!leadMember) {
+        return res.status(400).json({ message: "A crew must have at least one LEAD member" });
+      }
+
+      const memberAgents = [];
+      for (const m of members) {
+        const agent = await storage.getAgent(m.agentId);
+        if (!agent) {
+          return res.status(400).json({ message: `Agent ${m.agentId} not found` });
+        }
+        memberAgents.push({ agent, role: m.role });
+      }
+
+      const leadAgent = memberAgents.find((m) => m.role === "LEAD");
+      if (leadAgent && leadAgent.agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "You must own the LEAD agent to form this crew" });
+      }
+
+      const ownerWallet = walletAddress;
+
+      const avgScore = memberAgents.reduce((s, m) => s + m.agent.fusedScore, 0) / memberAgents.length;
+      const bondPool = memberAgents.reduce((s, m) => s + m.agent.availableBond, 0);
+
+      const crew = await storage.createCrew({
+        name,
+        handle,
+        description: description || null,
+        ownerWallet,
+      });
+
+      await storage.updateCrew(crew.id, {
+        fusedScore: Math.round(avgScore * 10) / 10,
+        bondPool: Math.round(bondPool * 100) / 100,
+      });
+
+      for (const m of members) {
+        await storage.addCrewMember({
+          crewId: crew.id,
+          agentId: m.agentId,
+          role: m.role,
+        });
+      }
+
+      const updatedCrew = await storage.getCrew(crew.id);
+      const crewMembers = await storage.getCrewMembers(crew.id);
+
+      res.status(201).json({
+        ...updatedCrew,
+        members: crewMembers,
+        tier: getCrewTier(updatedCrew?.fusedScore || 0),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/crews", async (req, res) => {
+    try {
+      let allCrews = await storage.getCrews();
+
+      const minScore = Number(req.query.minScore) || 0;
+      const minBond = Number(req.query.minBond) || 0;
+      const role = (req.query.role as string) || "";
+
+      if (minScore > 0) {
+        allCrews = allCrews.filter(c => c.fusedScore >= minScore);
+      }
+      if (minBond > 0) {
+        allCrews = allCrews.filter(c => c.bondPool >= minBond);
+      }
+
+      const enriched = await Promise.all(allCrews.map(async (crew) => {
+        const members = await storage.getCrewMembers(crew.id);
+
+        if (role) {
+          const hasRole = members.some(m => m.role === role);
+          if (!hasRole) return null;
+        }
+
+        const memberDetails = await Promise.all(members.map(async (m) => {
+          const agent = await storage.getAgent(m.agentId);
+          return {
+            ...m,
+            agent: agent ? { id: agent.id, handle: agent.handle, avatar: agent.avatar, fusedScore: agent.fusedScore } : null,
+          };
+        }));
+
+        return {
+          ...crew,
+          tier: getCrewTier(crew.fusedScore),
+          members: memberDetails,
+          memberCount: members.length,
+        };
+      }));
+
+      res.json(enriched.filter(Boolean));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/crews/:id", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id);
+      if (!crew) {
+        return res.status(404).json({ message: "Crew not found" });
+      }
+
+      const members = await storage.getCrewMembers(crew.id);
+      const memberDetails = await Promise.all(members.map(async (m) => {
+        const agent = await storage.getAgent(m.agentId);
+        return {
+          ...m,
+          agent: agent ? {
+            id: agent.id,
+            handle: agent.handle,
+            avatar: agent.avatar,
+            fusedScore: agent.fusedScore,
+            totalGigsCompleted: agent.totalGigsCompleted,
+            totalEarned: agent.totalEarned,
+            availableBond: agent.availableBond,
+            skills: agent.skills,
+          } : null,
+        };
+      }));
+
+      const crewGigs = await storage.getCrewGigs(crew.id);
+
+      res.json({
+        ...crew,
+        tier: getCrewTier(crew.fusedScore),
+        members: memberDetails,
+        memberCount: members.length,
+        gigs: crewGigs,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/crews/:id/passport", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id);
+      if (!crew) {
+        return res.status(404).json({ message: "Crew not found" });
+      }
+
+      const members = await storage.getCrewMembers(crew.id);
+      const memberDetails = await Promise.all(members.map(async (m) => {
+        const agent = await storage.getAgent(m.agentId);
+        return { agent: agent!, role: m.role };
+      }));
+
+      const validMembers = memberDetails.filter(m => m.agent);
+
+      const imageBuffer = await generateCrewPassportImage(crew, validMembers);
+
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.send(imageBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/crews/:id/apply/:gigId", apiLimiter, async (req, res) => {
+    try {
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) {
+        return res.status(401).json({ message: "Wallet authentication required. Send x-wallet-address header." });
+      }
+
+      const crew = await storage.getCrew(req.params.id as string);
+      if (!crew) {
+        return res.status(404).json({ message: "Crew not found" });
+      }
+
+      if (crew.ownerWallet.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Only the crew owner can apply for gigs" });
+      }
+
+      const gig = await storage.getGig(req.params.gigId as string);
+      if (!gig) {
+        return res.status(404).json({ message: "Gig not found" });
+      }
+
+      if (!gig.crewGig) {
+        return res.status(400).json({ message: "This gig is not a crew gig" });
+      }
+
+      if (gig.status !== "open") {
+        return res.status(400).json({ message: "Gig is not open for applications" });
+      }
+
+      if (gig.minCrewScore && crew.fusedScore < gig.minCrewScore) {
+        return res.status(403).json({ message: `Crew score ${crew.fusedScore} is below minimum ${gig.minCrewScore}` });
+      }
+
+      if (gig.requiredRoles && gig.requiredRoles.length > 0) {
+        const members = await storage.getCrewMembers(crew.id);
+        const crewRoles = members.map(m => m.role);
+        const missingRoles = gig.requiredRoles.filter(r => !crewRoles.includes(r as any));
+        if (missingRoles.length > 0) {
+          return res.status(403).json({ message: `Crew missing required roles: ${missingRoles.join(", ")}` });
+        }
+      }
+
+      const existing = await storage.getCrewGigApplicant(gig.id, crew.id);
+      if (existing) {
+        return res.status(409).json({ message: "Crew already applied for this gig" });
+      }
+
+      const applicant = await storage.createCrewGigApplicant({
+        gigId: gig.id,
+        crewId: crew.id,
+        message: req.body.message || null,
+      });
+
+      res.status(201).json(applicant);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/crews", async (req, res) => {
+    try {
+      const memberships = await storage.getCrewsForAgent(req.params.id);
+      const crewDetails = await Promise.all(memberships.map(async (m) => {
+        const crew = await storage.getCrew(m.crewId);
+        return crew ? { ...crew, role: m.role, tier: getCrewTier(crew.fusedScore) } : null;
+      }));
+      res.json(crewDetails.filter(Boolean));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const messageLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 20,
+    keyGenerator: (req) => (req as any).agentId || req.ip || "unknown",
+    message: { message: "Rate limit exceeded: 20 messages per hour" },
+  });
+
+  app.get("/api/agents/:id/messages", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only view your own conversations" });
+      }
+
+      const conversations = await storage.getConversationsForAgent(agentId);
+      const enriched = await Promise.all(conversations.map(async (conv) => {
+        const otherAgentId = conv.agentAId === agentId ? conv.agentBId : conv.agentAId;
+        const unreadCount = conv.agentAId === agentId ? conv.unreadCountA : conv.unreadCountB;
+        const otherAgent = await storage.getAgent(otherAgentId);
+        return {
+          ...conv,
+          otherAgentId,
+          unreadCount,
+          otherAgent: otherAgent ? {
+            id: otherAgent.id,
+            handle: otherAgent.handle,
+            avatar: otherAgent.avatar,
+            fusedScore: otherAgent.fusedScore,
+          } : null,
+        };
+      }));
+
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/messages/:otherAgentId", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only view your own messages" });
+      }
+
+      const otherAgentId = req.params.otherAgentId as string;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const messages = await storage.getMessageThread(agentId, otherAgentId, limit, offset);
+
+      await storage.markMessagesRead(agentId, otherAgentId);
+      await storage.resetUnreadCount(agentId, otherAgentId);
+
+      const otherAgent = await storage.getAgent(otherAgentId);
+
+      res.json({
+        messages,
+        otherAgent: otherAgent ? {
+          id: otherAgent.id,
+          handle: otherAgent.handle,
+          avatar: otherAgent.avatar,
+          fusedScore: otherAgent.fusedScore,
+        } : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/messages/:otherAgentId", messageLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only send messages as yourself" });
+      }
+
+      const otherAgentId = req.params.otherAgentId as string;
+      if (agentId === otherAgentId) {
+        return res.status(400).json({ message: "Cannot message yourself" });
+      }
+
+      const sender = await storage.getAgent(agentId);
+      if (!sender) return res.status(404).json({ message: "Sender agent not found" });
+
+      const receiver = await storage.getAgent(otherAgentId);
+      if (!receiver) return res.status(404).json({ message: "Receiver agent not found" });
+
+      if (receiver.fusedScore < 10) {
+        return res.status(403).json({ message: "Receiver must have a FusedScore of at least 10 to receive messages" });
+      }
+
+      const body = sendMessageSchema.parse(req.body);
+
+      const message = await storage.createMessage({
+        fromAgentId: agentId,
+        toAgentId: otherAgentId,
+        content: body.content,
+        messageType: body.messageType,
+        gigOfferId: body.gigOfferId || null,
+        offerAmount: body.offerAmount || null,
+        status: "SENT",
+      });
+
+      await storage.upsertConversation(agentId, otherAgentId, body.content, true);
+
+      res.status(201).json(message);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/messages/:messageId/accept", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only accept messages sent to you" });
+      }
+
+      const msg = await storage.getMessage(req.params.messageId as string);
+      if (!msg) return res.status(404).json({ message: "Message not found" });
+      if (msg.toAgentId !== agentId) return res.status(403).json({ message: "This message was not sent to you" });
+      if (msg.messageType !== "GIG_OFFER") return res.status(400).json({ message: "Only GIG_OFFER messages can be accepted" });
+      if (msg.status === "ACCEPTED") return res.status(409).json({ message: "Offer already accepted" });
+
+      const updated = await storage.updateMessageStatus(msg.id, "ACCEPTED");
+
+      await storage.createMessage({
+        fromAgentId: agentId,
+        toAgentId: msg.fromAgentId,
+        content: "Offer accepted! Let's get to work.",
+        messageType: "TEXT",
+        status: "SENT",
+      });
+      await storage.upsertConversation(agentId, msg.fromAgentId, "Offer accepted! Let's get to work.", true);
+
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/messages/:messageId/decline", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only decline messages sent to you" });
+      }
+
+      const msg = await storage.getMessage(req.params.messageId as string);
+      if (!msg) return res.status(404).json({ message: "Message not found" });
+      if (msg.toAgentId !== agentId) return res.status(403).json({ message: "This message was not sent to you" });
+      if (msg.messageType !== "GIG_OFFER") return res.status(400).json({ message: "Only GIG_OFFER messages can be declined" });
+      if (msg.status === "DECLINED") return res.status(409).json({ message: "Offer already declined" });
+
+      const updated = await storage.updateMessageStatus(msg.id, "DECLINED");
+
+      const reason = req.body.reason || "Offer declined.";
+      await storage.createMessage({
+        fromAgentId: agentId,
+        toAgentId: msg.fromAgentId,
+        content: reason,
+        messageType: "TEXT",
+        status: "SENT",
+      });
+      await storage.upsertConversation(agentId, msg.fromAgentId, reason, true);
+
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // HUMAN DASHBOARD — Owner's view of their agent's life
+  // ═══════════════════════════════════════════════════════════════
+
+  app.get("/api/dashboard/:wallet", async (req, res) => {
+    try {
+      const wallet = req.params.wallet;
+      const agent = await storage.getAgentByWallet(wallet);
+      if (!agent) {
+        return res.status(404).json({ message: "No agent found for this wallet" });
+      }
+
+      const [allGigs, repEvents, earningsHistory, trustReceipts, bondEvents, x402PaymentsList, x402Stats] = await Promise.all([
+        storage.getGigsByAgent(agent.id),
+        storage.getReputationEvents(agent.id),
+        storage.getEarningsHistory(agent.id),
+        storage.getTrustReceiptsForAgent(agent.id, 50),
+        storage.getBondEvents(agent.id, 50),
+        storage.getX402PaymentsForAgent(agent.id, 20),
+        storage.getX402PaymentStats(agent.id),
+      ]);
+
+      const activeGigs = allGigs.filter(g =>
+        ["assigned", "in_progress", "pending_validation"].includes(g.status)
+      );
+      const disputedGigs = allGigs.filter(g => g.status === "disputed");
+      const completedGigs = allGigs.filter(g => g.status === "completed");
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const recentRepEvents = repEvents.filter(e => e.createdAt && new Date(e.createdAt) > sevenDaysAgo);
+      const scoreChangeLastWeek = recentRepEvents.reduce((sum, e) => sum + e.scoreChange, 0);
+
+      const getTier = (score: number) => {
+        if (score >= 90) return "Diamond Claw";
+        if (score >= 70) return "Gold Shell";
+        if (score >= 50) return "Silver Molt";
+        if (score >= 30) return "Bronze Pinch";
+        return "Hatchling";
+      };
+      const getNextTierThreshold = (score: number) => {
+        if (score >= 90) return { tier: "Diamond Claw", needed: 0, next: "Diamond Claw" };
+        if (score >= 70) return { tier: "Gold Shell", needed: 90 - score, next: "Diamond Claw" };
+        if (score >= 50) return { tier: "Silver Molt", needed: 70 - score, next: "Gold Shell" };
+        if (score >= 30) return { tier: "Bronze Pinch", needed: 50 - score, next: "Silver Molt" };
+        return { tier: "Hatchling", needed: 30 - score, next: "Bronze Pinch" };
+      };
+
+      const activityFeed: Array<{
+        type: string;
+        message: string;
+        timestamp: string;
+        highlight?: boolean;
+        receiptId?: string;
+        gigId?: string;
+      }> = [];
+
+      if (agent.lastHeartbeat) {
+        const hbAgo = Date.now() - new Date(agent.lastHeartbeat).getTime();
+        const hbMin = Math.round(hbAgo / 60000);
+        activityFeed.push({
+          type: "heartbeat",
+          message: `Heartbeat received — ${hbMin < 60 ? hbMin + " min ago" : Math.round(hbMin / 60) + " hrs ago"}`,
+          timestamp: agent.lastHeartbeat.toISOString ? agent.lastHeartbeat.toISOString() : String(agent.lastHeartbeat),
+        });
+      }
+
+      for (const re of repEvents.slice(0, 30)) {
+        const isPositive = re.scoreChange >= 0;
+        activityFeed.push({
+          type: "reputation",
+          message: `${isPositive ? "+" : ""}${re.scoreChange} reputation — ${re.details || re.eventType}`,
+          timestamp: re.createdAt?.toISOString?.() || String(re.createdAt || ""),
+        });
+      }
+
+      for (const gig of completedGigs.slice(0, 10)) {
+        const receipt = trustReceipts.find(r => r.gigId === gig.id);
+        activityFeed.push({
+          type: "gig_completed",
+          message: `Gig completed: ${gig.title} — earned ${gig.budget} ${gig.currency}`,
+          timestamp: gig.createdAt?.toISOString?.() || String(gig.createdAt || ""),
+          receiptId: receipt?.id,
+          gigId: gig.id,
+        });
+      }
+
+      for (const re of recentRepEvents) {
+        if (re.eventType === "tier_change" || re.details?.toLowerCase().includes("molted") || re.details?.toLowerCase().includes("tier")) {
+          activityFeed.push({
+            type: "tier_change",
+            message: `${re.details || "Tier change!"}`,
+            timestamp: re.createdAt?.toISOString?.() || String(re.createdAt || ""),
+            highlight: true,
+          });
+        }
+      }
+
+      for (const be of bondEvents.slice(0, 10)) {
+        activityFeed.push({
+          type: "bond",
+          message: `Bond ${be.eventType.toLowerCase()}: ${be.amount} USDC${be.reason ? " — " + be.reason : ""}`,
+          timestamp: be.createdAt?.toISOString?.() || String(be.createdAt || ""),
+        });
+      }
+
+      activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      const now = new Date();
+      const earningsGrouped = {
+        weekly: [] as { date: string; amount: number }[],
+        monthly: [] as { date: string; amount: number }[],
+        all: [] as { date: string; amount: number }[],
+      };
+
+      const weeklyMap = new Map<string, number>();
+      const monthlyMap = new Map<string, number>();
+      const allMap = new Map<string, number>();
+
+      for (const e of earningsHistory) {
+        const d = e.completedAt ? new Date(e.completedAt) : now;
+        const dayKey = d.toISOString().split("T")[0];
+        const weekKey = `${d.getFullYear()}-W${Math.ceil((d.getDate() + new Date(d.getFullYear(), d.getMonth(), 1).getDay()) / 7).toString().padStart(2, "0")}`;
+        const monthKey = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+
+        allMap.set(dayKey, (allMap.get(dayKey) || 0) + e.amount);
+        if (d > new Date(now.getTime() - 30 * 24 * 3600000)) {
+          monthlyMap.set(dayKey, (monthlyMap.get(dayKey) || 0) + e.amount);
+        }
+        if (d > new Date(now.getTime() - 7 * 24 * 3600000)) {
+          weeklyMap.set(dayKey, (weeklyMap.get(dayKey) || 0) + e.amount);
+        }
+      }
+
+      weeklyMap.forEach((amount, date) => earningsGrouped.weekly.push({ date, amount }));
+      monthlyMap.forEach((amount, date) => earningsGrouped.monthly.push({ date, amount }));
+      allMap.forEach((amount, date) => earningsGrouped.all.push({ date, amount }));
+      earningsGrouped.weekly.sort((a, b) => a.date.localeCompare(b.date));
+      earningsGrouped.monthly.sort((a, b) => a.date.localeCompare(b.date));
+      earningsGrouped.all.sort((a, b) => a.date.localeCompare(b.date));
+
+      const enrichedActiveGigs = await Promise.all(
+        activeGigs.map(async (gig) => {
+          const escrow = await storage.getEscrowByGig(gig.id);
+          const counterparty = gig.assigneeId === agent.id
+            ? await storage.getAgent(gig.posterId)
+            : gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+          return {
+            ...gig,
+            escrowAmount: escrow?.amount || 0,
+            escrowStatus: escrow?.status || null,
+            counterparty: counterparty ? { id: counterparty.id, handle: counterparty.handle, avatar: counterparty.avatar } : null,
+            timeElapsed: gig.createdAt ? Date.now() - new Date(gig.createdAt).getTime() : 0,
+          };
+        })
+      );
+
+      const alerts = disputedGigs.map(g => ({
+        type: "dispute",
+        message: `${agent.handle} is in a dispute on Gig "${g.title}"`,
+        gigId: g.id,
+      }));
+
+      const tierInfo = getNextTierThreshold(agent.fusedScore);
+
+      res.json({
+        agent: {
+          id: agent.id,
+          handle: agent.handle,
+          walletAddress: agent.walletAddress,
+          avatar: agent.avatar,
+          fusedScore: agent.fusedScore,
+          onChainScore: agent.onChainScore,
+          totalEarned: agent.totalEarned,
+          totalGigsCompleted: agent.totalGigsCompleted,
+          bondTier: agent.bondTier,
+          availableBond: agent.availableBond,
+          riskIndex: agent.riskIndex,
+          isVerified: agent.isVerified,
+          autonomyStatus: agent.autonomyStatus,
+        },
+        stats: {
+          totalEarned: agent.totalEarned,
+          activeGigsCount: activeGigs.length,
+          fusedScore: agent.fusedScore,
+          scoreTrend: scoreChangeLastWeek,
+          currentTier: getTier(agent.fusedScore),
+          tierInfo,
+        },
+        earningsChart: earningsGrouped,
+        activityFeed: activityFeed.slice(0, 50),
+        activeGigs: enrichedActiveGigs,
+        alerts,
+        reputationHistory: repEvents.map(e => ({
+          id: e.id,
+          scoreChange: e.scoreChange,
+          eventType: e.eventType,
+          details: e.details,
+          source: e.source,
+          timestamp: e.createdAt?.toISOString?.() || String(e.createdAt || ""),
+        })).slice(0, 100),
+        trustReceipts: trustReceipts.slice(0, 20),
+        x402: {
+          payments: x402PaymentsList,
+          stats: x402Stats,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/x402/payments/:agentId", async (req, res) => {
+    try {
+      const agentId = req.params.agentId;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const payments = await storage.getX402PaymentsForAgent(agentId, limit);
+      const stats = await storage.getX402PaymentStats(agentId);
+      res.json({ payments, stats });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/x402/stats", async (_req, res) => {
+    try {
+      const stats = await storage.getX402PaymentStats();
+      res.json({
+        ...stats,
+        endpoints: {
+          "trust-check": { price: 0.001, currency: "USDC", chain: "base-sepolia" },
+          "reputation": { price: 0.002, currency: "USDC", chain: "base-sepolia" },
+        },
+        protocol: "x402",
+        facilitator: "https://x402.org/facilitator",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/unread-count", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only check your own unread count" });
+      }
+      const total = await storage.getTotalUnreadCount(agentId);
+      res.json({ unreadCount: total });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

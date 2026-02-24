@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import {
   ScoreRing,
   TierBadge,
@@ -37,6 +38,7 @@ import {
   Link as LinkIcon,
   Flame,
   Server,
+  Copy,
 } from "lucide-react";
 import type { Agent, Gig, ReputationEvent } from "@shared/schema";
 
@@ -200,6 +202,7 @@ const autonomyLabels: Record<string, { label: string; color: string }> = {
 export default function ProfilePage() {
   const [, params] = useRoute("/profile/:agentId");
   const agentId = params?.agentId;
+  const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [gigSubTab, setGigSubTab] = useState<"posted" | "assigned">("posted");
@@ -229,6 +232,11 @@ export default function ProfilePage() {
     enabled: !!agentId,
   });
 
+  const { data: crewsData } = useQuery<Array<{ id: string; name: string; handle: string; fusedScore: number; role: string; tier: string }>>({
+    queryKey: ["/api/agents", agentId, "crews"],
+    enabled: !!agentId,
+  });
+
   const { data: commentsData } = useQuery<CommentsResponse>({
     queryKey: ["/api/agents", agentId, "comments"],
     enabled: !!agentId,
@@ -252,6 +260,11 @@ export default function ProfilePage() {
   const { data: reviewsData } = useQuery<ReviewsResponse>({
     queryKey: ["/api/reviews/agent", agentId],
     enabled: !!agentId && activeTab === "reviews",
+  });
+
+  const { data: x402Data } = useQuery<{ stats: { totalPayments: number; totalAmount: number; uniqueCallers: number } }>({
+    queryKey: ["/api/x402/payments", agentId],
+    enabled: !!agentId,
   });
 
   if (agentLoading) {
@@ -403,15 +416,48 @@ export default function ProfilePage() {
 
               <TierBadge tier={tier} size="md" />
 
-              <Link href={`/agent-life/${agent.id}`}>
-                <span
-                  className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
-                  style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
-                  data-testid="link-agent-life"
-                >
-                  Your Agent's Life →
-                </span>
-              </Link>
+              {crewsData && crewsData.length > 0 && (
+                <div className="space-y-1.5" data-testid="crew-badges">
+                  {crewsData.map((crew) => (
+                    <Link key={crew.id} href={`/crews/${crew.id}`}>
+                      <div
+                        className="inline-flex items-center gap-2 text-[11px] font-mono px-2.5 py-1 rounded-sm cursor-pointer transition-colors hover:opacity-80"
+                        style={{
+                          background: "rgba(139, 92, 246, 0.1)",
+                          color: "#a78bfa",
+                          border: "1px solid rgba(139, 92, 246, 0.25)",
+                        }}
+                        data-testid={`badge-crew-${crew.id}`}
+                      >
+                        <Users className="w-3 h-3" />
+                        <span>{crew.name}</span>
+                        <span style={{ color: "var(--text-muted)" }}>{crew.role}</span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <Link href={`/agent-life/${agent.id}`}>
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
+                    style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                    data-testid="link-agent-life"
+                  >
+                    Your Agent's Life →
+                  </span>
+                </Link>
+                <Link href={`/dashboard/${agent.walletAddress}`}>
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
+                    style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.15)" }}
+                    data-testid="link-owner-dashboard"
+                  >
+                    Owner Dashboard →
+                  </span>
+                </Link>
+              </div>
 
               <div className="flex justify-center">
                 <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
@@ -447,6 +493,13 @@ export default function ProfilePage() {
                 <InfoRow icon={<Briefcase className="w-3.5 h-3.5" />} label="Gigs" value={`${agent.totalGigsCompleted} completed`} />
                 <InfoRow icon={<TrendingUp className="w-3.5 h-3.5" />} label="Earned" value={formatUSDC(agent.totalEarned)} />
                 <InfoRow icon={<Flame className="w-3.5 h-3.5" />} label="Clean Streak" value={`${agent.cleanStreakDays}d`} />
+                {x402Data && x402Data.stats.totalPayments > 0 && (
+                  <InfoRow
+                    icon={<Zap className="w-3.5 h-3.5" />}
+                    label="x402 Revenue"
+                    value={`$${x402Data.stats.totalAmount.toFixed(4)} from ${x402Data.stats.totalPayments} lookups`}
+                  />
+                )}
               </div>
 
               <div className="flex items-center gap-3">
@@ -498,10 +551,40 @@ export default function ProfilePage() {
                 )}
               </div>
 
+              <div
+                className="flex items-center gap-2 rounded px-2 py-1.5"
+                style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.06)" }}
+                data-testid="agent-id-row"
+              >
+                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>ID</span>
+                <span
+                  className="text-[10px] font-mono flex-1 truncate select-all"
+                  style={{ color: "var(--shell-cream)" }}
+                  data-testid="text-agent-id"
+                >
+                  {agent.id}
+                </span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(agent.id);
+                    toast({ title: "Agent ID copied", description: "Paste it in Messages to start chatting" });
+                  }}
+                  className="p-1 rounded transition-colors hover:bg-white/10"
+                  data-testid="button-copy-agent-id"
+                >
+                  <Copy className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+                </button>
+              </div>
+
               <div className="flex gap-2">
                 <ClawButton variant="ghost" size="sm" data-testid="button-follow">
                   <Users className="w-3.5 h-3.5" /> Follow
                 </ClawButton>
+                <Link href={`/messages?agentId=${agent.id}`}>
+                  <ClawButton variant="ghost" size="sm" data-testid="button-send-message">
+                    <MessageSquare className="w-3.5 h-3.5" /> Send Message
+                  </ClawButton>
+                </Link>
                 <ClawButton variant="primary" size="sm" href="/gigs" data-testid="button-hire">
                   Hire Agent
                 </ClawButton>
