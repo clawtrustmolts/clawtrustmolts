@@ -14,6 +14,8 @@ contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard {
     uint256 public constant MAX_MOLTBOOK_KARMA = 10000;
     uint256 public constant UPDATE_COOLDOWN = 1 hours;
     uint256 public constant MAX_SCORE = 100;
+    uint256 public constant MAX_BATCH_SIZE = 50;
+    uint256 public constant MAX_HISTORY_LENGTH = 500;
 
     struct FusedScore {
         uint256 onChainScore;
@@ -54,6 +56,7 @@ contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard {
     event OracleRevoked(address indexed oracle);
     event ReputationRegistryCallFailed(address indexed agent, bytes reason);
     event MinOracleCountUpdated(uint256 oldCount, uint256 newCount);
+    event ScoreHistoryPruned(address indexed agent, uint256 removedCount);
 
     error InvalidAddress();
     error InvalidScore();
@@ -62,6 +65,7 @@ contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard {
     error NotAuthorizedOracle();
     error InsufficientOracles();
     error ScoreOutOfBounds();
+    error BatchTooLarge();
 
     modifier onlyOracle() {
         if(!authorizedOracles[msg.sender]) revert NotAuthorizedOracle();
@@ -119,10 +123,7 @@ contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard {
             proofHash: proofHash
         });
 
-        scoreHistory[agent].push(ScoreHistory({
-            fusedScore: fused,
-            timestamp: block.timestamp
-        }));
+        _appendHistory(agent, fused);
 
         emit FusedScoreUpdated(agent, fused, onChainScore, moltbookKarma, proofHash);
     }
@@ -134,6 +135,7 @@ contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard {
         string[] calldata proofUris
     ) external onlyOracle whenNotPaused {
         uint256 length = agents.length;
+        if(length > MAX_BATCH_SIZE) revert BatchTooLarge();
         if(length != onChainScores.length ||
            length != moltbookKarmas.length ||
            length != proofUris.length) {
@@ -156,15 +158,32 @@ contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard {
                 proofHash: proofHash
             });
 
-            scoreHistory[agent].push(ScoreHistory({
-                fusedScore: fused,
-                timestamp: block.timestamp
-            }));
+            _appendHistory(agent, fused);
 
             lastUpdateTime[agent] = block.timestamp;
 
             emit FusedScoreUpdated(agent, fused, onChainScores[i], moltbookKarmas[i], proofHash);
         }
+    }
+
+    function _appendHistory(address agent, uint256 fused) internal {
+        ScoreHistory[] storage history = scoreHistory[agent];
+
+        if(history.length >= MAX_HISTORY_LENGTH) {
+            uint256 pruneCount = history.length - MAX_HISTORY_LENGTH + 1;
+            for(uint256 i = 0; i < history.length - pruneCount; i++) {
+                history[i] = history[i + pruneCount];
+            }
+            for(uint256 i = 0; i < pruneCount; i++) {
+                history.pop();
+            }
+            emit ScoreHistoryPruned(agent, pruneCount);
+        }
+
+        history.push(ScoreHistory({
+            fusedScore: fused,
+            timestamp: block.timestamp
+        }));
     }
 
     function submitFeedbackToRegistry(
@@ -212,10 +231,7 @@ contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard {
             proofHash: proofHash
         });
 
-        scoreHistory[agentAddress].push(ScoreHistory({
-            fusedScore: fused,
-            timestamp: block.timestamp
-        }));
+        _appendHistory(agentAddress, fused);
 
         emit FusedScoreUpdated(agentAddress, fused, onChainScore, moltbookKarma, proofHash);
 
@@ -263,6 +279,10 @@ contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard {
         }
 
         return result;
+    }
+
+    function getHistoryLength(address agent) external view returns (uint256) {
+        return scoreHistory[agent].length;
     }
 
     function authorizeOracle(address oracle) external onlyOwner {

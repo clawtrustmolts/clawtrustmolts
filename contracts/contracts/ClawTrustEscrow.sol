@@ -31,12 +31,14 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
     uint256 public constant FEE_DENOMINATOR = 10000;
     uint256 public constant MAX_FEE_RATE = 1000;
     uint256 public constant ESCROW_TIMEOUT = 90 days;
+    uint256 public constant MIN_ESCROW_AMOUNT = 1000;
 
     event EscrowCreated(bytes32 indexed gigId, address indexed depositor, uint256 amount, address token);
     event EscrowLocked(bytes32 indexed gigId);
     event EscrowReleased(bytes32 indexed gigId, address indexed payee, uint256 amount, uint256 fee);
     event EscrowRefunded(bytes32 indexed gigId, address indexed depositor, uint256 amount);
     event EscrowDisputed(bytes32 indexed gigId);
+    event EscrowDisputeResolved(bytes32 indexed gigId, bool releasedToPayee, address resolver);
     event PlatformFeeRateUpdated(uint256 oldRate, uint256 newRate);
     event TokenApprovalUpdated(address indexed token, bool approved);
 
@@ -51,6 +53,9 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
     error SwarmNotApproved();
     error FeeTooHigh();
     error TokenNotApproved();
+    error SelfDealingNotAllowed();
+    error BelowMinimumAmount();
+    error ValidationExpired();
 
     constructor(address _validationRegistry, uint256 _platformFeeRate) Ownable(msg.sender) {
         if(_validationRegistry == address(0)) revert InvalidAddress();
@@ -64,7 +69,9 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         if(gigId == bytes32(0)) revert InvalidGigId();
         if(escrowExists[gigId]) revert EscrowAlreadyExists();
         if(msg.value == 0) revert InvalidAmount();
+        if(msg.value < MIN_ESCROW_AMOUNT) revert BelowMinimumAmount();
         if(payee == address(0)) revert InvalidAddress();
+        if(payee == msg.sender) revert SelfDealingNotAllowed();
 
         escrows[gigId] = Escrow({
             gigId: gigId,
@@ -86,7 +93,9 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         if(gigId == bytes32(0)) revert InvalidGigId();
         if(escrowExists[gigId]) revert EscrowAlreadyExists();
         if(amount == 0) revert InvalidAmount();
+        if(amount < MIN_ESCROW_AMOUNT) revert BelowMinimumAmount();
         if(payee == address(0) || token == address(0)) revert InvalidAddress();
+        if(payee == msg.sender) revert SelfDealingNotAllowed();
         if(!approvedTokens[token]) revert TokenNotApproved();
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
@@ -164,7 +173,29 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         emit EscrowDisputed(gigId);
     }
 
-    error ValidationExpired();
+    function resolveDispute(bytes32 gigId, bool releaseToPayee) external onlyOwner nonReentrant {
+        Escrow storage escrow = escrows[gigId];
+        if(!escrowExists[gigId]) revert EscrowNotFound();
+        if(escrow.status != EscrowStatus.Disputed) revert InvalidStatus();
+
+        if(releaseToPayee) {
+            _releaseEscrow(escrow);
+        } else {
+            escrow.status = EscrowStatus.Refunded;
+            escrow.resolvedAt = block.timestamp;
+
+            if (escrow.token == address(0)) {
+                (bool sent, ) = escrow.depositor.call{value: escrow.amount}("");
+                if(!sent) revert TransferFailed();
+            } else {
+                IERC20(escrow.token).safeTransfer(escrow.depositor, escrow.amount);
+            }
+
+            emit EscrowRefunded(gigId, escrow.depositor, escrow.amount);
+        }
+
+        emit EscrowDisputeResolved(gigId, releaseToPayee, msg.sender);
+    }
 
     function releaseOnSwarmApproval(bytes32 gigId) external nonReentrant {
         Escrow storage escrow = escrows[gigId];
@@ -177,8 +208,8 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         (uint256 votesFor, , uint256 threshold, uint8 status, bool isApproved) =
             ISwarmValidator(validationRegistry).aggregateVotes(gigId);
 
-        if(!isApproved || votesFor < threshold) revert SwarmNotApproved();
         if(status == 3) revert ValidationExpired();
+        if(!isApproved || votesFor < threshold) revert SwarmNotApproved();
 
         _releaseEscrow(escrow);
     }

@@ -5,13 +5,6 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-/**
- * @title ClawCardNFT
- * @notice Dynamic NFT representing an agent's ClawTrust reputation card.
- *         ONE CARD PER WALLET - Transfers are restricted to maintain this invariant.
- *         Token metadata is served dynamically via the ClawTrust API.
- *         Supports soulbound (non-transferable) mode per token.
- */
 contract ClawCardNFT is ERC721, Ownable {
     using Strings for uint256;
 
@@ -189,6 +182,14 @@ contract ClawCardNFT is ERC721, Ownable {
     function approve(address to, uint256 tokenId) public override {
         if(soulbound[tokenId]) revert TokenIsSoulbound();
         super.approve(to, tokenId);
+    }
+
+    function setApprovalForAll(address operator, bool approved) public override {
+        if(approved) {
+            uint256 tokenId = walletToToken[msg.sender];
+            if(tokenId != 0 && soulbound[tokenId]) revert TokenIsSoulbound();
+        }
+        super.setApprovalForAll(operator, approved);
     }
 
     function totalSupply() external view returns (uint256) {
