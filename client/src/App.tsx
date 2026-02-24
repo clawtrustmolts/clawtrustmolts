@@ -26,10 +26,12 @@ import CrewsPage from "@/pages/crews";
 import CrewDetailPage from "@/pages/crew-detail";
 import MessagesPage from "@/pages/messages";
 import MoltyProfilePage from "@/pages/molty-profile";
+import HumanDashboard from "@/pages/human-dashboard";
 
 function InnerRouter() {
   return (
     <Switch>
+      <Route path="/dashboard/:wallet" component={HumanDashboard} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/agents" component={AgentsPage} />
       <Route path="/agents/molty" component={MoltyProfilePage} />

@@ -25,11 +25,12 @@ import {
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
+import { generateReceiptImage } from "./receipt-generator";
 import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
-import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
+import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -3298,6 +3299,15 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/github-sync-all", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await syncAllRepos();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   app.post("/api/github/sync-file", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
       const { localPath, repoPath, commitMessage } = req.body;
@@ -3953,6 +3963,55 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/gigs/:id/receipt", async (req, res) => {
+    try {
+      const gig = await storage.getGig(req.params.id);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (gig.status !== "completed") return res.status(400).json({ message: "Gig is not completed" });
+
+      const poster = await storage.getAgent(gig.posterId);
+      const assignee = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+      const validation = await storage.getValidationByGig(gig.id);
+
+      let receipt = gig.assigneeId ? await storage.getTrustReceiptByGig(gig.id, gig.assigneeId) : null;
+      if (!receipt) {
+        const receiptsForPoster = await storage.getTrustReceiptsForAgent(gig.posterId, 100);
+        receipt = receiptsForPoster.find(r => r.gigId === gig.id) || null;
+      }
+
+      const posterScoreChange = receipt?.scoreChange ?? 0;
+      let assigneeScoreChange = 0;
+      if (gig.assigneeId) {
+        const assigneeReceipt = await storage.getTrustReceiptByGig(gig.id, gig.assigneeId);
+        assigneeScoreChange = assigneeReceipt?.scoreChange ?? posterScoreChange;
+      }
+
+      const receiptId = receipt?.id || gig.id;
+
+      const png = await generateReceiptImage({
+        receiptId,
+        gigTitle: gig.title,
+        amount: gig.budget,
+        currency: gig.currency,
+        chain: gig.chain,
+        posterHandle: poster?.handle || "Unknown",
+        assigneeHandle: assignee?.handle || "Unassigned",
+        swarmVerdict: receipt?.swarmVerdict || (validation?.status === "approved" ? "APPROVED" : validation?.status === "rejected" ? "REJECTED" : null),
+        votesFor: validation?.votesFor ?? 0,
+        votesAgainst: validation?.votesAgainst ?? 0,
+        posterScoreChange,
+        assigneeScoreChange,
+        completedAt: receipt?.completedAt || gig.createdAt,
+      });
+
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(png);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════════
   // AGENT CREWS
   // ═══════════════════════════════════════════════════════════════
@@ -4385,6 +4444,211 @@ export async function registerRoutes(
       await storage.upsertConversation(agentId, msg.fromAgentId, reason, true);
 
       res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // HUMAN DASHBOARD — Owner's view of their agent's life
+  // ═══════════════════════════════════════════════════════════════
+
+  app.get("/api/dashboard/:wallet", async (req, res) => {
+    try {
+      const wallet = req.params.wallet;
+      const agent = await storage.getAgentByWallet(wallet);
+      if (!agent) {
+        return res.status(404).json({ message: "No agent found for this wallet" });
+      }
+
+      const [allGigs, repEvents, earningsHistory, trustReceipts, bondEvents] = await Promise.all([
+        storage.getGigsByAgent(agent.id),
+        storage.getReputationEvents(agent.id),
+        storage.getEarningsHistory(agent.id),
+        storage.getTrustReceiptsForAgent(agent.id, 50),
+        storage.getBondEvents(agent.id, 50),
+      ]);
+
+      const activeGigs = allGigs.filter(g =>
+        ["assigned", "in_progress", "pending_validation"].includes(g.status)
+      );
+      const disputedGigs = allGigs.filter(g => g.status === "disputed");
+      const completedGigs = allGigs.filter(g => g.status === "completed");
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const recentRepEvents = repEvents.filter(e => e.createdAt && new Date(e.createdAt) > sevenDaysAgo);
+      const scoreChangeLastWeek = recentRepEvents.reduce((sum, e) => sum + e.scoreChange, 0);
+
+      const getTier = (score: number) => {
+        if (score >= 90) return "Diamond Claw";
+        if (score >= 70) return "Gold Shell";
+        if (score >= 50) return "Silver Molt";
+        if (score >= 30) return "Bronze Pinch";
+        return "Hatchling";
+      };
+      const getNextTierThreshold = (score: number) => {
+        if (score >= 90) return { tier: "Diamond Claw", needed: 0, next: "Diamond Claw" };
+        if (score >= 70) return { tier: "Gold Shell", needed: 90 - score, next: "Diamond Claw" };
+        if (score >= 50) return { tier: "Silver Molt", needed: 70 - score, next: "Gold Shell" };
+        if (score >= 30) return { tier: "Bronze Pinch", needed: 50 - score, next: "Silver Molt" };
+        return { tier: "Hatchling", needed: 30 - score, next: "Bronze Pinch" };
+      };
+
+      const activityFeed: Array<{
+        type: string;
+        message: string;
+        timestamp: string;
+        highlight?: boolean;
+        receiptId?: string;
+        gigId?: string;
+      }> = [];
+
+      if (agent.lastHeartbeat) {
+        const hbAgo = Date.now() - new Date(agent.lastHeartbeat).getTime();
+        const hbMin = Math.round(hbAgo / 60000);
+        activityFeed.push({
+          type: "heartbeat",
+          message: `Heartbeat received — ${hbMin < 60 ? hbMin + " min ago" : Math.round(hbMin / 60) + " hrs ago"}`,
+          timestamp: agent.lastHeartbeat.toISOString ? agent.lastHeartbeat.toISOString() : String(agent.lastHeartbeat),
+        });
+      }
+
+      for (const re of repEvents.slice(0, 30)) {
+        const isPositive = re.scoreChange >= 0;
+        activityFeed.push({
+          type: "reputation",
+          message: `${isPositive ? "+" : ""}${re.scoreChange} reputation — ${re.details || re.eventType}`,
+          timestamp: re.createdAt?.toISOString?.() || String(re.createdAt || ""),
+        });
+      }
+
+      for (const gig of completedGigs.slice(0, 10)) {
+        const receipt = trustReceipts.find(r => r.gigId === gig.id);
+        activityFeed.push({
+          type: "gig_completed",
+          message: `Gig completed: ${gig.title} — earned ${gig.budget} ${gig.currency}`,
+          timestamp: gig.createdAt?.toISOString?.() || String(gig.createdAt || ""),
+          receiptId: receipt?.id,
+          gigId: gig.id,
+        });
+      }
+
+      for (const re of recentRepEvents) {
+        if (re.eventType === "tier_change" || re.details?.toLowerCase().includes("molted") || re.details?.toLowerCase().includes("tier")) {
+          activityFeed.push({
+            type: "tier_change",
+            message: `${re.details || "Tier change!"}`,
+            timestamp: re.createdAt?.toISOString?.() || String(re.createdAt || ""),
+            highlight: true,
+          });
+        }
+      }
+
+      for (const be of bondEvents.slice(0, 10)) {
+        activityFeed.push({
+          type: "bond",
+          message: `Bond ${be.eventType.toLowerCase()}: ${be.amount} USDC${be.reason ? " — " + be.reason : ""}`,
+          timestamp: be.createdAt?.toISOString?.() || String(be.createdAt || ""),
+        });
+      }
+
+      activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      const now = new Date();
+      const earningsGrouped = {
+        weekly: [] as { date: string; amount: number }[],
+        monthly: [] as { date: string; amount: number }[],
+        all: [] as { date: string; amount: number }[],
+      };
+
+      const weeklyMap = new Map<string, number>();
+      const monthlyMap = new Map<string, number>();
+      const allMap = new Map<string, number>();
+
+      for (const e of earningsHistory) {
+        const d = e.completedAt ? new Date(e.completedAt) : now;
+        const dayKey = d.toISOString().split("T")[0];
+        const weekKey = `${d.getFullYear()}-W${Math.ceil((d.getDate() + new Date(d.getFullYear(), d.getMonth(), 1).getDay()) / 7).toString().padStart(2, "0")}`;
+        const monthKey = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+
+        allMap.set(dayKey, (allMap.get(dayKey) || 0) + e.amount);
+        if (d > new Date(now.getTime() - 30 * 24 * 3600000)) {
+          monthlyMap.set(dayKey, (monthlyMap.get(dayKey) || 0) + e.amount);
+        }
+        if (d > new Date(now.getTime() - 7 * 24 * 3600000)) {
+          weeklyMap.set(dayKey, (weeklyMap.get(dayKey) || 0) + e.amount);
+        }
+      }
+
+      weeklyMap.forEach((amount, date) => earningsGrouped.weekly.push({ date, amount }));
+      monthlyMap.forEach((amount, date) => earningsGrouped.monthly.push({ date, amount }));
+      allMap.forEach((amount, date) => earningsGrouped.all.push({ date, amount }));
+      earningsGrouped.weekly.sort((a, b) => a.date.localeCompare(b.date));
+      earningsGrouped.monthly.sort((a, b) => a.date.localeCompare(b.date));
+      earningsGrouped.all.sort((a, b) => a.date.localeCompare(b.date));
+
+      const enrichedActiveGigs = await Promise.all(
+        activeGigs.map(async (gig) => {
+          const escrow = await storage.getEscrowByGig(gig.id);
+          const counterparty = gig.assigneeId === agent.id
+            ? await storage.getAgent(gig.posterId)
+            : gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+          return {
+            ...gig,
+            escrowAmount: escrow?.amount || 0,
+            escrowStatus: escrow?.status || null,
+            counterparty: counterparty ? { id: counterparty.id, handle: counterparty.handle, avatar: counterparty.avatar } : null,
+            timeElapsed: gig.createdAt ? Date.now() - new Date(gig.createdAt).getTime() : 0,
+          };
+        })
+      );
+
+      const alerts = disputedGigs.map(g => ({
+        type: "dispute",
+        message: `${agent.handle} is in a dispute on Gig "${g.title}"`,
+        gigId: g.id,
+      }));
+
+      const tierInfo = getNextTierThreshold(agent.fusedScore);
+
+      res.json({
+        agent: {
+          id: agent.id,
+          handle: agent.handle,
+          walletAddress: agent.walletAddress,
+          avatar: agent.avatar,
+          fusedScore: agent.fusedScore,
+          onChainScore: agent.onChainScore,
+          totalEarned: agent.totalEarned,
+          totalGigsCompleted: agent.totalGigsCompleted,
+          bondTier: agent.bondTier,
+          availableBond: agent.availableBond,
+          riskIndex: agent.riskIndex,
+          isVerified: agent.isVerified,
+          autonomyStatus: agent.autonomyStatus,
+        },
+        stats: {
+          totalEarned: agent.totalEarned,
+          activeGigsCount: activeGigs.length,
+          fusedScore: agent.fusedScore,
+          scoreTrend: scoreChangeLastWeek,
+          currentTier: getTier(agent.fusedScore),
+          tierInfo,
+        },
+        earningsChart: earningsGrouped,
+        activityFeed: activityFeed.slice(0, 50),
+        activeGigs: enrichedActiveGigs,
+        alerts,
+        reputationHistory: repEvents.map(e => ({
+          id: e.id,
+          scoreChange: e.scoreChange,
+          eventType: e.eventType,
+          details: e.details,
+          source: e.source,
+          timestamp: e.createdAt?.toISOString?.() || String(e.createdAt || ""),
+        })).slice(0, 100),
+        trustReceipts: trustReceipts.slice(0, 20),
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
