@@ -28,6 +28,9 @@ import {
   type CrewGigApplicant, type InsertCrewGigApplicant,
   type MoltyAnnouncement, type InsertMoltyAnnouncement,
   type X402Payment, type InsertX402Payment,
+  slashEvents, reputationMigrations,
+  type SlashEvent, type InsertSlashEvent,
+  type ReputationMigration, type InsertReputationMigration,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -168,6 +171,17 @@ export interface IStorage {
   getX402PaymentsForAgent(agentId: string, limit?: number): Promise<X402Payment[]>;
   getX402PaymentsForWallet(wallet: string, limit?: number): Promise<X402Payment[]>;
   getX402PaymentStats(agentId?: string): Promise<{ totalPayments: number; totalAmount: number; uniqueCallers: number }>;
+
+  createSlashEvent(event: InsertSlashEvent): Promise<SlashEvent>;
+  getSlashEvents(limit?: number): Promise<SlashEvent[]>;
+  getSlashEvent(id: string): Promise<SlashEvent | undefined>;
+  getSlashEventsForAgent(agentId: string): Promise<SlashEvent[]>;
+  getSlashEventCount(agentId: string): Promise<number>;
+  updateSlashEvent(id: string, data: Partial<SlashEvent>): Promise<SlashEvent | undefined>;
+
+  createReputationMigration(migration: InsertReputationMigration): Promise<ReputationMigration>;
+  getReputationMigration(id: string): Promise<ReputationMigration | undefined>;
+  getMigrationByAgent(agentId: string): Promise<ReputationMigration | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -855,6 +869,51 @@ export class DatabaseStorage implements IStorage {
       totalAmount: Number(result[0]?.totalAmount || 0),
       uniqueCallers: Number(result[0]?.uniqueCallers || 0),
     };
+  }
+
+  async createSlashEvent(event: InsertSlashEvent): Promise<SlashEvent> {
+    const [created] = await db.insert(slashEvents).values(event).returning();
+    return created;
+  }
+
+  async getSlashEvents(limit = 50): Promise<SlashEvent[]> {
+    return db.select().from(slashEvents).orderBy(desc(slashEvents.createdAt)).limit(limit);
+  }
+
+  async getSlashEvent(id: string): Promise<SlashEvent | undefined> {
+    const [event] = await db.select().from(slashEvents).where(eq(slashEvents.id, id));
+    return event;
+  }
+
+  async getSlashEventsForAgent(agentId: string): Promise<SlashEvent[]> {
+    return db.select().from(slashEvents).where(eq(slashEvents.agentId, agentId)).orderBy(desc(slashEvents.createdAt));
+  }
+
+  async getSlashEventCount(agentId: string): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(slashEvents).where(eq(slashEvents.agentId, agentId));
+    return Number(result?.count || 0);
+  }
+
+  async updateSlashEvent(id: string, data: Partial<SlashEvent>): Promise<SlashEvent | undefined> {
+    const [updated] = await db.update(slashEvents).set(data).where(eq(slashEvents.id, id)).returning();
+    return updated;
+  }
+
+  async createReputationMigration(migration: InsertReputationMigration): Promise<ReputationMigration> {
+    const [created] = await db.insert(reputationMigrations).values(migration).returning();
+    return created;
+  }
+
+  async getReputationMigration(id: string): Promise<ReputationMigration | undefined> {
+    const [record] = await db.select().from(reputationMigrations).where(eq(reputationMigrations.id, id));
+    return record;
+  }
+
+  async getMigrationByAgent(agentId: string): Promise<ReputationMigration | undefined> {
+    const [record] = await db.select().from(reputationMigrations).where(
+      or(eq(reputationMigrations.oldAgentId, agentId), eq(reputationMigrations.newAgentId, agentId))
+    ).orderBy(desc(reputationMigrations.createdAt)).limit(1);
+    return record;
   }
 }
 

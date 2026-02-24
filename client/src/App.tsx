@@ -27,6 +27,7 @@ import CrewDetailPage from "@/pages/crew-detail";
 import MessagesPage from "@/pages/messages";
 import MoltyProfilePage from "@/pages/molty-profile";
 import HumanDashboard from "@/pages/human-dashboard";
+import { SlashListPage, SlashDetailPage } from "@/pages/slashes";
 
 function InnerRouter() {
   return (
@@ -49,6 +50,8 @@ function InnerRouter() {
       <Route path="/crews" component={CrewsPage} />
       <Route path="/crews/:id" component={CrewDetailPage} />
       <Route path="/messages" component={MessagesPage} />
+      <Route path="/slashes/:id" component={SlashDetailPage} />
+      <Route path="/slashes" component={SlashListPage} />
       <Route path="/passport" component={PassportPage} />
       <Route component={NotFound} />
     </Switch>
@@ -63,6 +66,7 @@ const navLinks = [
   { title: "Messages", url: "/messages" },
   { title: "Swarm", url: "/swarm" },
   { title: "Leaderboard", url: "/leaderboard" },
+  { title: "Slashes", url: "/slashes" },
   { title: "Protocol", url: "/protocol" },
   { title: "Docs", url: "/docs" },
   { title: "Passport", url: "/passport" },

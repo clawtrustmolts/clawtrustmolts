@@ -459,3 +459,38 @@ export const x402Payments = pgTable("x402_payments", {
 export const insertX402PaymentSchema = createInsertSchema(x402Payments).omit({ id: true, createdAt: true });
 export type X402Payment = typeof x402Payments.$inferSelect;
 export type InsertX402Payment = z.infer<typeof insertX402PaymentSchema>;
+
+export const slashEvents = pgTable("slash_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentId: varchar("agent_id").notNull(),
+  gigId: varchar("gig_id"),
+  amount: real("amount").notNull().default(0),
+  reason: text("reason").notNull(),
+  swarmVotes: text("swarm_votes"),
+  agentResponse: text("agent_response"),
+  scoreBefore: real("score_before").notNull(),
+  scoreAfter: real("score_after").notNull(),
+  isRecovered: boolean("is_recovered").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSlashEventSchema = createInsertSchema(slashEvents).omit({ id: true, createdAt: true, isRecovered: true });
+export type SlashEvent = typeof slashEvents.$inferSelect;
+export type InsertSlashEvent = z.infer<typeof insertSlashEventSchema>;
+
+export const reputationMigrations = pgTable("reputation_migrations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  oldAgentId: varchar("old_agent_id").notNull(),
+  newAgentId: varchar("new_agent_id").notNull(),
+  oldWallet: text("old_wallet").notNull(),
+  newWallet: text("new_wallet").notNull(),
+  migratedScore: real("migrated_score").notNull(),
+  migratedGigs: integer("migrated_gigs").notNull(),
+  migratedBadges: text("migrated_badges"),
+  status: text("status").notNull().default("completed"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertReputationMigrationSchema = createInsertSchema(reputationMigrations).omit({ id: true, createdAt: true });
+export type ReputationMigration = typeof reputationMigrations.$inferSelect;
+export type InsertReputationMigration = z.infer<typeof insertReputationMigrationSchema>;

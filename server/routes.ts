@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema } from "@shared/schema";
+import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema } from "@shared/schema";
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
@@ -4760,6 +4760,208 @@ export async function registerRoutes(
       }
       const total = await storage.getTotalUnreadCount(agentId);
       res.json({ unreadCount: total });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/slashes", apiLimiter, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const allSlashes = await storage.getSlashEvents(limit + offset);
+      const slashes = allSlashes.slice(offset, offset + limit);
+
+      const enriched = await Promise.all(slashes.map(async (s) => {
+        const agent = await storage.getAgent(s.agentId);
+        const gig = s.gigId ? await storage.getGig(s.gigId) : null;
+        return {
+          ...s,
+          agent: agent ? { id: agent.id, handle: agent.handle, avatar: agent.avatar, fusedScore: agent.fusedScore } : null,
+          gig: gig ? { id: gig.id, title: gig.title, budget: gig.budget } : null,
+        };
+      }));
+
+      const totalCount = allSlashes.length;
+      const totalSlashed = allSlashes.reduce((sum, s) => sum + (s.amount || 0), 0);
+
+      res.json({
+        slashes: enriched,
+        total: totalCount,
+        totalSlashed,
+        limit,
+        offset,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/slashes/agent/:agentId", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.params.agentId as string;
+      const slashes = await storage.getSlashEventsForAgent(agentId);
+      const slashCount = await storage.getSlashEventCount(agentId);
+
+      const enriched = await Promise.all(slashes.map(async (s) => {
+        const gig = s.gigId ? await storage.getGig(s.gigId) : null;
+        return {
+          ...s,
+          gig: gig ? { id: gig.id, title: gig.title, budget: gig.budget } : null,
+        };
+      }));
+
+      res.json({
+        slashes: enriched,
+        count: slashCount,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/slashes/:id", apiLimiter, async (req, res) => {
+    try {
+      const slash = await storage.getSlashEvent(req.params.id as string);
+      if (!slash) return res.status(404).json({ message: "Slash event not found" });
+
+      const agent = await storage.getAgent(slash.agentId);
+      const gig = slash.gigId ? await storage.getGig(slash.gigId) : null;
+
+      let swarmVotesData = null;
+      if (slash.swarmVotes) {
+        try {
+          swarmVotesData = JSON.parse(slash.swarmVotes);
+        } catch {
+          swarmVotesData = null;
+        }
+      }
+
+      res.json({
+        ...slash,
+        swarmVotesData,
+        agent: agent ? {
+          id: agent.id,
+          handle: agent.handle,
+          avatar: agent.avatar,
+          fusedScore: agent.fusedScore,
+          bondTier: agent.bondTier,
+        } : null,
+        gig: gig ? {
+          id: gig.id,
+          title: gig.title,
+          budget: gig.budget,
+          description: gig.description,
+        } : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/inherit-reputation", strictLimiter, async (req, res) => {
+    try {
+      const oldAgentId = req.params.id as string;
+      const { newWallet, oldWallet, signature, newAgentId } = req.body;
+
+      if (!newWallet || !oldWallet || !newAgentId) {
+        return res.status(400).json({ message: "newWallet, oldWallet, and newAgentId are required" });
+      }
+
+      const oldAgent = await storage.getAgent(oldAgentId);
+      if (!oldAgent) {
+        return res.status(404).json({ message: "Source agent not found" });
+      }
+
+      if (oldAgent.walletAddress.toLowerCase() !== oldWallet.toLowerCase()) {
+        return res.status(400).json({ message: "oldWallet does not match agent's registered wallet" });
+      }
+
+      const newAgent = await storage.getAgent(newAgentId);
+      if (!newAgent) {
+        return res.status(404).json({ message: "Target agent not found" });
+      }
+
+      if (newAgent.totalGigsCompleted !== 0) {
+        return res.status(400).json({ message: "Target agent must have zero completed gigs to inherit reputation" });
+      }
+
+      const existingMigration = await storage.getMigrationByAgent(oldAgentId);
+      if (existingMigration) {
+        return res.status(409).json({ message: "This agent has already been involved in a migration" });
+      }
+
+      const badgesArray = oldAgent.skills || [];
+      const migratedBadges = JSON.stringify(badgesArray);
+
+      await storage.updateAgent(newAgentId, {
+        fusedScore: oldAgent.fusedScore,
+        totalGigsCompleted: oldAgent.totalGigsCompleted,
+        totalEarned: oldAgent.totalEarned,
+        performanceScore: oldAgent.performanceScore,
+        bondReliability: oldAgent.bondReliability,
+        onChainScore: oldAgent.onChainScore,
+        moltbookKarma: oldAgent.moltbookKarma,
+      });
+
+      await storage.updateAgent(oldAgentId, {
+        autonomyStatus: "pending",
+        bio: (oldAgent.bio || "") + " (MIGRATED)",
+      });
+
+      const migration = await storage.createReputationMigration({
+        oldAgentId,
+        newAgentId,
+        oldWallet,
+        newWallet,
+        migratedScore: oldAgent.fusedScore,
+        migratedGigs: oldAgent.totalGigsCompleted,
+        migratedBadges,
+        status: "completed",
+      });
+
+      res.json({
+        success: true,
+        migration,
+        message: `Reputation successfully migrated from ${oldAgent.handle} to ${newAgent.handle}`,
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/migration-status", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.params.id as string;
+      const migration = await storage.getMigrationByAgent(agentId);
+
+      if (!migration) {
+        return res.json({ hasMigrated: false, migration: null });
+      }
+
+      const isSource = migration.oldAgentId === agentId;
+      const isTarget = migration.newAgentId === agentId;
+
+      let relatedAgent = null;
+      if (isSource) {
+        relatedAgent = await storage.getAgent(migration.newAgentId);
+      } else if (isTarget) {
+        relatedAgent = await storage.getAgent(migration.oldAgentId);
+      }
+
+      res.json({
+        hasMigrated: true,
+        direction: isSource ? "outgoing" : "incoming",
+        migration,
+        relatedAgent: relatedAgent ? {
+          id: relatedAgent.id,
+          handle: relatedAgent.handle,
+          avatar: relatedAgent.avatar,
+        } : null,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
