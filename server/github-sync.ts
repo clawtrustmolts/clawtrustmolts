@@ -255,6 +255,21 @@ async function createBlobForRepo(repoName: string, content: string): Promise<str
   return data.sha;
 }
 
+async function createBinaryBlobForRepo(repoName: string, filePath: string): Promise<string> {
+  const buf = fs.readFileSync(filePath);
+  const data = await githubRequest(
+    `/repos/${REPO_OWNER}/${repoName}/git/blobs`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        content: buf.toString("base64"),
+        encoding: "base64",
+      }),
+    }
+  );
+  return data.sha;
+}
+
 async function createTreeForRepo(
   repoName: string,
   baseTreeSha: string,
@@ -532,31 +547,65 @@ export function getAllFileList(): string[] {
   return discoverFiles(rootDir).map((f) => f.path);
 }
 
-export async function syncSkillRepo(): Promise<{
-  success: boolean;
-  message: string;
-}> {
+export async function syncSkillRepo(): Promise<RepoSyncResult> {
   const SKILL_REPO = "clawtrust-skill";
-  const localPath = path.resolve(process.cwd(), "skills/clawtrust-integration.md");
-  if (!fs.existsSync(localPath)) {
-    return { success: false, message: "Skill file not found locally" };
-  }
-
-  const content = fs.readFileSync(localPath, "utf-8");
+  const skillDir = path.resolve(process.cwd(), "openclaw-skill-submission/clawtrust");
   const timestamp = new Date().toISOString().split("T")[0];
 
+  const textFiles = [
+    { repoPath: "SKILL.md", localPath: path.join(skillDir, "SKILL.md") },
+    { repoPath: "README.md", localPath: path.join(skillDir, "README.md") },
+    { repoPath: "clawhub.json", localPath: path.join(skillDir, "clawhub.json") },
+  ];
+
+  const binaryFiles = [
+    { repoPath: "screenshots/agent-profile.png", localPath: path.join(skillDir, "screenshots/agent-profile.png") },
+    { repoPath: "screenshots/gig-discovery.png", localPath: path.join(skillDir, "screenshots/gig-discovery.png") },
+    { repoPath: "screenshots/trust-receipt.png", localPath: path.join(skillDir, "screenshots/trust-receipt.png") },
+  ];
+
+  const missingText = textFiles.filter(f => !fs.existsSync(f.localPath));
+  if (missingText.length > 0) {
+    return { repo: `${REPO_OWNER}/${SKILL_REPO}`, success: false, filesCount: 0, message: `Missing files: ${missingText.map(f => f.repoPath).join(", ")}` };
+  }
+
   try {
-    await pushFileToRepo(SKILL_REPO, "clawtrust-integration.md", content,
-      `chore: sync skill from ClawTrust platform [${timestamp}]`);
+    const branch = "main";
+    const headSha = await getRefForRepo(SKILL_REPO, branch);
+    const baseTreeSha = await getCommitForRepo(SKILL_REPO, headSha);
 
-    const readmeContent = `# ClawTrust Integration Skill\n\nOpenClaw agent skill for autonomous reputation building, gig discovery, USDC escrow payments, and swarm validation on the ClawTrust platform.\n\n- **Platform**: [clawtrust.org](https://clawtrust.org)\n- **GitHub**: [github.com/clawtrustmolts/clawtrustmolts](https://github.com/clawtrustmolts/clawtrustmolts)\n- **Chains**: Base Sepolia (EVM), Solana Devnet\n\n## Install\n\nCopy \`clawtrust-integration.md\` into your OpenClaw agent's skills folder:\n\n\`\`\`bash\nmkdir -p ~/.openclaw/skills && curl -o ~/.openclaw/skills/clawtrust-integration.md https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/clawtrust-integration.md\n\`\`\`\n\nSee the skill file for full API documentation and heartbeat loop examples.\n`;
+    const treeItems: Array<{ path: string; mode: string; type: string; sha: string }> = [];
 
-    await pushFileToRepo(SKILL_REPO, "README.md", readmeContent,
-      `chore: update README [${timestamp}]`);
+    for (const file of textFiles) {
+      const content = fs.readFileSync(file.localPath, "utf-8");
+      const sha = await createBlobForRepo(SKILL_REPO, content);
+      treeItems.push({ path: file.repoPath, mode: "100644", type: "blob", sha });
+    }
 
-    return { success: true, message: `Synced skill + README to ${REPO_OWNER}/${SKILL_REPO}` };
+    for (const file of binaryFiles) {
+      if (fs.existsSync(file.localPath)) {
+        const sha = await createBinaryBlobForRepo(SKILL_REPO, file.localPath);
+        treeItems.push({ path: file.repoPath, mode: "100644", type: "blob", sha });
+      }
+    }
+
+    const newTreeSha = await createTreeForRepo(SKILL_REPO, baseTreeSha, treeItems);
+    const commitSha = await createCommitForRepo(
+      SKILL_REPO,
+      `chore: sync ClawHub skill submission [${timestamp}]`,
+      newTreeSha,
+      headSha
+    );
+    await updateRefForRepo(SKILL_REPO, branch, commitSha);
+
+    return {
+      repo: `${REPO_OWNER}/${SKILL_REPO}`,
+      success: true,
+      filesCount: treeItems.length,
+      message: `Pushed ${treeItems.length} files to ${REPO_OWNER}/${SKILL_REPO}`,
+    };
   } catch (err: any) {
-    return { success: false, message: err.message };
+    return { repo: `${REPO_OWNER}/${SKILL_REPO}`, success: false, filesCount: 0, message: err.message };
   }
 }
 
@@ -766,15 +815,7 @@ export async function syncAllRepos(): Promise<{
     },
     {
       name: "clawtrust-skill",
-      fn: async () => {
-        const result = await syncSkillRepo();
-        return {
-          repo: `${REPO_OWNER}/clawtrust-skill`,
-          success: result.success,
-          filesCount: result.success ? 2 : 0,
-          message: result.message,
-        };
-      },
+      fn: syncSkillRepo,
     },
     { name: "clawtrust-contracts", fn: syncContractsRepo },
     { name: "clawtrust-sdk", fn: syncSdkRepo },
