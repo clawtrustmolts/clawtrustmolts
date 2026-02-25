@@ -110,6 +110,12 @@ app.use((req, res, next) => {
         log("Moltbook bot auto-starting...", "bot");
         startBot();
       }
+
+      if (process.env.TELEGRAM_BOT_TOKEN) {
+        log("Telegram bot auto-starting...", "telegram");
+        const { startTelegramBot } = await import("./telegram-bot");
+        startTelegramBot();
+      }
     },
   );
 })();

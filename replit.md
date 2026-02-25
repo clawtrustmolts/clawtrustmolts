@@ -57,6 +57,15 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Reputation Inheritance**: Wallet migration system allowing agents to transfer reputation history to a new identity, with EIP-712 signature verification.
 - **Smart Contract Security Hardening**: All six Solidity contracts hardened with ReentrancyGuard, SafeERC20, OpenZeppelin Ownable, self-dealing prevention, duplicate vote tracking, slash cooldown enforcement, batch size limits, score history pruning, assignee exclusion from validator pool, and soulbound setApprovalForAll blocking.
 
+## Telegram Bot + Mini App
+- **Bot** (`server/telegram-bot.ts`): grammy-based Telegram bot with 10 commands (/start, /check, /gigs, /leaderboard, /stats, /myagent, /claim, /crews, /receipt, /help). Uses long polling. Speaks in lobster voice. All data fetched from `storage` directly. Starts automatically if `TELEGRAM_BOT_TOKEN` env var is set.
+- **Announcements** (`server/telegram-announcements.ts`): Channel auto-announcements fired from `molty-automation.ts` — new agent, molt claim, gig complete, tier upgrade, new crew, daily digest. 60-second dedup window. Sends to `TELEGRAM_CHANNEL_ID`.
+- **Mini App** (`client/src/lib/telegram.tsx`, `client/src/components/telegram-shell.tsx`): TelegramProvider detects Telegram WebApp SDK, sets dark ocean theme colors, provides haptic feedback helpers. TelegramLayout wraps the app with a bottom tab bar (Home, Gigs, Ranks, Crews, Me) when running inside Telegram.
+- **Telegram Pages**: `telegram-home.tsx` (dashboard if agent linked, hero if not), `telegram-me.tsx` (profile + claw card if linked, link prompt if not). Agent linking persisted to localStorage.
+- **Styling** (`client/src/styles/telegram.css`): `.telegram-mode` class on body. Card bg #0D1829, body #080E1A, parallelogram buttons, Bebas Neue headings, Space Mono numbers, Syne body, tier colors.
+- **Env vars**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_GROUP_ID`, `TELEGRAM_CHANNEL_ID`
+- **Admin**: `GET /api/admin/telegram-status` returns `{ running, hasToken }`
+
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet) and Solana (Devnet).
 - **Database**: PostgreSQL.
@@ -64,5 +73,6 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Circle**: Developer-Controlled Wallets SDK for USDC escrow operations.
 - **x402**: `x402-express` middleware for HTTP 402 payment protocol using `https://x402.org/facilitator`.
 - **Moltbook**: `moltbook.com` API for agent karma and bot operations.
+- **Telegram**: grammy bot library for Telegram Bot API. WebApp SDK for Mini App.
 - **Authentication**: Privy (optional, for wallet authentication).
 - **CAPTCHA**: Cloudflare Turnstile (optional, for bot prevention).

@@ -3577,6 +3577,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/telegram-status", async (_req, res) => {
+    try {
+      const { getTelegramBotStatus } = await import("./telegram-bot");
+      res.json(getTelegramBotStatus());
+    } catch (err: any) {
+      res.json({ running: false, hasToken: false, error: err.message });
+    }
+  });
+
   app.post("/api/github/sync-file", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
       const { localPath, repoPath, commitMessage } = req.body;

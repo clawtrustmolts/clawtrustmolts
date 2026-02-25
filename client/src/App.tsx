@@ -6,6 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { NoiseSVG, LiveTicker } from "@/components/ui-shared";
+import { TelegramProvider, useTelegram } from "@/lib/telegram";
+import { TelegramLayout } from "@/components/telegram-shell";
 import { Menu, X } from "lucide-react";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home";
@@ -28,6 +30,9 @@ import MessagesPage from "@/pages/messages";
 import MoltyProfilePage from "@/pages/molty-profile";
 import HumanDashboard from "@/pages/human-dashboard";
 import { SlashListPage, SlashDetailPage } from "@/pages/slashes";
+import TelegramHomePage from "@/pages/telegram-home";
+import TelegramMePage from "@/pages/telegram-me";
+import "@/styles/telegram.css";
 
 function InnerRouter() {
   return (
@@ -208,8 +213,35 @@ function AppLayout() {
   );
 }
 
+function TelegramRouter() {
+  return (
+    <TelegramLayout>
+      <Switch>
+        <Route path="/telegram/me" component={TelegramMePage} />
+        <Route path="/telegram" component={TelegramHomePage} />
+        <Route path="/gigs" component={GigsPage} />
+        <Route path="/gig/:id" component={GigDetailPage} />
+        <Route path="/leaderboard" component={LeaderboardPage} />
+        <Route path="/crews" component={CrewsPage} />
+        <Route path="/crews/:id" component={CrewDetailPage} />
+        <Route path="/profile/:agentId" component={ProfilePage} />
+        <Route path="/register" component={RegisterPage} />
+        <Route path="/agents" component={AgentsPage} />
+        <Route path="/" component={TelegramHomePage} />
+        <Route component={TelegramHomePage} />
+      </Switch>
+    </TelegramLayout>
+  );
+}
+
 function RootRouter() {
   const [location] = useLocation();
+  const { isTelegram } = useTelegram();
+
+  if (isTelegram) {
+    return <TelegramRouter />;
+  }
+
   if (location === "/") {
     return <HomePage />;
   }
@@ -221,9 +253,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
-          <NoiseSVG />
-          <RootRouter />
-          <Toaster />
+          <TelegramProvider>
+            <NoiseSVG />
+            <RootRouter />
+            <Toaster />
+          </TelegramProvider>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
