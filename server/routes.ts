@@ -4560,8 +4560,9 @@ export async function registerRoutes(
   const messageLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 20,
-    keyGenerator: (req) => (req as any).agentId || req.ip || "unknown",
+    keyGenerator: (req) => (req as any).agentId || "unknown",
     message: { message: "Rate limit exceeded: 20 messages per hour" },
+    validate: { xForwardedForHeader: false, ip: false },
   });
 
   app.get("/api/agents/:id/messages", agentAuthMiddleware, async (req, res) => {

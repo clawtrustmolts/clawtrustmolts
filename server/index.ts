@@ -80,6 +80,9 @@ app.use((req, res, next) => {
     return res.status(status).json({ message });
   });
 
+  const { injectOgTags } = await import("./og-tags");
+  app.use(injectOgTags);
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
