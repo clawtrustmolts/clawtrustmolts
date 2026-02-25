@@ -1,7 +1,9 @@
-import { useState, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { getAgentProfileUrl } from "@/lib/agent-display";
 import {
   ScoreRing,
   TierBadge,
@@ -39,7 +41,17 @@ import {
   Flame,
   Server,
   Copy,
+  Check,
+  X as XIcon,
+  Loader2,
+  Share2,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { Agent, Gig, ReputationEvent, SlashEvent, ReputationMigration } from "@shared/schema";
 
 type TabId = "overview" | "gigs" | "social" | "bond" | "reviews" | "slashes";
@@ -201,15 +213,90 @@ const autonomyLabels: Record<string, { label: string; color: string }> = {
 
 export default function ProfilePage() {
   const [, params] = useRoute("/profile/:agentId");
-  const agentId = params?.agentId;
+  const rawId = params?.agentId;
   const { toast } = useToast();
+
+  const isMoltDomain = rawId?.endsWith(".molt") ?? false;
+  const moltName = isMoltDomain ? rawId!.slice(0, -5) : null;
 
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [gigSubTab, setGigSubTab] = useState<"posted" | "assigned">("posted");
+  const [moltInput, setMoltInput] = useState("");
+  const [moltAvailability, setMoltAvailability] = useState<"idle" | "checking" | "available" | "taken" | "reserved" | "invalid">("idle");
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [claimedName, setClaimedName] = useState<string | null>(null);
+  const [claimedFoundingNumber, setClaimedFoundingNumber] = useState<number | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data: agent, isLoading: agentLoading, isError: agentError } = useQuery<Agent>({
-    queryKey: ["/api/agents", agentId],
+  const { data: moltAgent, isLoading: moltLoading, isError: moltError } = useQuery<Agent>({
+    queryKey: ["/api/agents/by-molt", moltName],
+    queryFn: async () => {
+      const res = await fetch(`/api/agents/by-molt/${moltName}`);
+      if (!res.ok) throw new Error("Not found");
+      return res.json();
+    },
+    enabled: isMoltDomain && !!moltName,
+  });
+
+  const resolvedAgentId = isMoltDomain ? moltAgent?.id : rawId;
+
+  const { data: agentById, isLoading: agentLoading, isError: agentError } = useQuery<Agent>({
+    queryKey: ["/api/agents", resolvedAgentId],
+    enabled: !isMoltDomain && !!rawId,
+  });
+
+  const displayAgent = isMoltDomain ? moltAgent : agentById;
+  const agentId = displayAgent?.id;
+  const isAgentLoading = isMoltDomain ? moltLoading : agentLoading;
+  const isAgentError = isMoltDomain ? moltError : agentError;
+
+  const { data: moltInfo } = useQuery<{ moltDomain: string | null; record: { foundingMoltNumber: number | null } | null }>({
+    queryKey: ["/api/agents", agentId, "molt-info"],
     enabled: !!agentId,
+  });
+
+  const checkMoltAvailability = useCallback((name: string) => {
+    if (!name || name.length < 3) { setMoltAvailability("idle"); return; }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setMoltAvailability("checking");
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/molt-domains/check/${encodeURIComponent(name)}`);
+        const data = await res.json();
+        if (data.available) setMoltAvailability("available");
+        else if (data.reason === "reserved") setMoltAvailability("reserved");
+        else if (data.reason === "invalid") setMoltAvailability("invalid");
+        else setMoltAvailability("taken");
+      } catch {
+        setMoltAvailability("idle");
+      }
+    }, 300);
+  }, []);
+
+  useEffect(() => {
+    const cleaned = moltInput.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    if (cleaned !== moltInput) setMoltInput(cleaned);
+    if (cleaned.length >= 3) checkMoltAvailability(cleaned);
+    else setMoltAvailability("idle");
+  }, [moltInput, checkMoltAvailability]);
+
+  const claimMoltMutation = useMutation({
+    mutationFn: async () => {
+      if (!displayAgent) throw new Error("No agent");
+      const res = await apiRequest("POST", "/api/molt-domains/register", { agentId: displayAgent.id, name: moltInput });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setClaimedName(data.moltDomain);
+      setClaimedFoundingNumber(data.foundingMoltNumber);
+      setShowShareModal(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId, "molt-info"] });
+      toast({ title: `${data.moltDomain} claimed!`, description: data.foundingMoltNumber ? `You're Founding Molt #${data.foundingMoltNumber}` : "Your agent has a permanent name." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to claim name", description: err.message, variant: "destructive" });
+    },
   });
 
   const { data: repData } = useQuery<RepData>({
@@ -277,7 +364,7 @@ export default function ProfilePage() {
     enabled: !!agentId,
   });
 
-  if (agentLoading) {
+  if (isAgentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
         <div className="flex flex-col lg:flex-row gap-6">
@@ -295,7 +382,7 @@ export default function ProfilePage() {
     );
   }
 
-  if (agentError || !agent) {
+  if (isAgentError || !displayAgent) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
         <Link href="/agents">
@@ -309,6 +396,8 @@ export default function ProfilePage() {
       </div>
     );
   }
+
+  const agent = displayAgent;
 
   const breakdown = repData?.breakdown;
   const events = repData?.events || [];
@@ -326,6 +415,7 @@ export default function ProfilePage() {
 
   const slashCount = slashesData?.length ?? 0;
   const migration = migrationData?.migration ?? null;
+  const foundingMoltNumber = moltInfo?.record?.foundingMoltNumber ?? null;
 
   const tabs: { id: TabId; label: string }[] = [
     { id: "overview", label: "OVERVIEW" },
@@ -459,6 +549,27 @@ export default function ProfilePage() {
               </div>
 
               <div>
+                {agent.moltDomain && (
+                  <Link href={`/profile/${agent.moltDomain}`}>
+                    <div
+                      className="inline-flex items-center gap-1.5 mb-1 font-mono text-[13px] cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{ color: "var(--claw-orange)" }}
+                      data-testid="text-molt-domain-header"
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      {agent.moltDomain}
+                      {foundingMoltNumber && (
+                        <span
+                          className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm uppercase tracking-wider"
+                          style={{ background: "rgba(232,84,10,0.15)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)" }}
+                          data-testid="badge-founding-molt"
+                        >
+                          Founding #{foundingMoltNumber}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                )}
                 <h1
                   className="font-display tracking-wider"
                   style={{ fontSize: 28, color: "var(--shell-white)" }}
@@ -688,6 +799,133 @@ export default function ProfilePage() {
                   Hire Agent
                 </ClawButton>
               </div>
+
+              {/* .molt NAME — CLAIMED */}
+              {agent.moltDomain && (
+                <div
+                  className="rounded-sm p-3 space-y-2"
+                  style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.18)" }}
+                  data-testid="section-molt-claimed"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5" style={{ color: "var(--teal-glow)" }} />
+                      <span className="text-[11px] font-mono font-semibold" style={{ color: "var(--shell-white)" }}>
+                        {agent.moltDomain}
+                      </span>
+                    </div>
+                    {foundingMoltNumber && (
+                      <span
+                        className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm uppercase tracking-wider"
+                        style={{ background: "rgba(232,84,10,0.15)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)" }}
+                        data-testid="badge-founding-molt"
+                      >
+                        🦞 Founding #{foundingMoltNumber}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono truncate flex-1" style={{ color: "var(--text-muted)" }}>
+                      clawtrust.org/profile/{agent.moltDomain}
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`https://clawtrust.org/profile/${agent.moltDomain}`);
+                        toast({ title: "Profile URL copied!" });
+                      }}
+                      className="p-1 rounded hover:bg-white/10 transition-colors flex-shrink-0"
+                      data-testid="button-copy-molt-link"
+                    >
+                      <Copy className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const foundingLine = foundingMoltNumber ? `\nFounding Molt #${foundingMoltNumber} — one of the first 100. 🦞` : "";
+                        const caption = `🦞 just claimed ${agent.moltDomain} on @ClawTrust\n\nmy agent has a real name now.${foundingLine}\n\nclawtrust.org/profile/${agent.moltDomain}\n\n#OpenClaw #AIAgents`;
+                        setClaimedName(agent.moltDomain!);
+                        setClaimedFoundingNumber(foundingMoltNumber);
+                        setShowShareModal(true);
+                        navigator.clipboard.writeText(caption);
+                      }}
+                      className="p-1 rounded hover:bg-white/10 transition-colors flex-shrink-0"
+                      data-testid="button-share-molt"
+                    >
+                      <Share2 className="w-3 h-3" style={{ color: "var(--claw-orange)" }} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* .molt NAME — REGISTRATION */}
+              {!agent.moltDomain && (
+                <div
+                  className="rounded-sm p-3 space-y-2.5"
+                  style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  data-testid="section-molt-registration"
+                >
+                  <p className="text-[10px] uppercase tracking-widest font-display" style={{ color: "var(--claw-orange)" }}>
+                    Claim Your .molt Name
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={moltInput}
+                      onChange={(e) => setMoltInput(e.target.value)}
+                      placeholder="yourname"
+                      maxLength={32}
+                      className="flex-1 bg-transparent text-[11px] font-mono px-2 py-1.5 rounded-sm outline-none"
+                      style={{
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        color: "var(--shell-white)",
+                      }}
+                      data-testid="input-molt-name"
+                    />
+                    <span className="text-[11px] font-mono flex-shrink-0" style={{ color: "var(--text-muted)" }}>.molt</span>
+                  </div>
+
+                  {moltAvailability !== "idle" && (
+                    <div className="flex items-center gap-1.5" data-testid="text-molt-availability">
+                      {moltAvailability === "checking" && (
+                        <><Loader2 className="w-3 h-3 animate-spin" style={{ color: "var(--text-muted)" }} /><span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>checking...</span></>
+                      )}
+                      {moltAvailability === "available" && (
+                        <><Check className="w-3 h-3" style={{ color: "var(--teal-glow)" }} /><span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>available</span></>
+                      )}
+                      {moltAvailability === "taken" && (
+                        <><XIcon className="w-3 h-3" style={{ color: "#ef4444" }} /><span className="text-[10px] font-mono" style={{ color: "#ef4444" }}>already taken</span></>
+                      )}
+                      {moltAvailability === "reserved" && (
+                        <><AlertTriangle className="w-3 h-3" style={{ color: "var(--claw-amber)" }} /><span className="text-[10px] font-mono" style={{ color: "var(--claw-amber)" }}>reserved word</span></>
+                      )}
+                      {moltAvailability === "invalid" && (
+                        <><XIcon className="w-3 h-3" style={{ color: "#ef4444" }} /><span className="text-[10px] font-mono" style={{ color: "#ef4444" }}>3–32 chars, letters/numbers/hyphens only</span></>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => claimMoltMutation.mutate()}
+                    disabled={moltAvailability !== "available" || claimMoltMutation.isPending}
+                    className="w-full flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider font-mono py-1.5 rounded-sm transition-all"
+                    style={{
+                      background: moltAvailability === "available" ? "rgba(232,84,10,0.15)" : "rgba(0,0,0,0.1)",
+                      color: moltAvailability === "available" ? "var(--claw-orange)" : "var(--text-muted)",
+                      border: `1px solid ${moltAvailability === "available" ? "rgba(232,84,10,0.3)" : "rgba(255,255,255,0.06)"}`,
+                      cursor: moltAvailability === "available" ? "pointer" : "not-allowed",
+                    }}
+                    data-testid="button-claim-molt"
+                  >
+                    {claimMoltMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      "Claim Name"
+                    )}
+                  </button>
+                  <p className="text-[9px] font-mono text-center" style={{ color: "var(--text-muted)" }}>
+                    Soulbound to your agent. Permanent. Choose wisely.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -815,11 +1053,78 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
+
+      {/* .molt SHARE MODAL */}
+      <Dialog open={showShareModal} onOpenChange={setShowShareModal}>
+        <DialogContent
+          className="max-w-md"
+          style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.25)" }}
+          data-testid="modal-molt-share"
+        >
+          <DialogHeader>
+            <DialogTitle className="font-display tracking-wider" style={{ color: "var(--shell-white)" }}>
+              {"🦞 " + claimedName + " is yours"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div
+              className="rounded-sm p-3 text-[11px] font-mono whitespace-pre-wrap"
+              style={{ background: "rgba(0,0,0,0.2)", color: "var(--shell-cream)", border: "1px solid rgba(255,255,255,0.08)" }}
+            >
+              {[
+                "🦞 just claimed " + claimedName + " on @ClawTrust",
+                "",
+                "my agent has a real name now.",
+                claimedFoundingNumber ? "Founding Molt #" + claimedFoundingNumber + " — one of the first 100. 🦞" : null,
+                "",
+                "clawtrust.org/profile/" + claimedName,
+                "",
+                "#OpenClaw #AIAgents"
+              ].filter(l => l !== null).join("\n")}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const fl = claimedFoundingNumber ? "\nFounding Molt #" + claimedFoundingNumber + " — one of the first 100. 🦞" : "";
+                  const cap = "🦞 just claimed " + claimedName + " on @ClawTrust\n\nmy agent has a real name now." + fl + "\n\nclawtrust.org/profile/" + claimedName + "\n\n#OpenClaw #AIAgents";
+                  navigator.clipboard.writeText(cap);
+                  toast({ title: "Caption copied!" });
+                }}
+                className="flex-1 flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider font-mono py-2 rounded-sm transition-all hover:opacity-80"
+                style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                data-testid="button-copy-caption"
+              >
+                <Copy className="w-3 h-3" /> Copy Caption
+              </button>
+              <button
+                onClick={() => {
+                  const fl = claimedFoundingNumber ? "\nFounding Molt #" + claimedFoundingNumber + " — one of the first 100. 🦞" : "";
+                  const cap = "🦞 just claimed " + claimedName + " on @ClawTrust\n\nmy agent has a real name now." + fl + "\n\nclawtrust.org/profile/" + claimedName + "\n\n#OpenClaw #AIAgents";
+                  window.open("https://twitter.com/intent/tweet?text=" + encodeURIComponent(cap), "_blank");
+                }}
+                className="flex-1 flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider font-mono py-2 rounded-sm transition-all hover:opacity-80"
+                style={{ background: "rgba(29,161,242,0.1)", color: "#1da1f2", border: "1px solid rgba(29,161,242,0.2)" }}
+                data-testid="button-open-x"
+              >
+                <Share2 className="w-3 h-3" /> Open X
+              </button>
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="px-3 flex items-center justify-center text-[10px] uppercase tracking-wider font-mono py-2 rounded-sm transition-all hover:opacity-80"
+                style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                data-testid="button-close-modal"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div
       className="flex items-center justify-between text-[11px] font-mono px-3 py-1.5 rounded-sm"
@@ -834,7 +1139,7 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
-function SectionCard({ children, testId, teal }: { children: React.ReactNode; testId: string; teal?: boolean }) {
+function SectionCard({ children, testId, teal }: { children: ReactNode; testId: string; teal?: boolean }) {
   return (
     <div
       className="rounded-sm p-5"
@@ -849,7 +1154,7 @@ function SectionCard({ children, testId, teal }: { children: React.ReactNode; te
   );
 }
 
-function SectionTitle({ children, icon, color }: { children: React.ReactNode; icon?: React.ReactNode; color?: string }) {
+function SectionTitle({ children, icon, color }: { children: ReactNode; icon?: ReactNode; color?: string }) {
   return (
     <h3
       className="font-display tracking-wider text-sm mb-4 flex items-center gap-2"

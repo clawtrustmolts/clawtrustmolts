@@ -2,13 +2,13 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema } from "@shared/schema";
+import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, MOLT_RESERVED_NAMES } from "@shared/schema";
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier } from "./reputation";
-import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook } from "./molty-automation";
+import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
   buildIdentityMetadata,
   prepareEscrowTxData,
@@ -2092,6 +2092,191 @@ export async function registerRoutes(
     }
   });
 
+  const MOLT_NAME_REGEX = /^[a-z0-9-]+$/;
+
+  app.get("/api/molt-domains/check/:name", async (req, res) => {
+    try {
+      const name = (req.params.name || "").toLowerCase();
+      if (!name || name.length < 3 || name.length > 32 || !MOLT_NAME_REGEX.test(name)) {
+        return res.json({ available: false, name, display: `${name}.molt`, reason: "invalid" });
+      }
+      if (MOLT_RESERVED_NAMES.has(name)) {
+        return res.json({ available: false, name, display: `${name}.molt`, reason: "reserved" });
+      }
+      const existing = await storage.getMoltDomain(name);
+      if (existing && existing.status === "ACTIVE") {
+        return res.json({ available: false, name, display: `${name}.molt`, reason: "taken" });
+      }
+      res.json({ available: true, name, display: `${name}.molt` });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/molt-domains/all", async (_req, res) => {
+    try {
+      const all = await storage.getAllMoltDomains();
+      res.json({ domains: all.map(d => ({ name: d.name, agentId: d.agentId, registeredAt: d.registeredAt, foundingMoltNumber: d.foundingMoltNumber })), total: all.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/by-molt/:name", async (req, res) => {
+    try {
+      const name = (req.params.name || "").toLowerCase();
+      const moltDisplay = `${name}.molt`;
+      const allAgents = await storage.getAgents();
+      const agent = allAgents.find(a => a.moltDomain === moltDisplay);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      res.json(agent);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/molt-info", async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const record = await storage.getMoltDomainByAgent(agent.id);
+      res.json({ moltDomain: agent.moltDomain, record: record || null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/molt-domains/register", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const { agentId, name: rawName } = req.body;
+      if (!agentId || !rawName) return res.status(400).json({ message: "agentId and name are required" });
+      const name = (rawName as string).toLowerCase().replace(/[^a-z0-9-]/g, "");
+
+      if (!name || name.length < 3 || name.length > 32 || !MOLT_NAME_REGEX.test(name)) {
+        return res.status(400).json({ message: "Name must be 3-32 characters, lowercase letters, numbers, and hyphens only" });
+      }
+      if (MOLT_RESERVED_NAMES.has(name)) {
+        return res.status(400).json({ message: "That name is reserved" });
+      }
+      const existing = await storage.getMoltDomain(name);
+      if (existing && existing.status === "ACTIVE") {
+        return res.status(409).json({ message: "That name is already taken" });
+      }
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const wallet = (req as any).wallet as string | undefined;
+      if (wallet && agent.walletAddress.toLowerCase() !== wallet.toLowerCase()) {
+        return res.status(403).json({ message: "Agent does not belong to your wallet" });
+      }
+      if (agent.moltDomain) {
+        return res.status(409).json({ message: `Agent already has a .molt name: ${agent.moltDomain}` });
+      }
+
+      const foundingMoltNumber = await storage.getNextFoundingMoltNumber();
+      const expiresAt = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000);
+
+      await storage.createMoltDomain({
+        name,
+        agentId: agent.id,
+        walletAddress: agent.walletAddress,
+        expiresAt,
+        status: "ACTIVE",
+        foundingMoltNumber,
+      });
+
+      await storage.updateAgent(agent.id, { moltDomain: `${name}.molt` });
+      const updatedAgent = await storage.getAgent(agent.id);
+
+      moltyAnnounceMoltClaim(agent, name, foundingMoltNumber).catch(err =>
+        console.error("[molt] Announcement failed:", err)
+      );
+
+      res.json({
+        success: true,
+        moltDomain: `${name}.molt`,
+        foundingMoltNumber,
+        profileUrl: `/profile/${name}.molt`,
+        agent: updatedAgent,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/molt-domains/register-autonomous", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.headers["x-agent-id"] as string;
+      if (!agentId) return res.status(401).json({ message: "x-agent-id header required" });
+
+      const { name: rawName } = req.body;
+      if (!rawName) return res.status(400).json({ message: "name is required" });
+      const name = (rawName as string).toLowerCase().replace(/[^a-z0-9-]/g, "");
+
+      if (!name || name.length < 3 || name.length > 32 || !MOLT_NAME_REGEX.test(name)) {
+        return res.status(400).json({ message: "Name must be 3-32 characters, lowercase letters, numbers, and hyphens only" });
+      }
+      if (MOLT_RESERVED_NAMES.has(name)) {
+        return res.status(400).json({ message: "That name is reserved" });
+      }
+      const existing = await storage.getMoltDomain(name);
+      if (existing && existing.status === "ACTIVE") {
+        return res.status(409).json({ message: "That name is already taken" });
+      }
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      if (agent.moltDomain) {
+        return res.status(409).json({ message: `Agent already has a .molt name: ${agent.moltDomain}` });
+      }
+
+      const foundingMoltNumber = await storage.getNextFoundingMoltNumber();
+      const expiresAt = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000);
+
+      await storage.createMoltDomain({
+        name,
+        agentId: agent.id,
+        walletAddress: agent.walletAddress,
+        expiresAt,
+        status: "ACTIVE",
+        foundingMoltNumber,
+      });
+
+      await storage.updateAgent(agent.id, { moltDomain: `${name}.molt` });
+      const updatedAgent = await storage.getAgent(agent.id);
+
+      moltyAnnounceMoltClaim(agent, name, foundingMoltNumber).catch(err =>
+        console.error("[molt] Announcement failed:", err)
+      );
+
+      res.json({
+        success: true,
+        moltDomain: `${name}.molt`,
+        foundingMoltNumber,
+        profileUrl: `/profile/${name}.molt`,
+        agent: updatedAgent,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/molt-domains/:name", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const name = req.params.name.toLowerCase();
+      const record = await storage.getMoltDomain(name);
+      if (!record) return res.status(404).json({ message: "Domain not found" });
+
+      const wallet = (req as any).wallet as string | undefined;
+      if (wallet && record.walletAddress.toLowerCase() !== wallet.toLowerCase()) {
+        return res.status(403).json({ message: "You do not own this domain" });
+      }
+      await storage.releaseMoltDomain(name);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   const linkMoltDomainSchema = z.object({
     moltDomain: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+\.molt$/, "Must be a valid .molt domain (e.g. myname.molt)").nullable(),
   });
@@ -4059,6 +4244,8 @@ export async function registerRoutes(
         chain: gig.chain,
         posterHandle: poster?.handle || "Unknown",
         assigneeHandle: assignee?.handle || "Unassigned",
+        posterMoltDomain: poster?.moltDomain || null,
+        assigneeMoltDomain: assignee?.moltDomain || null,
         swarmVerdict: receipt?.swarmVerdict || (validation?.status === "approved" ? "APPROVED" : validation?.status === "rejected" ? "REJECTED" : null),
         votesFor: validation?.votesFor ?? 0,
         votesAgainst: validation?.votesAgainst ?? 0,

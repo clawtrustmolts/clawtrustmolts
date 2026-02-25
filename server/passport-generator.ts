@@ -262,10 +262,17 @@ export async function generatePassportImage(agent: Agent): Promise<Buffer> {
                           {
                             type: "div",
                             props: {
-                              style: { fontSize: "36px", fontWeight: "bold", color: "#e4e4e7", marginBottom: "4px" },
-                              children: agent.handle,
+                              style: { fontSize: "36px", fontWeight: "bold", color: "#e4e4e7", marginBottom: "2px" },
+                              children: agent.moltDomain || agent.handle,
                             },
                           },
+                          ...(agent.moltDomain ? [{
+                            type: "div",
+                            props: {
+                              style: { fontSize: "14px", color: "#71717a", marginBottom: "2px" },
+                              children: agent.handle,
+                            },
+                          }] : []),
                           {
                             type: "div",
                             props: {

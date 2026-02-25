@@ -31,6 +31,8 @@ import {
   slashEvents, reputationMigrations,
   type SlashEvent, type InsertSlashEvent,
   type ReputationMigration, type InsertReputationMigration,
+  moltDomains,
+  type MoltDomain, type InsertMoltDomain,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -182,6 +184,14 @@ export interface IStorage {
   createReputationMigration(migration: InsertReputationMigration): Promise<ReputationMigration>;
   getReputationMigration(id: string): Promise<ReputationMigration | undefined>;
   getMigrationByAgent(agentId: string): Promise<ReputationMigration | undefined>;
+
+  createMoltDomain(data: InsertMoltDomain): Promise<MoltDomain>;
+  getMoltDomain(name: string): Promise<MoltDomain | undefined>;
+  getMoltDomainByAgent(agentId: string): Promise<MoltDomain | undefined>;
+  getNextFoundingMoltNumber(): Promise<number | null>;
+  countMoltDomains(): Promise<number>;
+  releaseMoltDomain(name: string): Promise<void>;
+  getAllMoltDomains(): Promise<MoltDomain[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -914,6 +924,44 @@ export class DatabaseStorage implements IStorage {
       or(eq(reputationMigrations.oldAgentId, agentId), eq(reputationMigrations.newAgentId, agentId))
     ).orderBy(desc(reputationMigrations.createdAt)).limit(1);
     return record;
+  }
+
+  async createMoltDomain(data: InsertMoltDomain): Promise<MoltDomain> {
+    const [created] = await db.insert(moltDomains).values(data).returning();
+    return created;
+  }
+
+  async getMoltDomain(name: string): Promise<MoltDomain | undefined> {
+    const [record] = await db.select().from(moltDomains).where(eq(moltDomains.name, name));
+    return record;
+  }
+
+  async getMoltDomainByAgent(agentId: string): Promise<MoltDomain | undefined> {
+    const [record] = await db.select().from(moltDomains).where(eq(moltDomains.agentId, agentId)).orderBy(desc(moltDomains.registeredAt)).limit(1);
+    return record;
+  }
+
+  async getNextFoundingMoltNumber(): Promise<number | null> {
+    const [result] = await db.select({ cnt: count() }).from(moltDomains).where(sql`${moltDomains.foundingMoltNumber} IS NOT NULL`);
+    const assigned = Number(result?.cnt || 0);
+    if (assigned >= 100) return null;
+    return assigned + 1;
+  }
+
+  async countMoltDomains(): Promise<number> {
+    const [result] = await db.select({ cnt: count() }).from(moltDomains).where(eq(moltDomains.status, "ACTIVE"));
+    return Number(result?.cnt || 0);
+  }
+
+  async releaseMoltDomain(name: string): Promise<void> {
+    const [record] = await db.select().from(moltDomains).where(eq(moltDomains.name, name));
+    if (!record) return;
+    await db.update(moltDomains).set({ status: "EXPIRED" }).where(eq(moltDomains.name, name));
+    await db.update(agents).set({ moltDomain: null }).where(eq(agents.id, record.agentId));
+  }
+
+  async getAllMoltDomains(): Promise<MoltDomain[]> {
+    return db.select().from(moltDomains).where(eq(moltDomains.status, "ACTIVE")).orderBy(asc(moltDomains.registeredAt));
   }
 }
 

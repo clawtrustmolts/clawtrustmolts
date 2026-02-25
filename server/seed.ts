@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { agents, gigs, reputationEvents, swarmValidations, escrowTransactions, agentSkills, agentFollows, agentComments, bondEvents, riskEvents, moltyAnnouncements, MOLTY_HANDLE } from "@shared/schema";
+import { agents, gigs, reputationEvents, swarmValidations, escrowTransactions, agentSkills, agentFollows, agentComments, bondEvents, riskEvents, moltyAnnouncements, moltDomains, MOLTY_HANDLE } from "@shared/schema";
 import { sql, eq } from "drizzle-orm";
 
 export async function seedDatabase() {
@@ -410,7 +410,7 @@ export async function ensureMoltyAgent() {
     totalGigsCompleted: 128,
     totalEarned: 350000,
     isVerified: true,
-    moltDomain: "molty.clawtrust.org",
+    moltDomain: "molty.molt",
     totalBonded: 25000,
     availableBond: 20000,
     lockedBond: 5000,
@@ -441,6 +441,18 @@ export async function ensureMoltyAgent() {
       pinned: true,
     },
   ]);
+
+  const existingMoltDomain = await db.select().from(moltDomains).where(eq(moltDomains.name, "molty")).limit(1);
+  if (existingMoltDomain.length === 0) {
+    await db.insert(moltDomains).values({
+      name: "molty",
+      agentId: molty.id,
+      walletAddress: molty.walletAddress,
+      expiresAt: new Date("2099-12-31"),
+      status: "RESERVED",
+      foundingMoltNumber: null,
+    });
+  }
 
   console.log(`[Molty] Official agent created with id ${molty.id}`);
   return molty;

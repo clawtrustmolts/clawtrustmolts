@@ -26,6 +26,8 @@ interface ReceiptData {
   chain: string;
   posterHandle: string;
   assigneeHandle: string;
+  posterMoltDomain?: string | null;
+  assigneeMoltDomain?: string | null;
   swarmVerdict: string | null;
   votesFor: number;
   votesAgainst: number;
@@ -70,6 +72,8 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Buffer> {
   const receiptHash = hashReceiptId(data.receiptId);
   const posterScore = scoreChangeText(data.posterScoreChange);
   const assigneeScore = scoreChangeText(data.assigneeScoreChange);
+  const posterDisplayName = data.posterMoltDomain || data.posterHandle;
+  const assigneeDisplayName = data.assigneeMoltDomain || data.assigneeHandle;
   const dateStr = data.completedAt
     ? new Date(data.completedAt).toISOString().split("T")[0]
     : new Date().toISOString().split("T")[0];
@@ -216,7 +220,7 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Buffer> {
                                   type: "div",
                                   props: {
                                     style: { fontSize: "16px", fontWeight: "bold", color: WHITE },
-                                    children: data.posterHandle,
+                                    children: posterDisplayName,
                                   },
                                 },
                                 {
@@ -237,7 +241,7 @@ export async function generateReceiptImage(data: ReceiptData): Promise<Buffer> {
                                   type: "div",
                                   props: {
                                     style: { fontSize: "16px", fontWeight: "bold", color: WHITE },
-                                    children: data.assigneeHandle,
+                                    children: assigneeDisplayName,
                                   },
                                 },
                               ],
