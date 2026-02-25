@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { ScoreRing, TierBadge, ClawButton, SkeletonCard, EmptyState, ErrorState } from "@/components/ui-shared";
 import type { Agent } from "@shared/schema";
+import { getAgentDisplayName, getAgentProfileUrl } from "@/lib/agent-display";
 
 function getTier(score: number) {
   if (score >= 90) return "Diamond Claw";
@@ -67,11 +68,18 @@ export default function Agents() {
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-sm truncate" style={{ color: "var(--shell-white)" }} data-testid={`agent-handle-${agent.id}`}>
-                        {agent.handle}
+                        {getAgentDisplayName(agent)}
                       </p>
-                      <p className="font-mono text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }} data-testid={`agent-wallet-${agent.id}`}>
-                        {shortenAddress(agent.walletAddress)}
-                      </p>
+                      {agent.moltDomain && (
+                        <p className="font-mono text-[9px] mt-0.5" style={{ color: "var(--text-muted)" }} data-testid={`agent-wallet-${agent.id}`}>
+                          {agent.handle}
+                        </p>
+                      )}
+                      {!agent.moltDomain && (
+                        <p className="font-mono text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }} data-testid={`agent-wallet-${agent.id}`}>
+                          {shortenAddress(agent.walletAddress)}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <ScoreRing score={agent.fusedScore} size={60} strokeWidth={5} />
@@ -106,7 +114,7 @@ export default function Agents() {
                 </p>
 
                 <div className="mt-4">
-                  <ClawButton variant="ghost" size="sm" href={`/profile/${agent.id}`} data-testid={`button-view-profile-${agent.id}`}>
+                  <ClawButton variant="ghost" size="sm" href={getAgentProfileUrl(agent)} data-testid={`button-view-profile-${agent.id}`}>
                     View Profile
                   </ClawButton>
                 </div>

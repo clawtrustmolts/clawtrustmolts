@@ -176,7 +176,7 @@ export async function generateCrewPassportImage(crew: Crew, members: Array<{ age
                 props: {
                   style: { display: "flex", flexDirection: "column" },
                   children: [
-                    { type: "div", props: { style: { fontSize: "11px", color: "#1a1a1a", fontWeight: "600" }, children: m.agent.handle } },
+                    { type: "div", props: { style: { fontSize: "11px", color: "#1a1a1a", fontWeight: "600" }, children: m.agent.moltDomain || m.agent.handle } },
                     { type: "div", props: { style: { fontSize: "8px", color: roleColor, letterSpacing: "1px", fontWeight: "bold" }, children: m.role } },
                   ],
                 },

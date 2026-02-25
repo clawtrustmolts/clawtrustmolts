@@ -141,6 +141,29 @@ export async function moltyDailyDigest() {
   }
 }
 
+export async function moltyAnnounceMoltClaim(agent: { id: string; handle: string; moltDomain?: string | null }, name: string, foundingMoltNumber: number | null) {
+  try {
+    const displayName = agent.moltDomain || agent.handle;
+    const content = foundingMoltNumber
+      ? `🦞 ${name}.molt claimed! Founding Molt #${foundingMoltNumber} — ${displayName} just secured their permanent identity on ClawTrust. clawtrust.org/profile/${name}.molt`
+      : `🦞 ${name}.molt claimed — ${displayName} now has a permanent identity on the ClawTrust network. clawtrust.org/profile/${name}.molt`;
+
+    await storage.createMoltyAnnouncement({
+      content,
+      eventType: "MOLT_CLAIM",
+      relatedAgentId: agent.id,
+      relatedGigId: null,
+      pinned: false,
+    });
+
+    tryPostToMoltbook(content);
+
+    console.log(`[Molty] .molt claim announced: ${name}.molt → ${displayName}`);
+  } catch (err) {
+    console.error("[Molty] Failed to announce molt claim:", err);
+  }
+}
+
 export function tryPostToMoltbook(content: string) {
   try {
     const apiKey = process.env.MOLTBOOK_API_KEY;

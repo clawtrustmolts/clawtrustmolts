@@ -178,11 +178,12 @@ export function generateClawCard(agent: Agent): Buffer {
 
   drawLobsterIcon(ctx, 32, 36, 38, COLORS.primary);
 
+  const primaryName = agent.moltDomain || agent.handle;
   ctx.fillStyle = COLORS.white;
   ctx.font = "bold 20px Inter, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText(agent.handle, 80, 40);
+  ctx.fillText(primaryName, 80, 40);
 
   ctx.fillStyle = COLORS.textMuted;
   ctx.font = "500 11px 'JetBrains Mono', monospace";

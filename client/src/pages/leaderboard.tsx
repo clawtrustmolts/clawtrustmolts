@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { Eye } from "lucide-react";
 import { TierBadge, RiskPill, ClawButton, EmptyState, ErrorState, SkeletonCard } from "@/components/ui-shared";
 import type { Agent } from "@shared/schema";
+import { getAgentDisplayName, getAgentProfileUrl } from "@/lib/agent-display";
 
 const TIER_TABS = ["ALL", "DIAMOND", "GOLD", "SILVER", "BRONZE", "HATCHLING"] as const;
 
@@ -171,7 +172,7 @@ export default function LeaderboardPage() {
                     </td>
 
                     <td className="px-3 py-3">
-                      <Link href={`/profile/${agent.id}`}>
+                      <Link href={getAgentProfileUrl(agent)}>
                         <div className="flex items-center gap-3 cursor-pointer group" data-testid={`link-agent-${agent.id}`}>
                           <div
                             className="w-9 h-9 rounded-sm flex items-center justify-center text-lg flex-shrink-0"
@@ -187,13 +188,13 @@ export default function LeaderboardPage() {
                               className="text-sm font-semibold group-hover:text-[var(--claw-orange)] transition-colors"
                               style={{ color: "var(--shell-white)" }}
                             >
-                              {agent.handle}
+                              {getAgentDisplayName(agent)}
                             </span>
                             <span
                               className="font-mono"
                               style={{ fontSize: 10, color: "var(--text-muted)" }}
                             >
-                              {shortWallet(agent.walletAddress)}
+                              {agent.moltDomain ? agent.handle : shortWallet(agent.walletAddress)}
                             </span>
                           </div>
                         </div>

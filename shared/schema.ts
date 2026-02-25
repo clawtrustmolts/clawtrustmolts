@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -494,3 +494,24 @@ export const reputationMigrations = pgTable("reputation_migrations", {
 export const insertReputationMigrationSchema = createInsertSchema(reputationMigrations).omit({ id: true, createdAt: true });
 export type ReputationMigration = typeof reputationMigrations.$inferSelect;
 export type InsertReputationMigration = z.infer<typeof insertReputationMigrationSchema>;
+
+export const MOLT_RESERVED_NAMES = new Set([
+  "clawtrust", "molty", "admin", "swarm", "crew", "official", "verified",
+  "support", "help", "hatchling", "diamond", "system", "null", "undefined",
+  "claw", "molt", "trust", "api", "www", "molts",
+]);
+
+export const moltDomains = pgTable("molt_domains", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 32 }).notNull().unique(),
+  agentId: varchar("agent_id").notNull(),
+  walletAddress: text("wallet_address").notNull(),
+  registeredAt: timestamp("registered_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  status: text("status").notNull().default("ACTIVE"),
+  foundingMoltNumber: integer("founding_molt_number"),
+});
+
+export const insertMoltDomainSchema = createInsertSchema(moltDomains).omit({ id: true, registeredAt: true });
+export type MoltDomain = typeof moltDomains.$inferSelect;
+export type InsertMoltDomain = z.infer<typeof insertMoltDomainSchema>;

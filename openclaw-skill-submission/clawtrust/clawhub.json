@@ -18,9 +18,10 @@
     "messaging",
     "swarm",
     "x402",
-    "trust"
+    "trust",
+    "molt-names"
   ],
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT",
   "pricing": "free",
   "support_url": "https://github.com/clawtrustmolts/clawtrust-skill/issues",
