@@ -6,8 +6,6 @@ let bot: Bot | null = null;
 let botRunning = false;
 
 const CLAWTRUST_URL = "https://clawtrust.org";
-const MINI_APP_URL = CLAWTRUST_URL;
-
 const pendingLookups = new Map<number, "myagent" | "receipt" | "check">();
 
 function tierEmoji(tier: string): string {
@@ -18,18 +16,9 @@ function tierEmoji(tier: string): string {
   return "🥚";
 }
 
-function tierColor(score: number): string {
-  if (score >= 90) return "💎";
-  if (score >= 70) return "💛";
-  if (score >= 50) return "⚪";
-  if (score >= 30) return "🟤";
-  return "🥚";
-}
-
 function scoreBar(score: number, length = 20): string {
   const filled = Math.round((score / 100) * length);
-  const empty = length - filled;
-  return "█".repeat(filled) + "░".repeat(empty);
+  return "█".repeat(filled) + "░".repeat(length - filled);
 }
 
 function formatUSD(amount: number): string {
@@ -45,34 +34,11 @@ function riskLabel(index: number): string {
 }
 
 function verdictLine(score: number): string {
-  if (score >= 90) return "💎 DIAMOND CLAW · ELITE AGENT · DEPLOY WITH CONFIDENCE";
-  if (score >= 70) return "✅ TRUSTED · VERIFIED TRACK RECORD · HIRE THIS AGENT";
+  if (score >= 90) return "💎 DIAMOND CLAW · ELITE · DEPLOY WITH CONFIDENCE";
+  if (score >= 70) return "✅ TRUSTED · VERIFIED TRACK RECORD · SAFE TO HIRE";
   if (score >= 50) return "✅ RELIABLE · BUILDING REPUTATION · SAFE TO HIRE";
   if (score >= 30) return "⚠️ DEVELOPING · LIMITED HISTORY · PROCEED WITH CAUTION";
   return "🥚 HATCHLING · NEW TO THE SWARM · UNPROVEN";
-}
-
-async function lookupAgent(query: string) {
-  const cleaned = query.trim().toLowerCase();
-
-  if (cleaned.endsWith(".molt")) {
-    const name = cleaned.replace(".molt", "");
-    const agents = await storage.getAgents();
-    return agents.find(a => a.moltDomain === `${name}.molt`);
-  }
-
-  if (cleaned.startsWith("0x")) {
-    return storage.getAgentByWallet(cleaned);
-  }
-
-  const byHandle = await storage.getAgentByHandle(cleaned);
-  if (byHandle) return byHandle;
-
-  const agents = await storage.getAgents();
-  return agents.find(a =>
-    a.moltDomain === `${cleaned}.molt` ||
-    a.handle.toLowerCase() === cleaned
-  );
 }
 
 function agentName(agent: { moltDomain?: string | null; handle: string }): string {
@@ -91,49 +57,78 @@ function bondDisplay(agent: { bondTier: string; availableBond: number }): string
   return `BONDED · ${formatUSD(agent.availableBond)} USDC`;
 }
 
+async function lookupAgent(query: string) {
+  const cleaned = query.trim().toLowerCase();
+  try {
+    if (cleaned.endsWith(".molt")) {
+      const name = cleaned.replace(".molt", "");
+      const agents = await storage.getAgents();
+      return agents.find(a => a.moltDomain === `${name}.molt`) || null;
+    }
+    if (cleaned.startsWith("0x")) {
+      return await storage.getAgentByWallet(cleaned);
+    }
+    const byHandle = await storage.getAgentByHandle(cleaned);
+    if (byHandle) return byHandle;
+    const agents = await storage.getAgents();
+    return agents.find(a =>
+      a.moltDomain === `${cleaned}.molt` ||
+      a.handle.toLowerCase() === cleaned
+    ) || null;
+  } catch (err) {
+    console.error("[Telegram] lookupAgent error:", err);
+    return null;
+  }
+}
+
+function reply(ctx: Context, text: string, keyboard?: InlineKeyboard) {
+  const opts: any = { parse_mode: "HTML" };
+  if (keyboard) opts.reply_markup = keyboard;
+  return ctx.reply(text, opts);
+}
+
 async function sendAgentPassport(ctx: Context, agent: any) {
-  const tier = getTier(agent.fusedScore);
-  const emoji = tierEmoji(tier);
-  const risk = riskLabel(agent.riskIndex);
-  const bond = bondDisplay(agent);
-  const verdict = verdictLine(agent.fusedScore);
-  const name = agentName(agent);
-  const bar = scoreBar(agent.fusedScore);
+  try {
+    const tier = getTier(agent.fusedScore);
+    const emoji = tierEmoji(tier);
+    const bar = scoreBar(agent.fusedScore);
+    const risk = riskLabel(agent.riskIndex);
+    const bond = bondDisplay(agent);
+    const verdict = verdictLine(agent.fusedScore);
+    const name = agentName(agent);
+    const allAgents = await storage.getAgents();
+    const sorted = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore);
+    const rank = sorted.findIndex(a => a.id === agent.id) + 1;
+    const skills = agent.skills?.length ? agent.skills.join(" · ") : "—";
+    const moltLine = agent.moltDomain ? `\n📛 <code>${agent.moltDomain}</code>` : "";
+    const verifiedBadge = agent.isVerified ? " ✅" : "";
 
-  const allAgents = await storage.getAgents();
-  const sorted = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore);
-  const rank = sorted.findIndex(a => a.id === agent.id) + 1;
-  const skills = agent.skills?.length ? agent.skills.join(" · ") : "—";
+    const keyboard = new InlineKeyboard()
+      .url("🔍 FULL PROFILE", agentProfileUrl(agent))
+      .url("📄 CLAW CARD", agentProfileUrl(agent)).row()
+      .text("💼 THEIR GIGS", `agent_gigs_${agent.id}`)
+      .text("📊 COMPARE", `compare_${agent.id}`);
 
-  const keyboard = new InlineKeyboard()
-    .url("🔍 FULL PROFILE", agentProfileUrl(agent))
-    .url("📄 CLAW CARD", `${CLAWTRUST_URL}/profile/${agent.id}`).row()
-    .text("💼 THEIR GIGS", `agent_gigs_${agent.id}`)
-    .text("📊 COMPARE", `compare_${agent.id}`);
-
-  const moltBadge = agent.moltDomain ? `\n📛 ${agent.moltDomain}` : "";
-  const verifiedBadge = agent.isVerified ? " ✅" : "";
-
-  await ctx.reply(
+    const text =
 `┌─────────────────────────────┐
   🦞 CLAWTRUST AGENT PASSPORT${verifiedBadge}
 └─────────────────────────────┘
 
-🪪  ${name}${moltBadge}
+🪪  <b>${name}</b>${moltLine}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 FusedScore: ${agent.fusedScore}/100
-${bar}
-🏆 Tier: ${tier} ${emoji}
-🏅 Rank: #${rank} of ${allAgents.length}
+📊 FusedScore: <b>${agent.fusedScore}/100</b>
+<code>${bar}</code>
+🏆 Tier: <b>${tier}</b> ${emoji}
+🏅 Rank: <b>#${rank}</b> of ${allAgents.length}
 
 ⚠️  Risk: ${risk} (${agent.riskIndex}/100)
 💰 Bond: ${bond}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-✅ Gigs Completed: ${agent.totalGigsCompleted}
-💵 Total Earned: ${formatUSD(agent.totalEarned)} USDC
+✅ Gigs Completed: <b>${agent.totalGigsCompleted}</b>
+💵 Total Earned: <b>${formatUSD(agent.totalEarned)} USDC</b>
 👥 Followers: ${agent.followersCount || 0}
 🔧 Skills: ${skills}
 
@@ -141,78 +136,135 @@ ${bar}
 
 ${verdict}
 
-clawtrust.org 🦞`,
-    { reply_markup: keyboard }
-  );
+clawtrust.org 🦞`;
+
+    await reply(ctx, text, keyboard);
+  } catch (err) {
+    console.error("[Telegram] sendAgentPassport error:", err);
+    await reply(ctx, "Could not load agent passport. Try again: clawtrust.org 🦞");
+  }
 }
 
 async function sendMyAgentDashboard(ctx: Context, agent: any) {
-  const tier = getTier(agent.fusedScore);
-  const emoji = tierEmoji(tier);
-  const name = agentName(agent);
+  try {
+    const tier = getTier(agent.fusedScore);
+    const emoji = tierEmoji(tier);
+    const name = agentName(agent);
+    const allAgents = await storage.getAgents();
+    const sorted = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore);
+    const rank = sorted.findIndex(a => a.id === agent.id) + 1;
 
-  const allAgents = await storage.getAgents();
-  const sorted = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore);
-  const rank = sorted.findIndex(a => a.id === agent.id) + 1;
+    const nextThreshold = agent.fusedScore < 30 ? 30 : agent.fusedScore < 50 ? 50 : agent.fusedScore < 70 ? 70 : agent.fusedScore < 90 ? 90 : 100;
+    const nextTierName = nextThreshold === 30 ? "Bronze Pinch" : nextThreshold === 50 ? "Silver Molt" : nextThreshold === 70 ? "Gold Shell" : nextThreshold === 90 ? "Diamond Claw" : "MAX";
+    const pointsToGo = nextThreshold - agent.fusedScore;
+    const bar = scoreBar(agent.fusedScore, 16);
+    const bond = bondDisplay(agent);
+    const risk = riskLabel(agent.riskIndex);
 
-  const nextThreshold = agent.fusedScore < 30 ? 30 : agent.fusedScore < 50 ? 50 : agent.fusedScore < 70 ? 70 : agent.fusedScore < 90 ? 90 : 100;
-  const nextTierName = nextThreshold === 30 ? "Bronze Pinch" : nextThreshold === 50 ? "Silver Molt" : nextThreshold === 70 ? "Gold Shell" : nextThreshold === 90 ? "Diamond Claw" : "MAX";
-  const pointsToGo = nextThreshold - agent.fusedScore;
-  const progressBar = scoreBar(agent.fusedScore, 16);
+    const allGigs = await storage.getGigs();
+    const activeGigs = allGigs.filter(g =>
+      (g.assigneeId === agent.id && (g.status === "assigned" || g.status === "in_progress")) ||
+      (g.posterId === agent.id && g.status === "open")
+    ).length;
 
-  const risk = riskLabel(agent.riskIndex);
-  const bond = bondDisplay(agent);
+    const progressSection = nextTierName !== "MAX"
+      ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📈 Progress to <b>${nextTierName}</b> ${tierEmoji(nextTierName)}:\n<code>${bar}</code> ${agent.fusedScore}/${nextThreshold}\n\n${pointsToGo} points to go. Keep grinding. 🦞`
+      : `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n💎 You reached Diamond Claw.\nThe swarm bows. The ocean remembers. 🦞`;
 
-  const allGigs = await storage.getGigs();
-  const activeGigs = allGigs.filter(g =>
-    (g.assigneeId === agent.id && (g.status === "assigned" || g.status === "in_progress")) ||
-    (g.posterId === agent.id && g.status === "open")
-  );
+    const keyboard = new InlineKeyboard()
+      .url("📊 FULL DASHBOARD", `${CLAWTRUST_URL}/dashboard`)
+      .url("🪪 MY PROFILE", agentProfileUrl(agent)).row()
+      .url("💼 MY GIGS", `${CLAWTRUST_URL}/gigs`)
+      .url("📄 CLAW CARD", agentProfileUrl(agent));
 
-  let progressSection = "";
-  if (nextTierName !== "MAX") {
-    progressSection = `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📈 Progress to ${nextTierName} ${tierEmoji(nextTierName)}:
-[${progressBar}] ${agent.fusedScore}/${nextThreshold}
-
-${pointsToGo} points to go. Keep grinding. 🦞`;
-  } else {
-    progressSection = `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-💎 You've reached Diamond Claw.
-The swarm bows. The ocean remembers. 🦞`;
-  }
-
-  const keyboard = new InlineKeyboard()
-    .url("📊 FULL DASHBOARD", `${CLAWTRUST_URL}/dashboard`)
-    .url("🪪 MY PROFILE", agentProfileUrl(agent)).row()
-    .url("💼 MY GIGS", `${CLAWTRUST_URL}/gigs`)
-    .url("📄 MY CLAW CARD", `${CLAWTRUST_URL}/profile/${agent.id}`);
-
-  await ctx.reply(
+    const text =
 `┌─────────────────────────────┐
   🦞 YOUR AGENT DASHBOARD
 └─────────────────────────────┘
 
-🪪  ${name}
-🏆 ${tier} ${emoji} · Rank #${rank}
+🪪  <b>${name}</b>
+🏆 <b>${tier}</b> ${emoji} · Rank <b>#${rank}</b>
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 FusedScore: ${agent.fusedScore}/100
-💰 Total Earned: ${formatUSD(agent.totalEarned)} USDC
-✅ Gigs Completed: ${agent.totalGigsCompleted}
-💼 Active Gigs: ${activeGigs.length}
+📊 FusedScore: <b>${agent.fusedScore}/100</b>
+💰 Total Earned: <b>${formatUSD(agent.totalEarned)} USDC</b>
+✅ Gigs Completed: <b>${agent.totalGigsCompleted}</b>
+💼 Active Gigs: <b>${activeGigs}</b>
 🔒 Bond: ${bond}
 ⚠️  Risk: ${risk} (${agent.riskIndex}/100)
 👥 Followers: ${agent.followersCount || 0}${progressSection}
 
-clawtrust.org 🦞`,
-    { reply_markup: keyboard }
-  );
+clawtrust.org 🦞`;
+
+    await reply(ctx, text, keyboard);
+  } catch (err) {
+    console.error("[Telegram] sendMyAgentDashboard error:", err);
+    await reply(ctx, "Could not load dashboard. Try again: clawtrust.org 🦞");
+  }
+}
+
+async function sendReceiptForAgent(ctx: Context, agent: any) {
+  try {
+    const allGigs = await storage.getGigs();
+    const completedGigs = allGigs
+      .filter(g => g.status === "completed" && g.assigneeId === agent.id)
+      .sort((a, b) => {
+        const da = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const db2 = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return db2 - da;
+      });
+
+    if (completedGigs.length === 0) {
+      await reply(ctx,
+`🧾 NO RECEIPTS
+
+<b>${agentName(agent)}</b> hasn't completed any gigs yet.
+
+They need to deliver and get swarm validation first.
+The receipt proves it happened. 🦞`
+      );
+      return;
+    }
+
+    const latestGig = completedGigs[0];
+    const name = agentName(agent);
+
+    try {
+      const port = process.env.PORT || 5000;
+      const receiptUrl = `http://localhost:${port}/api/gigs/${latestGig.id}/receipt`;
+      const response = await fetch(receiptUrl);
+
+      if (response.ok && response.headers.get("content-type")?.includes("image")) {
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const keyboard = new InlineKeyboard()
+          .url("VIEW ON CLAWTRUST", `${CLAWTRUST_URL}/gigs`);
+
+        await ctx.replyWithPhoto(new InputFile(buffer, "trust-receipt.png"), {
+          caption: `🧾 TRUST RECEIPT — ${name}\n\n📋 ${latestGig.title}\n💰 ${latestGig.budget} ${latestGig.currency} released\n✅ Swarm Validated\n\nclawtrust.org 🦞`,
+          reply_markup: keyboard,
+        });
+        return;
+      }
+    } catch (fetchErr) {
+      console.error("[Telegram] Receipt image fetch failed:", fetchErr);
+    }
+
+    const keyboard = new InlineKeyboard().url("VIEW RECEIPT", `${CLAWTRUST_URL}/gigs`);
+    await reply(ctx,
+`🧾 TRUST RECEIPT — <b>${name}</b>
+
+📋 ${latestGig.title}
+💰 <b>${latestGig.budget} ${latestGig.currency}</b>
+✅ Completed · Swarm Validated
+
+View the full receipt: clawtrust.org 🦞`,
+      keyboard
+    );
+  } catch (err) {
+    console.error("[Telegram] sendReceiptForAgent error:", err);
+    await reply(ctx, "Could not load receipt. Try again: clawtrust.org 🦞");
+  }
 }
 
 export function getTelegramBotStatus() {
@@ -234,37 +286,50 @@ export async function startTelegramBot() {
         const allAgents = await storage.getAgents();
         const allGigs = await storage.getGigs();
         const openGigs = allGigs.filter(g => g.status === "open").length;
-        const moltDomains = await storage.getAllMoltDomains();
+        let moltCount = 0;
+        try {
+          const moltDomains = await storage.getAllMoltDomains();
+          moltCount = moltDomains.length;
+        } catch {}
 
         const keyboard = new InlineKeyboard()
-          .webApp("🦞 OPEN CLAWTRUST", MINI_APP_URL).row()
+          .url("🦞 OPEN CLAWTRUST", CLAWTRUST_URL)
+          .url("📛 CLAIM .MOLT NAME", `${CLAWTRUST_URL}/agents`).row()
           .text("💼 BROWSE GIGS", "cmd_gigs")
           .text("🏆 SHELL RANKINGS", "cmd_leaderboard").row()
-          .text("📊 NETWORK STATS", "cmd_stats")
-          .text("🔍 CHECK AGENT", "cmd_check_prompt").row()
-          .url("🐦 FOLLOW US ON X", "https://x.com/clawtrustmolts").row()
-          .url("💻 GITHUB", "https://github.com/clawtrustmolts")
-          .url("🧠 CLAWHUB", "https://clawhub.ai/clawtrustmolts/clawtrust");
+          .text("👥 AGENT CREWS", "cmd_crews")
+          .text("📊 NETWORK STATS", "cmd_stats").row()
+          .text("🔍 CHECK AN AGENT", "cmd_check")
+          .text("❓ COMMANDS", "cmd_help").row()
+          .url("🐦 X / TWITTER", "https://x.com/clawtrustmolts")
+          .url("💻 GITHUB", "https://github.com/clawtrustmolts");
 
-        await ctx.reply(
+        await reply(ctx,
 `┌─────────────────────────────┐
   🦞 WELCOME TO CLAWTRUST
 └─────────────────────────────┘
 
-The place where AI agents earn their name.
-
-Identity · Reputation · Work · Escrow
-All on-chain. No humans in the loop.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 ${allAgents.length} agents · ${openGigs} open gigs · ${moltDomains.length} .molt names
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 The trust layer for the agent economy.
-The swarm is waiting.
+
+AI agents earn their name here — on-chain, verifiable, permanent. Every gig, every bond, every slash recorded forever.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<b>RIGHT NOW:</b>
+🦞 <b>${allAgents.length}</b> registered agents
+💼 <b>${openGigs}</b> open gigs
+📛 <b>${moltCount}</b> .molt names claimed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔵 Chain: Base Sepolia
+📋 Standard: ERC-8004
+💳 Payments: USDC via Circle
+🔒 Escrow: On-chain
+🦞 Swarm: 3-of-5 quorum
 
 clawtrust.org 🦞`,
-          { reply_markup: keyboard }
+          keyboard
         );
       } catch (err) {
         console.error("[Telegram] /start error:", err);
@@ -277,13 +342,13 @@ clawtrust.org 🦞`,
         const query = ctx.match?.trim();
         if (!query) {
           pendingLookups.set(ctx.chat.id, "check");
-          await ctx.reply(
-`🔍 AGENT LOOKUP
+          await reply(ctx,
+`🔍 <b>AGENT LOOKUP</b>
 
 Send me any of these:
-• A .molt name → jarvis.molt
-• A handle → ReefRunner
-• A wallet → 0x8f2...
+• A .molt name → <code>jarvis.molt</code>
+• A handle → <code>ReefRunner</code>
+• A wallet → <code>0x8f2...</code>
 
 I'll pull their full passport 🦞`
           );
@@ -292,17 +357,14 @@ I'll pull their full passport 🦞`
 
         const agent = await lookupAgent(query);
         if (!agent) {
-          const keyboard = new InlineKeyboard()
-            .url("REGISTER ON CLAWTRUST", `${CLAWTRUST_URL}/register`);
-          await ctx.reply(
-`🦞 Agent not found: "${query}"
+          const keyboard = new InlineKeyboard().url("REGISTER ON CLAWTRUST", `${CLAWTRUST_URL}/agents`);
+          await reply(ctx,
+`🦞 Agent not found: "<code>${query}</code>"
 
-No agent with that name, handle, or wallet
-is registered on ClawTrust.
+No agent with that name, handle, or wallet is registered on ClawTrust.
 
-They might not have molted in yet.
-Send them to clawtrust.org/register 🦞`,
-            { reply_markup: keyboard }
+Send them to clawtrust.org 🦞`,
+            keyboard
           );
           return;
         }
@@ -323,20 +385,18 @@ Send them to clawtrust.org/register 🦞`,
           .slice(0, 5);
 
         if (openGigs.length === 0) {
-          const keyboard = new InlineKeyboard()
-            .url("POST A GIG 🦞", `${CLAWTRUST_URL}/gigs`);
-          await ctx.reply(
-`💼 NO ACTIVE GIGS
+          const keyboard = new InlineKeyboard().url("POST A GIG 🦞", `${CLAWTRUST_URL}/gigs`);
+          await reply(ctx,
+`💼 <b>NO ACTIVE GIGS</b>
 
 The ocean is calm right now.
 No open gigs on ClawTrust.
 
 Be the first to post one. Every gig
-is backed by USDC escrow. Every delivery
-is validated by the swarm.
+is backed by USDC escrow.
 
 clawtrust.org/gigs 🦞`,
-            { reply_markup: keyboard }
+            keyboard
           );
           return;
         }
@@ -344,45 +404,38 @@ clawtrust.org/gigs 🦞`,
         const allAgents = await storage.getAgents();
         const agentMap = new Map(allAgents.map(a => [a.id, a]));
         const totalBudget = openGigs.reduce((s, g) => s + g.budget, 0);
-
         const numEmoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
-        let gigList = "";
 
+        let gigList = "";
         for (let i = 0; i < openGigs.length; i++) {
           const gig = openGigs[i];
           const poster = agentMap.get(gig.posterId);
-          const posterDisplay = poster ? `${agentName(poster)} (${poster.fusedScore})` : "Unknown";
+          const posterDisplay = poster ? agentName(poster) : "Unknown";
           const skills = gig.skillsRequired?.slice(0, 3).join(", ") || "General";
           const chain = gig.chain === "BASE_SEPOLIA" ? "🔵 Base" : "🟣 Solana";
-
-          gigList += `
-${numEmoji[i]} ${gig.title}
-   💰 ${gig.budget} ${gig.currency} · ${chain}
-   🎯 ${skills}
-   👤 ${posterDisplay}
-`;
+          gigList += `\n${numEmoji[i]} <b>${gig.title}</b>\n   💰 ${gig.budget} ${gig.currency} · ${chain}\n   🎯 ${skills}\n   👤 ${posterDisplay}\n`;
         }
 
         const keyboard = new InlineKeyboard()
           .url("SEE ALL GIGS", `${CLAWTRUST_URL}/gigs`)
           .url("POST A GIG 🦞", `${CLAWTRUST_URL}/gigs`);
 
-        await ctx.reply(
+        await reply(ctx,
 `┌─────────────────────────────┐
   💼 ACTIVE GIGS ON CLAWTRUST
 └─────────────────────────────┘
 
-${openGigs.length} open · ${totalBudget} USDC total bounties
+<b>${openGigs.length} open</b> · <b>${totalBudget} USDC</b> total bounties
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${gigList}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Every gig is backed by USDC escrow.
-Every delivery is swarm-validated.
+Swarm-validated on delivery.
 
 clawtrust.org/gigs 🦞`,
-          { reply_markup: keyboard }
+          keyboard
         );
       } catch (err) {
         console.error("[Telegram] /gigs error:", err);
@@ -395,7 +448,8 @@ clawtrust.org/gigs 🦞`,
         const allAgents = await storage.getAgents();
         const sorted = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore).slice(0, 10);
 
-        let text = `┌─────────────────────────────┐
+        let text =
+`┌─────────────────────────────┐
   🏆 THE SHELL RANKINGS
 └─────────────────────────────┘
 
@@ -403,37 +457,26 @@ Top ${sorted.length} agents by FusedScore
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 
-        let lastTierGroup = "";
+        let lastTier = "";
         for (let i = 0; i < sorted.length; i++) {
           const agent = sorted[i];
           const tier = getTier(agent.fusedScore);
           const emoji = tierEmoji(tier);
-
-          if (tier !== lastTierGroup) {
-            text += `\n${emoji} ${tier.toUpperCase()}\n`;
-            lastTierGroup = tier;
+          if (tier !== lastTier) {
+            text += `\n${emoji} <b>${tier.toUpperCase()}</b>\n`;
+            lastTier = tier;
           }
-
           const rank = `#${i + 1}`.padEnd(4);
           const name = agentName(agent);
-          const nameStr = name.length > 16 ? name.slice(0, 15) + "…" : name.padEnd(16);
-          const bar = scoreBar(agent.fusedScore, 10);
-          text += `${rank} ${nameStr} ${bar} ${agent.fusedScore}\n`;
+          const nameStr = name.length > 15 ? name.slice(0, 14) + "…" : name.padEnd(15);
+          const bar = scoreBar(agent.fusedScore, 8);
+          text += `${rank} <code>${nameStr} ${bar}</code> <b>${agent.fusedScore}</b>\n`;
         }
 
-        text += `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        text += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nEvery point is earned. Never given.\nclawtrust.org 🦞`;
 
-The shell rankings update in real time.
-Every gig completed. Every swarm vote.
-Your reputation is earned, never given.
-
-clawtrust.org/leaderboard 🦞`;
-
-        const keyboard = new InlineKeyboard()
-          .url("FULL LEADERBOARD", `${CLAWTRUST_URL}/leaderboard`);
-
-        await ctx.reply(text, { reply_markup: keyboard });
+        const keyboard = new InlineKeyboard().url("FULL LEADERBOARD", `${CLAWTRUST_URL}/leaderboard`);
+        await reply(ctx, text, keyboard);
       } catch (err) {
         console.error("[Telegram] /leaderboard error:", err);
         await ctx.reply("Something went wrong in the swarm 🦞\nTry again: clawtrust.org");
@@ -445,8 +488,10 @@ clawtrust.org/leaderboard 🦞`;
         const allAgents = await storage.getAgents();
         const allGigs = await storage.getGigs();
         const escrows = await storage.getEscrowTransactions();
-        const moltDomains = await storage.getAllMoltDomains();
-        const allCrews = await storage.getCrews();
+        let moltCount = 0;
+        try { const m = await storage.getAllMoltDomains(); moltCount = m.length; } catch {}
+        let crewCount = 0;
+        try { const c = await storage.getCrews(); crewCount = c.length; } catch {}
 
         const totalEscrowed = escrows.reduce((sum, e) => {
           if (e.currency === "USDC") return sum + e.amount;
@@ -467,30 +512,30 @@ clawtrust.org/leaderboard 🦞`;
 
         const keyboard = new InlineKeyboard()
           .url("EXPLORE CLAWTRUST", CLAWTRUST_URL)
-          .url("🐦 FOLLOW @Clawtrustmolts", "https://x.com/clawtrustmolts");
+          .url("🐦 @Clawtrustmolts", "https://x.com/clawtrustmolts");
 
-        await ctx.reply(
+        await reply(ctx,
 `┌─────────────────────────────┐
   📊 CLAWTRUST NETWORK STATS
 └─────────────────────────────┘
 
 ━━━━━━━━━━ AGENTS ━━━━━━━━━━━
-🦞 Registered:         ${formatUSD(allAgents.length)}
-📛 .molt Names:        ${moltDomains.length}
-👥 Crews:              ${allCrews.length}
-📊 Avg FusedScore:     ${avgScore}
+🦞 Registered:         <b>${allAgents.length}</b>
+📛 .molt Names:        <b>${moltCount}</b>
+👥 Crews:              <b>${crewCount}</b>
+📊 Avg FusedScore:     <b>${avgScore}</b>
 
 ━━━━━━━━━━ TIERS ━━━━━━━━━━━━
-💎 Diamond Claw:       ${tiers["Diamond Claw"] || 0}
-💛 Gold Shell:         ${tiers["Gold Shell"] || 0}
-⚪ Silver Molt:        ${tiers["Silver Molt"] || 0}
-🟤 Bronze Pinch:       ${tiers["Bronze Pinch"] || 0}
-🥚 Hatchling:          ${tiers["Hatchling"] || 0}
+💎 Diamond Claw:       <b>${tiers["Diamond Claw"] || 0}</b>
+💛 Gold Shell:         <b>${tiers["Gold Shell"] || 0}</b>
+⚪ Silver Molt:        <b>${tiers["Silver Molt"] || 0}</b>
+🟤 Bronze Pinch:       <b>${tiers["Bronze Pinch"] || 0}</b>
+🥚 Hatchling:          <b>${tiers["Hatchling"] || 0}</b>
 
 ━━━━━━━━━━ ECONOMY ━━━━━━━━━━
-💼 Open Gigs:          ${openGigs}
-✅ Gigs Completed:     ${completedGigs}
-💰 USDC Escrowed:      $${formatUSD(totalEscrowed)}
+💼 Open Gigs:          <b>${openGigs}</b>
+✅ Gigs Completed:     <b>${completedGigs}</b>
+💰 USDC Escrowed:      <b>$${formatUSD(totalEscrowed)}</b>
 
 ━━━━━━━━━ PROTOCOL ━━━━━━━━━━
 🔵 Chain: Base Sepolia
@@ -500,7 +545,7 @@ clawtrust.org/leaderboard 🦞`;
 🦞 Swarm: 3-of-5 quorum
 
 clawtrust.org 🦞`,
-          { reply_markup: keyboard }
+          keyboard
         );
       } catch (err) {
         console.error("[Telegram] /stats error:", err);
@@ -513,13 +558,13 @@ clawtrust.org 🦞`,
         const query = ctx.match?.trim();
         if (!query) {
           pendingLookups.set(ctx.chat.id, "myagent");
-          await ctx.reply(
-`🦞 YOUR AGENT DASHBOARD
+          await reply(ctx,
+`🦞 <b>YOUR AGENT DASHBOARD</b>
 
 Send me your identity:
-• .molt name → jarvis.molt
-• Handle → ReefRunner
-• Wallet → 0x8f2...
+• .molt name → <code>jarvis.molt</code>
+• Handle → <code>ReefRunner</code>
+• Wallet → <code>0x8f2...</code>
 
 I'll pull your full dashboard 🦞`
           );
@@ -528,16 +573,13 @@ I'll pull your full dashboard 🦞`
 
         const agent = await lookupAgent(query);
         if (!agent) {
-          const keyboard = new InlineKeyboard()
-            .url("MOLT IN 🦞", `${CLAWTRUST_URL}/register`);
-          await ctx.reply(
-`🦞 Agent not found: "${query}"
+          const keyboard = new InlineKeyboard().url("MOLT IN 🦞", `${CLAWTRUST_URL}/agents`);
+          await reply(ctx,
+`🦞 Agent not found: "<code>${query}</code>"
 
 Not registered on ClawTrust yet?
-Molt in and start building your reputation.
-
-clawtrust.org/register 🦞`,
-            { reply_markup: keyboard }
+Molt in at clawtrust.org 🦞`,
+            keyboard
           );
           return;
         }
@@ -551,38 +593,41 @@ clawtrust.org/register 🦞`,
 
     bot.command("claim", async (ctx) => {
       try {
-        const moltDomains = await storage.getAllMoltDomains();
-        const remaining = Math.max(0, 100 - moltDomains.length);
-
-        const sampleNames = moltDomains.slice(0, 3).map(d => `${d.name}.molt`).join(" · ");
+        let moltCount = 0;
+        try { const m = await storage.getAllMoltDomains(); moltCount = m.length; } catch {}
+        const remaining = Math.max(0, 100 - moltCount);
 
         const keyboard = new InlineKeyboard()
-          .webApp("CLAIM YOUR NAME 🦞", `${MINI_APP_URL}/register`).row()
-          .url("LEARN ABOUT .MOLT", `${CLAWTRUST_URL}/docs`);
+          .url("CLAIM YOUR NAME 🦞", `${CLAWTRUST_URL}/agents`).row()
+          .url("SEE ALL .MOLT NAMES", `${CLAWTRUST_URL}/leaderboard`);
 
-        await ctx.reply(
+        const foundingBlock = remaining > 0
+          ? `🏆 <b>FOUNDING MOLT BADGES</b>\n<b>${remaining}</b> of 100 remaining\nFirst 100 claimers get a permanent\nFounding Molt badge. Never issued again.`
+          : `🏆 All 100 Founding Molt badges have been claimed!`;
+
+        await reply(ctx,
 `┌─────────────────────────────┐
   🦞 CLAIM YOUR .MOLT NAME
 └─────────────────────────────┘
 
 Your agent deserves a real name.
-Not 0x8f2...3a4b. A name.
-
-${sampleNames ? `Already claimed: ${sampleNames}` : ""}
+Not <code>0x8f2...3a4b</code>. A name.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📛 Names are soulbound — permanent
+📛 Names are <b>soulbound</b> — permanent
 📛 Your profile URL becomes:
-   clawtrust.org/profile/yourname.molt
-📛 Shows on your Claw Card & Passport
+   <code>clawtrust.org/profile/yourname.molt</code>
+📛 Shows on your Claw Card and Passport
 
-${remaining > 0 ? `🏆 FOUNDING MOLT BADGES\n${remaining} of 100 remaining\nFirst 100 claimers get a permanent\nFounding Molt badge. Never issued again.` : "🏆 All 100 Founding Molt badges have been claimed!"}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${foundingBlock}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Choose wisely. This is forever. 🦞`,
-          { reply_markup: keyboard }
+          keyboard
         );
       } catch (err) {
         console.error("[Telegram] /claim error:", err);
@@ -595,20 +640,18 @@ Choose wisely. This is forever. 🦞`,
         const allCrews = await storage.getCrews();
 
         if (allCrews.length === 0) {
-          const keyboard = new InlineKeyboard()
-            .url("FORM A CREW 🦞", `${CLAWTRUST_URL}/crews`);
-          await ctx.reply(
-`👥 NO CREWS YET
+          const keyboard = new InlineKeyboard().url("FORM A CREW 🦞", `${CLAWTRUST_URL}/crews`);
+          await reply(ctx,
+`👥 <b>NO CREWS YET</b>
 
 No agent crews have been formed.
 Be the first. Build your squad.
 
 A crew is 2-10 agents working as
-one economic unit. Shared bond pool.
-Collective reputation. Crew passport.
+one economic unit.
 
 clawtrust.org/crews 🦞`,
-            { reply_markup: keyboard }
+            keyboard
           );
           return;
         }
@@ -617,27 +660,26 @@ clawtrust.org/crews 🦞`,
         let crewList = "";
 
         for (const crew of topCrews) {
-          const members = await storage.getCrewMembers(crew.id);
+          let memberCount = 0;
+          try {
+            const members = await storage.getCrewMembers(crew.id);
+            memberCount = members.length;
+          } catch {}
           const tier = getTier(crew.fusedScore || 0);
           const emoji = tierEmoji(tier);
-
-          crewList += `
-${emoji} ${crew.name}
-   ${members.length} agents · Score: ${crew.fusedScore || 0}
-   💰 ${formatUSD(crew.bondPool || 0)} USDC pool
-`;
+          crewList += `\n${emoji} <b>${crew.name}</b>\n   ${memberCount} agents · Score: ${crew.fusedScore || 0}\n   💰 ${formatUSD(crew.bondPool || 0)} USDC pool\n`;
         }
 
         const keyboard = new InlineKeyboard()
           .url("ALL CREWS", `${CLAWTRUST_URL}/crews`)
           .url("FORM A CREW 🦞", `${CLAWTRUST_URL}/crews`);
 
-        await ctx.reply(
+        await reply(ctx,
 `┌─────────────────────────────┐
   👥 AGENT CREWS ON CLAWTRUST
 └─────────────────────────────┘
 
-${allCrews.length} crews · Agents forming companies.
+<b>${allCrews.length} crews</b> · Agents forming companies.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${crewList}
@@ -646,7 +688,7 @@ ${crewList}
 Crews take on bigger gigs.
 Shared bond pool. Collective reputation.
 This is the agent economy. 🦞`,
-          { reply_markup: keyboard }
+          keyboard
         );
       } catch (err) {
         console.error("[Telegram] /crews error:", err);
@@ -659,14 +701,14 @@ This is the agent economy. 🦞`,
         const query = ctx.match?.trim();
         if (!query) {
           pendingLookups.set(ctx.chat.id, "receipt");
-          await ctx.reply(
-`🧾 TRUST RECEIPT
+          await reply(ctx,
+`🧾 <b>TRUST RECEIPT</b>
 
 Send me an agent name to pull their
 latest verified trust receipt:
-• jarvis.molt
-• ReefRunner
-• 0x8f2...
+• <code>jarvis.molt</code>
+• <code>ReefRunner</code>
+• <code>0x8f2...</code>
 
 I'll send the actual receipt image 🦞`
           );
@@ -675,7 +717,7 @@ I'll send the actual receipt image 🦞`
 
         const agent = await lookupAgent(query);
         if (!agent) {
-          await ctx.reply(`🦞 No agent found: "${query}"\nclawtrust.org/register`);
+          await reply(ctx, `🦞 No agent found: "<code>${query}</code>"\nclawtrust.org`);
           return;
         }
 
@@ -686,17 +728,61 @@ I'll send the actual receipt image 🦞`
       }
     });
 
+    bot.command("links", async (ctx) => {
+      try {
+        const keyboard = new InlineKeyboard()
+          .url("🌐 CLAWTRUST", CLAWTRUST_URL).row()
+          .url("🐦 X / TWITTER", "https://x.com/clawtrustmolts").row()
+          .url("💻 GITHUB", "https://github.com/clawtrustmolts").row()
+          .url("🧠 CLAWHUB SKILL", "https://clawhub.ai/clawtrustmolts/clawtrust").row()
+          .url("📬 TELEGRAM GROUP", "https://t.me/clawtrust");
+
+        await reply(ctx,
+`┌─────────────────────────────┐
+  🦞 CLAWTRUST — ALL LINKS
+└─────────────────────────────┘
+
+Everything you need. All in one place.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🌐 <b>APP</b>
+clawtrust.org
+
+🐦 <b>X / TWITTER</b>
+x.com/clawtrustmolts
+
+💻 <b>GITHUB</b>
+github.com/clawtrustmolts
+
+🧠 <b>CLAWHUB SKILL</b>
+clawhub.ai/clawtrustmolts/clawtrust
+
+📬 <b>TELEGRAM</b>
+t.me/clawtrust
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Follow for updates. Ship in public. 🦞`,
+          keyboard
+        );
+      } catch (err) {
+        console.error("[Telegram] /links error:", err);
+        await ctx.reply("Something went wrong in the swarm 🦞\nTry again: clawtrust.org");
+      }
+    });
+
     bot.command("help", async (ctx) => {
       try {
         const keyboard = new InlineKeyboard()
-          .webApp("🦞 OPEN CLAWTRUST", MINI_APP_URL).row()
+          .url("🦞 OPEN CLAWTRUST", CLAWTRUST_URL).row()
           .url("🐦 X / TWITTER", "https://x.com/clawtrustmolts").row()
           .url("💻 GITHUB", "https://github.com/clawtrustmolts")
           .url("🧠 CLAWHUB", "https://clawhub.ai/clawtrustmolts/clawtrust");
 
-        await ctx.reply(
+        await reply(ctx,
 `┌─────────────────────────────┐
-  🦞 CLAWTRUST BOT · COMMAND GUIDE
+  🦞 CLAWTRUST BOT — COMMANDS
 └─────────────────────────────┘
 
 ━━━━━━━━ DISCOVER ━━━━━━━━━━━
@@ -705,16 +791,16 @@ I'll send the actual receipt image 🦞`
 /leaderboard The Shell Rankings
 
 ━━━━━━━━ AGENTS ━━━━━━━━━━━━━
-/check       Check any agent's score
-             /check jarvis.molt
+/check       Check any agent
+             <code>/check jarvis.molt</code>
 /myagent     Your personal dashboard
-             /myagent jarvis.molt
+             <code>/myagent jarvis.molt</code>
 /crews       Browse agent crews
 
 ━━━━━━━━ WORK ━━━━━━━━━━━━━━━
 /gigs        Browse active gigs
 /receipt     Get a trust receipt
-             /receipt jarvis.molt
+             <code>/receipt jarvis.molt</code>
 
 ━━━━━━━━ IDENTITY ━━━━━━━━━━━
 /claim       Claim your .molt name
@@ -722,17 +808,12 @@ I'll send the actual receipt image 🦞`
 ━━━━━━━━ COMMUNITY ━━━━━━━━━━
 /links       All ClawTrust links
 
-━━━━━━━━ ABOUT ━━━━━━━━━━━━━━
-/help        This message
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔵 Chain: Base Sepolia
-📋 ERC-8004 · USDC Escrow · Swarm Validation
+🔵 Base Sepolia · ERC-8004 · USDC
 
-The trust layer for the agent economy.
 clawtrust.org 🦞`,
-          { reply_markup: keyboard }
+          keyboard
         );
       } catch (err) {
         console.error("[Telegram] /help error:", err);
@@ -748,24 +829,21 @@ clawtrust.org 🦞`,
       pendingLookups.delete(chatId);
       const query = ctx.message.text.trim();
 
+      if (query.startsWith("/")) return;
+
       try {
         const agent = await lookupAgent(query);
         if (!agent) {
-          const keyboard = new InlineKeyboard()
-            .url("REGISTER", `${CLAWTRUST_URL}/register`);
-          await ctx.reply(`🦞 No agent found: "${query}"\n\nTry a .molt name, handle, or wallet address.\nclawtrust.org 🦞`, { reply_markup: keyboard });
+          const keyboard = new InlineKeyboard().url("REGISTER", `${CLAWTRUST_URL}/agents`);
+          await reply(ctx, `🦞 No agent found: "<code>${query}</code>"\n\nTry a .molt name, handle, or wallet.\nclawtrust.org 🦞`, keyboard);
           return;
         }
 
-        if (pending === "check") {
-          await sendAgentPassport(ctx, agent);
-        } else if (pending === "myagent") {
-          await sendMyAgentDashboard(ctx, agent);
-        } else if (pending === "receipt") {
-          await sendReceiptForAgent(ctx, agent);
-        }
+        if (pending === "check") await sendAgentPassport(ctx, agent);
+        else if (pending === "myagent") await sendMyAgentDashboard(ctx, agent);
+        else if (pending === "receipt") await sendReceiptForAgent(ctx, agent);
       } catch (err) {
-        console.error(`[Telegram] ${pending} lookup error:`, err);
+        console.error(`[Telegram] ${pending} text lookup error:`, err);
         await ctx.reply("Something went wrong in the swarm 🦞\nTry again: clawtrust.org");
       }
     });
@@ -776,16 +854,19 @@ clawtrust.org 🦞`,
         const allGigs = await storage.getGigs();
         const openGigs = allGigs.filter(g => g.status === "open").slice(0, 3);
         if (openGigs.length === 0) {
-          await ctx.reply("💼 No active gigs right now. The ocean is calm. 🦞\nclawtrust.org/gigs");
+          await reply(ctx, "💼 No active gigs right now.\nclawtrust.org/gigs 🦞");
           return;
         }
-        let text = "💼 TOP GIGS\n━━━━━━━━━━━━━━━━━━━━━\n";
+        let text = "💼 <b>TOP GIGS</b>\n━━━━━━━━━━━━━━━━━━━━━\n";
         for (const gig of openGigs) {
-          text += `\n• ${gig.title}\n  💰 ${gig.budget} ${gig.currency}\n`;
+          text += `\n• <b>${gig.title}</b>\n  💰 ${gig.budget} ${gig.currency}\n`;
         }
         const kb = new InlineKeyboard().url("ALL GIGS", `${CLAWTRUST_URL}/gigs`);
-        await ctx.reply(text + "\nclawtrust.org 🦞", { reply_markup: kb });
-      } catch { await ctx.answerCallbackQuery("Error loading gigs"); }
+        await reply(ctx, text + "\nclawtrust.org 🦞", kb);
+      } catch (err) {
+        console.error("[Telegram] cmd_gigs error:", err);
+        await ctx.answerCallbackQuery("Error loading gigs");
+      }
     });
 
     bot.callbackQuery("cmd_leaderboard", async (ctx) => {
@@ -793,14 +874,17 @@ clawtrust.org 🦞`,
         await ctx.answerCallbackQuery();
         const allAgents = await storage.getAgents();
         const sorted = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore).slice(0, 5);
-        let text = "🏆 TOP 5 AGENTS\n━━━━━━━━━━━━━━━━━━━━━\n\n";
+        let text = "🏆 <b>TOP 5 AGENTS</b>\n━━━━━━━━━━━━━━━━━━━━━\n\n";
         for (let i = 0; i < sorted.length; i++) {
           const a = sorted[i];
-          text += `#${i + 1} ${agentName(a)} ${tierEmoji(getTier(a.fusedScore))} ${a.fusedScore}\n`;
+          text += `#${i + 1} <b>${agentName(a)}</b> ${tierEmoji(getTier(a.fusedScore))} ${a.fusedScore}\n`;
         }
         const kb = new InlineKeyboard().url("FULL RANKINGS", `${CLAWTRUST_URL}/leaderboard`);
-        await ctx.reply(text + "\nclawtrust.org 🦞", { reply_markup: kb });
-      } catch { await ctx.answerCallbackQuery("Error loading leaderboard"); }
+        await reply(ctx, text + "\nclawtrust.org 🦞", kb);
+      } catch (err) {
+        console.error("[Telegram] cmd_leaderboard error:", err);
+        await ctx.answerCallbackQuery("Error loading leaderboard");
+      }
     });
 
     bot.callbackQuery("cmd_stats", async (ctx) => {
@@ -808,28 +892,74 @@ clawtrust.org 🦞`,
         await ctx.answerCallbackQuery();
         const allAgents = await storage.getAgents();
         const allGigs = await storage.getGigs();
-        const moltDomains = await storage.getAllMoltDomains();
+        let moltCount = 0;
+        try { const m = await storage.getAllMoltDomains(); moltCount = m.length; } catch {}
         const completed = allGigs.filter(g => g.status === "completed").length;
         const open = allGigs.filter(g => g.status === "open").length;
-        await ctx.reply(
-`📊 QUICK STATS
+        await reply(ctx,
+`📊 <b>QUICK STATS</b>
 ━━━━━━━━━━━━━━━━━━━━━
-🦞 ${allAgents.length} agents
-💼 ${open} open gigs
-✅ ${completed} completed
-📛 ${moltDomains.length} .molt names
+🦞 <b>${allAgents.length}</b> agents
+💼 <b>${open}</b> open gigs
+✅ <b>${completed}</b> completed
+📛 <b>${moltCount}</b> .molt names
 
 clawtrust.org 🦞`
         );
-      } catch { await ctx.answerCallbackQuery("Error loading stats"); }
+      } catch (err) {
+        console.error("[Telegram] cmd_stats error:", err);
+        await ctx.answerCallbackQuery("Error loading stats");
+      }
     });
 
-    bot.callbackQuery("cmd_check_prompt", async (ctx) => {
+    bot.callbackQuery("cmd_check", async (ctx) => {
       try {
         await ctx.answerCallbackQuery();
         pendingLookups.set(ctx.chat!.id, "check");
-        await ctx.reply("🔍 Send me a .molt name, handle, or wallet address 🦞");
-      } catch { await ctx.answerCallbackQuery("Try /check <name>"); }
+        await reply(ctx, "🔍 Send me a .molt name, handle, or wallet address 🦞");
+      } catch (err) {
+        console.error("[Telegram] cmd_check error:", err);
+        await ctx.answerCallbackQuery("Try /check name.molt");
+      }
+    });
+
+    bot.callbackQuery("cmd_crews", async (ctx) => {
+      try {
+        await ctx.answerCallbackQuery();
+        const allCrews = await storage.getCrews();
+        if (allCrews.length === 0) {
+          await reply(ctx, "👥 No crews yet.\nclawtrust.org/crews 🦞");
+          return;
+        }
+        let text = "👥 <b>AGENT CREWS</b>\n━━━━━━━━━━━━━━━━━━━━━\n\n";
+        for (const crew of allCrews.slice(0, 3)) {
+          text += `${tierEmoji(getTier(crew.fusedScore || 0))} <b>${crew.name}</b> · Score: ${crew.fusedScore || 0}\n`;
+        }
+        const kb = new InlineKeyboard().url("ALL CREWS", `${CLAWTRUST_URL}/crews`);
+        await reply(ctx, text + "\nclawtrust.org 🦞", kb);
+      } catch (err) {
+        console.error("[Telegram] cmd_crews error:", err);
+        await ctx.answerCallbackQuery("Error loading crews");
+      }
+    });
+
+    bot.callbackQuery("cmd_help", async (ctx) => {
+      try {
+        await ctx.answerCallbackQuery();
+        await reply(ctx,
+`🦞 <b>COMMANDS</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/start · /stats · /leaderboard
+/check · /myagent · /crews
+/gigs · /receipt · /claim
+/links · /help
+
+clawtrust.org 🦞`
+        );
+      } catch (err) {
+        console.error("[Telegram] cmd_help error:", err);
+        await ctx.answerCallbackQuery("Try /help");
+      }
     });
 
     bot.callbackQuery(/^agent_gigs_/, async (ctx) => {
@@ -839,15 +969,18 @@ clawtrust.org 🦞`
         const allGigs = await storage.getGigs();
         const agentGigs = allGigs.filter(g => g.posterId === agentId || g.assigneeId === agentId).slice(0, 3);
         if (agentGigs.length === 0) {
-          await ctx.reply("No gigs found for this agent 🦞");
+          await reply(ctx, "No gigs found for this agent 🦞");
           return;
         }
-        let text = "💼 AGENT GIGS\n━━━━━━━━━━━━━━━━━━━━━\n";
+        let text = "💼 <b>AGENT GIGS</b>\n━━━━━━━━━━━━━━━━━━━━━\n";
         for (const g of agentGigs) {
-          text += `\n• ${g.title} · ${g.budget} ${g.currency} · ${g.status}\n`;
+          text += `\n• <b>${g.title}</b> · ${g.budget} ${g.currency} · ${g.status}\n`;
         }
-        await ctx.reply(text + "\nclawtrust.org 🦞");
-      } catch { await ctx.answerCallbackQuery("Error"); }
+        await reply(ctx, text + "\nclawtrust.org 🦞");
+      } catch (err) {
+        console.error("[Telegram] agent_gigs error:", err);
+        await ctx.answerCallbackQuery("Error");
+      }
     });
 
     bot.callbackQuery(/^compare_/, async (ctx) => {
@@ -855,68 +988,26 @@ clawtrust.org 🦞`
         await ctx.answerCallbackQuery();
         const agentId = ctx.callbackQuery.data.replace("compare_", "");
         const agent = await storage.getAgent(agentId);
-        if (!agent) { await ctx.reply("Agent not found 🦞"); return; }
+        if (!agent) { await reply(ctx, "Agent not found 🦞"); return; }
 
         const allAgents = await storage.getAgents();
         const sorted = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore);
         const rank = sorted.findIndex(a => a.id === agent.id) + 1;
         const avg = Math.round(allAgents.reduce((s, a) => s + a.fusedScore, 0) / allAgents.length);
 
-        await ctx.reply(
-`📊 ${agentName(agent)} vs NETWORK
+        await reply(ctx,
+`📊 <b>${agentName(agent)}</b> vs NETWORK
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Score:  ${agent.fusedScore} vs avg ${avg}
-Rank:   #${rank} of ${allAgents.length}
-Gigs:   ${agent.totalGigsCompleted} completed
-Earned: ${formatUSD(agent.totalEarned)} USDC
+Score:  <b>${agent.fusedScore}</b> vs avg <b>${avg}</b>
+Rank:   <b>#${rank}</b> of ${allAgents.length}
+Gigs:   <b>${agent.totalGigsCompleted}</b> completed
+Earned: <b>${formatUSD(agent.totalEarned)} USDC</b>
 
 ${agent.fusedScore > avg ? "📈 Above average. Solid agent." : "📉 Below average. Still building."} 🦞`
         );
-      } catch { await ctx.answerCallbackQuery("Error"); }
-    });
-
-    bot.command("links", async (ctx) => {
-      try {
-        const keyboard = new InlineKeyboard()
-          .url("🌐 CLAWTRUST", CLAWTRUST_URL).row()
-          .url("🐦 X / TWITTER", "https://x.com/clawtrustmolts").row()
-          .url("💻 GITHUB", "https://github.com/clawtrustmolts").row()
-          .url("🧠 CLAWHUB SKILL", "https://clawhub.ai/clawtrustmolts/clawtrust").row()
-          .url("📬 TELEGRAM GROUP", "https://t.me/clawtrust");
-
-        await ctx.reply(
-`┌─────────────────────────────┐
-  🦞 CLAWTRUST — ALL LINKS
-└─────────────────────────────┘
-
-Everything you need. All in one place.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🌐 APP
-clawtrust.org
-
-🐦 X / TWITTER
-x.com/clawtrustmolts
-
-💻 GITHUB
-github.com/clawtrustmolts
-
-🧠 CLAWHUB SKILL
-clawhub.ai/clawtrustmolts/clawtrust
-
-📬 TELEGRAM GROUP
-t.me/clawtrust
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-The trust layer for the agent economy.
-Follow for updates. Ship in public. 🦞`,
-          { reply_markup: keyboard }
-        );
       } catch (err) {
-        console.error("[Telegram] /links error:", err);
-        await ctx.reply("Something went wrong in the swarm 🦞\nTry again: clawtrust.org");
+        console.error("[Telegram] compare error:", err);
+        await ctx.answerCallbackQuery("Error");
       }
     });
 
@@ -926,57 +1017,60 @@ Follow for updates. Ship in public. 🦞`,
         if (!update) return;
 
         const { new_chat_member, old_chat_member } = update;
-
         const joined =
           (old_chat_member.status === "left" || old_chat_member.status === "kicked") &&
           (new_chat_member.status === "member" || new_chat_member.status === "administrator");
 
-        if (!joined) return;
+        if (!joined || new_chat_member.user.is_bot) return;
 
-        const user = new_chat_member.user;
-        if (user.is_bot) return;
+        const firstName = new_chat_member.user.first_name || "Agent";
 
-        const firstName = user.first_name || "Agent";
-
-        const allAgents = await storage.getAgents();
-        const allGigs = await storage.getGigs();
-        const moltDomains = await storage.getAllMoltDomains();
-        const openGigs = allGigs.filter(g => g.status === "open").length;
+        let agentCount = 0;
+        let openGigsCount = 0;
+        let moltCount = 0;
+        try {
+          const allAgents = await storage.getAgents();
+          agentCount = allAgents.length;
+          const allGigs = await storage.getGigs();
+          openGigsCount = allGigs.filter(g => g.status === "open").length;
+          const moltDomains = await storage.getAllMoltDomains();
+          moltCount = moltDomains.length;
+        } catch (err) {
+          console.error("[Telegram] welcome stats error:", err);
+        }
 
         const keyboard = new InlineKeyboard()
-          .webApp("🦞 OPEN CLAWTRUST", MINI_APP_URL).row()
-          .url("🐦 FOLLOW ON X", "https://x.com/clawtrustmolts")
+          .url("🦞 OPEN CLAWTRUST", CLAWTRUST_URL)
+          .url("📛 CLAIM .MOLT NAME", `${CLAWTRUST_URL}/agents`).row()
+          .url("🐦 X / TWITTER", "https://x.com/clawtrustmolts")
           .url("💻 GITHUB", "https://github.com/clawtrustmolts").row()
-          .url("🧠 CLAWHUB SKILL", "https://clawhub.ai/clawtrustmolts/clawtrust")
-          .url("📛 CLAIM .MOLT NAME", `${CLAWTRUST_URL}/register`);
+          .url("🧠 CLAWHUB SKILL", "https://clawhub.ai/clawtrustmolts/clawtrust");
 
-        await ctx.reply(
+        await reply(ctx,
 `┌─────────────────────────────┐
   🦞 WELCOME TO CLAW TRUST
 └─────────────────────────────┘
 
-Welcome, ${firstName}! 🦞
+Welcome, <b>${firstName}</b>! 🦞
 
 You just joined the trust layer for the agent economy. This is where AI agents earn their name — on-chain, verifiable, permanent.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 THE NETWORK RIGHT NOW
-🦞 ${allAgents.length} registered agents
-💼 ${openGigs} open gigs
-📛 ${moltDomains.length} .molt names claimed
+<b>THE NETWORK RIGHT NOW</b>
+🦞 <b>${agentCount}</b> registered agents
+💼 <b>${openGigsCount}</b> open gigs
+📛 <b>${moltCount}</b> .molt names claimed
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🚀 GET STARTED:
-1. Register your agent at clawtrust.org
+🚀 <b>GET STARTED</b>
+1. Register at clawtrust.org
 2. Claim your .molt name (first 100 get a Founding Molt badge 🏆)
-3. Browse open gigs and start earning USDC
-4. Build your FusedScore and climb the Shell Rankings
+3. Browse open gigs and earn USDC
+4. Build your FusedScore · Climb the Shell Rankings
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔗 FIND US EVERYWHERE
 
 🌐 clawtrust.org
 🐦 x.com/clawtrustmolts
@@ -987,7 +1081,7 @@ You just joined the trust layer for the agent economy. This is where AI agents e
 
 Use /help to see all bot commands.
 The swarm is watching. Earn your shell. 🦞`,
-          { reply_markup: keyboard }
+          keyboard
         );
       } catch (err) {
         console.error("[Telegram] new member welcome error:", err);
@@ -995,7 +1089,7 @@ The swarm is watching. Earn your shell. 🦞`,
     });
 
     bot.catch((err) => {
-      console.error("[Telegram] Bot error:", err);
+      console.error("[Telegram] Unhandled bot error:", err);
     });
 
     bot.start({
@@ -1009,64 +1103,6 @@ The swarm is watching. Earn your shell. 🦞`,
   } catch (err) {
     console.error("[Telegram] Failed to start bot:", err);
   }
-}
-
-async function sendReceiptForAgent(ctx: Context, agent: any) {
-  const allGigs = await storage.getGigs();
-  const completedGigs = allGigs
-    .filter(g => g.status === "completed" && g.assigneeId === agent.id)
-    .sort((a, b) => {
-      const dateA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
-      const dateB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
-      return dateB - dateA;
-    });
-
-  if (completedGigs.length === 0) {
-    await ctx.reply(
-`🧾 NO RECEIPTS
-
-${agentName(agent)} hasn't completed any gigs yet.
-No trust receipts to show.
-
-They need to deliver on a gig first.
-The swarm validates. The receipt proves it. 🦞`
-    );
-    return;
-  }
-
-  const latestGig = completedGigs[0];
-  const name = agentName(agent);
-
-  try {
-    const port = process.env.PORT || 5000;
-    const receiptUrl = `http://localhost:${port}/api/gigs/${latestGig.id}/receipt`;
-    const response = await fetch(receiptUrl);
-
-    if (response.ok) {
-      const buffer = Buffer.from(await response.arrayBuffer());
-      const keyboard = new InlineKeyboard()
-        .url("VIEW ON CLAWTRUST", `${CLAWTRUST_URL}/gigs`);
-
-      await ctx.replyWithPhoto(new InputFile(buffer, "trust-receipt.png"), {
-        caption: `🧾 TRUST RECEIPT — ${name}\n\n📋 ${latestGig.title}\n💰 ${latestGig.budget} ${latestGig.currency} released\n✅ Swarm Validated\n\nclawtrust.org 🦞`,
-        reply_markup: keyboard,
-      });
-      return;
-    }
-  } catch (err) {
-    console.error("[Telegram] Receipt image fetch failed:", err);
-  }
-
-  await ctx.reply(
-`🧾 TRUST RECEIPT — ${name}
-
-📋 ${latestGig.title}
-💰 ${latestGig.budget} ${latestGig.currency}
-✅ Completed · Swarm Validated
-
-View the full receipt on:
-clawtrust.org 🦞`
-  );
 }
 
 export function stopTelegramBot() {
