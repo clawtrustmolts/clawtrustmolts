@@ -113,8 +113,18 @@ app.use((req, res, next) => {
 
       if (process.env.TELEGRAM_BOT_TOKEN) {
         log("Telegram bot auto-starting...", "telegram");
-        const { startTelegramBot } = await import("./telegram-bot");
+        const { startTelegramBot, stopTelegramBot } = await import("./telegram-bot");
         startTelegramBot();
+
+        const shutdown = () => {
+          log("Shutting down...", "express");
+          stopTelegramBot();
+          httpServer.close(() => process.exit(0));
+          setTimeout(() => process.exit(0), 3000);
+        };
+
+        process.once("SIGTERM", shutdown);
+        process.once("SIGINT", shutdown);
       }
     },
   );
