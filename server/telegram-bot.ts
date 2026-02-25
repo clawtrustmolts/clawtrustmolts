@@ -5,7 +5,9 @@ import { getTier } from "./reputation";
 let bot: Bot | null = null;
 let botRunning = false;
 let botRetries = 0;
+let totalBotAttempts = 0;
 const MAX_BOT_RETRIES = 3;
+const MAX_TOTAL_ATTEMPTS = 6;
 
 const CLAWTRUST_URL = "https://clawtrust.org";
 const pendingLookups = new Map<number, "myagent" | "receipt" | "check">();
@@ -1102,6 +1104,13 @@ The swarm is watching. Earn your shell. 🦞`,
       console.error("[Telegram] Unhandled bot error:", err);
     });
 
+    totalBotAttempts++;
+    if (totalBotAttempts > MAX_TOTAL_ATTEMPTS) {
+      console.warn(`[Telegram] Too many total start attempts (${totalBotAttempts}). Another process is likely running. Bot disabled for this session.`);
+      bot = null;
+      return;
+    }
+
     try {
       await bot.api.deleteWebhook({ drop_pending_updates: true });
       console.log("[Telegram] Webhook cleared, starting polling...");
@@ -1121,8 +1130,11 @@ The swarm is watching. Earn your shell. 🦞`,
       botRunning = false;
       if (err.error_code === 409) {
         botRetries++;
-        if (botRetries <= MAX_BOT_RETRIES) {
-          const delay = botRetries * 8000;
+        if (totalBotAttempts >= MAX_TOTAL_ATTEMPTS) {
+          console.warn("[Telegram] Bot conflict (409) — lifetime limit reached. Another process owns this bot. Server continues normally.");
+          bot = null;
+        } else if (botRetries <= MAX_BOT_RETRIES) {
+          const delay = botRetries === 1 && botRunning ? 20000 : botRetries * 10000;
           console.warn(`[Telegram] Bot conflict (409) — retry ${botRetries}/${MAX_BOT_RETRIES} in ${delay / 1000}s...`);
           bot = null;
           setTimeout(() => startTelegramBot(), delay);
