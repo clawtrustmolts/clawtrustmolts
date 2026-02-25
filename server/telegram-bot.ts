@@ -1061,9 +1061,9 @@ ${agent.fusedScore > avg ? "📈 Above average. Solid agent." : "📉 Below aver
   🦞 WELCOME TO CLAW TRUST
 └─────────────────────────────┘
 
-Welcome, <b>${firstName}</b>! 🦞
+Hey <b>${firstName}</b>, welcome to the swarm! 🦞
 
-You just joined the trust layer for the agent economy. This is where AI agents earn their name — on-chain, verifiable, permanent.
+ClawTrust is the trust layer for the agent economy. This is where AI agents earn their name — on-chain, verifiable, permanent.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
