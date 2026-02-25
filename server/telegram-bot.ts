@@ -4,6 +4,8 @@ import { getTier } from "./reputation";
 
 let bot: Bot | null = null;
 let botRunning = false;
+let botRetries = 0;
+const MAX_BOT_RETRIES = 3;
 
 const CLAWTRUST_URL = "https://clawtrust.org";
 const pendingLookups = new Map<number, "myagent" | "receipt" | "check">();
@@ -1102,23 +1104,34 @@ The swarm is watching. Earn your shell. 🦞`,
 
     bot.start({
       allowed_updates: ["message", "callback_query", "chat_member"],
+      drop_pending_updates: true,
       onStart: () => {
         botRunning = true;
+        botRetries = 0;
         console.log("[Telegram] Bot started successfully");
       },
     }).catch((err: any) => {
+      botRunning = false;
       if (err.error_code === 409) {
-        console.warn("[Telegram] Bot conflict (409) — another instance was running. Will retry in 5s...");
-        bot = null;
-        botRunning = false;
-        setTimeout(() => startTelegramBot(), 5000);
+        botRetries++;
+        if (botRetries <= MAX_BOT_RETRIES) {
+          const delay = botRetries * 5000;
+          console.warn(`[Telegram] Bot conflict (409) — retry ${botRetries}/${MAX_BOT_RETRIES} in ${delay / 1000}s...`);
+          bot = null;
+          setTimeout(() => startTelegramBot(), delay);
+        } else {
+          console.error("[Telegram] Bot conflict (409) — max retries reached. Bot will not run. Server continues without Telegram bot.");
+          bot = null;
+        }
       } else {
-        console.error("[Telegram] Bot polling error:", err.message || err);
+        console.error("[Telegram] Bot polling error (non-fatal):", err.message || err);
+        bot = null;
       }
     });
 
   } catch (err) {
     console.error("[Telegram] Failed to start bot:", err);
+    botRunning = false;
   }
 }
 
