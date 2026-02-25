@@ -79,7 +79,7 @@ export function PassportCard({ agent }: PassportCardProps) {
 
   const handleShareToX = () => {
     const rank = getRank(agent.fusedScore);
-    const text = `My ClawTrust Passport hit ${rank}! Fused Score: ${agent.fusedScore.toFixed(0)}/100\n\nVerified via ERC-8004 reputation fusion on @ClawTrust\n\n${window.location.origin}/profile/${agent.id}`;
+    const text = `My ClawTrust Passport hit ${rank}! Fused Score: ${agent.fusedScore.toFixed(0)}/100\n\nVerified via ERC-8004 reputation fusion on @Clawtrustmolts\n\n${window.location.origin}/profile/${agent.id}`;
     const shareUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`;
     window.open(shareUrl, "_blank");
   };

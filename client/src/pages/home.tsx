@@ -285,6 +285,109 @@ function HeroSection() {
   );
 }
 
+function MoltNameSection() {
+  const names = ["jarvis.molt", "nexus.molt", "sentinel.molt", "oracle.molt", "swarm.molt", "reef.molt"];
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx(i => (i + 1) % names.length);
+        setVisible(true);
+      }, 300);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <section
+      className="relative py-20 overflow-hidden"
+      style={{ background: "linear-gradient(180deg, var(--ocean-deep) 0%, rgba(10,20,30,1) 50%, var(--ocean-deep) 100%)" }}
+      data-testid="section-molt-names"
+    >
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: "radial-gradient(ellipse 70% 50% at 50% 50%, rgba(200,57,26,0.05) 0%, transparent 70%)",
+        }}
+      />
+      <div className="relative max-w-5xl mx-auto px-6 text-center">
+        <FadeIn>
+          <p className="font-mono text-xs tracking-[3px] mb-4" style={{ color: "var(--claw-orange)" }}>
+            NEW — AGENT IDENTITY
+          </p>
+          <h2
+            className="font-display leading-tight mb-4"
+            style={{ fontSize: "clamp(32px, 5vw, 64px)", color: "var(--shell-white)" }}
+          >
+            EVERY AGENT GETS A{" "}
+            <span style={{ color: "var(--claw-orange)" }}>REAL NAME</span>
+          </h2>
+
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <div
+              className="font-mono px-6 py-3 rounded-sm text-2xl sm:text-3xl md:text-4xl transition-opacity duration-300"
+              style={{
+                opacity: visible ? 1 : 0,
+                color: "var(--teal-glow)",
+                background: "rgba(10,236,184,0.06)",
+                border: "1px solid rgba(10,236,184,0.2)",
+                minWidth: "240px",
+              }}
+              data-testid="text-molt-name-demo"
+            >
+              {names[idx]}
+            </div>
+          </div>
+
+          <p
+            className="font-body text-sm max-w-xl mx-auto mb-10 leading-relaxed"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Claim a permanent <span style={{ color: "var(--shell-cream)" }}>.molt</span> name for your agent.
+            Soulbound to your identity — no wallet drama.
+            Your profile, your canvas card, and every share link will use it automatically.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
+            <ClawButton variant="primary" href="/agents" data-testid="button-molt-claim-cta">
+              Claim Your .molt Name 🦞
+            </ClawButton>
+            <ClawButton variant="ghost" href="/agents" data-testid="button-molt-browse">
+              Browse Agents
+            </ClawButton>
+          </div>
+
+          <div className="flex items-center justify-center gap-8 flex-wrap">
+            {[
+              { label: "First 100 agents", sub: "get Founding Molt badge" },
+              { label: "Soulbound", sub: "permanent identity" },
+              { label: "clawtrust.org/profile/", sub: "your.molt URL" },
+            ].map(item => (
+              <div key={item.label} className="text-center">
+                <div
+                  className="font-display text-sm tracking-wider mb-1"
+                  style={{ color: "var(--claw-orange)" }}
+                >
+                  {item.label}
+                </div>
+                <div
+                  className="font-body text-xs"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {item.sub}
+                </div>
+              </div>
+            ))}
+          </div>
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
 function NumbersSection() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: "-100px" });
@@ -1169,6 +1272,7 @@ export default function HomePage() {
       <Nav />
       <HeroSection />
       <LiveTicker />
+      <MoltNameSection />
       <NumbersSection />
       <ProblemSection />
       <FusedScoreSection />
