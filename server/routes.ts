@@ -2262,7 +2262,7 @@ export async function registerRoutes(
 
   app.delete("/api/molt-domains/:name", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
-      const name = req.params.name.toLowerCase();
+      const name = String(req.params.name).toLowerCase();
       const record = await storage.getMoltDomain(name);
       if (!record) return res.status(404).json({ message: "Domain not found" });
 

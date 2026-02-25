@@ -391,8 +391,20 @@ export async function ensureMoltyAgent() {
     const [updated] = await db.update(agents).set({
       lastHeartbeat: new Date(),
       autonomyStatus: "active",
+      moltDomain: "molty.molt",
     }).where(eq(agents.id, existing[0].id)).returning();
     console.log(`[Molty] Agent refreshed with id ${updated.id}`);
+    const existingMoltDomainOnRefresh = await db.select().from(moltDomains).where(eq(moltDomains.name, "molty")).limit(1);
+    if (existingMoltDomainOnRefresh.length === 0) {
+      await db.insert(moltDomains).values({
+        name: "molty",
+        agentId: updated.id,
+        walletAddress: updated.walletAddress,
+        expiresAt: new Date("2099-12-31"),
+        status: "RESERVED",
+        foundingMoltNumber: null,
+      });
+    }
     return updated;
   }
 
