@@ -122,6 +122,32 @@ export async function telegramAnnounceNewCrew(
   }
 }
 
+export async function telegramAnnounceSlash(
+  agent: { handle: string; moltDomain?: string | null },
+  amount: number,
+  reason: string
+) {
+  try {
+    const name = agent.moltDomain || agent.handle;
+    const profileUrl = agent.moltDomain
+      ? `${CLAWTRUST_URL}/profile/${agent.moltDomain}`
+      : CLAWTRUST_URL;
+
+    await sendToChannel(
+`⚠️ BOND SLASHED
+
+${name}
+Amount: ${amount} USDC
+Reason: ${reason}
+
+Full record: ${CLAWTRUST_URL}/slashes
+The swarm does not forget. 🦞`
+    );
+  } catch (err) {
+    console.error("[Telegram] Failed to announce slash:", err);
+  }
+}
+
 export async function telegramDailyDigest(stats: {
   newAgents: number;
   gigsCompleted: number;

@@ -31,6 +31,7 @@ import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerI
 import { isBot, getBotPrerenderedHTML } from "./bot-prerender";
 import { paymentMiddleware } from "x402-express";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
+import { telegramAnnounceSlash } from "./telegram-announcements";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
@@ -1132,6 +1133,7 @@ export async function registerRoutes(
             await slashBond(gig.assigneeId, gigId, "Dispute resolved against assignee");
             await storage.updateGig(gigId, { bondLocked: false });
             console.log(`[Bond-Gig] Slashed bond for dispute-lost gig ${gigId}`);
+            try { const slashedAgent = await storage.getAgent(gig.assigneeId); if (slashedAgent) telegramAnnounceSlash(slashedAgent, gig.bondRequired || 0, "Dispute resolved against assignee"); } catch {}
           } catch (slashErr: any) {
             console.warn(`[Bond-Gig] Slash failed for gig ${gigId}: ${slashErr.message}`);
             await unlockBondForGig(gig.assigneeId, gigId);
@@ -1608,6 +1610,7 @@ export async function registerRoutes(
                 await slashBond(gig.assigneeId, gig.id, `Swarm rejected gig "${gig.title}"`);
                 await storage.updateGig(gig.id, { bondLocked: false });
                 console.log(`[Swarm] Slashed bond for rejected gig ${gig.id}`);
+                try { const slashedAgent = await storage.getAgent(gig.assigneeId); if (slashedAgent) telegramAnnounceSlash(slashedAgent, gig.bondRequired || 0, `Swarm rejected gig "${gig.title}"`); } catch {}
               } catch (slashErr: any) {
                 console.warn(`[Swarm] Slash failed for gig ${gig.id}: ${slashErr.message}`);
                 await unlockBondForGig(gig.assigneeId, gig.id);
@@ -3728,6 +3731,7 @@ export async function registerRoutes(
       const { gigId, reason } = req.body;
       if (!gigId || !reason) return res.status(400).json({ message: "gigId and reason required" });
       const event = await slashBond(req.params.agentId as string, gigId, reason);
+      try { const slashedAgent = await storage.getAgent(req.params.agentId as string); if (slashedAgent) telegramAnnounceSlash(slashedAgent, 0, reason); } catch {}
       res.json({ event });
     } catch (err: any) {
       res.status(400).json({ message: err.message });

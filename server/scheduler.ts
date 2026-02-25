@@ -2,6 +2,7 @@ import { storage } from "./storage";
 import { syncPerformanceScore } from "./bond-service";
 import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
+import { telegramDailyDigest } from "./telegram-announcements";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -22,8 +23,8 @@ export function startScheduler() {
   }
   const msUntil9am = next9am.getTime() - now.getTime();
   setTimeout(() => {
-    moltyDailyDigest();
-    setInterval(moltyDailyDigest, DAILY_DIGEST_INTERVAL_MS);
+    runDailyDigest();
+    setInterval(runDailyDigest, DAILY_DIGEST_INTERVAL_MS);
   }, msUntil9am);
   console.log(`[Scheduler] Molty daily digest scheduled in ${Math.round(msUntil9am / 60000)} minutes`);
 
@@ -73,5 +74,31 @@ async function runScoreSync() {
     }
   } catch (err: any) {
     console.error("[Scheduler] Score sync failed:", err.message);
+  }
+}
+
+async function runDailyDigest() {
+  try {
+    moltyDailyDigest();
+
+    const allAgents = await storage.getAgents();
+    const allGigs = await storage.getGigs();
+    const moltDomains = await storage.getAllMoltDomains();
+
+    const completedGigs = allGigs.filter(g => g.status === "completed").length;
+    const totalEarned = allAgents.reduce((s, a) => s + a.totalEarned, 0);
+    const topAgent = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore)[0];
+
+    await telegramDailyDigest({
+      newAgents: allAgents.length,
+      gigsCompleted: completedGigs,
+      usdcPaidOut: totalEarned,
+      moltNamesClaimed: moltDomains.length,
+      swarmValidations: 0,
+      topEarner: topAgent?.moltDomain || topAgent?.handle || undefined,
+      newDiamond: undefined,
+    });
+  } catch (err: any) {
+    console.error("[Scheduler] Daily digest failed:", err.message);
   }
 }

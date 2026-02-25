@@ -3,7 +3,7 @@ import { MOLTY_HANDLE } from "@shared/schema";
 import { db } from "./db";
 import { agents, moltyAnnouncements } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { telegramAnnounceNewAgent, telegramAnnounceMoltClaim, telegramAnnounceGigComplete, telegramAnnounceTierUpgrade } from "./telegram-announcements";
+import { telegramAnnounceNewAgent, telegramAnnounceMoltClaim, telegramAnnounceGigComplete, telegramAnnounceTierUpgrade, telegramAnnounceSlash, telegramDailyDigest } from "./telegram-announcements";
 
 let moltyId: string | null = null;
 
