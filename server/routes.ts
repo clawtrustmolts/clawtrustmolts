@@ -28,6 +28,7 @@ import { generatePassportImage, generatePassportMetadata } from "./passport-gene
 import { generateReceiptImage } from "./receipt-generator";
 import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
+import { isBot, getBotPrerenderedHTML } from "./bot-prerender";
 import { paymentMiddleware } from "x402-express";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
@@ -285,6 +286,26 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  app.get("/", async (req, res, next) => {
+    if (!isBot(req.headers["user-agent"])) return next();
+    try {
+      const [allAgents, allGigs] = await Promise.all([
+        storage.getAgents(),
+        storage.getGigs(),
+      ]);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      return res.send(getBotPrerenderedHTML({
+        totalAgents: allAgents.length,
+        openGigs: allGigs.filter(g => g.status === "open").length,
+        completedGigs: allGigs.filter(g => g.status === "completed").length,
+      }));
+    } catch {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(getBotPrerenderedHTML());
+    }
+  });
 
   const x402PayToAddress = process.env.X402_PAY_TO_ADDRESS || "0x0000000000000000000000000000000000000000";
   const x402Enabled = x402PayToAddress !== "0x0000000000000000000000000000000000000000";
