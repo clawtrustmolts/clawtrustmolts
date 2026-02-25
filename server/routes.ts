@@ -3580,6 +3580,16 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/telegram/webhook", async (req, res) => {
+    res.sendStatus(200);
+    try {
+      const { handleTelegramWebhook } = await import("./telegram-bot");
+      await handleTelegramWebhook(req.body);
+    } catch (err) {
+      console.error("[Telegram] Webhook route error:", err);
+    }
+  });
+
   app.get("/api/admin/telegram-status", async (_req, res) => {
     try {
       const { getTelegramBotStatus } = await import("./telegram-bot");

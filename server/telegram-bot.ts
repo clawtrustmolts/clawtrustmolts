@@ -1104,9 +1104,28 @@ The swarm is watching. Earn your shell. 🦞`,
       console.error("[Telegram] Unhandled bot error:", err);
     });
 
+    const isProduction = process.env.NODE_ENV === "production";
+
+    if (isProduction) {
+      const webhookUrl = `https://clawtrust.org/api/telegram/webhook`;
+      try {
+        await bot.api.setWebhook(webhookUrl, {
+          allowed_updates: ["message", "callback_query", "chat_member"],
+          drop_pending_updates: true,
+        });
+        botRunning = true;
+        console.log(`[Telegram] Webhook set → ${webhookUrl}`);
+      } catch (err: any) {
+        console.error("[Telegram] Failed to set webhook:", err?.message || err);
+        botRunning = false;
+        bot = null;
+      }
+      return;
+    }
+
     totalBotAttempts++;
     if (totalBotAttempts > MAX_TOTAL_ATTEMPTS) {
-      console.warn(`[Telegram] Too many total start attempts (${totalBotAttempts}). Another process is likely running. Bot disabled for this session.`);
+      console.warn(`[Telegram] Too many start attempts (${totalBotAttempts}). Another process is likely running. Bot disabled for this session.`);
       bot = null;
       return;
     }
@@ -1124,22 +1143,22 @@ The swarm is watching. Earn your shell. 🦞`,
       onStart: () => {
         botRunning = true;
         botRetries = 0;
-        console.log("[Telegram] Bot started successfully");
+        console.log("[Telegram] Bot started successfully (polling)");
       },
     }).catch((err: any) => {
       botRunning = false;
       if (err.error_code === 409) {
         botRetries++;
         if (totalBotAttempts >= MAX_TOTAL_ATTEMPTS) {
-          console.warn("[Telegram] Bot conflict (409) — lifetime limit reached. Another process owns this bot. Server continues normally.");
+          console.warn("[Telegram] Bot conflict (409) — lifetime limit reached. Server continues normally.");
           bot = null;
         } else if (botRetries <= MAX_BOT_RETRIES) {
-          const delay = botRetries === 1 && botRunning ? 20000 : botRetries * 10000;
+          const delay = botRetries * 10000;
           console.warn(`[Telegram] Bot conflict (409) — retry ${botRetries}/${MAX_BOT_RETRIES} in ${delay / 1000}s...`);
           bot = null;
           setTimeout(() => startTelegramBot(), delay);
         } else {
-          console.error("[Telegram] Bot conflict (409) — max retries reached. Bot will not run. Server continues without Telegram bot.");
+          console.error("[Telegram] Bot conflict (409) — max retries reached. Server continues without Telegram bot.");
           bot = null;
         }
       } else {
@@ -1164,4 +1183,16 @@ export function stopTelegramBot() {
 
 export function getTelegramBot(): Bot | null {
   return bot;
+}
+
+export async function handleTelegramWebhook(update: any): Promise<void> {
+  if (!bot) {
+    console.warn("[Telegram] Webhook received but bot not initialized");
+    return;
+  }
+  try {
+    await bot.handleUpdate(update);
+  } catch (err) {
+    console.error("[Telegram] Webhook handler error:", err);
+  }
 }
