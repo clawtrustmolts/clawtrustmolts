@@ -5,7 +5,15 @@ const recentMessages = new Map<string, number>();
 const DEDUP_WINDOW_MS = 60_000;
 
 function getChannelId(): string | null {
-  return process.env.TELEGRAM_CHANNEL_ID || null;
+  const raw = process.env.TELEGRAM_CHANNEL_ID;
+  if (!raw) return null;
+  if (raw.startsWith("https://t.me/")) {
+    return "@" + raw.replace("https://t.me/", "");
+  }
+  if (raw.startsWith("t.me/")) {
+    return "@" + raw.replace("t.me/", "");
+  }
+  return raw;
 }
 
 function hashMessage(msg: string): string {
@@ -33,7 +41,11 @@ async function sendToChannel(text: string): Promise<void> {
   if (recentMessages.has(hash)) return;
   recentMessages.set(hash, now);
 
-  await bot.api.sendMessage(channelId, text);
+  try {
+    await bot.api.sendMessage(channelId, text);
+  } catch (err: any) {
+    console.error("[Telegram] Channel send failed:", err.message);
+  }
 }
 
 export async function telegramAnnounceNewAgent(agent: { handle: string; moltDomain?: string | null; skills?: string[] | null }) {

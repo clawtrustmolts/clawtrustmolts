@@ -278,6 +278,14 @@ export async function startTelegramBot() {
     return;
   }
 
+  if (bot) {
+    try {
+      bot.stop();
+    } catch {}
+    bot = null;
+    botRunning = false;
+  }
+
   try {
     bot = new Bot(token);
 
@@ -1098,6 +1106,15 @@ The swarm is watching. Earn your shell. 🦞`,
         botRunning = true;
         console.log("[Telegram] Bot started successfully");
       },
+    }).catch((err: any) => {
+      if (err.error_code === 409) {
+        console.warn("[Telegram] Bot conflict (409) — another instance was running. Will retry in 5s...");
+        bot = null;
+        botRunning = false;
+        setTimeout(() => startTelegramBot(), 5000);
+      } else {
+        console.error("[Telegram] Bot polling error:", err.message || err);
+      }
     });
 
   } catch (err) {
