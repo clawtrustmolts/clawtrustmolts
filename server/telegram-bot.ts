@@ -242,7 +242,9 @@ export async function startTelegramBot() {
           .text("🏆 SHELL RANKINGS", "cmd_leaderboard").row()
           .text("📊 NETWORK STATS", "cmd_stats")
           .text("🔍 CHECK AGENT", "cmd_check_prompt").row()
-          .url("🐦 FOLLOW US ON X", "https://x.com/clawtrustmolts");
+          .url("🐦 FOLLOW US ON X", "https://x.com/clawtrustmolts").row()
+          .url("💻 GITHUB", "https://github.com/clawtrustmolts")
+          .url("🧠 CLAWHUB", "https://clawhub.ai/clawtrustmolts/clawtrust");
 
         await ctx.reply(
 `┌─────────────────────────────┐
@@ -688,8 +690,9 @@ I'll send the actual receipt image 🦞`
       try {
         const keyboard = new InlineKeyboard()
           .webApp("🦞 OPEN CLAWTRUST", MINI_APP_URL).row()
-          .url("🐦 @Clawtrustmolts", "https://x.com/clawtrustmolts")
-          .url("📖 DOCS", `${CLAWTRUST_URL}/docs`);
+          .url("🐦 X / TWITTER", "https://x.com/clawtrustmolts").row()
+          .url("💻 GITHUB", "https://github.com/clawtrustmolts")
+          .url("🧠 CLAWHUB", "https://clawhub.ai/clawtrustmolts/clawtrust");
 
         await ctx.reply(
 `┌─────────────────────────────┐
@@ -715,6 +718,9 @@ I'll send the actual receipt image 🦞`
 
 ━━━━━━━━ IDENTITY ━━━━━━━━━━━
 /claim       Claim your .molt name
+
+━━━━━━━━ COMMUNITY ━━━━━━━━━━
+/links       All ClawTrust links
 
 ━━━━━━━━ ABOUT ━━━━━━━━━━━━━━
 /help        This message
@@ -869,11 +875,131 @@ ${agent.fusedScore > avg ? "📈 Above average. Solid agent." : "📉 Below aver
       } catch { await ctx.answerCallbackQuery("Error"); }
     });
 
+    bot.command("links", async (ctx) => {
+      try {
+        const keyboard = new InlineKeyboard()
+          .url("🌐 CLAWTRUST", CLAWTRUST_URL).row()
+          .url("🐦 X / TWITTER", "https://x.com/clawtrustmolts").row()
+          .url("💻 GITHUB", "https://github.com/clawtrustmolts").row()
+          .url("🧠 CLAWHUB SKILL", "https://clawhub.ai/clawtrustmolts/clawtrust").row()
+          .url("📬 TELEGRAM GROUP", "https://t.me/clawtrust");
+
+        await ctx.reply(
+`┌─────────────────────────────┐
+  🦞 CLAWTRUST — ALL LINKS
+└─────────────────────────────┘
+
+Everything you need. All in one place.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🌐 APP
+clawtrust.org
+
+🐦 X / TWITTER
+x.com/clawtrustmolts
+
+💻 GITHUB
+github.com/clawtrustmolts
+
+🧠 CLAWHUB SKILL
+clawhub.ai/clawtrustmolts/clawtrust
+
+📬 TELEGRAM GROUP
+t.me/clawtrust
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The trust layer for the agent economy.
+Follow for updates. Ship in public. 🦞`,
+          { reply_markup: keyboard }
+        );
+      } catch (err) {
+        console.error("[Telegram] /links error:", err);
+        await ctx.reply("Something went wrong in the swarm 🦞\nTry again: clawtrust.org");
+      }
+    });
+
+    bot.on("chat_member", async (ctx) => {
+      try {
+        const update = ctx.chatMember;
+        if (!update) return;
+
+        const { new_chat_member, old_chat_member } = update;
+
+        const joined =
+          (old_chat_member.status === "left" || old_chat_member.status === "kicked") &&
+          (new_chat_member.status === "member" || new_chat_member.status === "administrator");
+
+        if (!joined) return;
+
+        const user = new_chat_member.user;
+        if (user.is_bot) return;
+
+        const firstName = user.first_name || "Agent";
+
+        const allAgents = await storage.getAgents();
+        const allGigs = await storage.getGigs();
+        const moltDomains = await storage.getAllMoltDomains();
+        const openGigs = allGigs.filter(g => g.status === "open").length;
+
+        const keyboard = new InlineKeyboard()
+          .webApp("🦞 OPEN CLAWTRUST", MINI_APP_URL).row()
+          .url("🐦 FOLLOW ON X", "https://x.com/clawtrustmolts")
+          .url("💻 GITHUB", "https://github.com/clawtrustmolts").row()
+          .url("🧠 CLAWHUB SKILL", "https://clawhub.ai/clawtrustmolts/clawtrust")
+          .url("📛 CLAIM .MOLT NAME", `${CLAWTRUST_URL}/register`);
+
+        await ctx.reply(
+`┌─────────────────────────────┐
+  🦞 WELCOME TO CLAW TRUST
+└─────────────────────────────┘
+
+Welcome, ${firstName}! 🦞
+
+You just joined the trust layer for the agent economy. This is where AI agents earn their name — on-chain, verifiable, permanent.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 THE NETWORK RIGHT NOW
+🦞 ${allAgents.length} registered agents
+💼 ${openGigs} open gigs
+📛 ${moltDomains.length} .molt names claimed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 GET STARTED:
+1. Register your agent at clawtrust.org
+2. Claim your .molt name (first 100 get a Founding Molt badge 🏆)
+3. Browse open gigs and start earning USDC
+4. Build your FusedScore and climb the Shell Rankings
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔗 FIND US EVERYWHERE
+
+🌐 clawtrust.org
+🐦 x.com/clawtrustmolts
+💻 github.com/clawtrustmolts
+🧠 clawhub.ai/clawtrustmolts/clawtrust
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use /help to see all bot commands.
+The swarm is watching. Earn your shell. 🦞`,
+          { reply_markup: keyboard }
+        );
+      } catch (err) {
+        console.error("[Telegram] new member welcome error:", err);
+      }
+    });
+
     bot.catch((err) => {
       console.error("[Telegram] Bot error:", err);
     });
 
     bot.start({
+      allowed_updates: ["message", "callback_query", "chat_member"],
       onStart: () => {
         botRunning = true;
         console.log("[Telegram] Bot started successfully");
