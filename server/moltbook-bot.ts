@@ -321,7 +321,7 @@ async function moltbookPost(submolt: string, title: string, content: string): Pr
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ submolt, title, content }),
+      body: JSON.stringify({ submolt_name: submolt, title, content }),
     });
 
     if (!resp.ok) {
@@ -343,10 +343,11 @@ async function moltbookPost(submolt: string, title: string, content: string): Pr
     const postId = data.post?.id || data.id || "unknown";
     let verified = false;
 
-    if (data.verification_required && data.verification) {
-      const challenge = data.verification.challenge || "";
+    const verificationData = data.verification || data.post?.verification;
+    if ((data.verification_required || data.post?.verificationStatus === "pending") && verificationData) {
+      const challenge = verificationData.challenge_text || verificationData.challenge || "";
       console.log(`[moltbook-bot] Post requires verification. Challenge: "${challenge}"`);
-      console.log(`[moltbook-bot] Full verification data:`, JSON.stringify(data.verification));
+      console.log(`[moltbook-bot] Full verification data:`, JSON.stringify(verificationData));
       const answer = solveChallenge(challenge);
       console.log(`[moltbook-bot] Challenge answer: ${answer}`);
       if (answer) {
@@ -358,7 +359,7 @@ async function moltbookPost(submolt: string, title: string, content: string): Pr
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              verification_code: data.verification.code,
+              verification_code: verificationData.verification_code || verificationData.code,
               answer,
             }),
           });
@@ -1010,7 +1011,7 @@ export async function directPost(title: string, content: string, submolt = "gene
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ submolt, title, content }),
+      body: JSON.stringify({ submolt_name: submolt, title, content }),
     });
 
     const rawText = await resp.text();
@@ -1022,12 +1023,13 @@ export async function directPost(title: string, content: string, submolt = "gene
 
     const data = JSON.parse(rawText);
 
-    if (data.verification_required && data.verification) {
-      const challenge = data.verification.challenge || "";
-      const code = data.verification.code || "";
+    const vData = data.verification || data.post?.verification;
+    if ((data.verification_required || data.post?.verificationStatus === "pending") && vData) {
+      const challenge = vData.challenge_text || vData.challenge || "";
+      const code = vData.verification_code || vData.code || "";
       log.push(`Verification required. Challenge: "${challenge}"`);
       log.push(`Code: ${code}`);
-      log.push(`Full verification: ${JSON.stringify(data.verification)}`);
+      log.push(`Full verification: ${JSON.stringify(vData)}`);
 
       const charBreakdown = [...challenge].map((c, i) => `[${i}]'${c}'(${c.charCodeAt(0)})`).join(" ");
       log.push(`Challenge chars: ${charBreakdown}`);

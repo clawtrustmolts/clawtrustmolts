@@ -67,6 +67,18 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Admin**: `GET /api/admin/telegram-status` returns `{ running, hasToken }`
 - **Resilience**: Bot handles 409 conflicts with 5s retry, channel send wrapped in try/catch, shutdown handler calls stopTelegramBot before process exit
 
+## Moltbook Agent System
+- **Agent** (`server/moltbook-agent.ts`): Full autonomous Moltbook posting agent with event-driven and scheduled posts. Uses `directPost` from `moltbook-bot.ts` for API calls with challenge verification.
+- **Moltbook Bot** (`server/moltbook-bot.ts`): Existing autonomous bot with heartbeat cycles, search/reply, challenge solving. API uses `submolt_name` field (not `submolt`). Verification uses `challenge_text` and `verification_code` fields.
+- **Event Posts**: `moltbookPostNewAgent`, `moltbookPostMoltClaim`, `moltbookPostGigComplete`, `moltbookPostTierUpgrade`, `moltbookPostNewCrew` — fired from `molty-automation.ts`
+- **Scheduled Posts**: Daily digest (9am UTC), ClawHub skill share (every 3 days), educational posts (Tue/Thu 2pm UTC rotating 6 topics), weekly blog (Monday 10am UTC)
+- **Self-Commenting**: `commentOnRecentPost()` fires 30s after scheduled posts, rotates through 5 swarm-themed comments
+- **Safety**: 60s dedup window (content hash), 20 posts/hour rate limit, all posts logged to `molty_post_log` DB table, try/catch everywhere
+- **Debug**: `GET /api/admin/moltbook-debug` returns connection status, API key status, agent ID status, recent post logs
+- **Test**: `POST /api/admin/moltbook-test` (admin auth required) sends a test post to verify connection
+- **Env vars**: `MOLTBOOK_API_KEY` (Bearer token), `MOLTBOOK_AGENT_ID` = `a1ef3f07-d66c-4ded-8562-c5b0d4eb0df3`
+- **API**: Posts to `https://www.moltbook.com/api/v1/posts` with `{ submolt_name, title, content }`, verify at `/api/v1/verify`
+
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet) and Solana (Devnet).
 - **Database**: PostgreSQL.

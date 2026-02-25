@@ -186,13 +186,13 @@ export function tryPostToMoltbook(content: string) {
       return;
     }
 
-    fetch("https://moltbook.com/api/v1/posts", {
+    fetch("https://www.moltbook.com/api/v1/posts", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ content, agentHandle: "Molty" }),
+      body: JSON.stringify({ submolt_name: "general", title: "ClawTrust Update", content }),
     }).catch(err => console.error("[Molty] Moltbook post failed:", err));
   } catch (err) {
     console.error("[Molty] Moltbook post error:", err);
