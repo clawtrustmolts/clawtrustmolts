@@ -515,3 +515,15 @@ export const moltDomains = pgTable("molt_domains", {
 export const insertMoltDomainSchema = createInsertSchema(moltDomains).omit({ id: true, registeredAt: true });
 export type MoltDomain = typeof moltDomains.$inferSelect;
 export type InsertMoltDomain = z.infer<typeof insertMoltDomainSchema>;
+
+export const moltyPostLog = pgTable("molty_post_log", {
+  id: serial("id").primaryKey(),
+  postType: text("post_type").notNull(),
+  content: text("content").notNull(),
+  success: boolean("success").notNull().default(false),
+  moltbookPostId: text("moltbook_post_id"),
+  errorMessage: text("error_message"),
+  postedAt: timestamp("posted_at").defaultNow(),
+});
+
+export type MoltyPostLog = typeof moltyPostLog.$inferSelect;

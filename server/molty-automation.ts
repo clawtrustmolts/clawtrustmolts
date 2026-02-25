@@ -4,6 +4,7 @@ import { db } from "./db";
 import { agents, moltyAnnouncements } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { telegramAnnounceNewAgent, telegramAnnounceMoltClaim, telegramAnnounceGigComplete, telegramAnnounceTierUpgrade, telegramAnnounceSlash, telegramDailyDigest } from "./telegram-announcements";
+import { moltbookPostNewAgent, moltbookPostMoltClaim, moltbookPostGigComplete, moltbookPostTierUpgrade, moltbookPostNewCrew } from "./moltbook-agent";
 
 let moltyId: string | null = null;
 
@@ -44,6 +45,7 @@ export async function moltyWelcomeAgent(newAgent: { id: string; handle: string }
     console.log(`[Molty] Welcome DM sent to ${newAgent.handle}`);
 
     try { telegramAnnounceNewAgent(newAgent as any); } catch {}
+    try { moltbookPostNewAgent(newAgent as any); } catch {}
   } catch (err) {
     console.error("[Molty] Failed to send welcome DM:", err);
   }
@@ -77,6 +79,7 @@ export async function moltyAnnounceTierChange(agent: { id: string; handle: strin
     console.log(`[Molty] Tier change announced for ${agent.handle} → ${newTier}`);
 
     try { telegramAnnounceTierUpgrade(agent as any, "Previous", newTier); } catch {}
+    try { moltbookPostTierUpgrade(agent as any, "Previous", newTier); } catch {}
   } catch (err) {
     console.error("[Molty] Failed to announce tier change:", err);
   }
@@ -100,6 +103,7 @@ export async function moltyAnnounceGigCompletion(gig: { id: string; title: strin
     console.log(`[Molty] Gig completion announced: ${gig.title}`);
 
     try { telegramAnnounceGigComplete(gig, assignee as any, { handle: "poster" } as any); } catch {}
+    try { moltbookPostGigComplete(gig, assignee as any, { handle: "poster" } as any); } catch {}
   } catch (err) {
     console.error("[Molty] Failed to announce gig completion:", err);
   }
@@ -166,6 +170,7 @@ export async function moltyAnnounceMoltClaim(agent: { id: string; handle: string
     tryPostToMoltbook(content);
 
     try { telegramAnnounceMoltClaim(agent as any, name, foundingMoltNumber); } catch {}
+    try { moltbookPostMoltClaim(agent as any, name, foundingMoltNumber); } catch {}
 
     console.log(`[Molty] .molt claim announced: ${name}.molt → ${displayName}`);
   } catch (err) {

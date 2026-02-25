@@ -3,11 +3,13 @@ import { syncPerformanceScore } from "./bond-service";
 import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
 import { telegramDailyDigest } from "./telegram-announcements";
+import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 const INACTIVITY_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DAILY_DIGEST_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const CLAWHUB_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
 
 export function startScheduler() {
   console.log("[Scheduler] Starting background jobs...");
@@ -30,6 +32,28 @@ export function startScheduler() {
 
   setInterval(runInactivityCheck, INACTIVITY_CHECK_INTERVAL_MS);
   setInterval(runScoreSync, SCORE_SYNC_INTERVAL_MS);
+
+  const now2 = new Date();
+  const nextMonday10am = new Date(now2);
+  nextMonday10am.setUTCHours(10, 0, 0, 0);
+  const dayOfWeek = now2.getUTCDay();
+  const daysUntilMonday = (8 - dayOfWeek) % 7 || 7;
+  nextMonday10am.setDate(nextMonday10am.getDate() + daysUntilMonday);
+  if (nextMonday10am.getTime() <= now2.getTime()) {
+    nextMonday10am.setDate(nextMonday10am.getDate() + 7);
+  }
+  setTimeout(() => {
+    runWeeklyBlog();
+    setInterval(runWeeklyBlog, 7 * 24 * 60 * 60 * 1000);
+  }, nextMonday10am.getTime() - now2.getTime());
+  console.log(`[Scheduler] Weekly blog scheduled in ${Math.round((nextMonday10am.getTime() - now2.getTime()) / 60000)} minutes`);
+
+  setTimeout(() => {
+    runClawHubSkillShare();
+    setInterval(runClawHubSkillShare, CLAWHUB_INTERVAL_MS);
+  }, 2 * 60 * 60 * 1000);
+
+  scheduleEducationalPosts();
 }
 
 async function runInactivityCheck() {
@@ -98,7 +122,48 @@ async function runDailyDigest() {
       topEarner: topAgent?.moltDomain || topAgent?.handle || undefined,
       newDiamond: undefined,
     });
+
+    try { await moltbookDailyDigest(); } catch {}
+    setTimeout(() => commentOnRecentPost().catch(() => {}), 30_000);
   } catch (err: any) {
     console.error("[Scheduler] Daily digest failed:", err.message);
   }
+}
+
+async function runWeeklyBlog() {
+  try {
+    await moltbookWeeklyBlog();
+    setTimeout(() => commentOnRecentPost().catch(() => {}), 30_000);
+  } catch (err: any) {
+    console.error("[Scheduler] Weekly blog failed:", err.message);
+  }
+}
+
+async function runClawHubSkillShare() {
+  try {
+    await moltbookClawHubSkillShare();
+    setTimeout(() => commentOnRecentPost().catch(() => {}), 30_000);
+  } catch (err: any) {
+    console.error("[Scheduler] ClawHub skill share failed:", err.message);
+  }
+}
+
+function scheduleEducationalPosts() {
+  const checkAndPost = async () => {
+    const now = new Date();
+    const dayOfWeek = now.getUTCDay();
+    const hour = now.getUTCHours();
+
+    if ((dayOfWeek === 2 || dayOfWeek === 4) && hour === 14) {
+      try {
+        await moltbookEducationalPost();
+        setTimeout(() => commentOnRecentPost().catch(() => {}), 30_000);
+      } catch (err: any) {
+        console.error("[Scheduler] Educational post failed:", err.message);
+      }
+    }
+  };
+
+  setInterval(checkAndPost, 60 * 60 * 1000);
+  console.log("[Scheduler] Educational posts scheduled for Tue/Thu 2pm UTC");
 }

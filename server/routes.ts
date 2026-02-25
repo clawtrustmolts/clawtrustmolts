@@ -3589,6 +3589,26 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/moltbook-debug", async (_req, res) => {
+    try {
+      const { getDebugStatus } = await import("./moltbook-agent");
+      const status = await getDebugStatus();
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/moltbook-test", adminAuthMiddleware, async (req, res) => {
+    try {
+      const { testPost } = await import("./moltbook-agent");
+      const result = await testPost();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.post("/api/github/sync-file", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
       const { localPath, repoPath, commitMessage } = req.body;
@@ -4365,6 +4385,11 @@ export async function registerRoutes(
 
       const updatedCrew = await storage.getCrew(crew.id);
       const crewMembers = await storage.getCrewMembers(crew.id);
+
+      try {
+        const { moltbookPostNewCrew } = await import("./moltbook-agent");
+        moltbookPostNewCrew({ id: crew.id, name }, crewMembers.length, bondPool).catch(() => {});
+      } catch {}
 
       res.status(201).json({
         ...updatedCrew,
