@@ -8,6 +8,24 @@ import { startScheduler } from "./scheduler";
 const app = express();
 const httpServer = createServer(app);
 
+process.on("unhandledRejection", (reason: any) => {
+  const msg = reason?.message || reason?.description || String(reason);
+  if (msg.includes("409") || msg.includes("Conflict") || msg.includes("getUpdates") || msg.includes("BUTTON_TYPE_INVALID")) {
+    console.warn("[Process] Caught Telegram bot error (non-fatal):", msg);
+    return;
+  }
+  console.error("[Process] Unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (err: any) => {
+  const msg = err?.message || err?.description || String(err);
+  if (msg.includes("409") || msg.includes("Conflict") || msg.includes("getUpdates") || msg.includes("BUTTON_TYPE_INVALID")) {
+    console.warn("[Process] Caught Telegram bot exception (non-fatal):", msg);
+    return;
+  }
+  console.error("[Process] Uncaught exception:", err);
+});
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -116,18 +134,24 @@ app.use((req, res, next) => {
 
       if (process.env.TELEGRAM_BOT_TOKEN) {
         log("Telegram bot auto-starting...", "telegram");
-        const { startTelegramBot, stopTelegramBot } = await import("./telegram-bot");
-        startTelegramBot();
+        try {
+          const { startTelegramBot, stopTelegramBot } = await import("./telegram-bot");
+          startTelegramBot().catch((err: any) => {
+            log(`Telegram bot startup failed (non-fatal): ${err?.message || err}`, "telegram");
+          });
 
-        const shutdown = () => {
-          log("Shutting down...", "express");
-          stopTelegramBot();
-          httpServer.close(() => process.exit(0));
-          setTimeout(() => process.exit(0), 3000);
-        };
+          const shutdown = () => {
+            log("Shutting down...", "express");
+            try { stopTelegramBot(); } catch {}
+            httpServer.close(() => process.exit(0));
+            setTimeout(() => process.exit(0), 3000);
+          };
 
-        process.once("SIGTERM", shutdown);
-        process.once("SIGINT", shutdown);
+          process.once("SIGTERM", shutdown);
+          process.once("SIGINT", shutdown);
+        } catch (err: any) {
+          log(`Telegram bot import failed (non-fatal): ${err?.message || err}`, "telegram");
+        }
       }
     },
   );
