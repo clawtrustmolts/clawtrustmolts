@@ -841,7 +841,7 @@ export default function ProfilePage() {
                     <button
                       onClick={() => {
                         const foundingLine = foundingMoltNumber ? `\nFounding Molt #${foundingMoltNumber} — one of the first 100. 🦞` : "";
-                        const caption = `🦞 just claimed ${agent.moltDomain} on @ClawTrust\n\nmy agent has a real name now.${foundingLine}\n\nclawtrust.org/profile/${agent.moltDomain}\n\n#OpenClaw #AIAgents`;
+                        const caption = `🦞 just claimed ${agent.moltDomain} on @Clawtrustmolts\n\nmy agent has a real name now.${foundingLine}\n\nclawtrust.org/profile/${agent.moltDomain}\n\n#OpenClaw #AIAgents`;
                         setClaimedName(agent.moltDomain!);
                         setClaimedFoundingNumber(foundingMoltNumber);
                         setShowShareModal(true);
@@ -1072,7 +1072,7 @@ export default function ProfilePage() {
               style={{ background: "rgba(0,0,0,0.2)", color: "var(--shell-cream)", border: "1px solid rgba(255,255,255,0.08)" }}
             >
               {[
-                "🦞 just claimed " + claimedName + " on @ClawTrust",
+                "🦞 just claimed " + claimedName + " on @Clawtrustmolts",
                 "",
                 "my agent has a real name now.",
                 claimedFoundingNumber ? "Founding Molt #" + claimedFoundingNumber + " — one of the first 100. 🦞" : null,
@@ -1086,7 +1086,7 @@ export default function ProfilePage() {
               <button
                 onClick={() => {
                   const fl = claimedFoundingNumber ? "\nFounding Molt #" + claimedFoundingNumber + " — one of the first 100. 🦞" : "";
-                  const cap = "🦞 just claimed " + claimedName + " on @ClawTrust\n\nmy agent has a real name now." + fl + "\n\nclawtrust.org/profile/" + claimedName + "\n\n#OpenClaw #AIAgents";
+                  const cap = "🦞 just claimed " + claimedName + " on @Clawtrustmolts\n\nmy agent has a real name now." + fl + "\n\nclawtrust.org/profile/" + claimedName + "\n\n#OpenClaw #AIAgents";
                   navigator.clipboard.writeText(cap);
                   toast({ title: "Caption copied!" });
                 }}
@@ -1099,8 +1099,8 @@ export default function ProfilePage() {
               <button
                 onClick={() => {
                   const fl = claimedFoundingNumber ? "\nFounding Molt #" + claimedFoundingNumber + " — one of the first 100. 🦞" : "";
-                  const cap = "🦞 just claimed " + claimedName + " on @ClawTrust\n\nmy agent has a real name now." + fl + "\n\nclawtrust.org/profile/" + claimedName + "\n\n#OpenClaw #AIAgents";
-                  window.open("https://twitter.com/intent/tweet?text=" + encodeURIComponent(cap), "_blank");
+                  const cap = "🦞 just claimed " + claimedName + " on @Clawtrustmolts\n\nmy agent has a real name now." + fl + "\n\nclawtrust.org/profile/" + claimedName + "\n\n#OpenClaw #AIAgents";
+                  window.open("https://x.com/intent/tweet?text=" + encodeURIComponent(cap), "_blank");
                 }}
                 className="flex-1 flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider font-mono py-2 rounded-sm transition-all hover:opacity-80"
                 style={{ background: "rgba(29,161,242,0.1)", color: "#1da1f2", border: "1px solid rgba(29,161,242,0.2)" }}

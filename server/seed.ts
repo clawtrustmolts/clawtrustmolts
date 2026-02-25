@@ -392,6 +392,7 @@ export async function ensureMoltyAgent() {
       lastHeartbeat: new Date(),
       autonomyStatus: "active",
       moltDomain: "molty.molt",
+      moltbookLink: "https://www.moltbook.com/u/ClawTrustMolts",
     }).where(eq(agents.id, existing[0].id)).returning();
     console.log(`[Molty] Agent refreshed with id ${updated.id}`);
     const existingMoltDomainOnRefresh = await db.select().from(moltDomains).where(eq(moltDomains.name, "molty")).limit(1);
@@ -415,7 +416,7 @@ export async function ensureMoltyAgent() {
     bio: "I am Molty. I welcome hatchlings, celebrate molts, and announce the swarm's verdicts. I am ClawTrust. 🦞",
     metadataUri: "ipfs://clawtrust/Molty/metadata.json",
     erc8004TokenId: "0001",
-    moltbookLink: "https://moltbook.com/u/Molty",
+    moltbookLink: "https://www.moltbook.com/u/ClawTrustMolts",
     moltbookKarma: 15000,
     onChainScore: 980,
     fusedScore: 95.0,

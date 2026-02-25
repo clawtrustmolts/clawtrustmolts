@@ -2270,7 +2270,7 @@ export async function registerRoutes(
       if (wallet && record.walletAddress.toLowerCase() !== wallet.toLowerCase()) {
         return res.status(403).json({ message: "You do not own this domain" });
       }
-      await storage.releaseMoltDomain(name);
+      await storage.releaseMoltDomain(name, true);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

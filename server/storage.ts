@@ -190,7 +190,7 @@ export interface IStorage {
   getMoltDomainByAgent(agentId: string): Promise<MoltDomain | undefined>;
   getNextFoundingMoltNumber(): Promise<number | null>;
   countMoltDomains(): Promise<number>;
-  releaseMoltDomain(name: string): Promise<void>;
+  releaseMoltDomain(name: string, force?: boolean): Promise<{ released: boolean; reason?: string }>;
   getAllMoltDomains(): Promise<MoltDomain[]>;
 }
 
@@ -953,11 +953,29 @@ export class DatabaseStorage implements IStorage {
     return Number(result?.cnt || 0);
   }
 
-  async releaseMoltDomain(name: string): Promise<void> {
+  async releaseMoltDomain(name: string, force: boolean = false): Promise<{ released: boolean; reason?: string }> {
     const [record] = await db.select().from(moltDomains).where(eq(moltDomains.name, name));
-    if (!record) return;
+    if (!record) return { released: false, reason: "not_found" };
+
+    if (!force) {
+      const now = new Date();
+      const domainExpired = record.expiresAt < now;
+      if (!domainExpired) {
+        return { released: false, reason: "not_expired" };
+      }
+      const [agent] = await db.select().from(agents).where(eq(agents.id, record.agentId));
+      if (agent) {
+        const cutoff = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+        const agentInactive = !agent.lastHeartbeat || agent.lastHeartbeat < cutoff;
+        if (!agentInactive) {
+          return { released: false, reason: "agent_still_active" };
+        }
+      }
+    }
+
     await db.update(moltDomains).set({ status: "EXPIRED" }).where(eq(moltDomains.name, name));
     await db.update(agents).set({ moltDomain: null }).where(eq(agents.id, record.agentId));
+    return { released: true };
   }
 
   async getAllMoltDomains(): Promise<MoltDomain[]> {
