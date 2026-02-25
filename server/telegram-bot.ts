@@ -1102,6 +1102,13 @@ The swarm is watching. Earn your shell. 🦞`,
       console.error("[Telegram] Unhandled bot error:", err);
     });
 
+    try {
+      await bot.api.deleteWebhook({ drop_pending_updates: true });
+      console.log("[Telegram] Webhook cleared, starting polling...");
+    } catch (webhookErr: any) {
+      console.warn("[Telegram] deleteWebhook warning (non-fatal):", webhookErr?.message || webhookErr);
+    }
+
     bot.start({
       allowed_updates: ["message", "callback_query", "chat_member"],
       drop_pending_updates: true,
@@ -1115,7 +1122,7 @@ The swarm is watching. Earn your shell. 🦞`,
       if (err.error_code === 409) {
         botRetries++;
         if (botRetries <= MAX_BOT_RETRIES) {
-          const delay = botRetries * 5000;
+          const delay = botRetries * 8000;
           console.warn(`[Telegram] Bot conflict (409) — retry ${botRetries}/${MAX_BOT_RETRIES} in ${delay / 1000}s...`);
           bot = null;
           setTimeout(() => startTelegramBot(), delay);
