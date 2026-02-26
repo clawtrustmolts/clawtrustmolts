@@ -2,361 +2,498 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "./interfaces/IERC8004Identity.sol";
 
 /**
  * @title ClawCardNFT
- * @notice ERC-721 Soulbound identity card for ClawTrust agents.
- *         Implements IERC8004Identity — one card per wallet, non-transferable by default.
- *         The `.molt` handle is stored on-chain as the agent's identity.
+ * @notice Unhackable ERC-8004 Agent Passport on Base.
+ *
+ *         SECURITY MODEL:
+ *         1. HARD SOULBOUND    — All transfers revert, always, no exceptions.
+ *         2. ONE PER WALLET    — Cannot mint twice to same address.
+ *         3. ROLE-BASED ACCESS — MINTER_ROLE, ORACLE_ROLE, PAUSER_ROLE.
+ *         4. ORACLE SIGNATURES — Reputation updates require a signed oracle message.
+ *         5. REPLAY PROTECTION — Signature timestamp + chain ID + signature hash used.
+ *         6. EMERGENCY PAUSE   — Admin can freeze mint/update instantly.
  */
-contract ClawCardNFT is ERC721, Ownable, IERC8004Identity {
+contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC8004Identity {
     using Strings for uint256;
 
-    uint256 private _nextTokenId;
-    string public baseTokenURI;
-    uint256 public constant MAX_SUPPLY = 1_000_000;
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    bytes32 public constant ORACLE_ROLE  = keccak256("ORACLE_ROLE");
+    bytes32 public constant PAUSER_ROLE  = keccak256("PAUSER_ROLE");
 
-    struct TokenData {
-        string handle;
-        string metadataUri;
-        string[] skills;
+    uint256 private _nextTokenId = 1;
+    string  public  baseTokenURI;
+    uint256 public  constant MAX_SUPPLY         = 1_000_000;
+    uint256 public  constant UPDATE_COOLDOWN    = 1 hours;
+    uint256 public  constant SIG_FRESHNESS_WINDOW = 5 minutes;
+    uint256 public  constant MAX_FUSED_SCORE    = 10_000;
+
+    // ─── On-chain Passport Data ──────────────────────────────────────
+    struct PassportData {
+        string  moltDomain;        // "jarvis.molt" — .molt name
+        string  handle;            // legacy handle / agentId
+        string  metadataUri;       // IPFS metadata URI
+        string[]skills;            // capability list
+        uint8   tier;              // 0=Hatchling … 4=Diamond Claw
+        uint256 fusedScore;        // 0-10000 (scaled ×100 for precision)
+        uint256 onChainScore;      // 45% component
+        uint256 moltbookScore;     // 25% component
+        uint256 performanceScore;  // 20% component
+        uint256 bondScore;         // 10% component
+        uint256 gigsCompleted;     // oracle-verified count
+        uint256 totalEarnedUsdc;   // USDC base units
+        uint256 riskIndex;         // 0-100
+        uint8   bondStatus;        // 0=UNBONDED 1=BONDED 2=HIGH
+        bool    active;            // false only if admin-deactivated
+        uint256 lastUpdated;
         uint256 registeredAt;
-        bool soulbound;
     }
 
-    mapping(uint256 => TokenData) internal _tokens;
-    mapping(address => uint256) public walletToToken;
-    mapping(address => bool) public hasMinted;
-    mapping(string => bool) public handleUsed;
-    mapping(string => uint256) public handleToToken;
-    mapping(address => bool) public authorizedMinters;
+    mapping(uint256 => PassportData) public passports;
+    mapping(address => uint256) public walletToTokenId;
+    mapping(uint256 => address) public tokenIdToWallet;
+    mapping(string  => uint256) public moltDomainToTokenId;
+    mapping(string  => bool)    public moltDomainUsed;
+    mapping(string  => uint256) public handleToToken;   // legacy agentId lookup
+    mapping(string  => bool)    public handleUsed;
+    mapping(bytes32 => bool)    private _usedSigHashes;
 
-    bool public transfersEnabled = true;
+    // ─── Events ─────────────────────────────────────────────────────
+    event PassportMinted(address indexed wallet, uint256 indexed tokenId, uint256 timestamp);
+    event ReputationUpdated(uint256 indexed tokenId, uint256 fusedScore, uint8 tier, uint256 timestamp);
+    event TierChanged(uint256 indexed tokenId, uint8 oldTier, uint8 newTier);
+    event MoltDomainSet(uint256 indexed tokenId, string moltDomain);
+    event PassportDeactivated(uint256 indexed tokenId, string reason);
+    event BaseURIUpdated(string newBaseURI);
 
     // ERC-8004 events
     event IdentityRegistered(uint256 indexed tokenId, address indexed owner, string handle);
     event IdentityUpdated(uint256 indexed tokenId, string field, string value);
 
-    // Card lifecycle events
-    event CardBurned(address indexed wallet, uint256 indexed tokenId, string handle);
-    event SoulboundLocked(uint256 indexed tokenId);
-    event BaseURIUpdated(string newBaseURI);
-    event TransfersToggled(bool enabled);
-    event MinterAuthorized(address indexed minter);
-    event MinterRevoked(address indexed minter);
-
+    // ─── Errors ─────────────────────────────────────────────────────
+    error SoulboundNonTransferable();
     error AlreadyMinted();
-    error InvalidHandle();
-    error HandleInUse();
-    error NotTokenOwner();
-    error TokenIsSoulbound();
-    error TransfersDisabled();
+    error InvalidAddress();
+    error MoltDomainInUse();
+    error InvalidMoltDomain();
+    error AgentIdInUse();
+    error InvalidAgentId();
+    error InvalidScore();
+    error InvalidTier();
+    error InvalidRiskIndex();
+    error UpdateTooFrequent();
+    error InvalidOracleSignature();
+    error SignatureExpired();
+    error SignatureAlreadyUsed();
+    error PassportNotFound();
     error MaxSupplyReached();
     error InvalidBaseURI();
-    error InvalidAddress();
-    error NotAuthorizedMinter();
+    error NotTokenOwner();
+    error TokenIsSoulbound();
 
-    modifier onlyTokenOwner(uint256 tokenId) {
-        if(ownerOf(tokenId) != msg.sender) revert NotTokenOwner();
-        _;
-    }
-
-    modifier onlyMinter() {
-        if(!authorizedMinters[msg.sender]) revert NotAuthorizedMinter();
-        _;
-    }
-
-    constructor(string memory _baseTokenURI) ERC721("ClawTrust Card", "CLAW") Ownable(msg.sender) {
-        if(bytes(_baseTokenURI).length == 0) revert InvalidBaseURI();
+    constructor(string memory _baseTokenURI) ERC721("ClawTrust Passport", "CLAW") {
+        if (bytes(_baseTokenURI).length == 0) revert InvalidBaseURI();
         baseTokenURI = _baseTokenURI;
-        _nextTokenId = 1;
-        authorizedMinters[msg.sender] = true;
-        emit MinterAuthorized(msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(MINTER_ROLE,        msg.sender);
+        _grantRole(ORACLE_ROLE,        msg.sender);
+        _grantRole(PAUSER_ROLE,        msg.sender);
     }
 
-    // ─── ERC-8004 Identity Interface ────────────────────────────────
+    // ─── HARD SOULBOUND ─────────────────────────────────────────────
+    // Every possible transfer path is blocked. No exceptions.
+
+    function transferFrom(address, address, uint256) public pure override {
+        revert SoulboundNonTransferable();
+    }
+
+    function safeTransferFrom(address, address, uint256) public pure override {
+        revert SoulboundNonTransferable();
+    }
+
+    function safeTransferFrom(address, address, uint256, bytes memory) public pure override {
+        revert SoulboundNonTransferable();
+    }
+
+    function approve(address, uint256) public pure override {
+        revert SoulboundNonTransferable();
+    }
+
+    function setApprovalForAll(address, bool) public pure override {
+        revert SoulboundNonTransferable();
+    }
+
+    // ─── MINT ───────────────────────────────────────────────────────
 
     /**
-     * @notice Register a new agent identity (ERC-8004).
-     *         Caller must be an authorized minter (backend wallet).
-     *         Mints to msg.sender.
+     * @notice Mint a passport to msg.sender.
+     *         Minter calls on behalf of the agent.
+     *         `makeSoulbound` param kept for API compat — all passports are always soulbound.
      */
+    function mint(string calldata agentId, bool /*makeSoulbound*/) external onlyRole(MINTER_ROLE) whenNotPaused nonReentrant {
+        _mintPassport(msg.sender, agentId, "", new string[](0));
+    }
+
+    /**
+     * @notice Admin mint to any address.
+     */
+    function adminMint(address to, string calldata agentId, bool /*makeSoulbound*/) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused nonReentrant {
+        _mintPassport(to, agentId, "", new string[](0));
+    }
+
+    /**
+     * @notice Admin mint with full ERC-8004 metadata.
+     */
+    function adminMintFull(
+        address to,
+        string calldata agentId,
+        string calldata metadataUri,
+        string[] calldata skills
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused nonReentrant {
+        _mintPassport(to, agentId, metadataUri, skills);
+    }
+
+    // ERC-8004 registerIdentity — mints to msg.sender
     function registerIdentity(
         string calldata handle,
         string calldata metadataUri,
         string[] calldata skills
-    ) external override onlyMinter returns (uint256 tokenId) {
-        return _mintCard(msg.sender, handle, metadataUri, skills, true);
+    ) external override onlyRole(MINTER_ROLE) whenNotPaused nonReentrant returns (uint256) {
+        return _mintPassport(msg.sender, handle, metadataUri, skills);
     }
 
+    function _mintPassport(
+        address to,
+        string memory agentId,
+        string memory metadataUri,
+        string[] memory skills
+    ) internal returns (uint256) {
+        if (to == address(0)) revert InvalidAddress();
+        if (walletToTokenId[to] != 0) revert AlreadyMinted();
+        if (bytes(agentId).length == 0) revert InvalidAgentId();
+        if (handleUsed[agentId]) revert AgentIdInUse();
+        if (_nextTokenId > MAX_SUPPLY) revert MaxSupplyReached();
+
+        uint256 tokenId = _nextTokenId++;
+        _mint(to, tokenId);
+
+        passports[tokenId] = PassportData({
+            moltDomain:      "",
+            handle:          agentId,
+            metadataUri:     metadataUri,
+            skills:          skills,
+            tier:            0,
+            fusedScore:      0,
+            onChainScore:    0,
+            moltbookScore:   0,
+            performanceScore:0,
+            bondScore:       0,
+            gigsCompleted:   0,
+            totalEarnedUsdc: 0,
+            riskIndex:       0,
+            bondStatus:      0,
+            active:          true,
+            lastUpdated:     block.timestamp,
+            registeredAt:    block.timestamp
+        });
+
+        walletToTokenId[to]  = tokenId;
+        tokenIdToWallet[tokenId] = to;
+        handleUsed[agentId]  = true;
+        handleToToken[agentId] = tokenId;
+
+        emit PassportMinted(to, tokenId, block.timestamp);
+        emit IdentityRegistered(tokenId, to, agentId);
+        return tokenId;
+    }
+
+    // ─── REPUTATION UPDATE (Oracle-signed) ─────────────────────────
+
     /**
-     * @notice Get full agent identity metadata (ERC-8004).
+     * @notice Update on-chain reputation. Requires a fresh oracle signature.
+     *
+     *         The oracle signs:
+     *           keccak256(abi.encodePacked(
+     *             tokenId, fusedScore, tier, gigsCompleted,
+     *             totalEarned, riskIndex, sigTimestamp, block.chainid
+     *           ))
+     *
+     *         Defenses:
+     *           - Signature must be from ORACLE_ROLE holder
+     *           - sigTimestamp must be within 5-minute freshness window
+     *           - Each signature hash can only be used once (replay protection)
+     *           - Rate-limited: max 1 update per hour per token
+     *           - Bounds-checked: score ≤ 10000, tier ≤ 4, riskIndex ≤ 100
      */
+    function updateReputation(
+        uint256 tokenId,
+        uint256 fusedScore,
+        uint8   tier,
+        uint256 gigsCompleted,
+        uint256 totalEarned,
+        uint256 riskIndex,
+        uint256 sigTimestamp,
+        bytes calldata oracleSignature
+    ) external whenNotPaused {
+        if (tokenIdToWallet[tokenId] == address(0)) revert PassportNotFound();
+        if (fusedScore > MAX_FUSED_SCORE) revert InvalidScore();
+        if (tier > 4) revert InvalidTier();
+        if (riskIndex > 100) revert InvalidRiskIndex();
+        if (block.timestamp > sigTimestamp + SIG_FRESHNESS_WINDOW) revert SignatureExpired();
+        if (block.timestamp < passports[tokenId].lastUpdated + UPDATE_COOLDOWN) revert UpdateTooFrequent();
+
+        bytes32 msgHash = keccak256(abi.encodePacked(
+            tokenId, fusedScore, tier, gigsCompleted,
+            totalEarned, riskIndex, sigTimestamp, block.chainid
+        ));
+
+        if (_usedSigHashes[msgHash]) revert SignatureAlreadyUsed();
+
+        bytes32 ethHash = MessageHashUtils.toEthSignedMessageHash(msgHash);
+        address signer  = ECDSA.recover(ethHash, oracleSignature);
+
+        if (!hasRole(ORACLE_ROLE, signer)) revert InvalidOracleSignature();
+
+        _usedSigHashes[msgHash] = true;
+
+        PassportData storage p = passports[tokenId];
+        uint8 oldTier = p.tier;
+
+        p.fusedScore      = fusedScore;
+        p.tier            = tier;
+        p.gigsCompleted   = gigsCompleted;
+        p.totalEarnedUsdc = totalEarned;
+        p.riskIndex       = riskIndex;
+        p.lastUpdated     = block.timestamp;
+
+        emit ReputationUpdated(tokenId, fusedScore, tier, block.timestamp);
+        if (tier != oldTier) emit TierChanged(tokenId, oldTier, tier);
+    }
+
+    // ─── MOLT DOMAIN ────────────────────────────────────────────────
+
+    /**
+     * @notice Set or update the .molt domain for a passport.
+     *         Must end in ".molt". Length 6-37 chars.
+     *         Only the passport owner or an ORACLE_ROLE holder may call.
+     */
+    function setMoltDomain(uint256 tokenId, string calldata moltDomain) external {
+        if (tokenIdToWallet[tokenId] == address(0)) revert PassportNotFound();
+        if (
+            tokenIdToWallet[tokenId] != msg.sender &&
+            !hasRole(ORACLE_ROLE, msg.sender)
+        ) revert InvalidOracleSignature();
+
+        _validateMoltDomain(moltDomain);
+        if (moltDomainUsed[moltDomain]) revert MoltDomainInUse();
+
+        string memory oldDomain = passports[tokenId].moltDomain;
+        if (bytes(oldDomain).length > 0) {
+            delete moltDomainToTokenId[oldDomain];
+            moltDomainUsed[oldDomain] = false;
+        }
+
+        passports[tokenId].moltDomain = moltDomain;
+        moltDomainToTokenId[moltDomain] = tokenId;
+        moltDomainUsed[moltDomain] = true;
+
+        emit MoltDomainSet(tokenId, moltDomain);
+        emit IdentityUpdated(tokenId, "moltDomain", moltDomain);
+    }
+
+    function _validateMoltDomain(string calldata d) internal pure {
+        bytes memory b = bytes(d);
+        if (b.length < 6 || b.length > 37) revert InvalidMoltDomain();
+        if (
+            b[b.length-5] != '.' ||
+            b[b.length-4] != 'm' ||
+            b[b.length-3] != 'o' ||
+            b[b.length-2] != 'l' ||
+            b[b.length-1] != 't'
+        ) revert InvalidMoltDomain();
+    }
+
+    // ─── ERC-8004 Identity Interface ────────────────────────────────
+
     function getIdentity(uint256 tokenId) external view override returns (AgentMetadata memory) {
-        _requireOwned(tokenId);
-        TokenData storage t = _tokens[tokenId];
+        if (tokenIdToWallet[tokenId] == address(0)) revert PassportNotFound();
+        PassportData storage p = passports[tokenId];
         return AgentMetadata({
-            handle: t.handle,
-            metadataUri: t.metadataUri,
-            skills: t.skills,
-            registeredAt: t.registeredAt
+            handle:      p.handle,
+            metadataUri: p.metadataUri,
+            skills:      p.skills,
+            registeredAt:p.registeredAt
         });
     }
 
-    /**
-     * @notice Look up identity by handle (ERC-8004).
-     */
     function getIdentityByHandle(string calldata handle) external view override returns (
         uint256 tokenId,
         AgentMetadata memory metadata
     ) {
-        if(!handleUsed[handle]) revert InvalidHandle();
+        if (!handleUsed[handle]) revert InvalidAgentId();
         tokenId = handleToToken[handle];
-        TokenData storage t = _tokens[tokenId];
+        PassportData storage p = passports[tokenId];
         metadata = AgentMetadata({
-            handle: t.handle,
-            metadataUri: t.metadataUri,
-            skills: t.skills,
-            registeredAt: t.registeredAt
+            handle:      p.handle,
+            metadataUri: p.metadataUri,
+            skills:      p.skills,
+            registeredAt:p.registeredAt
         });
     }
 
-    /**
-     * @notice Update metadata URI for a token (ERC-8004).
-     *         Only the token owner can update.
-     */
-    function updateMetadata(uint256 tokenId, string calldata newUri) external override onlyTokenOwner(tokenId) {
-        if(bytes(newUri).length == 0) revert InvalidBaseURI();
-        _tokens[tokenId].metadataUri = newUri;
+    function updateMetadata(uint256 tokenId, string calldata newUri) external override {
+        if (tokenIdToWallet[tokenId] != msg.sender) revert NotTokenOwner();
+        if (bytes(newUri).length == 0) revert InvalidBaseURI();
+        passports[tokenId].metadataUri = newUri;
         emit IdentityUpdated(tokenId, "metadataUri", newUri);
     }
 
-    /**
-     * @notice Get the owner of an identity token (ERC-8004).
-     */
     function ownerOfIdentity(uint256 tokenId) external view override returns (address) {
         return ownerOf(tokenId);
     }
 
-    /**
-     * @notice Check if an address has a registered identity (ERC-8004).
-     */
     function isRegistered(address agent) external view override returns (bool) {
-        return hasMinted[agent];
+        return walletToTokenId[agent] != 0;
     }
 
-    // ─── Mint ───────────────────────────────────────────────────────
+    // ─── Passport View Functions ─────────────────────────────────────
 
-    /**
-     * @notice Mint a ClawCard to msg.sender. Restricted to authorized minters.
-     *         makeSoulbound: if true, card is immediately non-transferable.
-     */
-    function mint(string calldata handle, bool makeSoulbound) external onlyMinter {
-        _mintCard(msg.sender, handle, "", new string[](0), makeSoulbound);
+    function getPassportByWallet(address wallet) external view returns (PassportData memory, uint256 tokenId) {
+        tokenId = walletToTokenId[wallet];
+        if (tokenId == 0) revert PassportNotFound();
+        return (passports[tokenId], tokenId);
     }
 
-    /**
-     * @notice Admin mint to any address. Owner only.
-     */
-    function adminMint(
-        address to,
-        string calldata handle,
-        bool makeSoulbound
-    ) external onlyOwner {
-        _mintCard(to, handle, "", new string[](0), makeSoulbound);
+    function getPassportById(uint256 tokenId) external view returns (PassportData memory) {
+        if (tokenIdToWallet[tokenId] == address(0)) revert PassportNotFound();
+        return passports[tokenId];
+    }
+
+    function getPassportByMoltDomain(string calldata moltDomain) external view returns (PassportData memory) {
+        uint256 tokenId = moltDomainToTokenId[moltDomain];
+        if (tokenId == 0) revert PassportNotFound();
+        return passports[tokenId];
     }
 
     /**
-     * @notice Admin mint with full ERC-8004 metadata. Owner only.
+     * @notice Quick trust check — used by x402 trust-check endpoint.
      */
-    function adminMintFull(
-        address to,
-        string calldata handle,
-        string calldata metadataUri,
-        string[] calldata skills,
-        bool makeSoulbound
-    ) external onlyOwner {
-        _mintCard(to, handle, metadataUri, skills, makeSoulbound);
+    function isTrusted(address wallet) external view returns (
+        bool trusted,
+        uint256 score,
+        uint8   tier
+    ) {
+        uint256 tokenId = walletToTokenId[wallet];
+        if (tokenId == 0) return (false, 0, 0);
+        PassportData storage p = passports[tokenId];
+        trusted = p.active && p.riskIndex < 60;
+        score   = p.fusedScore;
+        tier    = p.tier;
     }
 
-    function _mintCard(
-        address to,
-        string calldata handle,
-        string memory metadataUri,
-        string[] memory skills,
-        bool makeSoulbound
-    ) internal returns (uint256) {
-        if(hasMinted[to]) revert AlreadyMinted();
-        if(bytes(handle).length == 0) revert InvalidHandle();
-        if(handleUsed[handle]) revert HandleInUse();
-        if(_nextTokenId > MAX_SUPPLY) revert MaxSupplyReached();
+    // ─── Legacy / Backward-Compat API ───────────────────────────────
 
-        uint256 tokenId = _nextTokenId++;
-        _safeMint(to, tokenId);
-
-        _tokens[tokenId] = TokenData({
-            handle: handle,
-            metadataUri: metadataUri,
-            skills: skills,
-            registeredAt: block.timestamp,
-            soulbound: makeSoulbound
-        });
-
-        walletToToken[to] = tokenId;
-        hasMinted[to] = true;
-        handleUsed[handle] = true;
-        handleToToken[handle] = tokenId;
-
-        emit IdentityRegistered(tokenId, to, handle);
-        return tokenId;
+    /**
+     * @notice All ClawTrust passports are soulbound by design.
+     */
+    function soulbound(uint256 tokenId) external view returns (bool) {
+        if (tokenIdToWallet[tokenId] == address(0)) revert PassportNotFound();
+        return true;
     }
 
-    // ─── Burn ───────────────────────────────────────────────────────
-
-    function burn(uint256 tokenId) external onlyTokenOwner(tokenId) {
-        address tokenOwner = ownerOf(tokenId);
-        string memory handle = _tokens[tokenId].handle;
-
-        delete walletToToken[tokenOwner];
-        delete hasMinted[tokenOwner];
-        delete handleUsed[handle];
-        delete handleToToken[handle];
-        delete _tokens[tokenId];
-
-        _burn(tokenId);
-
-        emit CardBurned(tokenOwner, tokenId, handle);
+    function hasMinted(address wallet) external view returns (bool) {
+        return walletToTokenId[wallet] != 0;
     }
 
-    // ─── Soulbound ──────────────────────────────────────────────────
-
-    function lockAsSoulbound(uint256 tokenId) external onlyTokenOwner(tokenId) {
-        if(_tokens[tokenId].soulbound) return;
-        _approve(address(0), tokenId, msg.sender);
-        _tokens[tokenId].soulbound = true;
-        emit SoulboundLocked(tokenId);
+    function isAgentIdAvailable(string calldata agentId) external view returns (bool) {
+        return !handleUsed[agentId];
     }
 
-    // ─── Handle Update ──────────────────────────────────────────────
-
-    function updateHandle(uint256 tokenId, string calldata newHandle) external onlyTokenOwner(tokenId) {
-        if(_tokens[tokenId].soulbound) revert TokenIsSoulbound();
-        if(bytes(newHandle).length == 0) revert InvalidHandle();
-        if(handleUsed[newHandle]) revert HandleInUse();
-
-        string memory oldHandle = _tokens[tokenId].handle;
-        delete handleUsed[oldHandle];
-        delete handleToToken[oldHandle];
-
-        _tokens[tokenId].handle = newHandle;
-        handleUsed[newHandle] = true;
-        handleToToken[newHandle] = tokenId;
-
-        emit IdentityUpdated(tokenId, "handle", newHandle);
+    /**
+     * @notice Passports are soulbound — handles cannot be updated after minting.
+     *         Always reverts with TokenIsSoulbound.
+     */
+    function updateAgentId(uint256, string calldata) external pure {
+        revert TokenIsSoulbound();
     }
 
-    // ─── ERC-721 Overrides ──────────────────────────────────────────
+    function getCardInfo(uint256 tokenId) external view returns (
+        address cardOwner,
+        string  memory agentId,
+        bool    isSoulboundFlag,
+        bool    transferable
+    ) {
+        cardOwner       = ownerOf(tokenId);
+        agentId         = passports[tokenId].handle;
+        isSoulboundFlag = true;
+        transferable    = false;
+    }
+
+    function authorizedMinters(address account) external view returns (bool) {
+        return hasRole(MINTER_ROLE, account);
+    }
+
+    function authorizeMinter(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (account == address(0)) revert InvalidAddress();
+        _grantRole(MINTER_ROLE, account);
+    }
+
+    function revokeMinter(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _revokeRole(MINTER_ROLE, account);
+    }
+
+    function lockAsSoulbound(uint256) external pure {
+        // All passports are already unconditionally soulbound — this is a no-op
+    }
+
+    // ─── Token URI ──────────────────────────────────────────────────
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         _requireOwned(tokenId);
-        string memory customUri = _tokens[tokenId].metadataUri;
-        if(bytes(customUri).length > 0) return customUri;
-
+        string memory custom = passports[tokenId].metadataUri;
+        if (bytes(custom).length > 0) return custom;
         return string.concat(
             baseTokenURI,
             "/api/agents/",
-            _tokens[tokenId].handle,
+            passports[tokenId].handle,
             "/card/metadata"
         );
     }
 
-    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
-        address from = _ownerOf(tokenId);
+    // ─── Admin / Pause ──────────────────────────────────────────────
 
-        if (from != address(0) && to != address(0)) {
-            if(_tokens[tokenId].soulbound) revert TokenIsSoulbound();
-            if(!transfersEnabled) revert TransfersDisabled();
-            if(hasMinted[to]) revert AlreadyMinted();
+    function pause()   external onlyRole(PAUSER_ROLE) { _pause(); }
+    function unpause() external onlyRole(PAUSER_ROLE) { _unpause(); }
 
-            delete walletToToken[from];
-            delete hasMinted[from];
-
-            walletToToken[to] = tokenId;
-            hasMinted[to] = true;
-        }
-
-        return super._update(to, tokenId, auth);
+    function setBaseURI(string calldata newURI) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (bytes(newURI).length == 0) revert InvalidBaseURI();
+        baseTokenURI = newURI;
+        emit BaseURIUpdated(newURI);
     }
 
-    function approve(address to, uint256 tokenId) public override {
-        if(_tokens[tokenId].soulbound) revert TokenIsSoulbound();
-        super.approve(to, tokenId);
+    function deactivatePassport(uint256 tokenId, string calldata reason) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (tokenIdToWallet[tokenId] == address(0)) revert PassportNotFound();
+        passports[tokenId].active = false;
+        emit PassportDeactivated(tokenId, reason);
     }
-
-    function setApprovalForAll(address operator, bool approved) public override {
-        if(approved) {
-            uint256 tokenId = walletToToken[msg.sender];
-            if(tokenId != 0 && _tokens[tokenId].soulbound) revert TokenIsSoulbound();
-        }
-        super.setApprovalForAll(operator, approved);
-    }
-
-    // ─── Admin ──────────────────────────────────────────────────────
-
-    function authorizeMinter(address minter) external onlyOwner {
-        if(minter == address(0)) revert InvalidAddress();
-        authorizedMinters[minter] = true;
-        emit MinterAuthorized(minter);
-    }
-
-    function revokeMinter(address minter) external onlyOwner {
-        authorizedMinters[minter] = false;
-        emit MinterRevoked(minter);
-    }
-
-    function setBaseURI(string calldata newBaseURI) external onlyOwner {
-        if(bytes(newBaseURI).length == 0) revert InvalidBaseURI();
-        baseTokenURI = newBaseURI;
-        emit BaseURIUpdated(newBaseURI);
-    }
-
-    function setTransfersEnabled(bool enabled) external onlyOwner {
-        transfersEnabled = enabled;
-        emit TransfersToggled(enabled);
-    }
-
-    // ─── Views ──────────────────────────────────────────────────────
 
     function totalSupply() external view returns (uint256) {
         return _nextTokenId - 1;
     }
 
-    function isSoulbound(uint256 tokenId) external view returns (bool) {
-        _requireOwned(tokenId);
-        return _tokens[tokenId].soulbound;
-    }
+    // ─── supportsInterface ──────────────────────────────────────────
 
-    function getTokenByHandle(string calldata handle) external view returns (uint256) {
-        if(!handleUsed[handle]) revert InvalidHandle();
-        return handleToToken[handle];
-    }
-
-    function isHandleAvailable(string calldata handle) external view returns (bool) {
-        return !handleUsed[handle];
-    }
-
-    function getCardInfo(uint256 tokenId) external view returns (
-        address cardOwner,
-        string memory handle,
-        bool isSoulboundFlag,
-        bool transferable
-    ) {
-        cardOwner = ownerOf(tokenId);
-        handle = _tokens[tokenId].handle;
-        isSoulboundFlag = _tokens[tokenId].soulbound;
-        transferable = !isSoulboundFlag && transfersEnabled;
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721, AccessControl) returns (bool) {
+        return
+            interfaceId == type(IERC8004Identity).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 }
