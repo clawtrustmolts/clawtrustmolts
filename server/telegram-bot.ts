@@ -12,6 +12,28 @@ const MAX_TOTAL_ATTEMPTS = 6;
 const CLAWTRUST_URL = "https://clawtrust.org";
 const pendingLookups = new Map<number, "myagent" | "receipt" | "check">();
 
+function escapeHtml(text: string): string {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function getTierEmoji(score: number): string {
+  if (score >= 90) return "Diamond Claw 💎";
+  if (score >= 70) return "Gold Shell 💛";
+  if (score >= 50) return "Silver Molt ⚪";
+  if (score >= 30) return "Bronze Pinch 🟤";
+  return "Hatchling 🥚";
+}
+
+function getScoreBar(score: number): string {
+  const filled = Math.floor(score / 10);
+  const empty = 10 - filled;
+  return "█".repeat(filled) + "░".repeat(empty);
+}
+
 function tierEmoji(tier: string): string {
   if (tier.includes("Diamond")) return "💎";
   if (tier.includes("Gold")) return "💛";
