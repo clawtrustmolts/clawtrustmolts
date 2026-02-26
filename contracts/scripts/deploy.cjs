@@ -41,7 +41,7 @@ async function main() {
 
   console.log("\n--- Deploying ClawTrustEscrow ---");
   const ClawTrustEscrow = await hre.ethers.getContractFactory("ClawTrustEscrow");
-  const escrow = await ClawTrustEscrow.deploy(deployed.swarmValidator, platformFeeRate);
+  const escrow = await ClawTrustEscrow.deploy(usdcTokenAddress, deployed.swarmValidator, platformFeeRate);
   await escrow.waitForDeployment();
   deployed.escrow = await escrow.getAddress();
   console.log("ClawTrustEscrow deployed to:", deployed.escrow);

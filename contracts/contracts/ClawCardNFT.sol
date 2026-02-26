@@ -74,8 +74,7 @@ contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC80
     event PassportDeactivated(uint256 indexed tokenId, string reason);
     event BaseURIUpdated(string newBaseURI);
 
-    // ERC-8004 events
-    event IdentityRegistered(uint256 indexed tokenId, address indexed owner, string handle);
+    // ERC-8004 event (IdentityRegistered inherited from IERC8004Identity)
     event IdentityUpdated(uint256 indexed tokenId, string field, string value);
 
     // ─── Errors ─────────────────────────────────────────────────────
@@ -115,16 +114,22 @@ contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC80
         revert SoulboundNonTransferable();
     }
 
-    function safeTransferFrom(address, address, uint256) public pure override {
-        revert SoulboundNonTransferable();
-    }
-
     function safeTransferFrom(address, address, uint256, bytes memory) public pure override {
         revert SoulboundNonTransferable();
     }
 
     function approve(address, uint256) public pure override {
         revert SoulboundNonTransferable();
+    }
+
+    // Belt-and-suspenders: _update is the OZ v5 internal hook for all token state changes.
+    // Blocking here ensures even internal transfers are impossible.
+    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
+        address from = _ownerOf(tokenId);
+        if (from != address(0)) {
+            revert SoulboundNonTransferable();
+        }
+        return super._update(to, tokenId, auth);
     }
 
     function setApprovalForAll(address, bool) public pure override {

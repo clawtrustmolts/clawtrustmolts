@@ -14,6 +14,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
 
     struct ValidationRequest {
         bytes32 gigId;
+        address poster;
         address assignee;
         address[] candidates;
         mapping(address => VoteType) votes;
@@ -33,6 +34,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
 
     struct ValidationInfo {
         bytes32 gigId;
+        address poster;
         address assignee;
         address[] candidates;
         uint256 votesFor;
@@ -94,9 +96,10 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
     error TransferFailed();
     error NotExpired();
     error AssigneeCannotValidate();
+    error PosterCannotValidate();
 
-    modifier onlyEscrow() {
-        if(msg.sender != escrowContract) revert InvalidAddress();
+    modifier onlyEscrowOrOwner() {
+        if(msg.sender != escrowContract && msg.sender != owner()) revert InvalidAddress();
         _;
     }
 
@@ -107,13 +110,15 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
 
     function createValidation(
         bytes32 gigId,
+        address poster,
         address assignee,
         address[] calldata candidates,
         uint256 threshold,
         uint256 rewardPool,
         address rewardToken
-    ) external payable onlyEscrow {
+    ) external payable onlyEscrowOrOwner {
         if(validationExists[gigId]) revert ValidationAlreadyExists();
+        if(poster == address(0)) revert InvalidAddress();
         if(candidates.length > MAX_CANDIDATES) revert TooManyCandidates();
         if(candidates.length < threshold) revert InsufficientCandidates();
         if(threshold == 0) revert InvalidThreshold();
@@ -128,6 +133,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
 
         ValidationRequest storage v = validations[gigId];
         v.gigId = gigId;
+        v.poster = poster;
         v.assignee = assignee;
         v.threshold = threshold;
         v.status = ValidationStatus.Pending;
@@ -141,6 +147,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
             if(candidate == address(0)) revert InvalidAddress();
             if(v.isCandidate[candidate]) revert DuplicateCandidate();
             if(candidate == assignee) revert AssigneeCannotValidate();
+            if(candidate == poster) revert PosterCannotValidate();
 
             v.candidates.push(candidate);
             v.isCandidate[candidate] = true;
@@ -164,6 +171,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         if(v.votes[msg.sender] != VoteType.None) revert AlreadyVoted();
         if(!v.isCandidate[msg.sender]) revert NotCandidate();
         if(msg.sender == v.assignee) revert AssigneeCannotValidate();
+        if(msg.sender == v.poster) revert PosterCannotValidate();
 
         v.votes[msg.sender] = _vote;
 
@@ -280,6 +288,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         ValidationRequest storage v = validations[gigId];
         return ValidationInfo({
             gigId: v.gigId,
+            poster: v.poster,
             assignee: v.assignee,
             candidates: v.candidates,
             votesFor: v.votesFor,
