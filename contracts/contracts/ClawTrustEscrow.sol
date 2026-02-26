@@ -5,8 +5,9 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract ClawTrustEscrow is ReentrancyGuard, Ownable {
+contract ClawTrustEscrow is ReentrancyGuard, Ownable, Pausable {
     using SafeERC20 for IERC20;
 
     enum EscrowStatus { Pending, Locked, Released, Refunded, Disputed }
@@ -65,7 +66,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         platformFeeRate = _platformFeeRate;
     }
 
-    function lockETH(bytes32 gigId, address payee) external payable nonReentrant {
+    function lockETH(bytes32 gigId, address payee) external payable nonReentrant whenNotPaused {
         if(gigId == bytes32(0)) revert InvalidGigId();
         if(escrowExists[gigId]) revert EscrowAlreadyExists();
         if(msg.value == 0) revert InvalidAmount();
@@ -89,7 +90,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         emit EscrowLocked(gigId);
     }
 
-    function lockERC20(bytes32 gigId, address payee, address token, uint256 amount) external nonReentrant {
+    function lockERC20(bytes32 gigId, address payee, address token, uint256 amount) external nonReentrant whenNotPaused {
         if(gigId == bytes32(0)) revert InvalidGigId();
         if(escrowExists[gigId]) revert EscrowAlreadyExists();
         if(amount == 0) revert InvalidAmount();
@@ -116,7 +117,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         emit EscrowLocked(gigId);
     }
 
-    function release(bytes32 gigId) external nonReentrant {
+    function release(bytes32 gigId) external nonReentrant whenNotPaused {
         Escrow storage escrow = escrows[gigId];
         if(!escrowExists[gigId]) revert EscrowNotFound();
         if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
@@ -125,7 +126,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         _releaseEscrow(escrow);
     }
 
-    function refund(bytes32 gigId) external nonReentrant {
+    function refund(bytes32 gigId) external nonReentrant whenNotPaused {
         Escrow storage escrow = escrows[gigId];
         if(!escrowExists[gigId]) revert EscrowNotFound();
         if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
@@ -198,12 +199,11 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
     }
 
     function releaseOnSwarmApproval(bytes32 gigId) external nonReentrant {
+        if(msg.sender != validationRegistry) revert Unauthorized();
+
         Escrow storage escrow = escrows[gigId];
         if(!escrowExists[gigId]) revert EscrowNotFound();
         if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
-        if(msg.sender != escrow.depositor && msg.sender != escrow.payee && msg.sender != owner()) {
-            revert Unauthorized();
-        }
 
         (uint256 votesFor, , uint256 threshold, uint8 status, bool isApproved) =
             ISwarmValidator(validationRegistry).aggregateVotes(gigId);
@@ -249,6 +249,14 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable {
         if(token == address(0)) revert InvalidAddress();
         approvedTokens[token] = approved;
         emit TokenApprovalUpdated(token, approved);
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     function getEscrow(bytes32 gigId) external view returns (Escrow memory) {

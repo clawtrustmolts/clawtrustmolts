@@ -151,7 +151,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         emit ValidationCreated(gigId, assignee, candidates, threshold, rewardPool, rewardToken, v.expiresAt);
     }
 
-    function vote(bytes32 gigId, VoteType _vote) external {
+    function vote(bytes32 gigId, VoteType _vote) external nonReentrant {
         if(!validationExists[gigId]) revert ValidationNotFound();
         ValidationRequest storage v = validations[gigId];
 

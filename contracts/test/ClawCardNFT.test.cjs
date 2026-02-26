@@ -11,6 +11,9 @@ describe("ClawCardNFT", function () {
     const NFT = await ethers.getContractFactory("ClawCardNFT");
     nft = await NFT.deploy(BASE_URI);
     await nft.waitForDeployment();
+
+    await nft.authorizeMinter(user1.address);
+    await nft.authorizeMinter(user2.address);
   });
 
   describe("constructor", function () {
@@ -21,6 +24,41 @@ describe("ClawCardNFT", function () {
     it("should revert on empty base URI", async function () {
       const NFT = await ethers.getContractFactory("ClawCardNFT");
       await expect(NFT.deploy("")).to.be.revertedWithCustomError(nft, "InvalidBaseURI");
+    });
+
+    it("owner should be authorized minter by default", async function () {
+      expect(await nft.authorizedMinters(owner.address)).to.equal(true);
+    });
+  });
+
+  describe("minter authorization", function () {
+    it("owner can authorize a minter", async function () {
+      await nft.authorizeMinter(operator.address);
+      expect(await nft.authorizedMinters(operator.address)).to.equal(true);
+    });
+
+    it("owner can revoke a minter", async function () {
+      await nft.revokeMinter(user1.address);
+      expect(await nft.authorizedMinters(user1.address)).to.equal(false);
+    });
+
+    it("non-owner cannot authorize minter", async function () {
+      await expect(
+        nft.connect(user1).authorizeMinter(operator.address)
+      ).to.be.revertedWithCustomError(nft, "OwnableUnauthorizedAccount");
+    });
+
+    it("unauthorized address cannot mint", async function () {
+      await nft.revokeMinter(user1.address);
+      await expect(
+        nft.connect(user1).mint("agent-001", false)
+      ).to.be.revertedWithCustomError(nft, "NotAuthorizedMinter");
+    });
+
+    it("should revert on zero address authorization", async function () {
+      await expect(
+        nft.authorizeMinter(ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(nft, "InvalidAddress");
     });
   });
 

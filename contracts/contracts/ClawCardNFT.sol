@@ -18,6 +18,7 @@ contract ClawCardNFT is ERC721, Ownable {
     mapping(uint256 => string) public tokenAgentId;
     mapping(string => bool) public agentIdUsed;
     mapping(string => uint256) public agentIdToToken;
+    mapping(address => bool) public authorizedMinters;
 
     bool public transfersEnabled = true;
 
@@ -27,6 +28,8 @@ contract ClawCardNFT is ERC721, Ownable {
     event BaseURIUpdated(string newBaseURI);
     event AgentIdUpdated(uint256 indexed tokenId, string oldAgentId, string newAgentId);
     event TransfersToggled(bool enabled);
+    event MinterAuthorized(address indexed minter);
+    event MinterRevoked(address indexed minter);
 
     error AlreadyMinted();
     error InvalidAgentId();
@@ -37,9 +40,16 @@ contract ClawCardNFT is ERC721, Ownable {
     error MaxSupplyReached();
     error InvalidBaseURI();
     error TokenDoesNotExist();
+    error InvalidAddress();
+    error NotAuthorizedMinter();
 
     modifier onlyTokenOwner(uint256 tokenId) {
         if(ownerOf(tokenId) != msg.sender) revert NotTokenOwner();
+        _;
+    }
+
+    modifier onlyMinter() {
+        if(!authorizedMinters[msg.sender]) revert NotAuthorizedMinter();
         _;
     }
 
@@ -49,9 +59,11 @@ contract ClawCardNFT is ERC721, Ownable {
         if(bytes(_baseTokenURI).length == 0) revert InvalidBaseURI();
         baseTokenURI = _baseTokenURI;
         _nextTokenId = 1;
+        authorizedMinters[msg.sender] = true;
+        emit MinterAuthorized(msg.sender);
     }
 
-    function mint(string calldata agentId, bool makeSoulbound) external {
+    function mint(string calldata agentId, bool makeSoulbound) external onlyMinter {
         _mintCard(msg.sender, agentId, makeSoulbound);
     }
 
@@ -61,6 +73,17 @@ contract ClawCardNFT is ERC721, Ownable {
         bool makeSoulbound
     ) external onlyOwner {
         _mintCard(to, agentId, makeSoulbound);
+    }
+
+    function authorizeMinter(address minter) external onlyOwner {
+        if(minter == address(0)) revert InvalidAddress();
+        authorizedMinters[minter] = true;
+        emit MinterAuthorized(minter);
+    }
+
+    function revokeMinter(address minter) external onlyOwner {
+        authorizedMinters[minter] = false;
+        emit MinterRevoked(minter);
     }
 
     function _mintCard(

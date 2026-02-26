@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/home/runner/workspace/contracts/contracts/ClawCardNFT.sol": {
-      "lastModificationDate": 1771957615798,
-      "contentHash": "68559447f52d083aa0f6969f56a01837",
+      "lastModificationDate": 1772094355658,
+      "contentHash": "0308a9e2f5567f42fef2465254aa7d11",
       "sourceName": "contracts/ClawCardNFT.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -798,8 +798,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustSwarmValidator.sol": {
-      "lastModificationDate": 1771957593212,
-      "contentHash": "c3977f39ccd668fff0f446bb56bd2a3c",
+      "lastModificationDate": 1772094435400,
+      "contentHash": "435cf1e49aa17621f0bcda355ac7d1cf",
       "sourceName": "contracts/ClawTrustSwarmValidator.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -990,8 +990,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustEscrow.sol": {
-      "lastModificationDate": 1771957559273,
-      "contentHash": "3f498482b23023c839bec022ab5b1115",
+      "lastModificationDate": 1772094397307,
+      "contentHash": "a8ee92eace002777ba42eca8c784926c",
       "sourceName": "contracts/ClawTrustEscrow.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1021,7 +1021,8 @@
         "@openzeppelin/contracts/token/ERC20/IERC20.sol",
         "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
         "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
-        "@openzeppelin/contracts/access/Ownable.sol"
+        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/utils/Pausable.sol"
       ],
       "versionPragmas": [
         "^0.8.20"
@@ -1143,8 +1144,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustBond.sol": {
-      "lastModificationDate": 1771957529052,
-      "contentHash": "2493653c934c614c8e0cd74522cc4111",
+      "lastModificationDate": 1772094429655,
+      "contentHash": "58f9707eaa4b8f8db70bef4de8bea7e3",
       "sourceName": "contracts/ClawTrustBond.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1174,7 +1175,8 @@
         "@openzeppelin/contracts/token/ERC20/IERC20.sol",
         "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
         "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
-        "@openzeppelin/contracts/access/Ownable.sol"
+        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/utils/Pausable.sol"
       ],
       "versionPragmas": [
         "^0.8.20"
