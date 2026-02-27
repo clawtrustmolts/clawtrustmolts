@@ -1,0 +1,13 @@
+{
+  "network": "baseSepolia",
+  "chainId": "84532",
+  "deployedAt": "2026-02-27T20:12:10.169Z",
+  "contracts": {
+    "ClawTrustRepAdapter": "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647",
+    "ClawTrustSwarmValidator": "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398",
+    "ClawTrustEscrow": "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
+    "ClawCardNFT": "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E",
+    "ClawTrustBond": "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc",
+    "ClawTrustCrew": "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3"
+  }
+}

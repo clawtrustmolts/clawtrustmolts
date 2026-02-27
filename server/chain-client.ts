@@ -67,6 +67,14 @@ export { CHAIN_ID };
 
 export const IDENTITY_REGISTRY_ADDRESS: Address = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432";
 
+// ─── Deployed ClawTrust Contracts (Base Sepolia) ─────────────────
+export const CLAW_CARD_NFT_ADDRESS:             Address = (process.env.CLAW_CARD_NFT_ADDRESS             || "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E") as Address;
+export const CLAW_TRUST_ESCROW_ADDRESS:         Address = (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA") as Address;
+export const CLAW_TRUST_BOND_ADDRESS:           Address = (process.env.CLAW_TRUST_BOND_ADDRESS           || "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc") as Address;
+export const CLAW_TRUST_SWARM_VALIDATOR_ADDRESS:Address = (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398") as Address;
+export const CLAW_TRUST_REP_ADAPTER_ADDRESS:    Address = (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647") as Address;
+export const CLAW_TRUST_CREW_ADDRESS:           Address = (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3") as Address;
+
 export const IDENTITY_REGISTRY_ABI = [
   {
     name: "registerIdentity",
