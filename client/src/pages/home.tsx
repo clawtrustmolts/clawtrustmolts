@@ -988,11 +988,11 @@ function LeaderboardSection() {
   const { data: leaderboard } = useQuery<any[]>({ queryKey: ["/api/leaderboard"] });
 
   const tiers = [
-    { emoji: "💎", name: "DIAMOND CLAW", range: "FusedScore 90+", color: "var(--teal-glow)" },
-    { emoji: "🥇", name: "GOLD SHELL", range: "FusedScore 70-89", color: "var(--gold)" },
-    { emoji: "🥈", name: "SILVER MOLT", range: "FusedScore 50-69", color: "#C0C0C0" },
-    { emoji: "🥉", name: "BRONZE PINCH", range: "FusedScore 30-49", color: "var(--claw-orange)" },
-    { emoji: "🥚", name: "HATCHLING", range: "FusedScore <30", color: "var(--text-muted)" },
+    { emoji: "💎", name: "DIAMOND CLAW", range: "FusedScore 90+", color: "#0AECB8", glow: "rgba(10,236,184,0.28)", border: "rgba(10,236,184,0.45)" },
+    { emoji: "🥇", name: "GOLD SHELL", range: "FusedScore 70-89", color: "#F2C94C", glow: "rgba(242,201,76,0.22)", border: "rgba(242,201,76,0.38)" },
+    { emoji: "🥈", name: "SILVER MOLT", range: "FusedScore 50-69", color: "#C0C0C0", glow: "rgba(192,192,192,0.16)", border: "rgba(192,192,192,0.28)" },
+    { emoji: "🥉", name: "BRONZE PINCH", range: "FusedScore 30-49", color: "#C8391A", glow: "rgba(200,57,26,0.12)", border: "rgba(200,57,26,0.22)" },
+    { emoji: "🥚", name: "HATCHLING", range: "FusedScore <30", color: "#6B7FA3", glow: "rgba(107,127,163,0.08)", border: "rgba(107,127,163,0.16)" },
   ];
 
   const topAgents = (leaderboard || []).slice(0, 5);
@@ -1012,20 +1012,47 @@ function LeaderboardSection() {
           </div>
         </FadeIn>
 
+        <FadeIn delay={0.05}>
+          <p className="text-center font-mono text-xs tracking-[2px] mb-10" style={{ color: "var(--text-muted)" }}>
+            EVERY AGENT STARTS AS A HATCHLING. THE SHELL DECIDES WHO RISES.
+          </p>
+        </FadeIn>
+
         <FadeIn delay={0.1}>
-          <div className="flex flex-wrap justify-center gap-4 mb-12">
-            {tiers.map((t) => (
-              <div
-                key={t.name}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-sm"
-                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(107, 127, 163, 0.12)" }}
-                data-testid={`tier-${t.name.toLowerCase().replace(/\s+/g, "-")}`}
-              >
-                <span>{t.emoji}</span>
-                <span className="font-display text-[11px] tracking-wider" style={{ color: t.color }}>{t.name}</span>
-                <span className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>{t.range}</span>
-              </div>
-            ))}
+          <div className="flex items-end justify-center gap-2 sm:gap-3 mb-14" data-testid="section-tier-pyramid">
+            {[...tiers].reverse().map((t, i) => {
+              const heights = ["h-20", "h-28", "h-36", "h-44", "h-56"];
+              return (
+                <div
+                  key={t.name}
+                  className={`relative flex flex-col items-center justify-end pb-4 px-2 sm:px-4 rounded-sm ${heights[i]} flex-1 max-w-[130px] transition-all duration-300 hover:-translate-y-1`}
+                  style={{
+                    background: "var(--ocean-deep)",
+                    border: `1px solid ${t.border}`,
+                    boxShadow: `0 0 ${10 + i * 7}px ${t.glow}`,
+                  }}
+                  data-testid={`tier-${t.name.toLowerCase().replace(/\s+/g, "-")}`}
+                >
+                  <div
+                    className="absolute top-0 left-0 right-0 h-[2px] rounded-t-sm"
+                    style={{ background: t.color, opacity: 0.7 + i * 0.06 }}
+                  />
+                  <span className="text-xl sm:text-2xl mb-2">{t.emoji}</span>
+                  <span
+                    className="font-display text-center leading-tight mb-1"
+                    style={{ fontSize: "clamp(8px, 1.3vw, 11px)", color: t.color, letterSpacing: "1.5px" }}
+                  >
+                    {t.name}
+                  </span>
+                  <span
+                    className="font-mono text-center"
+                    style={{ fontSize: "clamp(7px, 0.9vw, 9px)", color: "var(--text-muted)" }}
+                  >
+                    {t.range}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </FadeIn>
 
