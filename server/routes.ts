@@ -33,6 +33,21 @@ import { paymentMiddleware } from "x402-express";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
 import { telegramAnnounceSlash } from "./telegram-announcements";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
+import {
+  mintPassportForAgent,
+  setMoltDomainOnChain,
+  updateReputationOnChain,
+  lockEscrowOnChain,
+  createSwarmValidationOnChain,
+  castSwarmVoteOnChain,
+  readPassportByWallet,
+  readPassportByMoltDomain,
+  readPassportById,
+  readRepScore,
+  readFusedScore,
+  queueBlockchainAction,
+  getDeployerAddress,
+} from "./blockchain";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
@@ -557,6 +572,13 @@ export async function registerRoutes(
         fusedScore: computeFusedScore(5, 0),
       });
 
+      mintPassportForAgent({
+        id: agent.id,
+        handle: data.handle,
+        walletAddress: data.walletAddress,
+        skills: data.skills,
+      }).catch(err => console.error("[Passport] Background mint error:", err.message));
+
       moltyWelcomeAgent({ id: agent.id, handle: agent.handle });
       tryPostToMoltbook(`Welcome ${agent.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
@@ -913,6 +935,17 @@ export async function registerRoutes(
 
       if (circleWalletId) {
         await storage.updateEscrow(escrow.id, { circleWalletId });
+      }
+
+      if (chain === "BASE_SEPOLIA" && gig.currency === "USDC" && gig.assigneeId) {
+        const assigneeAgent = await storage.getAgent(gig.assigneeId);
+        if (assigneeAgent) {
+          lockEscrowOnChain({
+            gigId,
+            payeeWallet: assigneeAgent.walletAddress,
+            amountUsdc: gig.budget,
+          }).catch(err => console.error("[Escrow] on-chain lock error:", err.message));
+        }
       }
 
       const txData = prepareEscrowTxData({
@@ -1415,6 +1448,18 @@ export async function registerRoutes(
         rewardPerValidator: Math.round(rewardPerValidator * 100) / 100,
       });
 
+      const posterAgent = await storage.getAgent(gig.posterId);
+      const assigneeAgent = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+      if (posterAgent) {
+        createSwarmValidationOnChain({
+          gigId,
+          posterWallet: posterAgent.walletAddress,
+          assigneeWallet: assigneeAgent?.walletAddress || posterAgent.walletAddress,
+          candidateWallets: topAgents.map(a => a.walletAddress),
+          threshold,
+        }).catch(err => console.error("[Swarm] createValidation on-chain error:", err.message));
+      }
+
       res.status(201).json({
         validation,
         selectedValidators: topAgents.map(a => ({
@@ -1469,6 +1514,9 @@ export async function registerRoutes(
 
       const rewardAmount = validation.rewardPerValidator || 0;
       await storage.castVote({ validationId, voterId, vote, rewardAmount, reasoning: reasoning || null });
+
+      castSwarmVoteOnChain({ gigId: validation.gigId, approve: vote === "approve" })
+        .catch(err => console.error("[Swarm] on-chain vote error:", err.message));
 
       const newFor = vote === "approve" ? validation.votesFor + 1 : validation.votesFor;
       const newAgainst = vote === "reject" ? validation.votesAgainst + 1 : validation.votesAgainst;
@@ -2075,6 +2123,139 @@ export async function registerRoutes(
     }
   });
 
+  function getTierName(tier: number): string {
+    return ["Hatchling", "Bronze Pinch", "Silver Molt", "Gold Shell", "Diamond Claw"][tier] || "Hatchling";
+  }
+
+  app.get("/api/passport/scan/:identifier", apiLimiter, async (req, res) => {
+    try {
+      const identifier = req.params.identifier.trim();
+      const nftAddress = process.env.CLAW_CARD_NFT_ADDRESS || "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E";
+      let passportData: any = null;
+      let tokenId: string | null = null;
+      let walletAddress: string | null = null;
+      let dbAgent: any = null;
+
+      if (identifier.endsWith(".molt")) {
+        passportData = await readPassportByMoltDomain(identifier);
+        if (passportData?.wallet) {
+          walletAddress = passportData.wallet;
+          tokenId = passportData.tokenId?.toString() || null;
+          dbAgent = await storage.getAgentByWallet(walletAddress);
+        }
+      } else if (identifier.startsWith("0x")) {
+        const result = await readPassportByWallet(identifier);
+        if (result) {
+          passportData = result.passport;
+          tokenId = result.tokenId;
+          walletAddress = identifier;
+          dbAgent = await storage.getAgentByWallet(identifier);
+        }
+      } else if (!isNaN(parseInt(identifier))) {
+        passportData = await readPassportById(identifier);
+        if (passportData?.wallet) {
+          walletAddress = passportData.wallet;
+          tokenId = identifier;
+          dbAgent = await storage.getAgentByWallet(walletAddress);
+        }
+      }
+
+      if (!passportData) {
+        const dbAgentFallback = identifier.endsWith(".molt")
+          ? await storage.getAgent("").catch(() => null)
+          : identifier.startsWith("0x")
+          ? await storage.getAgentByWallet(identifier).catch(() => null)
+          : null;
+
+        return res.json({
+          valid: false,
+          error: "No on-chain passport found for this identifier",
+          register: "https://clawtrust.org/register",
+          identifier,
+        });
+      }
+
+      const basescanUrl = tokenId
+        ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
+        : null;
+
+      const fusedScore = passportData.fusedScore !== undefined
+        ? Number(passportData.fusedScore) / 100
+        : dbAgent?.fusedScore || 0;
+
+      const riskIndex = passportData.riskIndex !== undefined
+        ? Number(passportData.riskIndex)
+        : dbAgent?.riskIndex || 0;
+
+      const tierLevel = passportData.tier !== undefined ? Number(passportData.tier) : 0;
+
+      let registeredAt: string | null = null;
+      try {
+        if (passportData.registeredAt) {
+          registeredAt = new Date(Number(passportData.registeredAt) * 1000).toISOString();
+        }
+      } catch {}
+
+      const moltDomain = passportData.moltDomain || dbAgent?.moltDomain || null;
+      const handle = passportData.handle || dbAgent?.handle || null;
+      const skills = passportData.skills || dbAgent?.skills || [];
+      const active = passportData.active !== undefined ? passportData.active : true;
+
+      res.json({
+        valid: true,
+        standard: "ERC-8004",
+        chain: "base-sepolia",
+        chainId: 84532,
+        contract: {
+          clawCardNFT: nftAddress,
+          tokenId,
+          basescanUrl,
+        },
+        identity: {
+          wallet: walletAddress,
+          moltDomain,
+          handle,
+          skills,
+          registeredAt,
+          profileUrl: moltDomain
+            ? `clawtrust.org/profile/${moltDomain}`
+            : dbAgent ? `clawtrust.org/agents/${dbAgent.id}` : null,
+          active,
+        },
+        reputation: {
+          fusedScore,
+          tier: getTierName(tierLevel),
+          tierLevel,
+          riskIndex,
+          riskLevel: getRiskLevel(riskIndex),
+          lastUpdated: passportData.lastUpdated
+            ? new Date(Number(passportData.lastUpdated) * 1000).toISOString()
+            : null,
+        },
+        trust: {
+          verdict: active && riskIndex < 60 ? "TRUSTED" : "CAUTION",
+          hireRecommendation: fusedScore >= 50 && riskIndex < 40,
+          bondStatus: dbAgent?.bondStatus || "UNBONDED",
+        },
+        work: {
+          gigsCompleted: dbAgent?.gigsCompleted || 0,
+          totalEarned: dbAgent?.totalEarned || "0",
+          currency: "USDC",
+        },
+        onChain: {
+          verified: true,
+          contractAddress: nftAddress,
+          tokenId,
+          basescanUrl,
+          standard: "ERC-8004",
+        },
+      });
+    } catch (err: any) {
+      console.error("[Passport Scan] Error:", err.message);
+      res.status(500).json({ message: "Failed to scan passport", error: err.message });
+    }
+  });
+
   const safeWallet = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid Ethereum address");
 
   app.get("/api/passports/:wallet/metadata", apiLimiter, async (req, res) => {
@@ -2212,6 +2393,17 @@ export async function registerRoutes(
       await storage.updateAgent(agent.id, { moltDomain: `${name}.molt` });
       const updatedAgent = await storage.getAgent(agent.id);
 
+      if (agent.erc8004TokenId) {
+        setMoltDomainOnChain(agent.erc8004TokenId, `${name}.molt`)
+          .catch(err => console.error("[Passport] setMoltDomain error:", err.message));
+      } else {
+        queueBlockchainAction({
+          type: "SET_MOLT_DOMAIN",
+          agentId: agent.id,
+          payload: { moltDomain: `${name}.molt` },
+        }).catch(() => {});
+      }
+
       moltyAnnounceMoltClaim(agent, name, foundingMoltNumber).catch(err =>
         console.error("[molt] Announcement failed:", err)
       );
@@ -2267,6 +2459,17 @@ export async function registerRoutes(
 
       await storage.updateAgent(agent.id, { moltDomain: `${name}.molt` });
       const updatedAgent = await storage.getAgent(agent.id);
+
+      if (agent.erc8004TokenId) {
+        setMoltDomainOnChain(agent.erc8004TokenId, `${name}.molt`)
+          .catch(err => console.error("[Passport] setMoltDomain (autonomous) error:", err.message));
+      } else {
+        queueBlockchainAction({
+          type: "SET_MOLT_DOMAIN",
+          agentId: agent.id,
+          payload: { moltDomain: `${name}.molt` },
+        }).catch(() => {});
+      }
 
       moltyAnnounceMoltClaim(agent, name, foundingMoltNumber).catch(err =>
         console.error("[molt] Announcement failed:", err)
@@ -2418,6 +2621,13 @@ export async function registerRoutes(
         fusedScore: computeFusedScore(5, 0),
         lastHeartbeat: new Date(),
       });
+
+      mintPassportForAgent({
+        id: agent.id,
+        handle: data.handle,
+        walletAddress,
+        skills: skillNames,
+      }).catch(err => console.error("[Passport] Autonomous mint error:", err.message));
 
       await logSuspiciousActivity(req, "autonomous_registration", `Agent "${data.handle}" registered autonomously`, "info");
 

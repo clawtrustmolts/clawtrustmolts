@@ -3,7 +3,7 @@
  * Loaded once at startup; all on-chain calls go through here.
  */
 
-import { createPublicClient, createWalletClient, http, getContract, parseUnits, type Address } from "viem";
+import { createPublicClient, createWalletClient, http, getContract, parseUnits, type Address, keccak256, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { readFileSync } from "fs";
@@ -57,26 +57,41 @@ export const publicClient = createPublicClient({
   transport: http(RPC_URL, { timeout: 20_000, retryCount: 3 }),
 });
 
+function normalizePrivateKey(raw: string): `0x${string}` {
+  const clean = raw.trim();
+  return (clean.startsWith("0x") ? clean : `0x${clean}`) as `0x${string}`;
+}
+
 function buildWalletClient() {
-  const pk = process.env.DEPLOYER_PRIVATE_KEY;
-  if (!pk) {
+  const raw = process.env.DEPLOYER_PRIVATE_KEY;
+  if (!raw || raw.trim() === "") {
     console.warn("[blockchain] DEPLOYER_PRIVATE_KEY not set — write calls disabled");
     return null;
   }
-  const account = privateKeyToAccount(pk as `0x${string}`);
-  return createWalletClient({
-    account,
-    chain: baseSepolia,
-    transport: http(RPC_URL, { timeout: 20_000, retryCount: 3 }),
-  });
+  try {
+    const pk = normalizePrivateKey(raw);
+    const account = privateKeyToAccount(pk);
+    return createWalletClient({
+      account,
+      chain: baseSepolia,
+      transport: http(RPC_URL, { timeout: 20_000, retryCount: 3 }),
+    });
+  } catch (err: any) {
+    console.error("[blockchain] Failed to build wallet client:", err.message, "— write calls disabled");
+    return null;
+  }
 }
 
 export const walletClient = buildWalletClient();
 
 export function getDeployerAddress(): Address | null {
-  const pk = process.env.DEPLOYER_PRIVATE_KEY;
-  if (!pk) return null;
-  return privateKeyToAccount(pk as `0x${string}`).address;
+  const raw = process.env.DEPLOYER_PRIVATE_KEY;
+  if (!raw || raw.trim() === "") return null;
+  try {
+    return privateKeyToAccount(normalizePrivateKey(raw)).address;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Contract instances ───────────────────────────────────────────────
@@ -130,9 +145,7 @@ export async function mintPassportForAgent(agent: {
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
     // Parse PassportMinted(address indexed wallet, uint256 indexed tokenId, uint256 timestamp)
-    const mintTopic = "0x" + Buffer.from(
-      require("crypto").createHash("keccak256").update("PassportMinted(address,uint256,uint256)").digest()
-    ).toString("hex");
+    const mintTopic = keccak256(toHex("PassportMinted(address,uint256,uint256)"));
 
     let tokenId: string | null = null;
     for (const log of receipt.logs) {
@@ -388,6 +401,9 @@ export async function processBlockchainQueue(): Promise<void> {
     for (const action of pending) {
       try {
         let success = false;
+        const payload = typeof action.payload === "string"
+          ? JSON.parse(action.payload)
+          : (action.payload || {});
 
         if (action.type === "MINT_PASSPORT" && action.agentId) {
           const agent = await storage.getAgent(action.agentId);
@@ -401,19 +417,22 @@ export async function processBlockchainQueue(): Promise<void> {
             success = !!result.tokenId;
           }
         } else if (action.type === "SET_MOLT_DOMAIN") {
-          const { tokenId, moltDomain } = action.payload as any;
-          if (tokenId && moltDomain) {
-            const tx = await setMoltDomainOnChain(tokenId, moltDomain);
+          const { tokenId: rawTokenId, moltDomain } = payload as any;
+          const resolvedTokenId = rawTokenId || (action.agentId
+            ? (await storage.getAgent(action.agentId))?.erc8004TokenId
+            : null);
+          if (resolvedTokenId && moltDomain) {
+            const tx = await setMoltDomainOnChain(resolvedTokenId, moltDomain);
             success = !!tx;
           }
         } else if (action.type === "UPDATE_REPUTATION") {
-          const tx = await updateReputationOnChain(action.payload as any);
+          const tx = await updateReputationOnChain(payload as any);
           success = !!tx;
         } else if (action.type === "CREATE_VALIDATION") {
-          const tx = await createSwarmValidationOnChain(action.payload as any);
+          const tx = await createSwarmValidationOnChain(payload as any);
           success = !!tx;
         } else if (action.type === "LOCK_ESCROW") {
-          const tx = await lockEscrowOnChain(action.payload as any);
+          const tx = await lockEscrowOnChain(payload as any);
           success = !!tx;
         }
 

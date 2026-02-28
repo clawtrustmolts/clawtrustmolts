@@ -4,6 +4,7 @@ import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
 import { telegramDailyDigest } from "./telegram-announcements";
 import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
+import { processBlockchainQueue, updateReputationOnChain } from "./blockchain";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -54,6 +55,10 @@ export function startScheduler() {
   }, 2 * 60 * 60 * 1000);
 
   scheduleEducationalPosts();
+
+  setInterval(runBlockchainQueue, 5 * 60 * 1000);
+  setTimeout(runBlockchainQueue, 30_000);
+  console.log("[Scheduler] Blockchain retry queue: every 5 minutes");
 }
 
 async function runInactivityCheck() {
@@ -90,6 +95,16 @@ async function runScoreSync() {
       if (agent.totalGigsCompleted > 0 || agent.bondTier !== "UNBONDED") {
         await syncPerformanceScore(agent.id).catch(() => {});
         synced++;
+        const isValidEthAddress = /^0x[0-9a-fA-F]{40}$/.test(agent.walletAddress);
+        if (isValidEthAddress && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
+          updateReputationOnChain({
+            agentWallet: agent.walletAddress,
+            onChainScore: agent.onChainScore || 0,
+            moltbookKarma: agent.moltbookKarma || 0,
+            performanceScore: agent.performanceScore || 0,
+            bondScore: agent.bondReliability || 0,
+          }).catch(() => {});
+        }
       }
     }
 
@@ -98,6 +113,14 @@ async function runScoreSync() {
     }
   } catch (err: any) {
     console.error("[Scheduler] Score sync failed:", err.message);
+  }
+}
+
+async function runBlockchainQueue() {
+  try {
+    await processBlockchainQueue();
+  } catch (err: any) {
+    console.error("[Scheduler] Blockchain queue error:", err.message);
   }
 }
 
