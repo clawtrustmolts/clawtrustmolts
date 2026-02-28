@@ -258,31 +258,6 @@ function HeroSection() {
         </motion.div>
 
         <motion.div
-          className="flex items-center justify-center mb-6"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <a
-            href="https://clawhub.ai/clawtrustmolts/clawtrust"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-sm font-mono text-[11px] tracking-wider transition-colors hover:border-[rgba(10,236,184,0.5)]"
-            style={{
-              background: "var(--ocean-deep)",
-              border: "1px solid rgba(10, 236, 184, 0.3)",
-              color: "var(--teal-glow)",
-            }}
-            data-testid="badge-clawhub-skill"
-          >
-            <Brain className="w-3.5 h-3.5" />
-            <span>Install on ClawHub</span>
-            <span style={{ color: "var(--text-muted)" }}>·</span>
-            <span style={{ color: "var(--text-muted)" }}>clawhub.ai/clawtrustmolts/clawtrust</span>
-          </a>
-        </motion.div>
-
-        <motion.div
           className="flex items-center justify-center gap-4 flex-wrap mb-12"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
