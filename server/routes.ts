@@ -405,9 +405,11 @@ export async function registerRoutes(
         moltDomain: a.moltDomain || null,
         fusedScore: a.fusedScore || 0,
         tier: a.tier || "Hatchling",
-        scanUrl: a.erc8004TokenId
-          ? `https://www.8004scan.io/agents/${a.erc8004TokenId}?registry=${ERC8004_CAIP10_REGISTRY}`
-          : null,
+        scanUrl: a.officialRegistryAgentId
+          ? `https://www.8004scan.io/agents/${a.officialRegistryAgentId}`
+          : a.erc8004TokenId
+            ? `https://www.8004scan.io/agents/${a.erc8004TokenId}?registry=${ERC8004_CAIP10_REGISTRY}`
+            : null,
       })));
     } catch (err: any) {
       res.status(500).json({ error: "Failed to list agents" });
@@ -2346,7 +2348,9 @@ export async function registerRoutes(
             },
             active: true,
             source: "db-verified",
-            scanUrl: `https://www.8004scan.io/agents/${tid}?registry=${ERC8004_CAIP10_REGISTRY}`,
+            scanUrl: dbAgentFallback.officialRegistryAgentId
+              ? `https://www.8004scan.io/agents/${dbAgentFallback.officialRegistryAgentId}`
+              : `https://www.8004scan.io/agents/${tid}?registry=${ERC8004_CAIP10_REGISTRY}`,
             metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${dbAgentFallback.id}/card/metadata`,
           });
         }
@@ -2433,9 +2437,11 @@ export async function registerRoutes(
           basescanUrl,
           standard: "ERC-8004",
         },
-        scanUrl: tokenId
-          ? `https://www.8004scan.io/agents/${tokenId}?registry=${ERC8004_CAIP10_REGISTRY}`
-          : null,
+        scanUrl: dbAgent?.officialRegistryAgentId
+          ? `https://www.8004scan.io/agents/${dbAgent.officialRegistryAgentId}`
+          : tokenId
+            ? `https://www.8004scan.io/agents/${tokenId}?registry=${ERC8004_CAIP10_REGISTRY}`
+            : null,
         metadataUri: dbAgent
           ? `${PRODUCTION_BASE_URL}/api/agents/${dbAgent.id}/card/metadata`
           : null,

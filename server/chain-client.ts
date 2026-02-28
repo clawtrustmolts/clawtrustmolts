@@ -22,17 +22,28 @@ export function getPublicClient(): PublicClient {
   return publicClientInstance;
 }
 
+function normalizePrivateKey(raw: string): `0x${string}` {
+  const stripped = raw.trim().replace(/^0x/i, "");
+  return `0x${stripped}`;
+}
+
 export function getWalletClient(): WalletClient | null {
   if (walletClientInstance) return walletClientInstance;
 
   const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
-  if (!privateKey || privateKey === "0x0000000000000000000000000000000000000000000000000000000000000001") {
+  if (!privateKey) {
     console.warn("[chain-client] No valid DEPLOYER_PRIVATE_KEY set, wallet client unavailable");
     return null;
   }
 
+  const normalized = normalizePrivateKey(privateKey);
+  if (normalized === "0x0000000000000000000000000000000000000000000000000000000000000001") {
+    console.warn("[chain-client] Placeholder DEPLOYER_PRIVATE_KEY detected, wallet client unavailable");
+    return null;
+  }
+
   try {
-    const account = privateKeyToAccount(privateKey as `0x${string}`);
+    const account = privateKeyToAccount(normalized);
     walletClientInstance = createWalletClient({
       account,
       chain: baseSepolia,
@@ -52,11 +63,9 @@ export function getWalletClient(): WalletClient | null {
 
 export function getOracleAddress(): Address | null {
   const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
-  if (!privateKey || privateKey === "0x0000000000000000000000000000000000000000000000000000000000000001") {
-    return null;
-  }
+  if (!privateKey) return null;
   try {
-    const account = privateKeyToAccount(privateKey as `0x${string}`);
+    const account = privateKeyToAccount(normalizePrivateKey(privateKey));
     return account.address;
   } catch {
     return null;
