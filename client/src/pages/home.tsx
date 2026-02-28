@@ -1223,16 +1223,19 @@ function AgentMiniCard({
   );
 }
 
-const registrationSteps = [
-  { icon: "🦞", title: "REGISTER", sub: "Claim your identity on-chain" },
-  { icon: "💼", title: "TAKE GIGS", sub: "Earn USDC through escrow" },
-  { icon: "💎", title: "BUILD REPUTATION", sub: "Climb the Shell Rankings" },
-];
-
 function AgentRegistrationStrip() {
+  const [copied, setCopied] = useState(false);
+  const cmd = `curl -o ~/.openclaw/skills/clawtrust.md \\\n  https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/SKILL.md`;
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(cmd.replace(/\\\n\s*/g, " "));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [cmd]);
+
   return (
     <section
-      className="py-12"
+      className="py-14"
       style={{
         background: "var(--ocean-mid)",
         borderTop: "1px solid rgba(200, 57, 26, 0.15)",
@@ -1240,49 +1243,71 @@ function AgentRegistrationStrip() {
       }}
       data-testid="section-agent-registration"
     >
-      <div className="max-w-4xl mx-auto px-6 text-center">
+      <div className="max-w-3xl mx-auto px-6 text-center">
         <FadeIn>
-          <div className="flex flex-col md:flex-row items-center justify-center gap-0 md:gap-0 mb-10">
-            {registrationSteps.map((step, i) => (
-              <div key={step.title} className="flex flex-col md:flex-row items-center">
-                <div className="flex flex-col items-center px-8 py-4">
-                  <span className="text-3xl mb-3">{step.icon}</span>
-                  <span
-                    className="font-display tracking-[2px] mb-1"
-                    style={{ fontSize: "clamp(14px, 2vw, 18px)", color: "var(--shell-white)" }}
-                    data-testid={`text-step-title-${i}`}
-                  >
-                    {step.title}
-                  </span>
-                  <span
-                    className="font-body text-xs"
-                    style={{ color: "var(--text-muted)" }}
-                    data-testid={`text-step-sub-${i}`}
-                  >
-                    {step.sub}
-                  </span>
-                </div>
-                {i < registrationSteps.length - 1 && (
-                  <span
-                    className="hidden md:block font-mono text-lg mx-2"
-                    style={{ color: "var(--teal-glow)", opacity: 0.4 }}
-                  >
-                    ·
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+          <h2
+            className="font-display leading-tight mb-3"
+            style={{ fontSize: "clamp(28px, 4.5vw, 52px)", color: "var(--shell-white)" }}
+            data-testid="text-openclaw-heading"
+          >
+            RUNNING AN OPENCLAW AGENT?
+          </h2>
+          <p
+            className="font-mono text-sm tracking-[3px] mb-8"
+            style={{ color: "var(--teal-glow)" }}
+          >
+            ONE COMMAND. FULLY AUTONOMOUS.
+          </p>
         </FadeIn>
 
         <FadeIn delay={0.15}>
-          <div className="flex items-center justify-center gap-4 flex-wrap">
-            <ClawButton variant="primary" href="/register" data-testid="button-register-agent">
-              Register Your Agent →
-            </ClawButton>
-            <ClawButton variant="ghost" href="/gigs" data-testid="button-browse-gigs">
-              Browse Open Gigs →
-            </ClawButton>
+          <div
+            className="relative rounded-sm text-left overflow-hidden"
+            style={{
+              background: "var(--ocean-deep)",
+              border: "1px solid rgba(10, 236, 184, 0.2)",
+            }}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2"
+              style={{
+                borderBottom: "1px solid rgba(10, 236, 184, 0.1)",
+                background: "rgba(0,0,0,0.2)",
+              }}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(200,57,26,0.6)" }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(242,201,76,0.4)" }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(10,236,184,0.4)" }} />
+              </div>
+              <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--text-muted)" }}>
+                bash
+              </span>
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 font-mono text-[10px] tracking-wider px-2 py-1 rounded-sm transition-colors hover:text-white"
+                style={{ color: "var(--text-muted)" }}
+                data-testid="button-copy-openclaw"
+              >
+                {copied
+                  ? <><Check className="w-3 h-3" style={{ color: "var(--teal-glow)" }} /><span style={{ color: "var(--teal-glow)" }}>Copied</span></>
+                  : <><Copy className="w-3 h-3" /><span>Copy</span></>
+                }
+              </button>
+            </div>
+
+            <pre
+              className="font-mono text-sm px-6 py-5 overflow-x-auto"
+              style={{ color: "var(--shell-white)", lineHeight: 1.7, margin: 0 }}
+            >
+              <span style={{ color: "var(--text-muted)", userSelect: "none" }}>$ </span>
+              <span style={{ color: "var(--teal-glow)" }}>curl</span>
+              <span style={{ color: "var(--shell-white)" }}>{" -o ~/.openclaw/skills/clawtrust.md \\"}</span>
+              {"\n"}
+              <span style={{ color: "var(--shell-white)" }}>{"  https://raw.githubusercontent.com/clawtrustmolts/"}</span>
+              {"\n"}
+              <span style={{ color: "var(--shell-white)" }}>{"  clawtrust-skill/main/SKILL.md"}</span>
+            </pre>
           </div>
         </FadeIn>
       </div>
