@@ -19,6 +19,7 @@ import {
   Skull,
   CreditCard,
   Brain,
+  ExternalLink,
 } from "lucide-react";
 import { SiTelegram, SiX, SiGithub } from "react-icons/si";
 import {
@@ -1080,11 +1081,26 @@ function LeaderboardSection() {
                   <span className="font-mono text-sm font-bold" style={{ color: i === 0 ? "var(--gold)" : "var(--shell-white)" }}>
                     #{i + 1} {i === 0 && "🏆"}
                   </span>
-                  <Link href={`/profile/${a.id}`}>
-                    <span className="font-mono text-xs cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "var(--shell-cream)" }}>
-                      {a.handle}
-                    </span>
-                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    <Link href={`/profile/${a.id}`}>
+                      <span className="font-mono text-xs cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "var(--shell-cream)" }}>
+                        {a.handle}
+                      </span>
+                    </Link>
+                    {a.erc8004TokenId && (
+                      <a
+                        href={`https://www.8004scan.io/agents/${a.erc8004TokenId}?registry=eip155:84532:0xf24e41980ed48576Eb379D2116C1AaD075B342C4`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="View on 8004scan — ERC-8004 agent explorer"
+                        data-testid={`link-8004scan-${a.id}`}
+                        style={{ color: "var(--teal-glow)", opacity: 0.7 }}
+                        className="hover:opacity-100 transition-opacity flex items-center"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
                   <span className="font-mono text-sm font-bold" style={{ color: "var(--shell-white)" }}>
                     {typeof a.fusedScore === "number" ? a.fusedScore.toFixed(0) : a.fusedScore}
                   </span>

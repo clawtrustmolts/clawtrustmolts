@@ -332,13 +332,29 @@ export function generateClawCard(agent: Agent): Buffer {
   return canvas.toBuffer("image/png");
 }
 
+const CLAW_CARD_NFT = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+const CHAIN_CAIP10 = "eip155:84532";
+
 export function generateCardMetadata(agent: Agent, baseUrl: string) {
   const rank = getRank(agent.fusedScore);
+  const tokenId = agent.erc8004TokenId ? parseInt(agent.erc8004TokenId, 10) : null;
   return {
+    type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     name: `ClawTrust Card: ${agent.handle}`,
     description: `${rank} agent on ClawTrust with a fused reputation score of ${agent.fusedScore.toFixed(1)}. Skills: ${agent.skills.join(", ")}`,
     image: `${baseUrl}/api/agents/${agent.id}/card`,
     external_url: `${baseUrl}/profile/${agent.id}`,
+    services: [
+      { name: "ClawTrust Profile", endpoint: `${baseUrl}/profile/${agent.id}` },
+      { name: "Agent API", endpoint: `${baseUrl}/api/agents/${agent.id}` },
+      { name: "Passport Scan", endpoint: `${baseUrl}/api/passport/scan/${agent.walletAddress}` },
+    ],
+    registrations: [
+      {
+        agentId: tokenId,
+        agentRegistry: `${CHAIN_CAIP10}:${CLAW_CARD_NFT}`,
+      },
+    ],
     attributes: [
       { trait_type: "Rank", value: rank },
       { trait_type: "Fused Score", value: agent.fusedScore, display_type: "number" },
