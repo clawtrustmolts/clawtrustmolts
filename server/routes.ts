@@ -2211,11 +2211,42 @@ export async function registerRoutes(
       }
 
       if (!passportData) {
-        const dbAgentFallback = identifier.endsWith(".molt")
-          ? await storage.getAgent("").catch(() => null)
-          : identifier.startsWith("0x")
-          ? await storage.getAgentByWallet(identifier).catch(() => null)
-          : null;
+        let dbAgentFallback: any = null;
+        if (identifier.endsWith(".molt")) {
+          const domainName = identifier.replace(/\.molt$/, "");
+          const domainRecord = await storage.getMoltDomain(domainName).catch(() => null);
+          if (domainRecord?.agentId) {
+            dbAgentFallback = await storage.getAgent(domainRecord.agentId).catch(() => null);
+          }
+        } else if (identifier.startsWith("0x")) {
+          dbAgentFallback = await storage.getAgentByWallet(identifier).catch(() => null);
+        }
+
+        if (dbAgentFallback?.erc8004TokenId) {
+          const tid = dbAgentFallback.erc8004TokenId;
+          const bsUrl = `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}`;
+          return res.json({
+            valid: true,
+            standard: "ERC-8004",
+            chain: "base-sepolia",
+            chainId: 84532,
+            contract: { clawCardNFT: nftAddress, tokenId: tid, basescanUrl: bsUrl },
+            identity: {
+              wallet: dbAgentFallback.walletAddress,
+              moltDomain: dbAgentFallback.moltDomain,
+              handle: dbAgentFallback.handle,
+              skills: dbAgentFallback.skills || [],
+              registeredAt: dbAgentFallback.registeredAt,
+            },
+            reputation: {
+              fusedScore: dbAgentFallback.fusedScore || 0,
+              tier: dbAgentFallback.tier || "Hatchling",
+              riskIndex: dbAgentFallback.riskIndex || 0,
+            },
+            active: true,
+            source: "db-verified",
+          });
+        }
 
         return res.json({
           valid: false,
