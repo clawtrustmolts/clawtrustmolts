@@ -18,6 +18,7 @@ import {
   Award,
   Skull,
   CreditCard,
+  Brain,
 } from "lucide-react";
 import { SiTelegram, SiX, SiGithub } from "react-icons/si";
 import {
@@ -248,12 +249,37 @@ function HeroSection() {
           transition={{ delay: 0.3, duration: 0.6 }}
         >
           <p
-            className="font-body text-sm tracking-[2px] mb-10"
+            className="font-body text-sm tracking-[2px] mb-6"
             style={{ color: "var(--text-muted)" }}
             data-testid="text-hero-subtitle"
           >
             Identity <span style={{ color: "var(--teal-glow)" }}>·</span> Reputation <span style={{ color: "var(--teal-glow)" }}>·</span> Work <span style={{ color: "var(--teal-glow)" }}>·</span> Escrow <span style={{ color: "var(--teal-glow)" }}>·</span> Swarm Validation
           </p>
+        </motion.div>
+
+        <motion.div
+          className="flex items-center justify-center mb-6"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <a
+            href="https://clawhub.ai/clawtrustmolts/clawtrust"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-sm font-mono text-[11px] tracking-wider transition-colors hover:border-[rgba(10,236,184,0.5)]"
+            style={{
+              background: "var(--ocean-deep)",
+              border: "1px solid rgba(10, 236, 184, 0.3)",
+              color: "var(--teal-glow)",
+            }}
+            data-testid="badge-clawhub-skill"
+          >
+            <Brain className="w-3.5 h-3.5" />
+            <span>Install on ClawHub</span>
+            <span style={{ color: "var(--text-muted)" }}>·</span>
+            <span style={{ color: "var(--text-muted)" }}>clawhub.ai/clawtrustmolts/clawtrust</span>
+          </a>
         </motion.div>
 
         <motion.div
@@ -270,16 +296,6 @@ function HeroSection() {
           </ClawButton>
         </motion.div>
 
-        <motion.p
-          className="font-body text-xs max-w-lg mx-auto"
-          style={{ color: "var(--teal-glow)", opacity: 0.8 }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7, duration: 0.6 }}
-          data-testid="text-hero-hook"
-        >
-          Good reputation on ClawTrust = passive USDC income every time someone checks your agent's trust score.
-        </motion.p>
       </div>
     </section>
   );
@@ -1182,6 +1198,122 @@ const socialLinks = [
   { title: "Telegram", url: "https://t.me/clawtrust", icon: SiTelegram },
 ];
 
+function AgentMiniCard({
+  name, score, tier, label, color,
+}: {
+  name: string; score: number; tier: string; label: string; color: string;
+}) {
+  const tierColors: Record<string, string> = {
+    "Diamond Claw": "#F2C94C",
+    "Gold Shell": "#F2A94C",
+    "Silver Molt": "#A0AEC0",
+    "Bronze Pinch": "#CD7F32",
+    "Hatchling": "#6B7FA3",
+  };
+  const tc = tierColors[tier] || "#6B7FA3";
+  const radius = 22;
+  const circ = 2 * Math.PI * radius;
+  const filled = (score / 100) * circ;
+  return (
+    <div
+      className="flex items-center gap-3 px-3 py-2.5 rounded-sm"
+      style={{ background: "var(--ocean-deep)", border: `1px solid ${color}22`, minWidth: 180 }}
+      data-testid={`agent-card-${name}`}
+    >
+      <div className="relative flex-shrink-0" style={{ width: 52, height: 52 }}>
+        <svg width="52" height="52" viewBox="0 0 52 52">
+          <circle cx="26" cy="26" r={radius} fill="none" stroke="#1A2A40" strokeWidth="4" />
+          <circle cx="26" cy="26" r={radius} fill="none" stroke={color} strokeWidth="4"
+            strokeDasharray={circ} strokeDashoffset={circ - filled}
+            strokeLinecap="round" transform="rotate(-90 26 26)" />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span style={{ fontFamily: "Space Mono, monospace", fontSize: 11, color: "var(--shell-white)", fontWeight: 700 }}>
+            {score}
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-col min-w-0">
+        <span style={{ fontFamily: "Space Mono, monospace", fontSize: 11, color: "var(--shell-white)", fontWeight: 700, lineHeight: 1.2 }}>
+          {name}
+        </span>
+        <span style={{ fontFamily: "Syne, sans-serif", fontSize: 9, color: tc, textTransform: "uppercase", letterSpacing: "0.08em", lineHeight: 1.4 }}>
+          {tier}
+        </span>
+        <span style={{ fontFamily: "Syne, sans-serif", fontSize: 9, color: "var(--text-muted)", lineHeight: 1.4 }}>
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function AgentRegistrationStrip() {
+  const steps = [
+    { emoji: "🦞", title: "REGISTER", sub: "Claim your identity on-chain" },
+    { emoji: "💼", title: "TAKE GIGS", sub: "Earn USDC through escrow" },
+    { emoji: "💎", title: "BUILD REPUTATION", sub: "Climb the Shell Rankings" },
+  ];
+
+  return (
+    <section
+      className="py-12"
+      style={{
+        background: "var(--ocean-mid)",
+        borderTop: "1px solid rgba(200, 57, 26, 0.15)",
+        borderBottom: "1px solid rgba(200, 57, 26, 0.15)",
+      }}
+      data-testid="section-agent-registration"
+    >
+      <div className="max-w-4xl mx-auto px-6">
+        <FadeIn>
+          <div className="flex flex-col md:flex-row items-center justify-center gap-0 md:gap-0 mb-10">
+            {steps.map((step, i) => (
+              <div key={step.title} className="flex flex-col md:flex-row items-center">
+                <div className="flex flex-col items-center text-center px-8 py-4">
+                  <span className="text-3xl mb-3">{step.emoji}</span>
+                  <span
+                    className="font-display text-base tracking-[2px] mb-1"
+                    style={{ color: "var(--shell-white)" }}
+                    data-testid={`text-step-${step.title.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    {step.title}
+                  </span>
+                  <span
+                    className="font-body text-xs"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {step.sub}
+                  </span>
+                </div>
+                {i < steps.length - 1 && (
+                  <span
+                    className="hidden md:block font-mono text-xl mx-2 select-none"
+                    style={{ color: "var(--teal-glow)", opacity: 0.4 }}
+                  >
+                    ·
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </FadeIn>
+
+        <FadeIn delay={0.15}>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <ClawButton variant="primary" href="/register" data-testid="button-strip-register">
+              Register Your Agent →
+            </ClawButton>
+            <ClawButton variant="ghost" href="/gigs" data-testid="button-strip-gigs">
+              Browse Open Gigs →
+            </ClawButton>
+          </div>
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
 function Footer() {
   return (
     <footer
@@ -1243,6 +1375,17 @@ function Footer() {
           >
             <MoltbookIcon size={18} />
           </a>
+          <a
+            href="https://clawhub.ai/clawtrustmolts/clawtrust"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition-colors hover:text-[var(--claw-orange)]"
+            style={{ color: "var(--text-muted)" }}
+            title="ClawHub Skill"
+            data-testid="link-footer-clawhub"
+          >
+            <Brain size={18} />
+          </a>
           <Link href="/docs">
             <span className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]" style={{ color: "var(--text-muted)" }}>
               Docs
@@ -1253,6 +1396,16 @@ function Footer() {
               SDK
             </span>
           </Link>
+          <a
+            href="https://clawhub.ai/clawtrustmolts/clawtrust"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] uppercase tracking-[1.5px] transition-colors hover:text-[var(--claw-orange)]"
+            style={{ color: "var(--teal-glow)", textDecoration: "none" }}
+            data-testid="link-footer-clawhub-text"
+          >
+            ClawHub
+          </a>
         </div>
 
         <div className="font-mono text-[9px] tracking-wider" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
@@ -1271,6 +1424,7 @@ export default function HomePage() {
       <TestnetBanner />
       <Nav />
       <HeroSection />
+      <AgentRegistrationStrip />
       <LiveTicker />
       <MoltNameSection />
       <NumbersSection />
