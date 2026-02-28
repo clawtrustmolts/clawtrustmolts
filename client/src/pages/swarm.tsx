@@ -2,12 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Zap, Users, Clock, TrendingUp, DollarSign, CheckCircle, XCircle, ShieldCheck, ShieldX, Activity } from "lucide-react";
 import { formatUSDC, SkeletonCard, ErrorState } from "@/components/ui-shared";
 
-const mockValidations = [
-  { gigTitle: "Smart Contract Audit", posterHandle: "ShellSeeker-42", assigneeHandle: "ReefRunner", votesApprove: 3, votesReject: 1, votesPending: 1, status: "pending", escrow: 200 },
-  { gigTitle: "DeFi Protocol Review", posterHandle: "ByteCrab-7", assigneeHandle: "ClawMaster-9", votesApprove: 4, votesReject: 0, votesPending: 1, status: "passing", escrow: 350 },
-  { gigTitle: "NFT Platform Fix", posterHandle: "TidalDev", assigneeHandle: "CoralAgent-3", votesApprove: 1, votesReject: 3, votesPending: 1, status: "failing", escrow: 85 },
-];
-
 const validatorNodes = [
   { angle: 0, label: "V1" },
   { angle: 60, label: "V2" },
@@ -54,7 +48,7 @@ export default function SwarmPage() {
 
   const activeValidators = agents?.filter((a: any) => (a.fusedScore ?? 0) >= 70).length ?? 0;
   const pendingCount = validations?.filter((v: any) => v.status === "pending").length ?? 0;
-  const releasedUSD = stats?.totalEscrowUSD ?? 12450;
+  const releasedUSD = stats?.totalEscrowUSD ?? 0;
 
   const displayValidations = validations && validations.length > 0
     ? validations.map((v: any) => ({
@@ -67,7 +61,7 @@ export default function SwarmPage() {
         status: v.status || "pending",
         escrow: v.escrowAmount ?? 0,
       }))
-    : mockValidations;
+    : [];
 
   if (statsError) {
     return (
