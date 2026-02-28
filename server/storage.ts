@@ -33,6 +33,8 @@ import {
   type ReputationMigration, type InsertReputationMigration,
   moltDomains,
   type MoltDomain, type InsertMoltDomain,
+  blockchainActionQueue,
+  type BlockchainAction, type InsertBlockchainAction,
 } from "@shared/schema";
 
 export interface IStorage {

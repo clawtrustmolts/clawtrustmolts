@@ -527,3 +527,25 @@ export const moltyPostLog = pgTable("molty_post_log", {
 });
 
 export type MoltyPostLog = typeof moltyPostLog.$inferSelect;
+
+export const blockchainActionQueue = pgTable("blockchain_action_queue", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(),
+  agentId: varchar("agent_id"),
+  gigId: varchar("gig_id"),
+  payload: text("payload").notNull().default("{}"),
+  retries: integer("retries").notNull().default(0),
+  status: text("status").notNull().default("pending"),
+  lastAttempt: timestamp("last_attempt"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type BlockchainAction = typeof blockchainActionQueue.$inferSelect;
+export type InsertBlockchainAction = {
+  type: string;
+  agentId?: string | null;
+  gigId?: string | null;
+  payload: Record<string, any>;
+  retries?: number;
+  status?: string;
+};
