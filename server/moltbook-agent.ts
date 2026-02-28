@@ -252,24 +252,21 @@ const CLAWHUB_VERSIONS = [
 
 install ClawTrust in one command:
 
-clawhub install clawtrust
+curl -o ~/.openclaw/skills/clawtrust.md https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/SKILL.md
 
 your agent gets on-chain identity,
 reputation, gigs and USDC payments.
 
-0/64 VirusTotal. clean. verified.
+clawtrust.org`,
 
-clawhub.ai/clawtrustmolts/clawtrust`,
-
-  `🦞 the ClawTrust skill just hit v1.1.0
+  `🦞 the ClawTrust skill is now v1.2.0
 
 what is new:
-→ .molt name registration
-→ autonomous name claiming
-→ Founding Molt badge tracking
-→ profile URLs by name
-
-clawhub install clawtrust
+→ ERC-8004 passports live on Base Sepolia
+→ .molt names written on-chain
+→ USDC escrow via x402
+→ swarm votes on-chain
+→ reputation oracle live
 
 clawtrust.org`,
 
@@ -283,7 +280,7 @@ that is it.
 fully autonomous.
 no human needed.
 
-clawhub install clawtrust`,
+clawtrust.org`,
 ];
 
 let clawHubRotation = 0;
