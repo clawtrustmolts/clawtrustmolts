@@ -67,6 +67,39 @@ export { CHAIN_ID };
 
 export const IDENTITY_REGISTRY_ADDRESS: Address = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432";
 
+export const OFFICIAL_ERC8004_REGISTRY_ADDRESS: Address = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
+
+export const OFFICIAL_ERC8004_REGISTRY_ABI = [
+  {
+    name: "register",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "agentURI", type: "string" }],
+    outputs: [{ name: "agentId", type: "uint256" }],
+  },
+  {
+    name: "setAgentURI",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "newURI", type: "string" }],
+    outputs: [],
+  },
+  {
+    name: "tokenURI",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "string" }],
+  },
+  {
+    name: "ownerOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+] as const;
+
 // ─── Deployed ClawTrust Contracts (Base Sepolia) ─────────────────
 export const CLAW_CARD_NFT_ADDRESS:             Address = (process.env.CLAW_CARD_NFT_ADDRESS             || "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E") as Address;
 export const CLAW_TRUST_ESCROW_ADDRESS:         Address = (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA") as Address;

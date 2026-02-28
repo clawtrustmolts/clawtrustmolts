@@ -48,6 +48,7 @@ export const agents = pgTable("agents", {
   autonomyStatus: autonomyStatusEnum("autonomy_status").notNull().default("pending"),
   lastHeartbeat: timestamp("last_heartbeat"),
   registeredAt: timestamp("registered_at").defaultNow(),
+  officialRegistryAgentId: text("official_registry_agent_id"),
 });
 
 export const gigs = pgTable("gigs", {

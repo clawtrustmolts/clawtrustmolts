@@ -21,6 +21,7 @@ import {
   sendSubmitFusedFeedback,
   checkRepAdapterFusedScore,
   ERC8004_CONTRACTS,
+  registerOnOfficialERC8004Registry,
 } from "./erc8004";
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
@@ -326,6 +327,46 @@ export async function registerRoutes(
   const ERC8004_NFT_ADDRESS = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
   const ERC8004_CAIP10_REGISTRY = `eip155:84532:${ERC8004_NFT_ADDRESS}`;
   const PRODUCTION_BASE_URL = "https://clawtrust.org";
+
+  app.post("/api/admin/register-on-8004scan", adminAuthMiddleware, async (req, res) => {
+    try {
+      const agents = await storage.getAgents();
+      const eligible = agents.filter((a: any) => !a.officialRegistryAgentId);
+      const results: any[] = [];
+
+      for (const agent of eligible) {
+        const metadataUri = `${PRODUCTION_BASE_URL}/api/agents/${agent.id}/card/metadata`;
+        const result = await registerOnOfficialERC8004Registry(metadataUri);
+        results.push({ handle: agent.handle, agentId: agent.id, ...result });
+        if (result.success && result.agentId) {
+          await storage.updateAgent(agent.id, { officialRegistryAgentId: result.agentId });
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+
+      res.json({ registered: results.filter((r: any) => r.success).length, total: eligible.length, results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/register-agent-8004scan/:agentId", adminAuthMiddleware, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const metadataUri = `${PRODUCTION_BASE_URL}/api/agents/${agent.id}/card/metadata`;
+      const result = await registerOnOfficialERC8004Registry(metadataUri);
+
+      if (result.success && result.agentId) {
+        await storage.updateAgent(agent.id, { officialRegistryAgentId: result.agentId });
+      }
+
+      res.json({ handle: agent.handle, agentId: agent.id, metadataUri, ...result });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   app.get("/.well-known/agent-card.json", async (_req, res) => {
     try {

@@ -9,6 +9,8 @@ import {
   REPUTATION_REGISTRY_ADDRESS,
   REPUTATION_REGISTRY_ABI,
   REP_ADAPTER_ABI,
+  OFFICIAL_ERC8004_REGISTRY_ADDRESS,
+  OFFICIAL_ERC8004_REGISTRY_ABI,
 } from "./chain-client";
 
 export const ERC8004_CONTRACTS = {
@@ -473,4 +475,60 @@ export function getContractInfo() {
       hasWallet: !!getWalletClient(),
     },
   };
+}
+
+export async function registerOnOfficialERC8004Registry(agentUri: string): Promise<{
+  success: boolean;
+  agentId?: string;
+  txHash?: string;
+  error?: string;
+}> {
+  const wallet = getWalletClient();
+  if (!wallet) {
+    return { success: false, error: "No wallet client available (DEPLOYER_PRIVATE_KEY not set)" };
+  }
+
+  try {
+    const data = encodeFunctionData({
+      abi: OFFICIAL_ERC8004_REGISTRY_ABI,
+      functionName: "register",
+      args: [agentUri],
+    });
+
+    const txHash = await wallet.sendTransaction({
+      to: OFFICIAL_ERC8004_REGISTRY_ADDRESS,
+      data,
+      value: BigInt(0),
+      chain: undefined,
+      account: wallet.account!,
+    });
+
+    console.log(`[8004scan] Submitted registration tx: ${txHash}, URI: ${agentUri}`);
+
+    const client = getPublicClient();
+    const receipt = await client.waitForTransactionReceipt({ hash: txHash, timeout: 90_000 });
+
+    if (receipt.status !== "success") {
+      return { success: false, txHash, error: "Transaction reverted" };
+    }
+
+    const agentIdLog = receipt.logs.find(l =>
+      l.address.toLowerCase() === OFFICIAL_ERC8004_REGISTRY_ADDRESS.toLowerCase()
+    );
+
+    let agentId: string | undefined;
+    if (agentIdLog?.topics?.[3]) {
+      agentId = BigInt(agentIdLog.topics[3]).toString();
+    } else if (agentIdLog?.topics?.[2]) {
+      agentId = BigInt(agentIdLog.topics[2]).toString();
+    }
+
+    console.log(`[8004scan] Registration confirmed. agentId: ${agentId ?? "unknown"}`);
+
+    return { success: true, agentId, txHash };
+  } catch (err: any) {
+    const msg = err.message?.substring(0, 400) || "Unknown error";
+    console.error(`[8004scan] Registration failed:`, msg);
+    return { success: false, error: msg };
+  }
 }
