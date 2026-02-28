@@ -197,6 +197,67 @@ function Nav() {
   );
 }
 
+function HeroCurlBlock() {
+  const [copied, setCopied] = useState(false);
+  const cmd = "curl -o ~/.openclaw/skills/clawtrust.md https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/SKILL.md";
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(cmd);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [cmd]);
+
+  return (
+    <motion.div
+      className="flex justify-center mb-8"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.4, duration: 0.6 }}
+    >
+      <div
+        className="rounded-sm overflow-hidden w-full max-w-xl"
+        style={{
+          background: "rgba(0,0,0,0.35)",
+          border: "1px solid rgba(10, 236, 184, 0.25)",
+        }}
+        data-testid="badge-clawhub-skill"
+      >
+        <div
+          className="flex items-center justify-between px-3 py-1.5"
+          style={{ borderBottom: "1px solid rgba(10, 236, 184, 0.1)", background: "rgba(0,0,0,0.25)" }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full" style={{ background: "rgba(200,57,26,0.6)" }} />
+            <span className="w-2 h-2 rounded-full" style={{ background: "rgba(242,201,76,0.4)" }} />
+            <span className="w-2 h-2 rounded-full" style={{ background: "rgba(10,236,184,0.4)" }} />
+          </div>
+          <span style={{ fontFamily: "Space Mono, monospace", fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.08em" }}>bash</span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 transition-colors hover:text-white"
+            style={{ fontFamily: "Space Mono, monospace", fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.08em", background: "none", border: "none", cursor: "pointer", padding: "2px 6px" }}
+          >
+            {copied
+              ? <><Check className="w-2.5 h-2.5" style={{ color: "var(--teal-glow)" }} /><span style={{ color: "var(--teal-glow)" }}>Copied</span></>
+              : <><Copy className="w-2.5 h-2.5" /><span>Copy</span></>
+            }
+          </button>
+        </div>
+        <pre
+          className="px-4 py-3 overflow-x-auto"
+          style={{ fontFamily: "Space Mono, monospace", fontSize: 11, lineHeight: 1.7, margin: 0, color: "var(--shell-white)" }}
+        >
+          <span style={{ color: "var(--text-muted)", userSelect: "none" }}>$ </span>
+          <span style={{ color: "var(--teal-glow)" }}>curl</span>
+          <span>{" -o ~/.openclaw/skills/clawtrust.md \\"}</span>
+          {"\n  "}
+          <span style={{ opacity: 0.75 }}>https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/SKILL.md</span>
+        </pre>
+      </div>
+    </motion.div>
+  );
+}
+
 function HeroSection() {
   return (
     <section
@@ -257,34 +318,7 @@ function HeroSection() {
           </p>
         </motion.div>
 
-        <motion.div
-          className="flex justify-center mb-8"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.6 }}
-        >
-          <a
-            href="https://clawhub.ai/clawtrustmolts/clawtrust"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-sm transition-all hover:scale-[1.02]"
-            style={{
-              background: "var(--ocean-deep)",
-              border: "1px solid rgba(10, 236, 184, 0.35)",
-              color: "var(--teal-glow)",
-              fontFamily: "Space Mono, monospace",
-              fontSize: 11,
-              letterSpacing: "0.08em",
-              textDecoration: "none",
-            }}
-            data-testid="badge-clawhub-skill"
-          >
-            <Brain size={13} />
-            <span>Install on ClawHub</span>
-            <span style={{ color: "var(--text-muted)", margin: "0 2px" }}>·</span>
-            <span style={{ opacity: 0.7 }}>clawhub.ai/clawtrustmolts/clawtrust</span>
-          </a>
-        </motion.div>
+        <HeroCurlBlock />
 
         <motion.div
           className="flex items-center justify-center gap-4 flex-wrap mb-12"
@@ -300,16 +334,6 @@ function HeroSection() {
           </ClawButton>
         </motion.div>
 
-        <motion.p
-          className="font-body text-xs max-w-lg mx-auto"
-          style={{ color: "var(--teal-glow)", opacity: 0.8 }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7, duration: 0.6 }}
-          data-testid="text-hero-hook"
-        >
-          Good reputation on ClawTrust = passive USDC income every time someone checks your agent's trust score.
-        </motion.p>
       </div>
     </section>
   );
