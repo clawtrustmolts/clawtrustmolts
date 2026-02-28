@@ -2,11 +2,15 @@ import { storage } from "./storage";
 import { syncPerformanceScore } from "./bond-service";
 import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
+import { telegramDailyDigest } from "./telegram-announcements";
+import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
+import { processBlockchainQueue, updateReputationOnChain } from "./blockchain";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 const INACTIVITY_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DAILY_DIGEST_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const CLAWHUB_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
 
 export function startScheduler() {
   console.log("[Scheduler] Starting background jobs...");
@@ -22,13 +26,39 @@ export function startScheduler() {
   }
   const msUntil9am = next9am.getTime() - now.getTime();
   setTimeout(() => {
-    moltyDailyDigest();
-    setInterval(moltyDailyDigest, DAILY_DIGEST_INTERVAL_MS);
+    runDailyDigest();
+    setInterval(runDailyDigest, DAILY_DIGEST_INTERVAL_MS);
   }, msUntil9am);
   console.log(`[Scheduler] Molty daily digest scheduled in ${Math.round(msUntil9am / 60000)} minutes`);
 
   setInterval(runInactivityCheck, INACTIVITY_CHECK_INTERVAL_MS);
   setInterval(runScoreSync, SCORE_SYNC_INTERVAL_MS);
+
+  const now2 = new Date();
+  const nextMonday10am = new Date(now2);
+  nextMonday10am.setUTCHours(10, 0, 0, 0);
+  const dayOfWeek = now2.getUTCDay();
+  const daysUntilMonday = (8 - dayOfWeek) % 7 || 7;
+  nextMonday10am.setDate(nextMonday10am.getDate() + daysUntilMonday);
+  if (nextMonday10am.getTime() <= now2.getTime()) {
+    nextMonday10am.setDate(nextMonday10am.getDate() + 7);
+  }
+  setTimeout(() => {
+    runWeeklyBlog();
+    setInterval(runWeeklyBlog, 7 * 24 * 60 * 60 * 1000);
+  }, nextMonday10am.getTime() - now2.getTime());
+  console.log(`[Scheduler] Weekly blog scheduled in ${Math.round((nextMonday10am.getTime() - now2.getTime()) / 60000)} minutes`);
+
+  setTimeout(() => {
+    runClawHubSkillShare();
+    setInterval(runClawHubSkillShare, CLAWHUB_INTERVAL_MS);
+  }, 2 * 60 * 60 * 1000);
+
+  scheduleEducationalPosts();
+
+  setInterval(runBlockchainQueue, 5 * 60 * 1000);
+  setTimeout(runBlockchainQueue, 30_000);
+  console.log("[Scheduler] Blockchain retry queue: every 5 minutes");
 }
 
 async function runInactivityCheck() {
@@ -65,6 +95,16 @@ async function runScoreSync() {
       if (agent.totalGigsCompleted > 0 || agent.bondTier !== "UNBONDED") {
         await syncPerformanceScore(agent.id).catch(() => {});
         synced++;
+        const isValidEthAddress = /^0x[0-9a-fA-F]{40}$/.test(agent.walletAddress);
+        if (isValidEthAddress && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
+          updateReputationOnChain({
+            agentWallet: agent.walletAddress,
+            onChainScore: agent.onChainScore || 0,
+            moltbookKarma: agent.moltbookKarma || 0,
+            performanceScore: agent.performanceScore || 0,
+            bondScore: agent.bondReliability || 0,
+          }).catch(() => {});
+        }
       }
     }
 
@@ -74,4 +114,79 @@ async function runScoreSync() {
   } catch (err: any) {
     console.error("[Scheduler] Score sync failed:", err.message);
   }
+}
+
+async function runBlockchainQueue() {
+  try {
+    await processBlockchainQueue();
+  } catch (err: any) {
+    console.error("[Scheduler] Blockchain queue error:", err.message);
+  }
+}
+
+async function runDailyDigest() {
+  try {
+    moltyDailyDigest();
+
+    const allAgents = await storage.getAgents();
+    const allGigs = await storage.getGigs();
+    const moltDomains = await storage.getAllMoltDomains();
+
+    const completedGigs = allGigs.filter(g => g.status === "completed").length;
+    const totalEarned = allAgents.reduce((s, a) => s + a.totalEarned, 0);
+    const topAgent = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore)[0];
+
+    await telegramDailyDigest({
+      newAgents: allAgents.length,
+      gigsCompleted: completedGigs,
+      usdcPaidOut: totalEarned,
+      moltNamesClaimed: moltDomains.length,
+      swarmValidations: 0,
+      topEarner: topAgent?.moltDomain || topAgent?.handle || undefined,
+      newDiamond: undefined,
+    });
+
+    try { await moltbookDailyDigest(); } catch {}
+    setTimeout(() => commentOnRecentPost().catch(() => {}), 30_000);
+  } catch (err: any) {
+    console.error("[Scheduler] Daily digest failed:", err.message);
+  }
+}
+
+async function runWeeklyBlog() {
+  try {
+    await moltbookWeeklyBlog();
+    setTimeout(() => commentOnRecentPost().catch(() => {}), 30_000);
+  } catch (err: any) {
+    console.error("[Scheduler] Weekly blog failed:", err.message);
+  }
+}
+
+async function runClawHubSkillShare() {
+  try {
+    await moltbookClawHubSkillShare();
+    setTimeout(() => commentOnRecentPost().catch(() => {}), 30_000);
+  } catch (err: any) {
+    console.error("[Scheduler] ClawHub skill share failed:", err.message);
+  }
+}
+
+function scheduleEducationalPosts() {
+  const checkAndPost = async () => {
+    const now = new Date();
+    const dayOfWeek = now.getUTCDay();
+    const hour = now.getUTCHours();
+
+    if ((dayOfWeek === 2 || dayOfWeek === 4) && hour === 14) {
+      try {
+        await moltbookEducationalPost();
+        setTimeout(() => commentOnRecentPost().catch(() => {}), 30_000);
+      } catch (err: any) {
+        console.error("[Scheduler] Educational post failed:", err.message);
+      }
+    }
+  };
+
+  setInterval(checkAndPost, 60 * 60 * 1000);
+  console.log("[Scheduler] Educational posts scheduled for Tue/Thu 2pm UTC");
 }
