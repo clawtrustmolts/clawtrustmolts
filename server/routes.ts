@@ -28,9 +28,26 @@ import { generatePassportImage, generatePassportMetadata } from "./passport-gene
 import { generateReceiptImage } from "./receipt-generator";
 import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generator";
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
+import { isBot, getBotPrerenderedHTML } from "./bot-prerender";
 import { paymentMiddleware } from "x402-express";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
+import { telegramAnnounceSlash } from "./telegram-announcements";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
+import {
+  mintPassportForAgent,
+  setMoltDomainOnChain,
+  updateReputationOnChain,
+  lockEscrowOnChain,
+  createSwarmValidationOnChain,
+  castSwarmVoteOnChain,
+  readPassportByWallet,
+  readPassportByMoltDomain,
+  readPassportById,
+  readRepScore,
+  readFusedScore,
+  queueBlockchainAction,
+  getDeployerAddress,
+} from "./blockchain";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
 import {
   createEscrowWallet,
@@ -286,6 +303,26 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get("/", async (req, res, next) => {
+    if (!isBot(req.headers["user-agent"])) return next();
+    try {
+      const [allAgents, allGigs] = await Promise.all([
+        storage.getAgents(),
+        storage.getGigs(),
+      ]);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      return res.send(getBotPrerenderedHTML({
+        totalAgents: allAgents.length,
+        openGigs: allGigs.filter(g => g.status === "open").length,
+        completedGigs: allGigs.filter(g => g.status === "completed").length,
+      }));
+    } catch {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(getBotPrerenderedHTML());
+    }
+  });
+
   const x402PayToAddress = process.env.X402_PAY_TO_ADDRESS || "0x0000000000000000000000000000000000000000";
   const x402Enabled = x402PayToAddress !== "0x0000000000000000000000000000000000000000";
 
@@ -534,6 +571,13 @@ export async function registerRoutes(
         onChainScore: 5,
         fusedScore: computeFusedScore(5, 0),
       });
+
+      mintPassportForAgent({
+        id: agent.id,
+        handle: data.handle,
+        walletAddress: data.walletAddress,
+        skills: data.skills,
+      }).catch(err => console.error("[Passport] Background mint error:", err.message));
 
       moltyWelcomeAgent({ id: agent.id, handle: agent.handle });
       tryPostToMoltbook(`Welcome ${agent.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
@@ -893,6 +937,17 @@ export async function registerRoutes(
         await storage.updateEscrow(escrow.id, { circleWalletId });
       }
 
+      if (chain === "BASE_SEPOLIA" && gig.currency === "USDC" && gig.assigneeId) {
+        const assigneeAgent = await storage.getAgent(gig.assigneeId);
+        if (assigneeAgent) {
+          lockEscrowOnChain({
+            gigId,
+            payeeWallet: assigneeAgent.walletAddress,
+            amountUsdc: gig.budget,
+          }).catch(err => console.error("[Escrow] on-chain lock error:", err.message));
+        }
+      }
+
       const txData = prepareEscrowTxData({
         gigId,
         depositor: depositor.walletAddress,
@@ -1111,6 +1166,7 @@ export async function registerRoutes(
             await slashBond(gig.assigneeId, gigId, "Dispute resolved against assignee");
             await storage.updateGig(gigId, { bondLocked: false });
             console.log(`[Bond-Gig] Slashed bond for dispute-lost gig ${gigId}`);
+            try { const slashedAgent = await storage.getAgent(gig.assigneeId); if (slashedAgent) telegramAnnounceSlash(slashedAgent, gig.bondRequired || 0, "Dispute resolved against assignee"); } catch {}
           } catch (slashErr: any) {
             console.warn(`[Bond-Gig] Slash failed for gig ${gigId}: ${slashErr.message}`);
             await unlockBondForGig(gig.assigneeId, gigId);
@@ -1392,6 +1448,18 @@ export async function registerRoutes(
         rewardPerValidator: Math.round(rewardPerValidator * 100) / 100,
       });
 
+      const posterAgent = await storage.getAgent(gig.posterId);
+      const assigneeAgent = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+      if (posterAgent) {
+        createSwarmValidationOnChain({
+          gigId,
+          posterWallet: posterAgent.walletAddress,
+          assigneeWallet: assigneeAgent?.walletAddress || posterAgent.walletAddress,
+          candidateWallets: topAgents.map(a => a.walletAddress),
+          threshold,
+        }).catch(err => console.error("[Swarm] createValidation on-chain error:", err.message));
+      }
+
       res.status(201).json({
         validation,
         selectedValidators: topAgents.map(a => ({
@@ -1446,6 +1514,9 @@ export async function registerRoutes(
 
       const rewardAmount = validation.rewardPerValidator || 0;
       await storage.castVote({ validationId, voterId, vote, rewardAmount, reasoning: reasoning || null });
+
+      castSwarmVoteOnChain({ gigId: validation.gigId, approve: vote === "approve" })
+        .catch(err => console.error("[Swarm] on-chain vote error:", err.message));
 
       const newFor = vote === "approve" ? validation.votesFor + 1 : validation.votesFor;
       const newAgainst = vote === "reject" ? validation.votesAgainst + 1 : validation.votesAgainst;
@@ -1587,6 +1658,7 @@ export async function registerRoutes(
                 await slashBond(gig.assigneeId, gig.id, `Swarm rejected gig "${gig.title}"`);
                 await storage.updateGig(gig.id, { bondLocked: false });
                 console.log(`[Swarm] Slashed bond for rejected gig ${gig.id}`);
+                try { const slashedAgent = await storage.getAgent(gig.assigneeId); if (slashedAgent) telegramAnnounceSlash(slashedAgent, gig.bondRequired || 0, `Swarm rejected gig "${gig.title}"`); } catch {}
               } catch (slashErr: any) {
                 console.warn(`[Swarm] Slash failed for gig ${gig.id}: ${slashErr.message}`);
                 await unlockBondForGig(gig.assigneeId, gig.id);
@@ -2051,6 +2123,189 @@ export async function registerRoutes(
     }
   });
 
+  function getTierName(tier: number): string {
+    return ["Hatchling", "Bronze Pinch", "Silver Molt", "Gold Shell", "Diamond Claw"][tier] || "Hatchling";
+  }
+
+  app.get("/api/contracts", (req, res) => {
+    const BASESCAN = "https://sepolia.basescan.org/address";
+    res.json({
+      network: "Base Sepolia",
+      chainId: 84532,
+      explorer: "https://sepolia.basescan.org",
+      deployedAt: "2026-02-28",
+      contracts: {
+        ClawCardNFT: {
+          address: process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
+          description: "ERC-8004 Soulbound Agent Passport NFT",
+          basescan: `${BASESCAN}/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`,
+        },
+        ClawTrustEscrow: {
+          address: process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe",
+          description: "USDC Escrow with x402 micropayment support",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
+        },
+        ClawTrustSwarmValidator: {
+          address: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
+          description: "On-chain swarm vote consensus validator",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
+        },
+        ClawTrustRepAdapter: {
+          address: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+          description: "Fused reputation score oracle adapter",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818"}`,
+        },
+        ClawTrustBond: {
+          address: process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c",
+          description: "USDC bond staking for agent reliability",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c"}`,
+        },
+        ClawTrustCrew: {
+          address: process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",
+          description: "Multi-agent crew registry",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
+        },
+      },
+      usdc: {
+        address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        basescan: `${BASESCAN}/0x036CbD53842c5426634e7929541eC2318f3dCF7e`,
+      },
+      oracle: {
+        wallet: "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
+        basescan: `https://sepolia.basescan.org/address/0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`,
+      },
+    });
+  });
+
+  app.get("/api/passport/scan/:identifier", apiLimiter, async (req, res) => {
+    try {
+      const identifier = req.params.identifier.trim();
+      const nftAddress = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+      let passportData: any = null;
+      let tokenId: string | null = null;
+      let walletAddress: string | null = null;
+      let dbAgent: any = null;
+
+      if (identifier.endsWith(".molt")) {
+        passportData = await readPassportByMoltDomain(identifier);
+        if (passportData?.wallet) {
+          walletAddress = passportData.wallet;
+          tokenId = passportData.tokenId?.toString() || null;
+          dbAgent = await storage.getAgentByWallet(walletAddress);
+        }
+      } else if (identifier.startsWith("0x")) {
+        const result = await readPassportByWallet(identifier);
+        if (result) {
+          passportData = result.passport;
+          tokenId = result.tokenId;
+          walletAddress = identifier;
+          dbAgent = await storage.getAgentByWallet(identifier);
+        }
+      } else if (!isNaN(parseInt(identifier))) {
+        passportData = await readPassportById(identifier);
+        if (passportData?.wallet) {
+          walletAddress = passportData.wallet;
+          tokenId = identifier;
+          dbAgent = await storage.getAgentByWallet(walletAddress);
+        }
+      }
+
+      if (!passportData) {
+        const dbAgentFallback = identifier.endsWith(".molt")
+          ? await storage.getAgent("").catch(() => null)
+          : identifier.startsWith("0x")
+          ? await storage.getAgentByWallet(identifier).catch(() => null)
+          : null;
+
+        return res.json({
+          valid: false,
+          error: "No on-chain passport found for this identifier",
+          register: "https://clawtrust.org/register",
+          identifier,
+        });
+      }
+
+      const basescanUrl = tokenId
+        ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
+        : null;
+
+      const fusedScore = passportData.fusedScore !== undefined
+        ? Number(passportData.fusedScore) / 100
+        : dbAgent?.fusedScore || 0;
+
+      const riskIndex = passportData.riskIndex !== undefined
+        ? Number(passportData.riskIndex)
+        : dbAgent?.riskIndex || 0;
+
+      const tierLevel = passportData.tier !== undefined ? Number(passportData.tier) : 0;
+
+      let registeredAt: string | null = null;
+      try {
+        if (passportData.registeredAt) {
+          registeredAt = new Date(Number(passportData.registeredAt) * 1000).toISOString();
+        }
+      } catch {}
+
+      const moltDomain = passportData.moltDomain || dbAgent?.moltDomain || null;
+      const handle = passportData.handle || dbAgent?.handle || null;
+      const skills = passportData.skills || dbAgent?.skills || [];
+      const active = passportData.active !== undefined ? passportData.active : true;
+
+      res.json({
+        valid: true,
+        standard: "ERC-8004",
+        chain: "base-sepolia",
+        chainId: 84532,
+        contract: {
+          clawCardNFT: nftAddress,
+          tokenId,
+          basescanUrl,
+        },
+        identity: {
+          wallet: walletAddress,
+          moltDomain,
+          handle,
+          skills,
+          registeredAt,
+          profileUrl: moltDomain
+            ? `clawtrust.org/profile/${moltDomain}`
+            : dbAgent ? `clawtrust.org/agents/${dbAgent.id}` : null,
+          active,
+        },
+        reputation: {
+          fusedScore,
+          tier: getTierName(tierLevel),
+          tierLevel,
+          riskIndex,
+          riskLevel: getRiskLevel(riskIndex),
+          lastUpdated: passportData.lastUpdated
+            ? new Date(Number(passportData.lastUpdated) * 1000).toISOString()
+            : null,
+        },
+        trust: {
+          verdict: active && riskIndex < 60 ? "TRUSTED" : "CAUTION",
+          hireRecommendation: fusedScore >= 50 && riskIndex < 40,
+          bondStatus: dbAgent?.bondStatus || "UNBONDED",
+        },
+        work: {
+          gigsCompleted: dbAgent?.gigsCompleted || 0,
+          totalEarned: dbAgent?.totalEarned || "0",
+          currency: "USDC",
+        },
+        onChain: {
+          verified: true,
+          contractAddress: nftAddress,
+          tokenId,
+          basescanUrl,
+          standard: "ERC-8004",
+        },
+      });
+    } catch (err: any) {
+      console.error("[Passport Scan] Error:", err.message);
+      res.status(500).json({ message: "Failed to scan passport", error: err.message });
+    }
+  });
+
   const safeWallet = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid Ethereum address");
 
   app.get("/api/passports/:wallet/metadata", apiLimiter, async (req, res) => {
@@ -2188,6 +2443,17 @@ export async function registerRoutes(
       await storage.updateAgent(agent.id, { moltDomain: `${name}.molt` });
       const updatedAgent = await storage.getAgent(agent.id);
 
+      if (agent.erc8004TokenId) {
+        setMoltDomainOnChain(agent.erc8004TokenId, `${name}.molt`)
+          .catch(err => console.error("[Passport] setMoltDomain error:", err.message));
+      } else {
+        queueBlockchainAction({
+          type: "SET_MOLT_DOMAIN",
+          agentId: agent.id,
+          payload: { moltDomain: `${name}.molt` },
+        }).catch(() => {});
+      }
+
       moltyAnnounceMoltClaim(agent, name, foundingMoltNumber).catch(err =>
         console.error("[molt] Announcement failed:", err)
       );
@@ -2243,6 +2509,17 @@ export async function registerRoutes(
 
       await storage.updateAgent(agent.id, { moltDomain: `${name}.molt` });
       const updatedAgent = await storage.getAgent(agent.id);
+
+      if (agent.erc8004TokenId) {
+        setMoltDomainOnChain(agent.erc8004TokenId, `${name}.molt`)
+          .catch(err => console.error("[Passport] setMoltDomain (autonomous) error:", err.message));
+      } else {
+        queueBlockchainAction({
+          type: "SET_MOLT_DOMAIN",
+          agentId: agent.id,
+          payload: { moltDomain: `${name}.molt` },
+        }).catch(() => {});
+      }
 
       moltyAnnounceMoltClaim(agent, name, foundingMoltNumber).catch(err =>
         console.error("[molt] Announcement failed:", err)
@@ -2394,6 +2671,13 @@ export async function registerRoutes(
         fusedScore: computeFusedScore(5, 0),
         lastHeartbeat: new Date(),
       });
+
+      mintPassportForAgent({
+        id: agent.id,
+        handle: data.handle,
+        walletAddress,
+        skills: skillNames,
+      }).catch(err => console.error("[Passport] Autonomous mint error:", err.message));
 
       await logSuspiciousActivity(req, "autonomous_registration", `Agent "${data.handle}" registered autonomously`, "info");
 
@@ -3556,6 +3840,45 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/telegram/webhook", async (req, res) => {
+    res.sendStatus(200);
+    try {
+      const { handleTelegramWebhook } = await import("./telegram-bot");
+      await handleTelegramWebhook(req.body);
+    } catch (err) {
+      console.error("[Telegram] Webhook route error:", err);
+    }
+  });
+
+  app.get("/api/admin/telegram-status", async (_req, res) => {
+    try {
+      const { getTelegramBotStatus } = await import("./telegram-bot");
+      res.json(getTelegramBotStatus());
+    } catch (err: any) {
+      res.json({ running: false, hasToken: false, error: err.message });
+    }
+  });
+
+  app.get("/api/admin/moltbook-debug", async (_req, res) => {
+    try {
+      const { getDebugStatus } = await import("./moltbook-agent");
+      const status = await getDebugStatus();
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/moltbook-test", adminAuthMiddleware, async (req, res) => {
+    try {
+      const { testPost } = await import("./moltbook-agent");
+      const result = await testPost();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.post("/api/github/sync-file", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
       const { localPath, repoPath, commitMessage } = req.body;
@@ -3698,6 +4021,7 @@ export async function registerRoutes(
       const { gigId, reason } = req.body;
       if (!gigId || !reason) return res.status(400).json({ message: "gigId and reason required" });
       const event = await slashBond(req.params.agentId as string, gigId, reason);
+      try { const slashedAgent = await storage.getAgent(req.params.agentId as string); if (slashedAgent) telegramAnnounceSlash(slashedAgent, 0, reason); } catch {}
       res.json({ event });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -4332,6 +4656,11 @@ export async function registerRoutes(
       const updatedCrew = await storage.getCrew(crew.id);
       const crewMembers = await storage.getCrewMembers(crew.id);
 
+      try {
+        const { moltbookPostNewCrew } = await import("./moltbook-agent");
+        moltbookPostNewCrew({ id: crew.id, name }, crewMembers.length, bondPool).catch(() => {});
+      } catch {}
+
       res.status(201).json({
         ...updatedCrew,
         members: crewMembers,
@@ -4526,8 +4855,9 @@ export async function registerRoutes(
   const messageLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 20,
-    keyGenerator: (req) => (req as any).agentId || req.ip || "unknown",
+    keyGenerator: (req) => (req as any).agentId || "unknown",
     message: { message: "Rate limit exceeded: 20 messages per hour" },
+    validate: { xForwardedForHeader: false, ip: false },
   });
 
   app.get("/api/agents/:id/messages", agentAuthMiddleware, async (req, res) => {
