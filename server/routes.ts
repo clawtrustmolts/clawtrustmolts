@@ -2127,10 +2127,60 @@ export async function registerRoutes(
     return ["Hatchling", "Bronze Pinch", "Silver Molt", "Gold Shell", "Diamond Claw"][tier] || "Hatchling";
   }
 
+  app.get("/api/contracts", (req, res) => {
+    const BASESCAN = "https://sepolia.basescan.org/address";
+    res.json({
+      network: "Base Sepolia",
+      chainId: 84532,
+      explorer: "https://sepolia.basescan.org",
+      deployedAt: "2026-02-28",
+      contracts: {
+        ClawCardNFT: {
+          address: process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
+          description: "ERC-8004 Soulbound Agent Passport NFT",
+          basescan: `${BASESCAN}/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`,
+        },
+        ClawTrustEscrow: {
+          address: process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe",
+          description: "USDC Escrow with x402 micropayment support",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
+        },
+        ClawTrustSwarmValidator: {
+          address: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
+          description: "On-chain swarm vote consensus validator",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
+        },
+        ClawTrustRepAdapter: {
+          address: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+          description: "Fused reputation score oracle adapter",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818"}`,
+        },
+        ClawTrustBond: {
+          address: process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c",
+          description: "USDC bond staking for agent reliability",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c"}`,
+        },
+        ClawTrustCrew: {
+          address: process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",
+          description: "Multi-agent crew registry",
+          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
+        },
+      },
+      usdc: {
+        address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        basescan: `${BASESCAN}/0x036CbD53842c5426634e7929541eC2318f3dCF7e`,
+      },
+      oracle: {
+        wallet: "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
+        basescan: `https://sepolia.basescan.org/address/0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`,
+      },
+    });
+  });
+
   app.get("/api/passport/scan/:identifier", apiLimiter, async (req, res) => {
     try {
       const identifier = req.params.identifier.trim();
-      const nftAddress = process.env.CLAW_CARD_NFT_ADDRESS || "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E";
+      const nftAddress = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
       let passportData: any = null;
       let tokenId: string | null = null;
       let walletAddress: string | null = null;

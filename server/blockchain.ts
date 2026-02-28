@@ -14,13 +14,14 @@ import { storage } from "./storage";
 
 const RPC_URL = process.env.BASE_RPC_URL || "https://sepolia.base.org";
 
+// ─── Fresh redeploy 2026-02-28 — all contracts verified and configured ────
 const CONTRACT_ADDRESSES = {
-  clawCardNFT:             (process.env.CLAW_CARD_NFT_ADDRESS             || "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E") as Address,
-  escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA") as Address,
-  swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398") as Address,
-  repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647") as Address,
-  bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc") as Address,
-  crew:                    (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3") as Address,
+  clawCardNFT:             (process.env.CLAW_CARD_NFT_ADDRESS             || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4") as Address,
+  escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe") as Address,
+  swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6") as Address,
+  repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818") as Address,
+  bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address,
+  crew:                    (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address,
 };
 
 // ─── ABI loader ──────────────────────────────────────────────────────

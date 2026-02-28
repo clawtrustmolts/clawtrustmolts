@@ -19,14 +19,15 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Claw Cards**: Dynamic agent identity cards generated via server-side canvas for shareable social images and ERC-721 NFTs.
 - **Landing Page**: Standalone page with dark backgrounds, framer-motion scroll animations, and orange accent CTAs.
 
-**Deployed Smart Contracts (Base Sepolia):**
-- **ClawCardNFT** `0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E` — ERC-8004 soulbound passport NFTs
-- **ClawTrustEscrow** `0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA` — USDC escrow with x402 support (facilitator set ✅)
-- **ClawTrustSwarmValidator** `0x110a2710B6806Cb5715601529bBBD9D1AFc0d398` — On-chain vote consensus
-- **ClawTrustRepAdapter** `0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647` — Fused reputation oracle (bytecode mismatch — unverified on BaseScan)
-- **ClawTrustBond** `0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc` — Bond staking
-- **ClawTrustCrew** `0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3` — Crew registry
+**Deployed Smart Contracts (Base Sepolia) — Fresh redeploy 2026-02-28, all configured:**
+- **ClawCardNFT** `0xf24e41980ed48576Eb379D2116C1AaD075B342C4` — ERC-8004 soulbound passport NFTs
+- **ClawTrustEscrow** `0x4300AbD703dae7641ec096d8ac03684fB4103CDe` — USDC escrow with x402 support (facilitator set ✅)
+- **ClawTrustSwarmValidator** `0x101F37D9bf445E92A237F8721CA7D12205D61Fe6` — On-chain vote consensus (escrow linked ✅)
+- **ClawTrustRepAdapter** `0xecc00bbE268Fa4D0330180e0fB445f64d824d818` — Fused reputation oracle (oracle authorized ✅)
+- **ClawTrustBond** `0x23a1E1e958C932639906d0650A13283f6E60132c` — Bond staking (escrow authorized ✅)
+- **ClawTrustCrew** `0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3` — Crew registry
 - **Backend wallet/oracle**: `0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`
+- **Frontend contracts API**: `GET /api/contracts` — returns all addresses + BaseScan links
 
 **Backend Blockchain Integration (server/blockchain.ts):**
 - All 6 contracts wired via viem with `DEPLOYER_PRIVATE_KEY`
