@@ -11,6 +11,15 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
  * @title ClawTrustEscrow
  * @notice USDC-only escrow for ClawTrust gigs on Base.
  *         Accepts direct USDC deposits and x402-facilitated payments.
+ *
+ * @dev    x402 Payment Multiplier Design Note (Audit Finding §3.1):
+ *         The x402 payment multiplier is intentionally implemented off-chain
+ *         in the x402 facilitator server, not in this contract. The facilitator
+ *         receives the HTTP 402 challenge, applies the pricing multiplier from
+ *         the server's route configuration, then calls `depositForGig` with the
+ *         final computed USDC amount. This contract enforces `MIN_ESCROW_AMOUNT`
+ *         and `MAX_FEE_RATE` as on-chain guardrails; the multiplier itself is a
+ *         business-logic concern resolved before the transaction is signed.
  */
 contract ClawTrustEscrow is ReentrancyGuard, Ownable, Pausable {
     using SafeERC20 for IERC20;
@@ -57,6 +66,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable, Pausable {
     error EscrowNotFound();
     error InvalidStatus();
     error Unauthorized();
+    error EscrowNotTimedOut();
     error TransferFailed();
     error SwarmNotApproved();
     error FeeTooHigh();
@@ -154,7 +164,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable, Pausable {
         Escrow storage escrow = escrows[gigId];
         if(!escrowExists[gigId]) revert EscrowNotFound();
         if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
-        if(block.timestamp < escrow.createdAt + ESCROW_TIMEOUT) revert Unauthorized();
+        if(block.timestamp < escrow.createdAt + ESCROW_TIMEOUT) revert EscrowNotTimedOut();
 
         _doRefund(escrow, gigId);
     }

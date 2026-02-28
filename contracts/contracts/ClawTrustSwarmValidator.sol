@@ -74,6 +74,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         uint256 votesAgainst
     );
     event RewardClaimed(bytes32 indexed gigId, address indexed validator, uint256 amount);
+    event ResidualRewardSwept(bytes32 indexed gigId, address indexed to, uint256 amount);
     event ValidationExpired(bytes32 indexed gigId);
     event EscrowContractUpdated(address indexed oldEscrow, address indexed newEscrow);
     event DefaultThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
@@ -335,6 +336,35 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         address oldEscrow = escrowContract;
         escrowContract = _escrow;
         emit EscrowContractUpdated(oldEscrow, _escrow);
+    }
+
+    /**
+     * @notice Sweep residual reward dust that can never be claimed due to integer division.
+     *         Callable only by the owner after all validators with `Approve` votes have
+     *         had the opportunity to claim (i.e. rewardPoolClaimed approaches rewardPool).
+     *         Sends remainder to `to`, preventing funds from being permanently locked.
+     * @param gigId  The gig whose residual is being swept.
+     * @param to     Recipient of the dust (typically a treasury or the escrow contract).
+     */
+    function sweepResidualRewards(bytes32 gigId, address to) external onlyOwner nonReentrant {
+        if(!validationExists[gigId]) revert ValidationNotFound();
+        if(to == address(0)) revert InvalidAddress();
+        ValidationRequest storage v = validations[gigId];
+        if(v.status != ValidationStatus.Approved) revert ValidationNotApproved();
+
+        uint256 residual = v.rewardPool - v.rewardPoolClaimed;
+        if(residual == 0) revert NoRewardAvailable();
+
+        v.rewardPoolClaimed += residual;
+
+        if(v.rewardToken == address(0)) {
+            (bool success, ) = to.call{value: residual}("");
+            if(!success) revert TransferFailed();
+        } else {
+            IERC20(v.rewardToken).safeTransfer(to, residual);
+        }
+
+        emit ResidualRewardSwept(gigId, to, residual);
     }
 
     function computeRewardPool(uint256 gigBudget, uint256 rewardRate, uint256 denominator) external pure returns (uint256) {
