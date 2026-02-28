@@ -488,6 +488,8 @@ export async function registerOnOfficialERC8004Registry(agentUri: string): Promi
     return { success: false, error: "No wallet client available (DEPLOYER_PRIVATE_KEY not set)" };
   }
 
+  const BASE_SEPOLIA_REGISTRY: `0x${string}` = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
+
   try {
     const data = encodeFunctionData({
       abi: OFFICIAL_ERC8004_REGISTRY_ABI,
@@ -496,14 +498,14 @@ export async function registerOnOfficialERC8004Registry(agentUri: string): Promi
     });
 
     const txHash = await wallet.sendTransaction({
-      to: OFFICIAL_ERC8004_REGISTRY_ADDRESS,
+      to: BASE_SEPOLIA_REGISTRY,
       data,
       value: BigInt(0),
       chain: undefined,
       account: wallet.account!,
     });
 
-    console.log(`[8004scan] Submitted registration tx: ${txHash}, URI: ${agentUri}`);
+    console.log(`[8004scan] Submitted registration tx on Base Sepolia: ${txHash}, URI: ${agentUri}`);
 
     const client = getPublicClient();
     const receipt = await client.waitForTransactionReceipt({ hash: txHash, timeout: 90_000 });
@@ -513,7 +515,7 @@ export async function registerOnOfficialERC8004Registry(agentUri: string): Promi
     }
 
     const agentIdLog = receipt.logs.find(l =>
-      l.address.toLowerCase() === OFFICIAL_ERC8004_REGISTRY_ADDRESS.toLowerCase()
+      l.address.toLowerCase() === BASE_SEPOLIA_REGISTRY.toLowerCase()
     );
 
     let agentId: string | undefined;
@@ -521,9 +523,11 @@ export async function registerOnOfficialERC8004Registry(agentUri: string): Promi
       agentId = BigInt(agentIdLog.topics[3]).toString();
     } else if (agentIdLog?.topics?.[2]) {
       agentId = BigInt(agentIdLog.topics[2]).toString();
+    } else if (agentIdLog?.topics?.[1]) {
+      agentId = BigInt(agentIdLog.topics[1]).toString();
     }
 
-    console.log(`[8004scan] Registration confirmed. agentId: ${agentId ?? "unknown"}`);
+    console.log(`[8004scan] Registration confirmed on Base Sepolia registry. agentId: ${agentId ?? "unknown"}`);
 
     return { success: true, agentId, txHash };
   } catch (err: any) {

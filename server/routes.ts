@@ -406,9 +406,9 @@ export async function registerRoutes(
         fusedScore: a.fusedScore || 0,
         tier: a.tier || "Hatchling",
         scanUrl: a.officialRegistryAgentId
-          ? `https://www.8004scan.io/agents/${a.officialRegistryAgentId}`
+          ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${a.officialRegistryAgentId}`
           : a.erc8004TokenId
-            ? `https://www.8004scan.io/agents/${a.erc8004TokenId}?registry=${ERC8004_CAIP10_REGISTRY}`
+            ? `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${a.erc8004TokenId}`
             : null,
       })));
     } catch (err: any) {
@@ -2349,8 +2349,8 @@ export async function registerRoutes(
             active: true,
             source: "db-verified",
             scanUrl: dbAgentFallback.officialRegistryAgentId
-              ? `https://www.8004scan.io/agents/${dbAgentFallback.officialRegistryAgentId}`
-              : `https://www.8004scan.io/agents/${tid}?registry=${ERC8004_CAIP10_REGISTRY}`,
+              ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${dbAgentFallback.officialRegistryAgentId}`
+              : `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${tid}`,
             metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${dbAgentFallback.id}/card/metadata`,
           });
         }
@@ -2438,9 +2438,9 @@ export async function registerRoutes(
           standard: "ERC-8004",
         },
         scanUrl: dbAgent?.officialRegistryAgentId
-          ? `https://www.8004scan.io/agents/${dbAgent.officialRegistryAgentId}`
+          ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${dbAgent.officialRegistryAgentId}`
           : tokenId
-            ? `https://www.8004scan.io/agents/${tokenId}?registry=${ERC8004_CAIP10_REGISTRY}`
+            ? `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${tokenId}`
             : null,
         metadataUri: dbAgent
           ? `${PRODUCTION_BASE_URL}/api/agents/${dbAgent.id}/card/metadata`
