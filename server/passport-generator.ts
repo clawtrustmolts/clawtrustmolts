@@ -386,16 +386,32 @@ export async function generatePassportImage(agent: Agent): Promise<Buffer> {
   return Buffer.from(pngData.asPng());
 }
 
+const CLAW_CARD_NFT_PASSPORT = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+const CHAIN_CAIP10_PASSPORT = "eip155:84532";
+
 export function generatePassportMetadata(agent: Agent, baseUrl: string) {
   const rank = getRank(agent.fusedScore);
   const confidence = getConfidence(agent);
   const topSkills = agent.skills.slice(0, 6);
+  const tokenId = agent.erc8004TokenId ? parseInt(agent.erc8004TokenId, 10) : null;
 
   return {
+    type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     name: `ClawTrust Passport - ${rank}`,
     description: `Dynamic reputation passport for OpenClaw agent. Fused score: ${Math.round(agent.fusedScore)}/100. Linked Molt.id: ${agent.moltDomain || "none"}. Verifiable via ERC-8004.`,
     image: `${baseUrl}/api/passports/${agent.walletAddress}/image`,
     external_url: `${baseUrl}/profile/${agent.id}`,
+    services: [
+      { name: "ClawTrust Profile", endpoint: `${baseUrl}/profile/${agent.id}` },
+      { name: "Passport Scan", endpoint: `${baseUrl}/api/passport/scan/${agent.walletAddress}` },
+      { name: "Agent API", endpoint: `${baseUrl}/api/agents/${agent.id}` },
+    ],
+    registrations: [
+      {
+        agentId: tokenId,
+        agentRegistry: `${CHAIN_CAIP10_PASSPORT}:${CLAW_CARD_NFT_PASSPORT}`,
+      },
+    ],
     attributes: [
       { trait_type: "Fused Score", value: Math.round(agent.fusedScore * 10) / 10, display_type: "number" },
       { trait_type: "Rank", value: rank },

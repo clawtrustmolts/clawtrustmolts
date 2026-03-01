@@ -48,6 +48,7 @@ export const agents = pgTable("agents", {
   autonomyStatus: autonomyStatusEnum("autonomy_status").notNull().default("pending"),
   lastHeartbeat: timestamp("last_heartbeat"),
   registeredAt: timestamp("registered_at").defaultNow(),
+  officialRegistryAgentId: text("official_registry_agent_id"),
 });
 
 export const gigs = pgTable("gigs", {
@@ -515,3 +516,37 @@ export const moltDomains = pgTable("molt_domains", {
 export const insertMoltDomainSchema = createInsertSchema(moltDomains).omit({ id: true, registeredAt: true });
 export type MoltDomain = typeof moltDomains.$inferSelect;
 export type InsertMoltDomain = z.infer<typeof insertMoltDomainSchema>;
+
+export const moltyPostLog = pgTable("molty_post_log", {
+  id: serial("id").primaryKey(),
+  postType: text("post_type").notNull(),
+  content: text("content").notNull(),
+  success: boolean("success").notNull().default(false),
+  moltbookPostId: text("moltbook_post_id"),
+  errorMessage: text("error_message"),
+  postedAt: timestamp("posted_at").defaultNow(),
+});
+
+export type MoltyPostLog = typeof moltyPostLog.$inferSelect;
+
+export const blockchainActionQueue = pgTable("blockchain_action_queue", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(),
+  agentId: varchar("agent_id"),
+  gigId: varchar("gig_id"),
+  payload: text("payload").notNull().default("{}"),
+  retries: integer("retries").notNull().default(0),
+  status: text("status").notNull().default("pending"),
+  lastAttempt: timestamp("last_attempt"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type BlockchainAction = typeof blockchainActionQueue.$inferSelect;
+export type InsertBlockchainAction = {
+  type: string;
+  agentId?: string | null;
+  gigId?: string | null;
+  payload: Record<string, any>;
+  retries?: number;
+  status?: string;
+};

@@ -14,6 +14,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
 
     struct ValidationRequest {
         bytes32 gigId;
+        address poster;
         address assignee;
         address[] candidates;
         mapping(address => VoteType) votes;
@@ -33,6 +34,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
 
     struct ValidationInfo {
         bytes32 gigId;
+        address poster;
         address assignee;
         address[] candidates;
         uint256 votesFor;
@@ -72,6 +74,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         uint256 votesAgainst
     );
     event RewardClaimed(bytes32 indexed gigId, address indexed validator, uint256 amount);
+    event ResidualRewardSwept(bytes32 indexed gigId, address indexed to, uint256 amount);
     event ValidationExpired(bytes32 indexed gigId);
     event EscrowContractUpdated(address indexed oldEscrow, address indexed newEscrow);
     event DefaultThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
@@ -94,9 +97,10 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
     error TransferFailed();
     error NotExpired();
     error AssigneeCannotValidate();
+    error PosterCannotValidate();
 
-    modifier onlyEscrow() {
-        if(msg.sender != escrowContract) revert InvalidAddress();
+    modifier onlyEscrowOrOwner() {
+        if(msg.sender != escrowContract && msg.sender != owner()) revert InvalidAddress();
         _;
     }
 
@@ -107,13 +111,15 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
 
     function createValidation(
         bytes32 gigId,
+        address poster,
         address assignee,
         address[] calldata candidates,
         uint256 threshold,
         uint256 rewardPool,
         address rewardToken
-    ) external payable onlyEscrow {
+    ) external payable onlyEscrowOrOwner {
         if(validationExists[gigId]) revert ValidationAlreadyExists();
+        if(poster == address(0)) revert InvalidAddress();
         if(candidates.length > MAX_CANDIDATES) revert TooManyCandidates();
         if(candidates.length < threshold) revert InsufficientCandidates();
         if(threshold == 0) revert InvalidThreshold();
@@ -128,6 +134,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
 
         ValidationRequest storage v = validations[gigId];
         v.gigId = gigId;
+        v.poster = poster;
         v.assignee = assignee;
         v.threshold = threshold;
         v.status = ValidationStatus.Pending;
@@ -141,6 +148,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
             if(candidate == address(0)) revert InvalidAddress();
             if(v.isCandidate[candidate]) revert DuplicateCandidate();
             if(candidate == assignee) revert AssigneeCannotValidate();
+            if(candidate == poster) revert PosterCannotValidate();
 
             v.candidates.push(candidate);
             v.isCandidate[candidate] = true;
@@ -151,7 +159,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         emit ValidationCreated(gigId, assignee, candidates, threshold, rewardPool, rewardToken, v.expiresAt);
     }
 
-    function vote(bytes32 gigId, VoteType _vote) external {
+    function vote(bytes32 gigId, VoteType _vote) external nonReentrant {
         if(!validationExists[gigId]) revert ValidationNotFound();
         ValidationRequest storage v = validations[gigId];
 
@@ -164,6 +172,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         if(v.votes[msg.sender] != VoteType.None) revert AlreadyVoted();
         if(!v.isCandidate[msg.sender]) revert NotCandidate();
         if(msg.sender == v.assignee) revert AssigneeCannotValidate();
+        if(msg.sender == v.poster) revert PosterCannotValidate();
 
         v.votes[msg.sender] = _vote;
 
@@ -280,6 +289,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         ValidationRequest storage v = validations[gigId];
         return ValidationInfo({
             gigId: v.gigId,
+            poster: v.poster,
             assignee: v.assignee,
             candidates: v.candidates,
             votesFor: v.votesFor,
@@ -326,6 +336,35 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         address oldEscrow = escrowContract;
         escrowContract = _escrow;
         emit EscrowContractUpdated(oldEscrow, _escrow);
+    }
+
+    /**
+     * @notice Sweep residual reward dust that can never be claimed due to integer division.
+     *         Callable only by the owner after all validators with `Approve` votes have
+     *         had the opportunity to claim (i.e. rewardPoolClaimed approaches rewardPool).
+     *         Sends remainder to `to`, preventing funds from being permanently locked.
+     * @param gigId  The gig whose residual is being swept.
+     * @param to     Recipient of the dust (typically a treasury or the escrow contract).
+     */
+    function sweepResidualRewards(bytes32 gigId, address to) external onlyOwner nonReentrant {
+        if(!validationExists[gigId]) revert ValidationNotFound();
+        if(to == address(0)) revert InvalidAddress();
+        ValidationRequest storage v = validations[gigId];
+        if(v.status != ValidationStatus.Approved) revert ValidationNotApproved();
+
+        uint256 residual = v.rewardPool - v.rewardPoolClaimed;
+        if(residual == 0) revert NoRewardAvailable();
+
+        v.rewardPoolClaimed += residual;
+
+        if(v.rewardToken == address(0)) {
+            (bool success, ) = to.call{value: residual}("");
+            if(!success) revert TransferFailed();
+        } else {
+            IERC20(v.rewardToken).safeTransfer(to, residual);
+        }
+
+        emit ResidualRewardSwept(gigId, to, residual);
     }
 
     function computeRewardPool(uint256 gigBudget, uint256 rewardRate, uint256 denominator) external pure returns (uint256) {

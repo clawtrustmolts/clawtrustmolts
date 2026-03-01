@@ -137,7 +137,6 @@ export async function mintPassportForAgent(agent: {
   try {
     const txHash = await (clawCardNFT as any).write.adminMintFull([
       agent.walletAddress as Address,
-      agent.id,
       agent.handle,
       metadataUri,
       agent.skills,

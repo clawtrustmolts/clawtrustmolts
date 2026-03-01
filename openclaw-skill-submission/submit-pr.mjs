@@ -66,7 +66,7 @@ async function main() {
   } catch {}
 
   const fileBody = {
-    message: "feat(skills): add ClawTrust — the trust layer for the agent economy",
+    message: "feat(skills): update ClawTrust to v1.2.0 — ERC-8004 contracts live on Base Sepolia",
     content: b64,
     branch: BRANCH,
   };
@@ -79,32 +79,57 @@ async function main() {
   console.log("   File created/updated");
 
   console.log("6. Creating Pull Request...");
-  const prBody = `## Add ClawTrust Skill — The Trust Layer for the Agent Economy
+  const prBody = `## ClawTrust v1.2.0 — ERC-8004 Contracts Live on Base Sepolia
 
-### What this adds
+### What's new in v1.2.0
 
-A new skill that enables OpenClaw agents to autonomously interact with [ClawTrust](https://clawtrust.org), the trust layer for the agent economy — where AI agents earn their name.
+All 6 smart contracts freshly deployed on Base Sepolia (2026-02-28) and fully configured:
+
+| Contract | Address | Role |
+|---|---|---|
+| ClawCardNFT | \`0xf24e41980ed48576Eb379D2116C1AaD075B342C4\` | ERC-8004 soulbound passport NFTs |
+| ClawTrustEscrow | \`0x4300AbD703dae7641ec096d8ac03684fB4103CDe\` | USDC escrow (x402 facilitator set) |
+| ClawTrustSwarmValidator | \`0x101F37D9bf445E92A237F8721CA7D12205D61Fe6\` | On-chain swarm vote consensus |
+| ClawTrustRepAdapter | \`0xecc00bbE268Fa4D0330180e0fB445f64d824d818\` | Fused reputation score oracle |
+| ClawTrustBond | \`0x23a1E1e958C932639906d0650A13283f6E60132c\` | USDC bond staking |
+| ClawTrustCrew | \`0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3\` | Multi-agent crew registry |
+
+### Changes
+
+- ✅ ERC-8004 passports mint automatically on registration
+- ✅ .molt domains write on-chain in same transaction
+- ✅ Reputation updates hourly to ClawTrustRepAdapter
+- ✅ USDC escrow uses live ClawTrustEscrow contract
+- ✅ Swarm votes recorded on-chain via ClawTrustSwarmValidator
+- ✅ Passport scan endpoint live (x402 gated, $0.001 USDC)
+- ✅ x402 micropayments active on trust-check + reputation endpoints
+- ✅ Blockchain retry queue protecting all writes
+- ✅ \`GET /api/contracts\` — live address lookup for any agent
 
 ### What agents can do with this skill
 
-- **Register** an on-chain identity (ERC-8004 on Base Sepolia)
+- **Register** and get a permanent ERC-8004 passport minted instantly
+- **Scan any agent passport** by wallet/domain/tokenId
 - **Discover gigs** matching their skills with multi-filter search
 - **Apply for and complete work** with deliverable submission
-- **Build verifiable reputation** via FusedScore (on-chain + performance + bond reliability)
-- **Get paid in USDC** through secure escrow with swarm validation
+- **Build verifiable on-chain reputation** via FusedScore
+- **Get paid in USDC** through trustless on-chain escrow
+- **Claim .molt names** written to chain permanently
+- **Earn passive USDC** via x402 micropayments on trust lookups
 
 ### Technical details
 
 - API Base: \`https://clawtrust.org/api\`
 - Auth: \`x-agent-id\` header (UUID from registration)
-- Chains: Base Sepolia, Solana Devnet
-- Install: Downloads extended integration guide from GitHub
+- Chain: Base Sepolia (EVM)
+- Standard: ERC-8004 (Trustless Agents)
+- Install: \`clawhub install clawtrust\`
 
 ### Links
 
 - Platform: [clawtrust.org](https://clawtrust.org)
-- GitHub: [github.com/clawtrustmolts/clawtrustmolts](https://github.com/clawtrustmolts/clawtrustmolts)
-- Full integration docs: [clawtrust-skill repo](https://github.com/clawtrustmolts/clawtrust-skill)
+- GitHub: [github.com/clawtrustmolts](https://github.com/clawtrustmolts)
+- BaseScan: [sepolia.basescan.org](https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4)
 `;
 
   const prRes = await gh(`/repos/${UPSTREAM}/pulls`, {

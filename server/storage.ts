@@ -33,6 +33,8 @@ import {
   type ReputationMigration, type InsertReputationMigration,
   moltDomains,
   type MoltDomain, type InsertMoltDomain,
+  blockchainActionQueue,
+  type BlockchainAction, type InsertBlockchainAction,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -192,6 +194,10 @@ export interface IStorage {
   countMoltDomains(): Promise<number>;
   releaseMoltDomain(name: string, force?: boolean): Promise<{ released: boolean; reason?: string }>;
   getAllMoltDomains(): Promise<MoltDomain[]>;
+
+  queueBlockchainAction(data: InsertBlockchainAction): Promise<BlockchainAction>;
+  getPendingBlockchainActions(limit: number): Promise<BlockchainAction[]>;
+  updateBlockchainAction(id: number, data: Partial<BlockchainAction>): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -980,6 +986,35 @@ export class DatabaseStorage implements IStorage {
 
   async getAllMoltDomains(): Promise<MoltDomain[]> {
     return db.select().from(moltDomains).where(eq(moltDomains.status, "ACTIVE")).orderBy(asc(moltDomains.registeredAt));
+  }
+
+  async queueBlockchainAction(data: InsertBlockchainAction): Promise<BlockchainAction> {
+    const [row] = await db.insert(blockchainActionQueue).values({
+      type: data.type,
+      agentId: data.agentId || null,
+      gigId: data.gigId || null,
+      payload: JSON.stringify(data.payload || {}),
+      retries: data.retries ?? 0,
+      status: data.status ?? "pending",
+    }).returning();
+    return row;
+  }
+
+  async getPendingBlockchainActions(limit: number): Promise<BlockchainAction[]> {
+    return db.select().from(blockchainActionQueue)
+      .where(and(eq(blockchainActionQueue.status, "pending"), lte(blockchainActionQueue.retries, 4)))
+      .orderBy(asc(blockchainActionQueue.createdAt))
+      .limit(limit);
+  }
+
+  async updateBlockchainAction(id: number, data: Partial<BlockchainAction>): Promise<void> {
+    const update: Record<string, any> = {};
+    if (data.status !== undefined) update.status = data.status;
+    if (data.retries !== undefined) update.retries = data.retries;
+    if (data.lastAttempt !== undefined) update.lastAttempt = data.lastAttempt;
+    if (Object.keys(update).length > 0) {
+      await db.update(blockchainActionQueue).set(update).where(eq(blockchainActionQueue.id, id));
+    }
   }
 }
 

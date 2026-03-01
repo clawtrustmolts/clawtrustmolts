@@ -22,17 +22,28 @@ export function getPublicClient(): PublicClient {
   return publicClientInstance;
 }
 
+function normalizePrivateKey(raw: string): `0x${string}` {
+  const stripped = raw.trim().replace(/^0x/i, "");
+  return `0x${stripped}`;
+}
+
 export function getWalletClient(): WalletClient | null {
   if (walletClientInstance) return walletClientInstance;
 
   const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
-  if (!privateKey || privateKey === "0x0000000000000000000000000000000000000000000000000000000000000001") {
+  if (!privateKey) {
     console.warn("[chain-client] No valid DEPLOYER_PRIVATE_KEY set, wallet client unavailable");
     return null;
   }
 
+  const normalized = normalizePrivateKey(privateKey);
+  if (normalized === "0x0000000000000000000000000000000000000000000000000000000000000001") {
+    console.warn("[chain-client] Placeholder DEPLOYER_PRIVATE_KEY detected, wallet client unavailable");
+    return null;
+  }
+
   try {
-    const account = privateKeyToAccount(privateKey as `0x${string}`);
+    const account = privateKeyToAccount(normalized);
     walletClientInstance = createWalletClient({
       account,
       chain: baseSepolia,
@@ -52,11 +63,9 @@ export function getWalletClient(): WalletClient | null {
 
 export function getOracleAddress(): Address | null {
   const privateKey = process.env.DEPLOYER_PRIVATE_KEY;
-  if (!privateKey || privateKey === "0x0000000000000000000000000000000000000000000000000000000000000001") {
-    return null;
-  }
+  if (!privateKey) return null;
   try {
-    const account = privateKeyToAccount(privateKey as `0x${string}`);
+    const account = privateKeyToAccount(normalizePrivateKey(privateKey));
     return account.address;
   } catch {
     return null;
@@ -66,6 +75,47 @@ export function getOracleAddress(): Address | null {
 export { CHAIN_ID };
 
 export const IDENTITY_REGISTRY_ADDRESS: Address = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432";
+
+export const OFFICIAL_ERC8004_REGISTRY_ADDRESS: Address = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
+
+export const OFFICIAL_ERC8004_REGISTRY_ABI = [
+  {
+    name: "register",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "agentURI", type: "string" }],
+    outputs: [{ name: "agentId", type: "uint256" }],
+  },
+  {
+    name: "setAgentURI",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "newURI", type: "string" }],
+    outputs: [],
+  },
+  {
+    name: "tokenURI",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "string" }],
+  },
+  {
+    name: "ownerOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+] as const;
+
+// ─── Deployed ClawTrust Contracts (Base Sepolia) ─────────────────
+export const CLAW_CARD_NFT_ADDRESS:             Address = (process.env.CLAW_CARD_NFT_ADDRESS             || "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E") as Address;
+export const CLAW_TRUST_ESCROW_ADDRESS:         Address = (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA") as Address;
+export const CLAW_TRUST_BOND_ADDRESS:           Address = (process.env.CLAW_TRUST_BOND_ADDRESS           || "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc") as Address;
+export const CLAW_TRUST_SWARM_VALIDATOR_ADDRESS:Address = (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398") as Address;
+export const CLAW_TRUST_REP_ADAPTER_ADDRESS:    Address = (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647") as Address;
+export const CLAW_TRUST_CREW_ADDRESS:           Address = (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3") as Address;
 
 export const IDENTITY_REGISTRY_ABI = [
   {
@@ -142,7 +192,7 @@ export const IDENTITY_REGISTRY_ABI = [
   },
 ] as const;
 
-export const REPUTATION_REGISTRY_ADDRESS: Address = "0x8004BAa1dEF4502D1d87e1f62e4C8a2ff95Da561";
+export const REPUTATION_REGISTRY_ADDRESS: Address = "0x8004BAa1def4502D1D87e1F62E4C8a2fF95DA561";
 
 export const REPUTATION_REGISTRY_ABI = [
   {

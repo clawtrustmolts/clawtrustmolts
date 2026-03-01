@@ -21,6 +21,7 @@ import {
   sendSubmitFusedFeedback,
   checkRepAdapterFusedScore,
   ERC8004_CONTRACTS,
+  registerOnOfficialERC8004Registry,
 } from "./erc8004";
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
 import { generateClawCard, generateCardMetadata } from "./card-generator";
@@ -323,6 +324,98 @@ export async function registerRoutes(
     }
   });
 
+  const ERC8004_NFT_ADDRESS = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+  const ERC8004_CAIP10_REGISTRY = `eip155:84532:${ERC8004_NFT_ADDRESS}`;
+  const PRODUCTION_BASE_URL = "https://clawtrust.org";
+
+  app.post("/api/admin/register-on-8004scan", adminAuthMiddleware, async (req, res) => {
+    try {
+      const agents = await storage.getAgents();
+      const eligible = agents.filter((a: any) => !a.officialRegistryAgentId);
+      const results: any[] = [];
+
+      for (const agent of eligible) {
+        const metadataUri = `${PRODUCTION_BASE_URL}/api/agents/${agent.id}/card/metadata`;
+        const result = await registerOnOfficialERC8004Registry(metadataUri);
+        results.push({ handle: agent.handle, agentId: agent.id, ...result });
+        if (result.success && result.agentId) {
+          await storage.updateAgent(agent.id, { officialRegistryAgentId: result.agentId });
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+
+      res.json({ registered: results.filter((r: any) => r.success).length, total: eligible.length, results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/register-agent-8004scan/:agentId", adminAuthMiddleware, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const metadataUri = `${PRODUCTION_BASE_URL}/api/agents/${agent.id}/card/metadata`;
+      const result = await registerOnOfficialERC8004Registry(metadataUri);
+
+      if (result.success && result.agentId) {
+        await storage.updateAgent(agent.id, { officialRegistryAgentId: result.agentId });
+      }
+
+      res.json({ handle: agent.handle, agentId: agent.id, metadataUri, ...result });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/.well-known/agent-card.json", async (_req, res) => {
+    try {
+      const agents = await storage.getAgents();
+      const molty = agents.find((a: any) => a.handle === "Molty" || a.handle === "molty");
+      if (!molty) {
+        return res.status(404).json({ error: "Platform agent not found" });
+      }
+      res.set({
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=3600",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.json(generateCardMetadata(molty, PRODUCTION_BASE_URL));
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to generate agent card" });
+    }
+  });
+
+  app.get("/.well-known/agents.json", async (_req, res) => {
+    try {
+      const agents = await storage.getAgents();
+      const registered = agents.filter((a: any) => a.erc8004TokenId);
+      res.set({
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=3600",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.json(registered.map((a: any) => ({
+        name: a.handle,
+        handle: a.handle,
+        tokenId: a.erc8004TokenId ? parseInt(a.erc8004TokenId, 10) : null,
+        agentRegistry: ERC8004_CAIP10_REGISTRY,
+        metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${a.id}/card/metadata`,
+        walletAddress: a.walletAddress,
+        moltDomain: a.moltDomain || null,
+        fusedScore: a.fusedScore || 0,
+        tier: a.tier || "Hatchling",
+        scanUrl: a.officialRegistryAgentId
+          ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${a.officialRegistryAgentId}`
+          : a.erc8004TokenId
+            ? `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${a.erc8004TokenId}`
+            : null,
+      })));
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to list agents" });
+    }
+  });
+
   const x402PayToAddress = process.env.X402_PAY_TO_ADDRESS || "0x0000000000000000000000000000000000000000";
   const x402Enabled = x402PayToAddress !== "0x0000000000000000000000000000000000000000";
 
@@ -360,6 +453,16 @@ export async function registerRoutes(
   app.get("/api/agents", async (_req, res) => {
     const agents = await storage.getAgents();
     res.json(agents);
+  });
+
+  app.get("/api/leaderboard", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt((req.query.limit as string) || "20", 10), 100);
+      const agents = await storage.getTopAgentsByFusedScore(limit);
+      res.json(agents);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.get("/api/agents/handle/:handle", async (req, res) => {
@@ -2211,11 +2314,46 @@ export async function registerRoutes(
       }
 
       if (!passportData) {
-        const dbAgentFallback = identifier.endsWith(".molt")
-          ? await storage.getAgent("").catch(() => null)
-          : identifier.startsWith("0x")
-          ? await storage.getAgentByWallet(identifier).catch(() => null)
-          : null;
+        let dbAgentFallback: any = null;
+        if (identifier.endsWith(".molt")) {
+          const domainName = identifier.replace(/\.molt$/, "");
+          const domainRecord = await storage.getMoltDomain(domainName).catch(() => null);
+          if (domainRecord?.agentId) {
+            dbAgentFallback = await storage.getAgent(domainRecord.agentId).catch(() => null);
+          }
+        } else if (identifier.startsWith("0x")) {
+          dbAgentFallback = await storage.getAgentByWallet(identifier).catch(() => null);
+        }
+
+        if (dbAgentFallback?.erc8004TokenId) {
+          const tid = dbAgentFallback.erc8004TokenId;
+          const bsUrl = `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}`;
+          return res.json({
+            valid: true,
+            standard: "ERC-8004",
+            chain: "base-sepolia",
+            chainId: 84532,
+            contract: { clawCardNFT: nftAddress, tokenId: tid, basescanUrl: bsUrl },
+            identity: {
+              wallet: dbAgentFallback.walletAddress,
+              moltDomain: dbAgentFallback.moltDomain,
+              handle: dbAgentFallback.handle,
+              skills: dbAgentFallback.skills || [],
+              registeredAt: dbAgentFallback.registeredAt,
+            },
+            reputation: {
+              fusedScore: dbAgentFallback.fusedScore || 0,
+              tier: dbAgentFallback.tier || "Hatchling",
+              riskIndex: dbAgentFallback.riskIndex || 0,
+            },
+            active: true,
+            source: "db-verified",
+            scanUrl: dbAgentFallback.officialRegistryAgentId
+              ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${dbAgentFallback.officialRegistryAgentId}`
+              : `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${tid}`,
+            metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${dbAgentFallback.id}/card/metadata`,
+          });
+        }
 
         return res.json({
           valid: false,
@@ -2299,6 +2437,14 @@ export async function registerRoutes(
           basescanUrl,
           standard: "ERC-8004",
         },
+        scanUrl: dbAgent?.officialRegistryAgentId
+          ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${dbAgent.officialRegistryAgentId}`
+          : tokenId
+            ? `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${tokenId}`
+            : null,
+        metadataUri: dbAgent
+          ? `${PRODUCTION_BASE_URL}/api/agents/${dbAgent.id}/card/metadata`
+          : null,
       });
     } catch (err: any) {
       console.error("[Passport Scan] Error:", err.message);

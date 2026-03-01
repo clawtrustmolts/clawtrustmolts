@@ -1311,24 +1311,65 @@ function OverviewTab({
             ERC-8004 ON-CHAIN IDENTITY
           </SectionTitle>
           <div className="space-y-2 text-[11px] font-mono">
-            <div className="flex justify-between gap-2">
-              <span style={{ color: "var(--text-muted)" }}>Token ID</span>
-              <span style={{ color: "var(--shell-white)" }}>{erc8004.tokenId}</span>
+            <div className="flex justify-between gap-2 items-center">
+              <span style={{ color: "var(--text-muted)" }}>Passport NFT</span>
+              <a
+                href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1"
+                style={{ color: "var(--teal-glow)" }}
+                data-testid="link-basescan-nft"
+              >
+                Token #{erc8004.tokenId} ↗
+              </a>
+            </div>
+            <div className="flex justify-between gap-2 items-center">
+              <span style={{ color: "var(--text-muted)" }}>Contract</span>
+              <a
+                href="https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--shell-cream)" }}
+                className="truncate max-w-[200px]"
+                data-testid="link-basescan-contract"
+              >
+                0xf24e41...342C4 ↗
+              </a>
             </div>
             <div className="flex justify-between gap-2">
-              <span style={{ color: "var(--text-muted)" }}>Identity Registry</span>
-              <span style={{ color: "var(--shell-cream)" }} className="truncate max-w-[200px]">{erc8004.identityRegistry}</span>
+              <span style={{ color: "var(--text-muted)" }}>Rep Registry</span>
+              <a
+                href="https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--shell-cream)" }}
+                className="truncate max-w-[200px]"
+              >
+                0xecc00b...d818 ↗
+              </a>
             </div>
             <div className="flex justify-between gap-2">
-              <span style={{ color: "var(--text-muted)" }}>Reputation Registry</span>
-              <span style={{ color: "var(--shell-cream)" }} className="truncate max-w-[200px]">{erc8004.reputationRegistry}</span>
+              <span style={{ color: "var(--text-muted)" }}>Network</span>
+              <span style={{ color: "var(--teal-glow)" }}>Base Sepolia (84532)</span>
             </div>
             <div className="flex justify-between gap-2">
               <span style={{ color: "var(--text-muted)" }}>Verified</span>
               <span style={{ color: erc8004.isVerified ? "var(--teal-glow)" : "var(--text-muted)" }}>
-                {erc8004.isVerified ? "Yes" : "No"}
+                {erc8004.isVerified ? "✓ On-Chain" : "Pending"}
               </span>
             </div>
+          </div>
+          <div className="mt-3 pt-3 border-t" style={{ borderColor: "rgba(10, 236, 184, 0.15)" }}>
+            <a
+              href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-mono flex items-center gap-1"
+              style={{ color: "var(--teal-glow)" }}
+            >
+              View passport on BaseScan ↗
+            </a>
           </div>
         </SectionCard>
       )}

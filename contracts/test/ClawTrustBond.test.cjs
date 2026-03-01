@@ -22,6 +22,11 @@ describe("ClawTrustBond", function () {
     await mockToken.mint(agent.address, ethers.parseUnits("10000", 6));
     await mockToken.connect(agent).approve(await bond.getAddress(), ethers.parseUnits("10000", 6));
     await bond.updatePerformanceScore(agent.address, 80);
+
+    await bond.updatePerformanceScore(voter1.address, 75);
+    await bond.updatePerformanceScore(voter2.address, 75);
+    await bond.updatePerformanceScore(voter3.address, 75);
+    await bond.updatePerformanceScore(voter4.address, 75);
   });
 
   describe("deposit", function () {
@@ -36,6 +41,13 @@ describe("ClawTrustBond", function () {
       await expect(
         bond.connect(agent).deposit(ethers.parseUnits("1", 6))
       ).to.be.revertedWithCustomError(bond, "BelowMinDeposit");
+    });
+
+    it("should revert when paused", async function () {
+      await bond.pause();
+      await expect(
+        bond.connect(agent).deposit(DEPOSIT_AMOUNT)
+      ).to.be.revertedWithCustomError(bond, "EnforcedPause");
     });
   });
 
@@ -61,6 +73,14 @@ describe("ClawTrustBond", function () {
       await expect(
         bond.connect(agent).withdraw(0)
       ).to.be.revertedWithCustomError(bond, "ZeroAmount");
+    });
+
+    it("should allow withdraw even when paused", async function () {
+      await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
+      await bond.pause();
+      await bond.connect(agent).withdraw(DEPOSIT_AMOUNT);
+      const b = await bond.getBond(agent.address);
+      expect(b.available).to.equal(0);
     });
   });
 
@@ -148,6 +168,20 @@ describe("ClawTrustBond", function () {
         bond.connect(voter4).swarmVote(GIG_ID, true)
       ).to.be.revertedWithCustomError(bond, "GigAlreadyFinalized");
     });
+
+    it("should revert when validator score is too low", async function () {
+      await bond.updatePerformanceScore(voter1.address, 30);
+      await expect(
+        bond.connect(voter1).swarmVote(GIG_ID, true)
+      ).to.be.revertedWithCustomError(bond, "ScoreTooLow");
+    });
+
+    it("should revert when validator has no score (zero)", async function () {
+      const [,,,,,,,, unknownVoter] = await ethers.getSigners();
+      await expect(
+        bond.connect(unknownVoter).swarmVote(GIG_ID, true)
+      ).to.be.revertedWithCustomError(bond, "ScoreTooLow");
+    });
   });
 
   describe("slash cooldown", function () {
@@ -191,6 +225,31 @@ describe("ClawTrustBond", function () {
       await expect(
         bond.connect(voter1).adminFinalize(GIG_ID, true)
       ).to.be.revertedWithCustomError(bond, "OwnableUnauthorizedAccount");
+    });
+  });
+
+  describe("pause", function () {
+    it("owner can pause and unpause", async function () {
+      await bond.pause();
+      expect(await bond.paused()).to.equal(true);
+      await bond.unpause();
+      expect(await bond.paused()).to.equal(false);
+    });
+
+    it("non-owner cannot pause", async function () {
+      await expect(
+        bond.connect(voter1).pause()
+      ).to.be.revertedWithCustomError(bond, "OwnableUnauthorizedAccount");
+    });
+
+    it("swarmVote reverts when paused", async function () {
+      await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
+      await bond.authorizeCaller(owner.address);
+      await bond.lockBondForGig(GIG_ID, agent.address, LOCK_AMOUNT);
+      await bond.pause();
+      await expect(
+        bond.connect(voter1).swarmVote(GIG_ID, true)
+      ).to.be.revertedWithCustomError(bond, "EnforcedPause");
     });
   });
 

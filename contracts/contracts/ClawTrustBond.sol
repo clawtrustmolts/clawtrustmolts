@@ -5,8 +5,9 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract ClawTrustBond is Ownable, ReentrancyGuard {
+contract ClawTrustBond is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable usdcToken;
@@ -74,7 +75,7 @@ contract ClawTrustBond is Ownable, ReentrancyGuard {
         usdcToken = IERC20(_usdcToken);
     }
 
-    function deposit(uint256 amount) external nonReentrant {
+    function deposit(uint256 amount) external nonReentrant whenNotPaused {
         if(amount < MIN_DEPOSIT) revert BelowMinDeposit();
 
         IERC20(usdcToken).safeTransferFrom(msg.sender, address(this), amount);
@@ -105,7 +106,7 @@ contract ClawTrustBond is Ownable, ReentrancyGuard {
         emit PerformanceScoreUpdated(agent, score);
     }
 
-    function lockBondForGig(bytes32 gigId, address agent, uint256 amount) external onlyAuthorized nonReentrant {
+    function lockBondForGig(bytes32 gigId, address agent, uint256 amount) external onlyAuthorized nonReentrant whenNotPaused {
         if(gigExists[gigId]) revert GigAlreadyExists();
         if(amount == 0) revert ZeroAmount();
 
@@ -125,12 +126,13 @@ contract ClawTrustBond is Ownable, ReentrancyGuard {
         emit BondLocked(agent, amount, gigId);
     }
 
-    function swarmVote(bytes32 gigId, bool approve) external nonReentrant {
+    function swarmVote(bytes32 gigId, bool approve) external nonReentrant whenNotPaused {
         if(!gigExists[gigId]) revert GigNotFound();
         Gig storage gig = gigs[gigId];
         if(gig.finalized) revert GigAlreadyFinalized();
         if(gig.hasVoted[msg.sender]) revert AlreadyVoted();
         if(msg.sender == gig.agent) revert SelfDealingNotAllowed();
+        if(bonds[msg.sender].performanceScore < MIN_FUSED_SCORE) revert ScoreTooLow();
 
         gig.hasVoted[msg.sender] = true;
 
@@ -200,6 +202,14 @@ contract ClawTrustBond is Ownable, ReentrancyGuard {
     function revokeCaller(address caller) external onlyOwner {
         authorizedCallers[caller] = false;
         emit CallerRevoked(caller);
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     function getBond(address agent) external view returns (
