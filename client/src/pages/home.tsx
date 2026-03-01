@@ -1089,15 +1089,19 @@ function LeaderboardSection() {
                     </Link>
                     {a.erc8004TokenId && (
                       <a
-                        href={`https://www.8004scan.io/agents/${a.erc8004TokenId}?registry=eip155:84532:0xf24e41980ed48576Eb379D2116C1AaD075B342C4`}
+                        href={
+                          (a as any).officialRegistryAgentId
+                            ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${(a as any).officialRegistryAgentId}`
+                            : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
-                        title="View on 8004scan — ERC-8004 global agent explorer"
+                        title="View on-chain registration (Base Sepolia)"
                         data-testid={`link-8004scan-${a.id}`}
                         style={{ color: "var(--teal-glow)", opacity: 0.7 }}
-                        className="hover:opacity-100 transition-opacity flex items-center gap-0.5 text-xs font-mono"
+                        className="hover:opacity-100 transition-opacity flex items-center"
                       >
-                        8004scan <ExternalLink className="w-3 h-3" />
+                        <ExternalLink className="w-3 h-3" />
                       </a>
                     )}
                   </div>
