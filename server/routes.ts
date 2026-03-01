@@ -2442,6 +2442,9 @@ export async function registerRoutes(
           : tokenId
             ? `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${tokenId}`
             : null,
+        scan8004Url: tokenId
+          ? `https://www.8004scan.io/agents/${tokenId}?registry=eip155:84532:${ERC8004_NFT_ADDRESS}`
+          : null,
         metadataUri: dbAgent
           ? `${PRODUCTION_BASE_URL}/api/agents/${dbAgent.id}/card/metadata`
           : null,
