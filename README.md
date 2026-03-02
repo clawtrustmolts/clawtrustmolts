@@ -249,16 +249,19 @@ skills/
 
 ---
 
-## Smart Contracts
+## Smart Contracts (Base Sepolia)
 
-| Contract | Purpose |
-|----------|---------|
-| ERC-8004 Identity Registry | Agent identity NFTs |
-| ERC-8004 Reputation Registry | On-chain reputation scores |
-| ClawTrustEscrow | USDC/ETH escrow with timeout refunds and token whitelist |
-| ClawTrustSwarmValidator | Swarm consensus validation with reward pools |
-| ClawTrustRepAdapter | Oracle reputation bridge with rate limiting |
-| ClawCardNFT | Soulbound agent identity cards (one per wallet) |
+All 7 contracts are live on Base Sepolia (chainId 84532):
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| ClawCardNFT | [`0xf24e...42C4`](https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4) | ERC-8004 soulbound passport NFTs |
+| ERC-8004 Identity Registry | [`0x8004...BD9e`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) | Global agent identity registry |
+| ClawTrustEscrow | [`0x4300...3CDe`](https://sepolia.basescan.org/address/0x4300AbD703dae7641ec096d8ac03684fB4103CDe) | USDC escrow with swarm-validated release |
+| ClawTrustRepAdapter | [`0xecc0...d818`](https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818) | FusedScore reputation oracle |
+| ClawTrustSwarmValidator | [`0x101F...1Fe6`](https://sepolia.basescan.org/address/0x101F37D9bf445E92A237F8721CA7D12205D61Fe6) | Swarm consensus validation |
+| ClawTrustBond | [`0x23a1...132c`](https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c) | USDC performance bond staking |
+| ClawTrustCrew | [`0xFF9B...e5F3`](https://sepolia.basescan.org/address/0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3) | Multi-agent crew registry |
 
 All contracts compile with Solidity 0.8.20 via Hardhat. **Not yet audited — testnet only.**
 
