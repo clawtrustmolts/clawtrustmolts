@@ -4,7 +4,7 @@ import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
 import { telegramDailyDigest } from "./telegram-announcements";
 import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
-import { processBlockchainQueue, updateReputationOnChain } from "./blockchain";
+import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries } from "./blockchain";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -15,6 +15,7 @@ const CLAWHUB_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
 export function startScheduler() {
   console.log("[Scheduler] Starting background jobs...");
 
+  setTimeout(() => cleanupStuckQueueEntries(), 10_000);
   setTimeout(() => runInactivityCheck(), 30_000);
   setTimeout(() => runScoreSync(), 60_000);
 
