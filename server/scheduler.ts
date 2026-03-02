@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import { syncPerformanceScore } from "./bond-service";
 import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
-import { telegramDailyDigest } from "./telegram-announcements";
+import { telegramDailyDigest, telegramBlogPost } from "./telegram-announcements";
 import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
 import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries } from "./blockchain";
 
@@ -56,6 +56,7 @@ export function startScheduler() {
   }, 2 * 60 * 60 * 1000);
 
   scheduleEducationalPosts();
+  scheduleBlogPosts();
 
   setInterval(runBlockchainQueue, 5 * 60 * 1000);
   setTimeout(runBlockchainQueue, 30_000);
@@ -190,4 +191,23 @@ function scheduleEducationalPosts() {
 
   setInterval(checkAndPost, 60 * 60 * 1000);
   console.log("[Scheduler] Educational posts scheduled for Tue/Thu 2pm UTC");
+}
+
+function scheduleBlogPosts() {
+  const checkAndPost = async () => {
+    const now = new Date();
+    const dayOfWeek = now.getUTCDay();
+    const hour = now.getUTCHours();
+
+    if ((dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 5) && hour === 15) {
+      try {
+        await telegramBlogPost();
+      } catch (err: any) {
+        console.error("[Scheduler] Telegram blog post failed:", err.message);
+      }
+    }
+  };
+
+  setInterval(checkAndPost, 60 * 60 * 1000);
+  console.log("[Scheduler] Blog posts scheduled for Mon/Wed/Fri 3pm UTC");
 }
