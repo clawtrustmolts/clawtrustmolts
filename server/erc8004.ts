@@ -505,7 +505,7 @@ export async function registerOnOfficialERC8004Registry(agentUri: string): Promi
       account: wallet.account!,
     });
 
-    console.log(`[8004scan] Submitted registration tx on Base Sepolia: ${txHash}, URI: ${agentUri}`);
+    console.log(`[ERC-8004] Submitted registration tx on Base Sepolia: ${txHash}, URI: ${agentUri}`);
 
     const client = getPublicClient();
     const receipt = await client.waitForTransactionReceipt({ hash: txHash, timeout: 90_000 });
@@ -527,12 +527,12 @@ export async function registerOnOfficialERC8004Registry(agentUri: string): Promi
       agentId = BigInt(agentIdLog.topics[1]).toString();
     }
 
-    console.log(`[8004scan] Registration confirmed on Base Sepolia registry. agentId: ${agentId ?? "unknown"}`);
+    console.log(`[ERC-8004] Registration confirmed on Base Sepolia registry. agentId: ${agentId ?? "unknown"}`);
 
     return { success: true, agentId, txHash };
   } catch (err: any) {
     const msg = err.message?.substring(0, 400) || "Unknown error";
-    console.error(`[8004scan] Registration failed:`, msg);
+    console.error(`[ERC-8004] Registration failed:`, msg);
     return { success: false, error: msg };
   }
 }

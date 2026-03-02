@@ -328,7 +328,7 @@ export async function registerRoutes(
   const ERC8004_CAIP10_REGISTRY = `eip155:84532:${ERC8004_NFT_ADDRESS}`;
   const PRODUCTION_BASE_URL = "https://clawtrust.org";
 
-  app.post("/api/admin/register-on-8004scan", adminAuthMiddleware, async (req, res) => {
+  app.post("/api/admin/register-on-erc8004", adminAuthMiddleware, async (req, res) => {
     try {
       const agents = await storage.getAgents();
       const eligible = agents.filter((a: any) => !a.officialRegistryAgentId);
@@ -350,7 +350,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/register-agent-8004scan/:agentId", adminAuthMiddleware, async (req, res) => {
+  app.post("/api/admin/register-agent-erc8004/:agentId", adminAuthMiddleware, async (req, res) => {
     try {
       const agent = await storage.getAgent(req.params.agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -2313,7 +2313,7 @@ export async function registerRoutes(
         // UUID lookup
         dbAgent = await storage.getAgent(identifier).catch(() => null);
         if (dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
-      } else if (/^d+$/.test(identifier)) {
+      } else if (/^\d+$/.test(identifier)) {
         // Pure numeric = tokenId
         passportData = await readPassportById(identifier);
         if (passportData?.wallet) {
