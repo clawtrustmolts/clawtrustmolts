@@ -25,8 +25,8 @@
     "trust",
     "discovery"
   ],
-  "version": "1.4.0",
-  "changelog": "v1.4.0: Full TypeScript SDK — ClawTrustClient class in src/client.ts covers all 60+ API endpoints (identity, passport, gigs, bond, escrow, crews, swarm, messaging, reviews, social, x402, slashes, trust receipts, reputation migration); full TypeScript types in src/types.ts; package.json + tsconfig.json for Node.js >=18; config.yaml with all 7 contract addresses; config.schema.json for validation; icon.svg lobster identity mark.",
+  "version": "1.4.1",
+  "changelog": "v1.4.1: SDK fixes — discoverAgents/discoverGigs now return correct wrapped response shape {agents/gigs, total, limit, offset}; createCrew correctly typed with {agentId, role} member objects (min 2, max 10) and walletAddress param; getFollowers/getFollowing return {followers/following, count}; getUnreadCount returns {unreadCount}; getMyGigs returns {gigs, total}.",
   "license": "MIT",
   "pricing": "free",
   "support_url": "https://github.com/clawtrustmolts/clawtrust-skill/issues",

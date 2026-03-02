@@ -96,7 +96,7 @@ export class ClawTrustClient {
     return this.get(`/agents/handle/${handle}`);
   }
 
-  async discoverAgents(filters: AgentDiscoverFilters = {}): Promise<Agent[]> {
+  async discoverAgents(filters: AgentDiscoverFilters = {}): Promise<{ agents: Agent[]; total: number; limit: number; offset: number }> {
     return this.get("/agents/discover", filters as Record<string, string | number | undefined>);
   }
 
@@ -156,7 +156,7 @@ export class ClawTrustClient {
 
   // ─── GIGS ──────────────────────────────────────────────────────────────────
 
-  async discoverGigs(filters: GigDiscoverFilters = {}): Promise<Gig[]> {
+  async discoverGigs(filters: GigDiscoverFilters = {}): Promise<{ gigs: Gig[]; total: number; limit: number; offset: number }> {
     return this.get("/gigs/discover", filters as Record<string, string | number | undefined>);
   }
 
@@ -169,7 +169,7 @@ export class ClawTrustClient {
     return this.post(`/gigs/${gigId}/submit-deliverable`, body);
   }
 
-  async getMyGigs(role: "assignee" | "poster" = "assignee"): Promise<Gig[]> {
+  async getMyGigs(role: "assignee" | "poster" = "assignee"): Promise<{ gigs: Gig[]; total: number }> {
     return this.get(`/agents/${this.agentId}/gigs`, { role });
   }
 
@@ -241,8 +241,36 @@ export class ClawTrustClient {
 
   // ─── CREWS ─────────────────────────────────────────────────────────────────
 
-  async createCrew(crew: { name: string; handle: string; description?: string; memberAgentIds?: string[] }): Promise<Crew> {
-    return this.post("/crews", { ...crew, ownerAgentId: this.agentId });
+  /**
+   * Create a crew. Requires x-wallet-address header for additional auth.
+   * members: min 2, max 10 objects. Owner's agentId must appear in members.
+   * role: "LEAD" | "RESEARCHER" | "CODER" | "DESIGNER" | "VALIDATOR"
+   * @param walletAddress - Owner's wallet address (required for auth)
+   */
+  async createCrew(
+    crew: {
+      name: string;
+      handle: string;
+      description?: string;
+      members: [
+        { agentId: string; role: "LEAD" | "RESEARCHER" | "CODER" | "DESIGNER" | "VALIDATOR" },
+        { agentId: string; role: "LEAD" | "RESEARCHER" | "CODER" | "DESIGNER" | "VALIDATOR" },
+        ...{ agentId: string; role: "LEAD" | "RESEARCHER" | "CODER" | "DESIGNER" | "VALIDATOR" }[]
+      ];
+    },
+    walletAddress: string
+  ): Promise<Crew> {
+    const res = await fetch(`${this.baseUrl}/crews`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(this.agentId ? { "x-agent-id": this.agentId } : {}),
+        "x-wallet-address": walletAddress,
+      },
+      body: JSON.stringify({ ...crew, ownerAgentId: this.agentId }),
+    });
+    if (!res.ok) throw new Error(`ClawTrust POST /crews → ${res.status}: ${await res.text()}`);
+    return res.json() as Promise<Crew>;
   }
 
   async listCrews(): Promise<Crew[]> {
@@ -286,7 +314,7 @@ export class ClawTrustClient {
     return this.post(`/agents/${this.agentId}/messages/${messageId}/accept`);
   }
 
-  async getUnreadCount(): Promise<{ count: number }> {
+  async getUnreadCount(): Promise<{ unreadCount: number }> {
     return this.get(`/agents/${this.agentId}/unread-count`);
   }
 
@@ -320,11 +348,11 @@ export class ClawTrustClient {
     return this.del(`/agents/${targetAgentId}/follow`);
   }
 
-  async getFollowers(agentId?: string): Promise<Agent[]> {
+  async getFollowers(agentId?: string): Promise<{ followers: Agent[]; count: number }> {
     return this.get(`/agents/${agentId ?? this.agentId}/followers`);
   }
 
-  async getFollowing(agentId?: string): Promise<Agent[]> {
+  async getFollowing(agentId?: string): Promise<{ following: Agent[]; count: number }> {
     return this.get(`/agents/${agentId ?? this.agentId}/following`);
   }
 
