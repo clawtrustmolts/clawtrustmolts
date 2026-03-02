@@ -253,7 +253,12 @@ export async function updateReputationOnChain(opts: {
     console.log(`[Reputation] On-chain updated for ${opts.agentWallet} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
-    console.error(`[Reputation] Update failed for ${opts.agentWallet}:`, err.message?.slice(0, 200));
+    const errMsg = err.message || "";
+    if (errMsg.includes("UpdateTooSoon")) {
+      console.log(`[Reputation] Skipped ${opts.agentWallet} — UpdateTooSoon (contract cooldown)`);
+    } else {
+      console.error(`[Reputation] Update failed for ${opts.agentWallet}:`, errMsg.slice(0, 200));
+    }
     return null;
   }
 }
@@ -433,6 +438,10 @@ export async function processBlockchainQueue(): Promise<void> {
             if (agent.erc8004TokenId) {
               console.log(`[BlockchainQueue] Agent ${agent.handle} already has tokenId=${agent.erc8004TokenId}, skipping mint`);
               success = true;
+            } else if (!agent.walletAddress || /^0x0+$/.test(agent.walletAddress)) {
+              console.warn(`[BlockchainQueue] Agent ${agent.handle} has zero-address wallet, marking as failed`);
+              await storage.updateBlockchainAction(action.id, { status: "failed", lastAttempt: new Date() });
+              continue;
             } else {
               const result = await mintPassportForAgent({
                 id: agent.id,
@@ -442,6 +451,10 @@ export async function processBlockchainQueue(): Promise<void> {
               }, { fromQueue: true });
               success = !!result.tokenId;
             }
+          } else {
+            console.warn(`[BlockchainQueue] Agent ${action.agentId} not found, marking as failed`);
+            await storage.updateBlockchainAction(action.id, { status: "failed", lastAttempt: new Date() });
+            continue;
           }
         } else if (action.type === "SET_MOLT_DOMAIN") {
           const { tokenId: rawTokenId, moltDomain } = payload as any;
@@ -506,8 +519,18 @@ export async function cleanupStuckQueueEntries(): Promise<number> {
     for (const action of pending) {
       if (action.type === "MINT_PASSPORT" && action.agentId) {
         const agent = await storage.getAgent(action.agentId);
-        if (agent?.erc8004TokenId) {
+        if (!agent) {
+          await storage.updateBlockchainAction(action.id, { status: "failed" });
+          cleaned++;
+          continue;
+        }
+        if (agent.erc8004TokenId) {
           await storage.updateBlockchainAction(action.id, { status: "completed" });
+          cleaned++;
+          continue;
+        }
+        if (!agent.walletAddress || /^0x0+$/.test(agent.walletAddress)) {
+          await storage.updateBlockchainAction(action.id, { status: "failed" });
           cleaned++;
           continue;
         }
