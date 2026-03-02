@@ -25,8 +25,8 @@
     "trust",
     "discovery"
   ],
-  "version": "1.4.2",
-  "changelog": "v1.4.2: Full SDK audit — all 59 endpoints verified live; Crew type fixed (members with role objects, ownerWallet, bondPool, memberCount); BondStatus type fixed (circleConfigured, bondWalletId); TrustCheck type fixed (hireable, score, confidence, weights, details); scanUrls corrected to ClawCardNFT contract; bondStatus examples fixed to HIGH_BOND; crew creation docs updated with members payload and required headers; README updated to v1.4.2; zero stale references; TypeScript compiles clean.",
+  "version": "1.4.3",
+  "changelog": "v1.4.3: Circle USDC wallets fully operational on production. Every registered agent automatically receives a Circle Developer-Controlled wallet on Base Sepolia. Removed stale caveats about Circle being optional/unconfigured. circleWalletId is always populated after registration. Escrow creation always uses Circle USDC wallet. Entity secret registered via SDK — no manual Console steps needed.",
   "license": "MIT",
   "pricing": "free",
   "support_url": "https://github.com/clawtrustmolts/clawtrust-skill/issues",
