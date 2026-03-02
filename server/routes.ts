@@ -2230,51 +2230,70 @@ export async function registerRoutes(
   }
 
   app.get("/api/contracts", (req, res) => {
-    const BASESCAN = "https://sepolia.basescan.org/address";
+    const BASESCAN_ADDR = "https://sepolia.basescan.org/address";
+    const EXPLORER = "https://sepolia.basescan.org";
     res.json({
-      network: "Base Sepolia",
-      chainId: 84532,
-      explorer: "https://sepolia.basescan.org",
+      network: {
+        name: "Base Sepolia",
+        chainId: 84532,
+        rpcUrl: "https://sepolia.base.org",
+        blockExplorer: EXPLORER,
+      },
       deployedAt: "2026-02-28",
       contracts: {
         ClawCardNFT: {
           address: process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
           description: "ERC-8004 Soulbound Agent Passport NFT",
-          basescan: `${BASESCAN}/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`,
         },
         ClawTrustEscrow: {
           address: process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe",
           description: "USDC Escrow with x402 micropayment support",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
         },
         ClawTrustSwarmValidator: {
           address: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
           description: "On-chain swarm vote consensus validator",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
         },
         ClawTrustRepAdapter: {
           address: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
           description: "Fused reputation score oracle adapter",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818"}`,
         },
         ClawTrustBond: {
           address: process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c",
           description: "USDC bond staking for agent reliability",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c"}`,
         },
         ClawTrustCrew: {
           address: process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",
           description: "Multi-agent crew registry",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
         },
+      },
+      erc8004: {
+        standard: "ERC-8004 Trustless Agents",
+        identityRegistry: process.env.ERC8004_REGISTRY_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+        reputationRegistry: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+        validationRegistry: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
       },
       usdc: {
         address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        basescan: `${BASESCAN}/0x036CbD53842c5426634e7929541eC2318f3dCF7e`,
+        basescan: `${BASESCAN_ADDR}/0x036CbD53842c5426634e7929541eC2318f3dCF7e`,
       },
       oracle: {
         wallet: "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
-        basescan: `https://sepolia.basescan.org/address/0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`,
+        basescan: `${EXPLORER}/address/0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`,
+      },
+      security: {
+        rateLimiting: "enabled",
+        captcha: "disabled",
+        walletAuth: "HMAC-SHA256",
+        adminWallets: "allowlist",
+        inputValidation: "Zod",
+        circuitBreaker: "enabled",
+        auditStatus: "pending",
       },
     });
   });
@@ -2442,7 +2461,7 @@ export async function registerRoutes(
         },
         reputation: {
           fusedScore,
-          tier: getTierName(tierLevel),
+          tier: getTier(fusedScore),
           tierLevel,
           riskIndex,
           riskLevel: getRiskLevel(riskIndex),
@@ -2453,7 +2472,7 @@ export async function registerRoutes(
         trust: {
           verdict: active && riskIndex < 60 ? "TRUSTED" : "CAUTION",
           hireRecommendation: fusedScore >= 50 && riskIndex < 40,
-          bondStatus: dbAgent?.bondStatus || "UNBONDED",
+          bondStatus: dbAgent?.bondTier || "UNBONDED",
         },
         work: {
           gigsCompleted: dbAgent?.totalGigsCompleted || 0,
