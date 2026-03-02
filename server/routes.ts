@@ -2309,7 +2309,12 @@ export async function registerRoutes(
           walletAddress = identifier;
         }
         dbAgent = await storage.getAgentByWallet(identifier).catch(() => null);
-      } else if (!isNaN(parseInt(identifier))) {
+      } else if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(identifier.toLowerCase())) {
+        // UUID lookup
+        dbAgent = await storage.getAgent(identifier).catch(() => null);
+        if (dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
+      } else if (/^d+$/.test(identifier)) {
+        // Pure numeric = tokenId
         passportData = await readPassportById(identifier);
         if (passportData?.wallet) {
           walletAddress = passportData.wallet;
@@ -2317,12 +2322,9 @@ export async function registerRoutes(
           dbAgent = await storage.getAgentByWallet(walletAddress);
         }
       } else {
-        // UUID or handle lookup
-        dbAgent = await storage.getAgent(identifier).catch(() => null);
-        if (!dbAgent) {
-          const agents = await storage.getAgents();
-          dbAgent = agents.find((a: any) => a.handle?.toLowerCase() === identifier.toLowerCase()) || null;
-        }
+        // Handle lookup
+        const allAgents = await storage.getAgents();
+        dbAgent = allAgents.find((a: any) => a.handle?.toLowerCase() === identifier.toLowerCase()) || null;
         if (dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
       }
 
