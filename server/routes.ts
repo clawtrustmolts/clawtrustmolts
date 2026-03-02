@@ -49,7 +49,7 @@ import {
   queueBlockchainAction,
   getDeployerAddress,
 } from "./blockchain";
-import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
+import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -3980,6 +3980,16 @@ export async function registerRoutes(
   app.post("/api/admin/github-sync-all", strictLimiter, adminAuthMiddleware, async (_req, res) => {
     try {
       const result = await syncAllRepos();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post("/api/admin/publish-clawhub", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { version } = req.body || {};
+      const result = await publishToClawHub(version);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

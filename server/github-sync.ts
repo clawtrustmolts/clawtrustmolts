@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 
 const GITHUB_API = "https://api.github.com";
 const REPO_OWNER = "clawtrustmolts";
@@ -606,6 +607,94 @@ export async function syncSkillRepo(): Promise<RepoSyncResult> {
     };
   } catch (err: any) {
     return { repo: `${REPO_OWNER}/${SKILL_REPO}`, success: false, filesCount: 0, message: err.message };
+  }
+}
+
+export async function publishToClawHub(version?: string): Promise<{ success: boolean; message: string; versionId?: string }> {
+  const CLAWHUB_TOKEN = process.env.CLAWHUB_TOKEN;
+  if (!CLAWHUB_TOKEN) {
+    return { success: false, message: "CLAWHUB_TOKEN not set" };
+  }
+
+  const skillDir = path.resolve(process.cwd(), "openclaw-skill-submission/clawtrust");
+  const skillMdPath = path.join(skillDir, "SKILL.md");
+  const clawhubJsonPath = path.join(skillDir, "clawhub.json");
+
+  if (!fs.existsSync(skillMdPath) || !fs.existsSync(clawhubJsonPath)) {
+    return { success: false, message: "SKILL.md or clawhub.json not found" };
+  }
+
+  const clawhub = JSON.parse(fs.readFileSync(clawhubJsonPath, "utf-8"));
+  const skillContent = fs.readFileSync(skillMdPath);
+  const publishVersion = version || clawhub.version;
+  const changelog = clawhub.changelog;
+
+  const sha256 = crypto.createHash("sha256").update(skillContent).digest("hex");
+  const size = skillContent.length;
+
+  try {
+    const uploadUrlResp = await fetch("https://clawhub.ai/api/cli/upload-url", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${CLAWHUB_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (!uploadUrlResp.ok) {
+      const text = await uploadUrlResp.text();
+      return { success: false, message: `Failed to get upload URL: ${text}` };
+    }
+
+    const { uploadUrl } = await uploadUrlResp.json() as { uploadUrl: string };
+
+    const uploadResp = await fetch(uploadUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/markdown" },
+      body: skillContent,
+    });
+
+    if (!uploadResp.ok) {
+      return { success: false, message: `Failed to upload file: ${uploadResp.status}` };
+    }
+
+    const { storageId } = await uploadResp.json() as { storageId: string };
+
+    const publishResp = await fetch("https://clawhub.ai/api/v1/skills", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${CLAWHUB_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        slug: "clawtrust",
+        displayName: "clawtrust",
+        version: publishVersion,
+        changelog,
+        files: [{
+          path: "SKILL.md",
+          sha256,
+          size,
+          storageId,
+          contentType: "text/markdown",
+        }],
+      }),
+    });
+
+    const publishData = await publishResp.json() as any;
+
+    if (!publishResp.ok || !publishData.ok) {
+      return { success: false, message: `Publish failed: ${JSON.stringify(publishData)}` };
+    }
+
+    return {
+      success: true,
+      message: `Published ClawTrust v${publishVersion} to ClawHub`,
+      versionId: publishData.versionId,
+    };
+  } catch (err: any) {
+    return { success: false, message: err.message };
   }
 }
 
