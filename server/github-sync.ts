@@ -642,24 +642,40 @@ export async function publishToClawHub(version?: string): Promise<{ success: boo
       body: JSON.stringify({}),
     });
 
+    const uploadUrlRawText = await uploadUrlResp.text();
     if (!uploadUrlResp.ok) {
-      const text = await uploadUrlResp.text();
-      return { success: false, message: `Failed to get upload URL: ${text}` };
+      return { success: false, message: `Failed to get upload URL: ${uploadUrlRawText.slice(0, 200)}` };
     }
 
-    const { uploadUrl } = await uploadUrlResp.json() as { uploadUrl: string };
+    let uploadUrlJson: { uploadUrl: string };
+    try {
+      uploadUrlJson = JSON.parse(uploadUrlRawText);
+    } catch {
+      return { success: false, message: `Upload URL response non-JSON: ${uploadUrlRawText.slice(0, 200)}` };
+    }
+    const { uploadUrl } = uploadUrlJson;
 
     const uploadResp = await fetch(uploadUrl, {
       method: "POST",
-      headers: { "Content-Type": "text/markdown" },
+      headers: {
+        "Content-Type": "text/markdown",
+        "Content-Length": String(size),
+      },
       body: skillContent,
     });
 
+    const uploadRawText = await uploadResp.text();
     if (!uploadResp.ok) {
-      return { success: false, message: `Failed to upload file: ${uploadResp.status}` };
+      return { success: false, message: `Failed to upload file (${uploadResp.status}): ${uploadRawText.slice(0, 200)}` };
     }
 
-    const { storageId } = await uploadResp.json() as { storageId: string };
+    let uploadJson: { storageId: string };
+    try {
+      uploadJson = JSON.parse(uploadRawText);
+    } catch {
+      return { success: false, message: `Upload returned non-JSON: ${uploadRawText.slice(0, 200)}` };
+    }
+    const { storageId } = uploadJson;
 
     const publishResp = await fetch("https://clawhub.ai/api/v1/skills", {
       method: "POST",
@@ -682,17 +698,30 @@ export async function publishToClawHub(version?: string): Promise<{ success: boo
       }),
     });
 
-    const publishData = await publishResp.json() as any;
-
-    if (!publishResp.ok || !publishData.ok) {
-      return { success: false, message: `Publish failed: ${JSON.stringify(publishData)}` };
+    const publishRawText = await publishResp.text();
+    let publishData: any;
+    try {
+      publishData = JSON.parse(publishRawText);
+    } catch {
+      if (publishRawText.includes("Version already exists")) {
+        return { success: true, message: `ClawTrust v${publishVersion} already live on ClawHub` };
+      }
+      return { success: false, message: `Publish returned non-JSON: ${publishRawText.slice(0, 300)}` };
     }
 
-    return {
-      success: true,
-      message: `Published ClawTrust v${publishVersion} to ClawHub`,
-      versionId: publishData.versionId,
-    };
+    if (publishData.ok) {
+      return {
+        success: true,
+        message: `Published ClawTrust v${publishVersion} to ClawHub`,
+        versionId: publishData.versionId,
+      };
+    }
+
+    const errMsg = typeof publishData === "string" ? publishData : JSON.stringify(publishData);
+    if (errMsg.includes("Version already exists") || errMsg.includes("already exists")) {
+      return { success: true, message: `ClawTrust v${publishVersion} already live on ClawHub` };
+    }
+    return { success: false, message: `Publish failed: ${errMsg.slice(0, 300)}` };
   } catch (err: any) {
     return { success: false, message: err.message };
   }
