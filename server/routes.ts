@@ -405,10 +405,8 @@ export async function registerRoutes(
         moltDomain: a.moltDomain || null,
         fusedScore: a.fusedScore || 0,
         tier: a.tier || "Hatchling",
-        scanUrl: a.officialRegistryAgentId
-          ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${a.officialRegistryAgentId}`
-          : a.erc8004TokenId
-            ? `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${a.erc8004TokenId}`
+        scanUrl: a.erc8004TokenId
+            ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`
             : null,
       })));
     } catch (err: any) {
@@ -2329,15 +2327,18 @@ export async function registerRoutes(
       }
 
       if (!passportData) {
-        let dbAgentFallback: any = null;
-        if (identifier.endsWith(".molt")) {
-          const domainName = identifier.replace(/\.molt$/, "");
-          const domainRecord = await storage.getMoltDomain(domainName).catch(() => null);
-          if (domainRecord?.agentId) {
-            dbAgentFallback = await storage.getAgent(domainRecord.agentId).catch(() => null);
+        // If dbAgent was already found from identifier lookup, reuse it
+        let dbAgentFallback: any = dbAgent || null;
+        if (!dbAgentFallback) {
+          if (identifier.endsWith(".molt")) {
+            const domainName = identifier.replace(/\.molt$/, "");
+            const domainRecord = await storage.getMoltDomain(domainName).catch(() => null);
+            if (domainRecord?.agentId) {
+              dbAgentFallback = await storage.getAgent(domainRecord.agentId).catch(() => null);
+            }
+          } else if (identifier.startsWith("0x")) {
+            dbAgentFallback = await storage.getAgentByWallet(identifier).catch(() => null);
           }
-        } else if (identifier.startsWith("0x")) {
-          dbAgentFallback = await storage.getAgentByWallet(identifier).catch(() => null);
         }
 
         if (dbAgentFallback) {
@@ -2453,7 +2454,7 @@ export async function registerRoutes(
           bondStatus: dbAgent?.bondStatus || "UNBONDED",
         },
         work: {
-          gigsCompleted: dbAgent?.gigsCompleted || 0,
+          gigsCompleted: dbAgent?.totalGigsCompleted || 0,
           totalEarned: dbAgent?.totalEarned || "0",
           currency: "USDC",
         },
@@ -2464,10 +2465,8 @@ export async function registerRoutes(
           basescanUrl,
           standard: "ERC-8004",
         },
-        scanUrl: dbAgent?.officialRegistryAgentId
-          ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${dbAgent.officialRegistryAgentId}`
-          : tokenId
-            ? `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${tokenId}`
+        scanUrl: tokenId
+            ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${tokenId}`
             : null,
         metadataUri: dbAgent
           ? `${PRODUCTION_BASE_URL}/api/agents/${dbAgent.id}/card/metadata`

@@ -1089,19 +1089,16 @@ function LeaderboardSection() {
                     </Link>
                     {a.erc8004TokenId && (
                       <a
-                        href={
-                          (a as any).officialRegistryAgentId
-                            ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${(a as any).officialRegistryAgentId}`
-                            : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`
-                        }
+                        href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        title="View on-chain registration (Base Sepolia)"
-                        data-testid={`link-8004scan-${a.id}`}
+                        title="View NFT on Basescan (Base Sepolia)"
+                        data-testid={`link-basescan-${a.id}`}
                         style={{ color: "var(--teal-glow)", opacity: 0.7 }}
-                        className="hover:opacity-100 transition-opacity flex items-center"
+                        className="hover:opacity-100 transition-opacity flex items-center gap-0.5 text-[10px] font-mono"
                       >
                         <ExternalLink className="w-3 h-3" />
+                        <span>BScan</span>
                       </a>
                     )}
                   </div>

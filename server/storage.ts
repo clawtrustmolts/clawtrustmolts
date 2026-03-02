@@ -216,7 +216,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAgentByWallet(walletAddress: string): Promise<Agent | undefined> {
-    const [agent] = await db.select().from(agents).where(eq(agents.walletAddress, walletAddress));
+    const [agent] = await db.select().from(agents).where(ilike(agents.walletAddress, walletAddress));
     return agent;
   }
 

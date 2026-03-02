@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Eye } from "lucide-react";
+import { Eye, ExternalLink } from "lucide-react";
 import { TierBadge, RiskPill, ClawButton, EmptyState, ErrorState, SkeletonCard } from "@/components/ui-shared";
 import type { Agent } from "@shared/schema";
 import { getAgentDisplayName, getAgentProfileUrl } from "@/lib/agent-display";
@@ -242,15 +242,31 @@ export default function LeaderboardPage() {
                     </td>
 
                     <td className="px-3 py-3">
-                      <ClawButton
-                        variant="ghost"
-                        size="sm"
-                        href={`/profile/${agent.id}`}
-                        data-testid={`button-view-passport-${agent.id}`}
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        View Passport
-                      </ClawButton>
+<div className="flex items-center gap-2">
+                        <ClawButton
+                          variant="ghost"
+                          size="sm"
+                          href={`/profile/${agent.id}`}
+                          data-testid={`button-view-passport-${agent.id}`}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          View
+                        </ClawButton>
+                        {agent.erc8004TokenId && (
+                          <a
+                            href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="View NFT on Basescan"
+                            data-testid={`link-basescan-${agent.id}`}
+                            className="flex items-center gap-0.5 text-[10px] font-mono hover:opacity-100 transition-opacity"
+                            style={{ color: "var(--teal-glow)", opacity: 0.75 }}
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>BScan</span>
+                          </a>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

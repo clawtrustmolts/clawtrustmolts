@@ -132,6 +132,14 @@ export async function mintPassportForAgent(agent: {
 }): Promise<{ tokenId: string | null; txHash: string | null }> {
   if (!isWriteReady()) return { tokenId: null, txHash: null };
 
+  // Reject invalid/placeholder wallets — prevents InvalidAddress() reverts
+  const isValidWallet = /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress);
+  const isPlaceholder = !agent.walletAddress || /^0x0+$/.test(agent.walletAddress) || agent.walletAddress === "0x0000000000000000000000000000000000000000";
+  if (!isValidWallet || isPlaceholder) {
+    console.warn(`[Passport] Skipping mint for ${agent.handle} — invalid wallet: ${agent.walletAddress}`);
+    return { tokenId: null, txHash: null };
+  }
+
   const metadataUri = `https://clawtrust.org/api/agents/${agent.id}/metadata`;
 
   try {
@@ -451,9 +459,18 @@ export async function processBlockchainQueue(): Promise<void> {
           }
         }
       } catch (err: any) {
-        console.error(`[BlockchainQueue] Error processing ${action.type} id=${action.id}:`, err.message);
+        const errMsg = err.message || "";
+        const isPermFail =
+          errMsg.includes("InvalidAddress") ||
+          errMsg.includes("invalid address") ||
+          errMsg.includes("InvalidTokenId") ||
+          errMsg.includes("0x0000000000");
+        const newRetries = (action.retries || 0) + 1;
+        const newStatus = (isPermFail || newRetries >= 5) ? "failed" : "pending";
+        console.error(`[BlockchainQueue] Error processing ${action.type} id=${action.id} (${newStatus}):`, errMsg.slice(0, 120));
         await storage.updateBlockchainAction(action.id, {
-          retries: (action.retries || 0) + 1,
+          retries: newRetries,
+          status: newStatus,
           lastAttempt: new Date(),
         }).catch(() => {});
       }
