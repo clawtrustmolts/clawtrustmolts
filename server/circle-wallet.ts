@@ -1,4 +1,4 @@
-import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
+import { initiateDeveloperControlledWalletsClient, registerEntitySecretCiphertext } from "@circle-fin/developer-controlled-wallets";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -16,8 +16,9 @@ let usdcTokenCache: Record<string, string> = {};
 
 const ENTITY_SECRET_PATH = path.join(process.cwd(), ".circle-entity-secret");
 
-function getEntitySecret(): string {
+export function getEntitySecret(): string {
   if (process.env.CIRCLE_ENTITY_SECRET) {
+    console.log("[Circle] Using entity secret from CIRCLE_ENTITY_SECRET env var");
     return process.env.CIRCLE_ENTITY_SECRET;
   }
 
@@ -26,7 +27,7 @@ function getEntitySecret(): string {
       const secret = fs.readFileSync(ENTITY_SECRET_PATH, "utf-8").trim();
       if (secret.length === 64) {
         process.env.CIRCLE_ENTITY_SECRET = secret;
-        console.log("[Circle] Loaded persisted entity secret");
+        console.log("[Circle] Loaded entity secret from persisted file");
         return secret;
       }
     }
@@ -35,9 +36,9 @@ function getEntitySecret(): string {
   const secret = crypto.randomBytes(32).toString("hex");
   try {
     fs.writeFileSync(ENTITY_SECRET_PATH, secret, { mode: 0o600 });
-    console.log("[Circle] Generated and persisted new entity secret");
+    console.log("[Circle] Generated new entity secret and persisted to file — register this in Circle Developer Console");
   } catch {
-    console.warn("[Circle] Could not persist entity secret to disk");
+    console.warn("[Circle] Generated new entity secret but could not persist to disk — set CIRCLE_ENTITY_SECRET env var");
   }
   process.env.CIRCLE_ENTITY_SECRET = secret;
   return secret;
@@ -295,6 +296,73 @@ export async function listWallets(): Promise<Array<{
 
 export function isCircleConfigured(): boolean {
   return !!CIRCLE_API_KEY;
+}
+
+export async function registerEntitySecret(): Promise<{ success: boolean; message: string }> {
+  if (!CIRCLE_API_KEY) {
+    throw new Error("CIRCLE_API_KEY is not configured");
+  }
+  const entitySecret = getEntitySecret();
+  try {
+    await registerEntitySecretCiphertext({ apiKey: CIRCLE_API_KEY, entitySecret });
+    circleClient = null;
+    return { success: true, message: "Entity secret registered successfully with Circle. Wallet creation is now enabled." };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.includes("already registered") || msg.includes("already set")) {
+      circleClient = null;
+      return { success: true, message: "Entity secret was already registered with Circle." };
+    }
+    throw new Error(`Circle registration failed: ${msg}`);
+  }
+}
+
+export async function circleHealthCheck(): Promise<{
+  apiKeyConfigured: boolean;
+  entitySecretSource: string;
+  walletSetStatus: string;
+  walletSetId: string | null;
+  error: string | null;
+}> {
+  const result = {
+    apiKeyConfigured: !!CIRCLE_API_KEY,
+    entitySecretSource: "none",
+    walletSetStatus: "unknown",
+    walletSetId: null as string | null,
+    error: null as string | null,
+  };
+
+  if (process.env.CIRCLE_ENTITY_SECRET) {
+    result.entitySecretSource = "environment_variable";
+  } else {
+    try {
+      const fs = await import("fs");
+      if (fs.existsSync(ENTITY_SECRET_PATH)) {
+        result.entitySecretSource = "persisted_file";
+      } else {
+        result.entitySecretSource = "will_generate_new";
+      }
+    } catch {
+      result.entitySecretSource = "will_generate_new";
+    }
+  }
+
+  if (!CIRCLE_API_KEY) {
+    result.error = "CIRCLE_API_KEY not configured";
+    return result;
+  }
+
+  try {
+    const wsId = await ensureWalletSet();
+    result.walletSetStatus = "ok";
+    result.walletSetId = wsId;
+  } catch (err: any) {
+    result.walletSetStatus = "failed";
+    result.error = `Wallet set error: ${err.message}`;
+    return result;
+  }
+
+  return result;
 }
 
 export const SUPPORTED_CHAINS = [

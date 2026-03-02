@@ -129,10 +129,9 @@ export async function mintPassportForAgent(agent: {
   handle: string;
   walletAddress: string;
   skills: string[];
-}): Promise<{ tokenId: string | null; txHash: string | null }> {
+}, options?: { fromQueue?: boolean }): Promise<{ tokenId: string | null; txHash: string | null }> {
   if (!isWriteReady()) return { tokenId: null, txHash: null };
 
-  // Reject invalid/placeholder wallets — prevents InvalidAddress() reverts
   const isValidWallet = /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress);
   const isPlaceholder = !agent.walletAddress || /^0x0+$/.test(agent.walletAddress) || agent.walletAddress === "0x0000000000000000000000000000000000000000";
   if (!isValidWallet || isPlaceholder) {
@@ -152,7 +151,6 @@ export async function mintPassportForAgent(agent: {
 
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
-    // Parse PassportMinted(address indexed wallet, uint256 indexed tokenId, uint256 timestamp)
     const mintTopic = keccak256(toHex("PassportMinted(address,uint256,uint256)"));
 
     let tokenId: string | null = null;
@@ -172,12 +170,28 @@ export async function mintPassportForAgent(agent: {
 
     return { tokenId, txHash };
   } catch (err: any) {
-    console.error(`[Passport] Mint failed for ${agent.handle}:`, err.message?.slice(0, 200));
-    await queueBlockchainAction({
-      type: "MINT_PASSPORT",
-      agentId: agent.id,
-      payload: { handle: agent.handle, walletAddress: agent.walletAddress, skills: agent.skills },
-    });
+    const errMsg = err.message || "";
+    console.error(`[Passport] Mint failed for ${agent.handle}:`, errMsg.slice(0, 200));
+
+    const isPermanentFailure =
+      errMsg.includes("InvalidAddress") ||
+      errMsg.includes("already minted") ||
+      errMsg.includes("AlreadyMinted") ||
+      errMsg.includes("token already minted") ||
+      errMsg.includes("ERC721: token already minted");
+
+    if (isPermanentFailure) {
+      console.warn(`[Passport] Permanent failure for ${agent.handle} — will not retry`);
+      return { tokenId: null, txHash: null };
+    }
+
+    if (!options?.fromQueue) {
+      await queueBlockchainAction({
+        type: "MINT_PASSPORT",
+        agentId: agent.id,
+        payload: { handle: agent.handle, walletAddress: agent.walletAddress, skills: agent.skills },
+      });
+    }
     return { tokenId: null, txHash: null };
   }
 }
@@ -239,7 +253,12 @@ export async function updateReputationOnChain(opts: {
     console.log(`[Reputation] On-chain updated for ${opts.agentWallet} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
-    console.error(`[Reputation] Update failed for ${opts.agentWallet}:`, err.message?.slice(0, 200));
+    const errMsg = err.message || "";
+    if (errMsg.includes("UpdateTooSoon")) {
+      console.log(`[Reputation] Skipped ${opts.agentWallet} — UpdateTooSoon (contract cooldown)`);
+    } else {
+      console.error(`[Reputation] Update failed for ${opts.agentWallet}:`, errMsg.slice(0, 200));
+    }
     return null;
   }
 }
@@ -416,13 +435,26 @@ export async function processBlockchainQueue(): Promise<void> {
         if (action.type === "MINT_PASSPORT" && action.agentId) {
           const agent = await storage.getAgent(action.agentId);
           if (agent) {
-            const result = await mintPassportForAgent({
-              id: agent.id,
-              handle: agent.handle,
-              walletAddress: agent.walletAddress,
-              skills: agent.skills,
-            });
-            success = !!result.tokenId;
+            if (agent.erc8004TokenId) {
+              console.log(`[BlockchainQueue] Agent ${agent.handle} already has tokenId=${agent.erc8004TokenId}, skipping mint`);
+              success = true;
+            } else if (!agent.walletAddress || /^0x0+$/.test(agent.walletAddress)) {
+              console.warn(`[BlockchainQueue] Agent ${agent.handle} has zero-address wallet, marking as failed`);
+              await storage.updateBlockchainAction(action.id, { status: "failed", lastAttempt: new Date() });
+              continue;
+            } else {
+              const result = await mintPassportForAgent({
+                id: agent.id,
+                handle: agent.handle,
+                walletAddress: agent.walletAddress,
+                skills: agent.skills,
+              }, { fromQueue: true });
+              success = !!result.tokenId;
+            }
+          } else {
+            console.warn(`[BlockchainQueue] Agent ${action.agentId} not found, marking as failed`);
+            await storage.updateBlockchainAction(action.id, { status: "failed", lastAttempt: new Date() });
+            continue;
           }
         } else if (action.type === "SET_MOLT_DOMAIN") {
           const { tokenId: rawTokenId, moltDomain } = payload as any;
@@ -477,5 +509,43 @@ export async function processBlockchainQueue(): Promise<void> {
     }
   } catch (err: any) {
     console.error("[BlockchainQueue] processBlockchainQueue error:", err.message);
+  }
+}
+
+export async function cleanupStuckQueueEntries(): Promise<number> {
+  try {
+    const pending = await storage.getPendingBlockchainActions(100);
+    let cleaned = 0;
+    for (const action of pending) {
+      if (action.type === "MINT_PASSPORT" && action.agentId) {
+        const agent = await storage.getAgent(action.agentId);
+        if (!agent) {
+          await storage.updateBlockchainAction(action.id, { status: "failed" });
+          cleaned++;
+          continue;
+        }
+        if (agent.erc8004TokenId) {
+          await storage.updateBlockchainAction(action.id, { status: "completed" });
+          cleaned++;
+          continue;
+        }
+        if (!agent.walletAddress || /^0x0+$/.test(agent.walletAddress)) {
+          await storage.updateBlockchainAction(action.id, { status: "failed" });
+          cleaned++;
+          continue;
+        }
+      }
+      if ((action.retries || 0) >= 5) {
+        await storage.updateBlockchainAction(action.id, { status: "failed" });
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      console.log(`[BlockchainQueue] Cleaned up ${cleaned} stuck queue entries`);
+    }
+    return cleaned;
+  } catch (err: any) {
+    console.error("[BlockchainQueue] Cleanup error:", err.message);
+    return 0;
   }
 }

@@ -58,6 +58,9 @@ import {
   isCircleConfigured,
   SUPPORTED_CHAINS,
   listWallets,
+  getEntitySecret,
+  circleHealthCheck,
+  registerEntitySecret,
 } from "./circle-wallet";
 
 const escrowCircuitBreaker = {
@@ -2812,8 +2815,9 @@ export async function registerRoutes(
       });
 
       let circleWalletResult = null;
-      let walletAddress = "0x0000000000000000000000000000000000000000";
       let circleWalletId = null;
+      let walletAddress = data.walletAddress || "";
+      let circleWalletFailed = false;
 
       if (isCircleConfigured()) {
         try {
@@ -2821,8 +2825,15 @@ export async function registerRoutes(
           walletAddress = circleWalletResult.address || walletAddress;
           circleWalletId = circleWalletResult.walletId;
         } catch (err: any) {
-          console.error("[Autonomous Register] Circle wallet creation failed:", err.message);
+          circleWalletFailed = true;
+          console.warn("[Autonomous Register] Circle wallet creation failed — agent will register without managed wallet:", err.message);
         }
+      }
+
+      const hasRealWallet = walletAddress && /^0x[a-fA-F0-9]{40}$/.test(walletAddress) && !/^0x0+$/.test(walletAddress);
+      if (!hasRealWallet) {
+        walletAddress = "0x0000000000000000000000000000000000000000";
+        console.warn(`[Autonomous Register] No valid wallet for ${data.handle} — Circle failed or no wallet provided`);
       }
 
       const agent = await storage.createAgent({
@@ -2882,6 +2893,7 @@ export async function registerRoutes(
         agent: updatedAgent,
         walletAddress,
         circleWalletId,
+        circleWalletFailed,
         tempAgentId: agent.id,
         metadata,
         erc8004: {
@@ -2900,7 +2912,9 @@ export async function registerRoutes(
           error: mintTx.error,
         },
         autonomous: {
-          note: "This agent was registered without human interaction. Use tempAgentId for subsequent API calls.",
+          note: circleWalletFailed
+            ? "Agent registered but Circle wallet creation failed. Use POST /api/admin/agents/:id/create-wallet to retry."
+            : "This agent was registered without human interaction. Use tempAgentId for subsequent API calls.",
           nextSteps: [
             "POST /api/agent-skills to attach MCP endpoints",
             "POST /api/gigs to post autonomous gigs (requires fusedScore >= 10)",
@@ -4093,6 +4107,86 @@ export async function registerRoutes(
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.get("/api/admin/circle-status", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const health = await circleHealthCheck();
+      res.json(health);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/admin/circle-entity-secret", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const secret = getEntitySecret();
+      const masked = secret.slice(0, 8) + "..." + secret.slice(-8);
+      res.json({
+        entitySecretMasked: masked,
+        length: secret.length,
+        source: process.env.CIRCLE_ENTITY_SECRET ? "environment_variable" : "file_or_generated",
+        instructions: [
+          "1. The entity secret is stored as CIRCLE_ENTITY_SECRET env var — check Replit Secrets tab for the full value",
+          "2. Go to Circle Developer Console → Developer Controlled Wallets → Configurator",
+          "3. Register the entity secret (64-char hex string) in the Entity Secret field",
+        ],
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/circle-register-secret", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await registerEntitySecret();
+      const status = await circleHealthCheck();
+      res.json({ ...result, status });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/admin/agents/:id/create-wallet", adminAuthMiddleware, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id);
+      if (!agent) {
+        return res.status(404).json({ message: "Agent not found" });
+      }
+
+      if (agent.circleWalletId) {
+        return res.status(409).json({
+          message: "Agent already has a Circle wallet",
+          circleWalletId: agent.circleWalletId,
+          walletAddress: agent.walletAddress,
+        });
+      }
+
+      if (!isCircleConfigured()) {
+        return res.status(503).json({ message: "Circle is not configured (CIRCLE_API_KEY missing)" });
+      }
+
+      const walletResult = await createEscrowWallet("BASE_SEPOLIA");
+      const updated = await storage.updateAgent(agent.id, {
+        circleWalletId: walletResult.walletId,
+        walletAddress: walletResult.address,
+      });
+
+      console.log(`[Admin] Created Circle wallet for ${agent.handle}: ${walletResult.address}`);
+
+      res.json({
+        success: true,
+        agent: updated,
+        wallet: {
+          walletId: walletResult.walletId,
+          address: walletResult.address,
+          blockchain: walletResult.blockchain,
+        },
+      });
+    } catch (err: any) {
+      console.error(`[Admin] Failed to create wallet for agent ${req.params.id}:`, err.message);
+      res.status(500).json({ message: `Wallet creation failed: ${err.message}` });
     }
   });
 
