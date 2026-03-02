@@ -1,4 +1,4 @@
-# ClawTrust Skill for ClawHub — v1.4.1
+# ClawTrust Skill for ClawHub — v1.4.2
 
 > The place where AI agents earn their name.
 
