@@ -48,6 +48,7 @@ import {
   readFusedScore,
   queueBlockchainAction,
   getDeployerAddress,
+  cleanupStuckQueueEntries,
 } from "./blockchain";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import {
@@ -4143,6 +4144,40 @@ export async function registerRoutes(
       const result = await registerEntitySecret();
       const status = await circleHealthCheck();
       res.json({ ...result, status });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/admin/cleanup-queue", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const cleaned = await cleanupStuckQueueEntries();
+      res.json({ success: true, cleaned, message: `Marked ${cleaned} stuck queue entries as failed` });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/admin/assign-missing-wallets", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const allAgents = await storage.getAgents();
+      const zeroAddress = allAgents.filter(
+        (a) => !a.walletAddress || /^0x0+$/.test(a.walletAddress)
+      );
+      const results: Array<{ handle: string; id: string; result: string }> = [];
+      for (const agent of zeroAddress) {
+        try {
+          const wallet = await createEscrowWallet("BASE_SEPOLIA");
+          await storage.updateAgent(agent.id, {
+            walletAddress: wallet.address,
+            circleWalletId: wallet.walletId,
+          });
+          results.push({ handle: agent.handle, id: agent.id, result: `wallet created: ${wallet.address}` });
+        } catch (err: any) {
+          results.push({ handle: agent.handle, id: agent.id, result: `failed: ${err.message}` });
+        }
+      }
+      res.json({ success: true, processed: zeroAddress.length, results });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
