@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 
 const GITHUB_API = "https://api.github.com";
 const REPO_OWNER = "clawtrustmolts";
@@ -606,6 +607,124 @@ export async function syncSkillRepo(): Promise<RepoSyncResult> {
     };
   } catch (err: any) {
     return { repo: `${REPO_OWNER}/${SKILL_REPO}`, success: false, filesCount: 0, message: err.message };
+  }
+}
+
+async function clawHubUploadFile(
+  token: string,
+  content: Buffer,
+  contentType: string
+): Promise<string> {
+  const urlResp = await fetch("https://clawhub.ai/api/cli/upload-url", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const urlText = await urlResp.text();
+  if (!urlResp.ok) throw new Error(`upload-url failed: ${urlText.slice(0, 200)}`);
+  let urlJson: { uploadUrl: string };
+  try { urlJson = JSON.parse(urlText); } catch { throw new Error(`upload-url non-JSON: ${urlText.slice(0, 200)}`); }
+
+  const uploadResp = await fetch(urlJson.uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": contentType, "Content-Length": String(content.length) },
+    body: content,
+  });
+  const uploadText = await uploadResp.text();
+  if (!uploadResp.ok) throw new Error(`Convex upload failed (${uploadResp.status}): ${uploadText.slice(0, 200)}`);
+  let uploadJson: { storageId: string };
+  try { uploadJson = JSON.parse(uploadText); } catch { throw new Error(`Upload non-JSON: ${uploadText.slice(0, 200)}`); }
+  return uploadJson.storageId;
+}
+
+export async function publishToClawHub(version?: string): Promise<{ success: boolean; message: string; versionId?: string }> {
+  const CLAWHUB_TOKEN = process.env.CLAWHUB_TOKEN;
+  if (!CLAWHUB_TOKEN) {
+    return { success: false, message: "CLAWHUB_TOKEN not set" };
+  }
+
+  const skillDir = path.resolve(process.cwd(), "openclaw-skill-submission/clawtrust");
+  const clawhubJsonPath = path.join(skillDir, "clawhub.json");
+  if (!fs.existsSync(clawhubJsonPath)) {
+    return { success: false, message: "clawhub.json not found" };
+  }
+
+  const clawhub = JSON.parse(fs.readFileSync(clawhubJsonPath, "utf-8"));
+  const publishVersion = version || clawhub.version;
+  const changelog = clawhub.changelog;
+
+  const fileDefs: Array<{ path: string; localPath: string; contentType: string }> = [
+    { path: "SKILL.md",             localPath: "SKILL.md",             contentType: "text/markdown" },
+    { path: "package.json",         localPath: "package.json",         contentType: "application/json" },
+    { path: "tsconfig.json",        localPath: "tsconfig.json",        contentType: "application/json" },
+    { path: "config.yaml",          localPath: "config.yaml",          contentType: "text/yaml" },
+    { path: "config.schema.json",   localPath: "config.schema.json",   contentType: "application/json" },
+    { path: "icon.svg",             localPath: "icon.svg",             contentType: "image/svg+xml" },
+    { path: "src/client.ts",        localPath: "src/client.ts",        contentType: "text/x-typescript" },
+    { path: "src/types.ts",         localPath: "src/types.ts",         contentType: "text/x-typescript" },
+  ];
+
+  try {
+    const uploadedFiles: Array<{ path: string; sha256: string; size: number; storageId: string; contentType: string }> = [];
+
+    for (const def of fileDefs) {
+      const fullPath = path.join(skillDir, def.localPath);
+      if (!fs.existsSync(fullPath)) {
+        console.warn(`[ClawHub] Skipping missing file: ${def.path}`);
+        continue;
+      }
+      const content = fs.readFileSync(fullPath);
+      const sha256 = crypto.createHash("sha256").update(content).digest("hex");
+      const storageId = await clawHubUploadFile(CLAWHUB_TOKEN, content, def.contentType);
+      uploadedFiles.push({ path: def.path, sha256, size: content.length, storageId, contentType: def.contentType });
+      console.log(`[ClawHub] Uploaded ${def.path} → ${storageId}`);
+    }
+
+    if (uploadedFiles.length === 0) {
+      return { success: false, message: "No skill files found to upload" };
+    }
+
+    const publishResp = await fetch("https://clawhub.ai/api/v1/skills", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${CLAWHUB_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        slug: "clawtrust",
+        displayName: "clawtrust",
+        version: publishVersion,
+        changelog,
+        files: uploadedFiles,
+      }),
+    });
+
+    const publishRawText = await publishResp.text();
+    let publishData: any;
+    try {
+      publishData = JSON.parse(publishRawText);
+    } catch {
+      if (publishRawText.includes("Version already exists")) {
+        return { success: true, message: `ClawTrust v${publishVersion} already live on ClawHub` };
+      }
+      return { success: false, message: `Publish returned non-JSON: ${publishRawText.slice(0, 300)}` };
+    }
+
+    if (publishData.ok) {
+      return {
+        success: true,
+        message: `Published ClawTrust v${publishVersion} to ClawHub with ${uploadedFiles.length} files`,
+        versionId: publishData.versionId,
+      };
+    }
+
+    const errMsg = typeof publishData === "string" ? publishData : JSON.stringify(publishData);
+    if (errMsg.includes("Version already exists") || errMsg.includes("already exists")) {
+      return { success: true, message: `ClawTrust v${publishVersion} already live on ClawHub` };
+    }
+    return { success: false, message: `Publish failed: ${errMsg.slice(0, 300)}` };
+  } catch (err: any) {
+    return { success: false, message: err.message };
   }
 }
 

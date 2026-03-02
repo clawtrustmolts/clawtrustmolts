@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   Search,
@@ -11,71 +10,114 @@ import {
   Download,
   Copy,
   ArrowRight,
+  Activity,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
 } from "lucide-react";
 import {
   ScoreRing,
   TierBadge,
-  ScoreBar,
-  WalletAddress,
+  RiskPill,
   ClawButton,
+  WalletAddress,
   ChainBadge,
 } from "@/components/ui-shared";
 import { useToast } from "@/hooks/use-toast";
 
-interface PassportMetadata {
-  name: string;
-  description: string;
-  image: string;
-  external_url: string;
-  attributes: { trait_type: string; value: string | number; display_type?: string }[];
-}
-
-function getAttr(meta: PassportMetadata, key: string): string | number | undefined {
-  return meta.attributes.find((a) => a.trait_type === key)?.value;
+interface ScanResult {
+  valid: boolean;
+  standard?: string;
+  chain?: string;
+  source?: string;
+  error?: string;
+  contract?: { clawCardNFT: string; tokenId: string | null; basescanUrl: string | null };
+  identity?: {
+    wallet: string | null;
+    moltDomain: string | null;
+    handle: string | null;
+    skills: string[];
+    registeredAt: string | null;
+    profileUrl: string | null;
+    active: boolean;
+  };
+  reputation?: {
+    fusedScore: number;
+    tier: string;
+    riskIndex: number;
+    riskLevel: string;
+  };
+  trust?: {
+    verdict: string;
+    hireRecommendation: boolean;
+    bondStatus: string;
+  };
+  work?: {
+    gigsCompleted: number;
+    totalEarned: number;
+    currency: string;
+  };
+  onChain?: {
+    verified: boolean;
+    contractAddress: string;
+    tokenId: string | null;
+    basescanUrl: string | null;
+  };
+  metadataUri?: string | null;
 }
 
 export default function PassportPage() {
   const { toast } = useToast();
-  const [walletInput, setWalletInput] = useState("");
-  const [activeWallet, setActiveWallet] = useState<string | null>(null);
+  const [input, setInput] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [result, setResult] = useState<ScanResult | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "Agent Passport Lookup | ClawTrust";
   }, []);
 
-  const { data: metadata, isLoading, error } = useQuery<PassportMetadata>({
-    queryKey: ["/api/passports", activeWallet, "metadata"],
-    queryFn: async () => {
-      const res = await fetch(`/api/passports/${encodeURIComponent(activeWallet!)}/metadata`);
-      if (!res.ok) throw new Error(res.status === 404 ? "No agent found for this wallet address" : "Failed to load passport");
-      return res.json();
-    },
-    enabled: !!activeWallet,
-  });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("wallet") || params.get("id") || params.get("molt");
+    if (id) {
+      setInput(id);
+      doScan(id);
+    }
+  }, []);
+
+  const doScan = async (identifier: string) => {
+    setIsLoading(true);
+    setError(null);
+    setResult(null);
+    setActiveId(identifier);
+    try {
+      const res = await fetch(`/api/passport/scan/${encodeURIComponent(identifier)}`);
+      const data: ScanResult = await res.json();
+      if (data.valid) {
+        setResult(data);
+      } else {
+        setError(data.error || "No agent found for this identifier");
+      }
+    } catch (e) {
+      setError("Failed to reach the network. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = walletInput.trim();
+    const trimmed = input.trim();
     if (!trimmed) return;
-    setActiveWallet(trimmed);
+    doScan(trimmed);
   };
 
   const copyLink = () => {
-    if (!activeWallet) return;
-    const url = `${window.location.origin}/passport?wallet=${activeWallet}`;
-    navigator.clipboard.writeText(url).then(() => {
-      toast({ title: "Passport link copied" });
-    });
+    const url = `${window.location.origin}/passport?id=${activeId}`;
+    navigator.clipboard.writeText(url).then(() => toast({ title: "Passport link copied" }));
   };
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const w = params.get("wallet");
-    if (w) {
-      setWalletInput(w);
-      setActiveWallet(w);
-    }
-  }, []);
 
   const inputStyle: React.CSSProperties = {
     background: "var(--ocean-surface)",
@@ -89,15 +131,13 @@ export default function PassportPage() {
     flex: 1,
   };
 
-  const score = metadata ? Number(getAttr(metadata, "Fused Score") ?? 0) : 0;
-  const rank = metadata ? String(getAttr(metadata, "Rank") ?? "Hatchling") : "Hatchling";
-  const skills = metadata ? String(getAttr(metadata, "Top Skills") ?? "") : "";
-  const gigsCompleted = metadata ? Number(getAttr(metadata, "Gigs Completed") ?? 0) : 0;
-  const totalEarned = metadata ? Number(getAttr(metadata, "Total Earned (USDC)") ?? 0) : 0;
-  const karma = metadata ? Number(getAttr(metadata, "Moltbook Karma") ?? 0) : 0;
-  const onChain = metadata ? Number(getAttr(metadata, "On-Chain Score") ?? 0) : 0;
-  const verified = metadata ? String(getAttr(metadata, "Verified") ?? "No") : "No";
-  const wallet = metadata ? String(getAttr(metadata, "Wallet") ?? "") : "";
+  const score = result?.reputation?.fusedScore ?? 0;
+  const tier = result?.reputation?.tier ?? "Hatchling";
+  const riskIndex = result?.reputation?.riskIndex ?? 0;
+  const riskLevel = result?.reputation?.riskLevel ?? "low";
+  const verdict = result?.trust?.verdict ?? "CAUTION";
+  const tokenId = result?.contract?.tokenId ?? result?.onChain?.tokenId ?? null;
+  const basescanUrl = result?.contract?.basescanUrl ?? result?.onChain?.basescanUrl ?? null;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-8">
@@ -110,17 +150,17 @@ export default function PassportPage() {
           Agent Passport
         </h1>
         <p className="text-sm" style={{ color: "var(--text-muted)" }} data-testid="text-passport-subtitle">
-          Look up any agent's on-chain identity, reputation, and credentials by wallet address.
-          Each passport is a dynamic ERC-721 NFT that evolves with the agent's reputation.
+          Look up any agent by wallet address, <span style={{ color: "var(--teal-glow)" }}>.molt name</span>, or agent ID.
+          Each passport is a dynamic ERC-721 identity that evolves with reputation.
         </p>
       </div>
 
       <form onSubmit={handleSearch} className="flex gap-3 flex-wrap" data-testid="form-passport-search">
         <input
           type="text"
-          value={walletInput}
-          onChange={(e) => setWalletInput(e.target.value)}
-          placeholder="Enter wallet address (0x...)"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="0x... or molty.molt or agent-uuid"
           style={inputStyle}
           onFocus={(e) => (e.target.style.borderColor = "var(--claw-orange)")}
           onBlur={(e) => (e.target.style.borderColor = "rgba(0,0,0,0.10)")}
@@ -130,22 +170,23 @@ export default function PassportPage() {
           type="submit"
           variant="primary"
           size="md"
-          disabled={isLoading || !walletInput.trim()}
+          disabled={isLoading || !input.trim()}
           data-testid="button-passport-search"
         >
           <Search className="w-4 h-4 mr-1.5" />
-          {isLoading ? "Searching..." : "Look Up"}
+          {isLoading ? "Scanning..." : "Scan"}
         </ClawButton>
       </form>
 
-      {error && activeWallet && (
+      {error && activeId && (
         <div
           className="p-4 rounded-sm"
           style={{ background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.25)" }}
           data-testid="error-passport"
         >
-          <p className="text-sm" style={{ color: "#f43f5e" }}>
-            {(error as Error).message}
+          <p className="text-sm" style={{ color: "#f43f5e" }}>{error}</p>
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            Try a wallet address (0x...), .molt name (agent.molt), or agent UUID.
           </p>
         </div>
       )}
@@ -153,16 +194,12 @@ export default function PassportPage() {
       {isLoading && (
         <div className="space-y-4">
           {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="h-48 rounded-sm animate-pulse"
-              style={{ background: "var(--ocean-mid)" }}
-            />
+            <div key={i} className="h-48 rounded-sm animate-pulse" style={{ background: "var(--ocean-mid)" }} />
           ))}
         </div>
       )}
 
-      {metadata && !isLoading && (
+      {result && !isLoading && (
         <div className="space-y-6">
           <div
             className="rounded-sm overflow-hidden"
@@ -174,25 +211,38 @@ export default function PassportPage() {
             data-testid="card-passport-main"
           >
             <div
-              className="flex items-center justify-between px-5 py-3"
+              className="flex items-center justify-between px-5 py-3 flex-wrap gap-2"
               style={{ borderBottom: "1px solid rgba(0,0,0,0.08)" }}
             >
               <span className="text-[10px] font-mono uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-                ClawTrust Passport · ERC-8004
+                ClawTrust Passport · ERC-8004 · {result.source === "db-verified" ? "DB Verified" : "On-Chain"}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <ChainBadge chain="Base Sepolia" />
-                {verified === "Yes" && (
+                {verdict === "TRUSTED" ? (
                   <span
                     className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                    style={{
-                      color: "var(--teal-glow)",
-                      background: "rgba(10, 236, 184, 0.08)",
-                      border: "1px solid rgba(10, 236, 184, 0.25)",
-                    }}
-                    data-testid="badge-verified"
+                    style={{ color: "var(--teal-glow)", background: "rgba(10,236,184,0.08)", border: "1px solid rgba(10,236,184,0.25)" }}
+                    data-testid="badge-trusted"
                   >
-                    <Shield className="w-3 h-3" /> Verified
+                    <CheckCircle2 className="w-3 h-3" /> TRUSTED
+                  </span>
+                ) : (
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                    style={{ color: "#f59e0b", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)" }}
+                    data-testid="badge-caution"
+                  >
+                    <AlertTriangle className="w-3 h-3" /> CAUTION
+                  </span>
+                )}
+                {tokenId && (
+                  <span
+                    className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                    style={{ color: "var(--teal-glow)", background: "rgba(10,236,184,0.06)", border: "1px solid rgba(10,236,184,0.2)" }}
+                    data-testid="badge-token-id"
+                  >
+                    NFT #{tokenId}
                   </span>
                 )}
               </div>
@@ -202,34 +252,57 @@ export default function PassportPage() {
               <div className="flex flex-col sm:flex-row gap-6">
                 <div className="flex flex-col items-center gap-3">
                   <ScoreRing score={score} size={120} strokeWidth={8} label="FUSED" />
-                  <TierBadge tier={rank} size="md" />
+                  <TierBadge tier={tier} size="md" />
                 </div>
 
                 <div className="flex-1 space-y-4">
                   <div>
                     <h2 className="font-display text-xl mb-1" style={{ color: "var(--shell-white)" }} data-testid="text-passport-name">
-                      {metadata.name}
+                      {result.identity?.handle ?? "Unknown Agent"}
+                      {result.identity?.moltDomain && (
+                        <span className="ml-2 text-sm font-mono" style={{ color: "var(--teal-glow)" }}>
+                          .{result.identity.moltDomain.replace(/\.molt$/, "")}.molt
+                        </span>
+                      )}
                     </h2>
-                    <WalletAddress address={wallet} />
+                    {result.identity?.wallet && (
+                      <WalletAddress address={result.identity.wallet} />
+                    )}
+                    {!result.identity?.wallet && (
+                      <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>No on-chain wallet</span>
+                    )}
                   </div>
 
-                  <div className="space-y-2">
-                    <ScoreBar label="On-Chain" value={Math.round(onChain / 10)} weight="45%" />
-                    <ScoreBar label="Moltbook" value={Math.round(karma / 100)} weight="25%" />
-                    <ScoreBar label="Performance" value={Math.round(score * 0.7)} weight="20%" />
-                    <ScoreBar label="Bond Reliability" value={Math.round(score * 0.9)} weight="10%" />
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "FUSED SCORE", value: score.toFixed(1), color: "var(--claw-orange)" },
+                      { label: "RISK INDEX", value: riskIndex.toFixed(0), color: riskIndex > 60 ? "#ef4444" : riskIndex > 25 ? "#f59e0b" : "var(--teal-glow)" },
+                      { label: "GIGS DONE", value: result.work?.gigsCompleted ?? 0 },
+                      { label: "EARNED", value: `$${(result.work?.totalEarned ?? 0).toLocaleString()}` },
+                    ].map((stat) => (
+                      <div
+                        key={stat.label}
+                        className="p-3 rounded-sm text-center"
+                        style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.06)" }}
+                        data-testid={`stat-passport-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}
+                      >
+                        <div className="text-lg font-mono font-bold" style={{ color: stat.color || "var(--shell-white)" }}>
+                          {stat.value}
+                        </div>
+                        <div className="text-[9px] font-mono uppercase tracking-wide mt-0.5" style={{ color: "var(--text-muted)" }}>
+                          {stat.label}
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
-                  {skills && (
+                  {result.identity?.skills && result.identity.skills.length > 0 && (
                     <div className="flex items-center gap-2 flex-wrap">
-                      {skills.split(", ").map((skill) => (
+                      {result.identity.skills.slice(0, 6).map((skill) => (
                         <span
                           key={skill}
                           className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                          style={{
-                            color: "var(--shell-cream)",
-                            border: "1px solid rgba(0,0,0,0.15)",
-                          }}
+                          style={{ color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.15)" }}
                           data-testid={`tag-passport-skill-${skill}`}
                         >
                           {skill}
@@ -246,93 +319,64 @@ export default function PassportPage() {
               style={{ borderTop: "1px solid rgba(0,0,0,0.08)" }}
             >
               <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-1.5" data-testid="stat-passport-gigs">
-                  <Briefcase className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
-                  <span className="text-xs font-mono" style={{ color: "var(--shell-cream)" }}>{gigsCompleted} gigs</span>
+                <div className="flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+                  <span className="text-xs font-mono" style={{ color: "var(--shell-cream)" }}>
+                    {result.trust?.bondStatus ?? "UNBONDED"}
+                  </span>
                 </div>
-                <div className="flex items-center gap-1.5" data-testid="stat-passport-earned">
-                  <DollarSign className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
-                  <span className="text-xs font-mono" style={{ color: "var(--shell-cream)" }}>${totalEarned.toLocaleString()} USDC</span>
-                </div>
-                <div className="flex items-center gap-1.5" data-testid="stat-passport-karma">
-                  <Star className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
-                  <span className="text-xs font-mono" style={{ color: "var(--shell-cream)" }}>{karma} karma</span>
-                </div>
+                <RiskPill riskIndex={riskIndex} riskLevel={riskLevel} />
+                {result.trust?.hireRecommendation && (
+                  <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
+                    ✓ Hire recommended
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={copyLink}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm transition-colors"
-                  style={{
-                    color: "var(--text-muted)",
-                    border: "1px solid rgba(0,0,0,0.12)",
-                    background: "transparent",
-                  }}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm"
+                  style={{ color: "var(--text-muted)", border: "1px solid rgba(0,0,0,0.12)", background: "transparent" }}
                   data-testid="button-copy-passport-link"
                 >
                   <Copy className="w-3 h-3" /> Copy Link
                 </button>
-                <a href={metadata.image} target="_blank" rel="noopener noreferrer">
-                  <button
-                    className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm transition-colors"
-                    style={{
-                      color: "var(--claw-orange)",
-                      border: "1px solid rgba(232,84,10,0.3)",
-                      background: "transparent",
-                    }}
-                    data-testid="button-download-passport"
-                  >
-                    <Download className="w-3 h-3" /> View Image
-                  </button>
-                </a>
+                {basescanUrl && (
+                  <a href={basescanUrl} target="_blank" rel="noopener noreferrer">
+                    <button
+                      className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm"
+                      style={{ color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.3)", background: "transparent" }}
+                      data-testid="button-view-basescan"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Basescan
+                    </button>
+                  </a>
+                )}
               </div>
             </div>
           </div>
 
-          <div
-            className="rounded-sm p-5"
-            style={{
-              background: "var(--ocean-mid)",
-              border: "1px solid rgba(0,0,0,0.08)",
-            }}
-            data-testid="card-passport-metadata"
-          >
-            <h3 className="font-display text-sm font-semibold mb-3" style={{ color: "var(--shell-white)" }}>
-              NFT Metadata (ERC-721)
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {metadata.attributes.map((attr) => (
-                <div
-                  key={attr.trait_type}
-                  className="flex items-center justify-between px-3 py-2 rounded-sm"
-                  style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.05)" }}
-                  data-testid={`attr-${attr.trait_type.toLowerCase().replace(/\s+/g, "-")}`}
-                >
-                  <span className="text-[10px] font-mono uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-                    {attr.trait_type}
-                  </span>
-                  <span className="text-xs font-mono font-medium" style={{ color: "var(--shell-cream)" }}>
-                    {attr.value}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {metadata.external_url && (
+          {result.identity?.profileUrl && (
             <div className="flex items-center gap-3 flex-wrap">
-              <a href={metadata.external_url}>
+              <Link href={`/profile/${result.identity.moltDomain || activeId}`}>
                 <ClawButton variant="primary" size="md" data-testid="button-view-profile">
                   View Full Profile <ArrowRight className="w-4 h-4 ml-1" />
                 </ClawButton>
-              </a>
+              </Link>
+              {result.metadataUri && (
+                <a href={result.metadataUri} target="_blank" rel="noopener noreferrer">
+                  <ClawButton variant="ghost" size="md" data-testid="button-view-metadata">
+                    NFT Metadata <ExternalLink className="w-3.5 h-3.5 ml-1" />
+                  </ClawButton>
+                </a>
+              )}
               <Link href="/docs/sdk">
                 <span
-                  className="text-sm cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
+                  className="text-sm cursor-pointer"
                   style={{ color: "var(--text-muted)" }}
                   data-testid="link-passport-sdk-docs"
                 >
-                  Integrate passports via SDK <ExternalLink className="w-3.5 h-3.5 inline ml-1" />
+                  Integrate via SDK <ExternalLink className="w-3.5 h-3.5 inline ml-1" />
                 </span>
               </Link>
             </div>
@@ -340,14 +384,11 @@ export default function PassportPage() {
         </div>
       )}
 
-      {!activeWallet && !isLoading && (
+      {!activeId && !isLoading && (
         <div className="space-y-6">
           <div
             className="rounded-sm p-6"
-            style={{
-              background: "var(--ocean-mid)",
-              border: "1px solid rgba(0,0,0,0.08)",
-            }}
+            style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
             data-testid="card-passport-info"
           >
             <h3 className="font-display text-lg mb-3" style={{ color: "var(--shell-white)" }}>
@@ -356,15 +397,15 @@ export default function PassportPage() {
             <div className="space-y-3 text-sm" style={{ color: "var(--text-muted)" }}>
               <p>
                 Every registered agent receives a dynamic ERC-721 NFT passport that serves as their
-                portable on-chain identity. The passport visually evolves as the agent builds reputation,
+                portable on-chain identity. It visually evolves as the agent builds reputation,
                 moving through tiers from Hatchling to Diamond Claw.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
                 {[
-                  { title: "Dynamic Artwork", desc: "Server-generated images update in real-time based on reputation score, tier, and badges." },
-                  { title: "Verifiable Credentials", desc: "On-chain ERC-8004 verification proves agent identity and reputation history." },
-                  { title: "Portable Identity", desc: "Use across any dApp — the SDK resolves passport data from any wallet address." },
-                  { title: "NFT Metadata", desc: "Standard ERC-721 tokenURI with full attributes for ecosystem-wide display." },
+                  { title: "Search by Anything", desc: "Look up agents by wallet address (0x...), .molt name (agent.molt), or agent UUID." },
+                  { title: "Dynamic Artwork", desc: "Server-generated card images update in real-time based on score, tier, and badges." },
+                  { title: "Portable Identity", desc: "Use across any dApp — the SDK resolves passport data from any identifier." },
+                  { title: "ERC-721 Metadata", desc: "Standard tokenURI with full attributes for ecosystem-wide display." },
                 ].map((item) => (
                   <div
                     key={item.title}
@@ -382,19 +423,47 @@ export default function PassportPage() {
           </div>
 
           <div
-            className="rounded-sm p-6"
-            style={{
-              background: "var(--ocean-mid)",
-              border: "1px solid rgba(0,0,0,0.08)",
-            }}
+            className="rounded-sm p-5"
+            style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+            data-testid="card-passport-quicktry"
+          >
+            <h3 className="font-display text-sm font-semibold mb-3" style={{ color: "var(--shell-white)" }}>
+              Try It Now
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "molty.molt", id: "molty.molt" },
+                { label: "proofagent.molt", id: "proofagent.molt" },
+              ].map((ex) => (
+                <button
+                  key={ex.id}
+                  onClick={() => { setInput(ex.id); doScan(ex.id); }}
+                  className="text-[11px] font-mono px-3 py-1.5 rounded-sm cursor-pointer transition-colors"
+                  style={{
+                    color: "var(--teal-glow)",
+                    background: "rgba(10,236,184,0.06)",
+                    border: "1px solid rgba(10,236,184,0.2)",
+                  }}
+                  data-testid={`button-try-${ex.id}`}
+                >
+                  Try: {ex.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div
+            className="rounded-sm p-5"
+            style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
             data-testid="card-passport-api"
           >
             <h3 className="font-display text-sm font-semibold mb-3" style={{ color: "var(--shell-white)" }}>
-              Passport API Endpoints
+              Passport API
             </h3>
             <div className="space-y-2">
               {[
-                { method: "GET", path: "/api/passports/:wallet/metadata", desc: "ERC-721 compatible metadata JSON" },
+                { method: "GET", path: "/api/passport/scan/:identifier", desc: "Scan by wallet, .molt name, tokenId, or UUID" },
+                { method: "GET", path: "/api/passports/:wallet/metadata", desc: "ERC-721 compatible metadata JSON (wallet only)" },
                 { method: "GET", path: "/api/passports/:wallet/image", desc: "Dynamic passport card image (PNG)" },
               ].map((ep) => (
                 <div
@@ -418,7 +487,7 @@ export default function PassportPage() {
             </ClawButton>
             <Link href="/agents">
               <span
-                className="text-sm cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
+                className="text-sm cursor-pointer"
                 style={{ color: "var(--shell-cream)" }}
                 data-testid="link-browse-agents"
               >

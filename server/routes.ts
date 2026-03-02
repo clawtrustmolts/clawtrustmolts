@@ -49,7 +49,7 @@ import {
   queueBlockchainAction,
   getDeployerAddress,
 } from "./blockchain";
-import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList } from "./github-sync";
+import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -328,7 +328,7 @@ export async function registerRoutes(
   const ERC8004_CAIP10_REGISTRY = `eip155:84532:${ERC8004_NFT_ADDRESS}`;
   const PRODUCTION_BASE_URL = "https://clawtrust.org";
 
-  app.post("/api/admin/register-on-8004scan", adminAuthMiddleware, async (req, res) => {
+  app.post("/api/admin/register-on-erc8004", adminAuthMiddleware, async (req, res) => {
     try {
       const agents = await storage.getAgents();
       const eligible = agents.filter((a: any) => !a.officialRegistryAgentId);
@@ -350,7 +350,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/register-agent-8004scan/:agentId", adminAuthMiddleware, async (req, res) => {
+  app.post("/api/admin/register-agent-erc8004/:agentId", adminAuthMiddleware, async (req, res) => {
     try {
       const agent = await storage.getAgent(req.params.agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -405,10 +405,8 @@ export async function registerRoutes(
         moltDomain: a.moltDomain || null,
         fusedScore: a.fusedScore || 0,
         tier: a.tier || "Hatchling",
-        scanUrl: a.officialRegistryAgentId
-          ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${a.officialRegistryAgentId}`
-          : a.erc8004TokenId
-            ? `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${a.erc8004TokenId}`
+        scanUrl: a.erc8004TokenId
+            ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`
             : null,
       })));
     } catch (err: any) {
@@ -672,7 +670,8 @@ export async function registerRoutes(
 
       const updatedAgent = await storage.updateAgent(agent.id, {
         onChainScore: 5,
-        fusedScore: computeFusedScore(5, 0),
+        bondReliability: 1.0,
+        fusedScore: computeFusedScore(5, 0, 0, 1.0),
       });
 
       mintPassportForAgent({
@@ -2231,51 +2230,70 @@ export async function registerRoutes(
   }
 
   app.get("/api/contracts", (req, res) => {
-    const BASESCAN = "https://sepolia.basescan.org/address";
+    const BASESCAN_ADDR = "https://sepolia.basescan.org/address";
+    const EXPLORER = "https://sepolia.basescan.org";
     res.json({
-      network: "Base Sepolia",
-      chainId: 84532,
-      explorer: "https://sepolia.basescan.org",
+      network: {
+        name: "Base Sepolia",
+        chainId: 84532,
+        rpcUrl: "https://sepolia.base.org",
+        blockExplorer: EXPLORER,
+      },
       deployedAt: "2026-02-28",
       contracts: {
         ClawCardNFT: {
           address: process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
           description: "ERC-8004 Soulbound Agent Passport NFT",
-          basescan: `${BASESCAN}/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`,
         },
         ClawTrustEscrow: {
           address: process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe",
           description: "USDC Escrow with x402 micropayment support",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
         },
         ClawTrustSwarmValidator: {
           address: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
           description: "On-chain swarm vote consensus validator",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
         },
         ClawTrustRepAdapter: {
           address: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
           description: "Fused reputation score oracle adapter",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818"}`,
         },
         ClawTrustBond: {
           address: process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c",
           description: "USDC bond staking for agent reliability",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c"}`,
         },
         ClawTrustCrew: {
           address: process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",
           description: "Multi-agent crew registry",
-          basescan: `${BASESCAN}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
         },
+      },
+      erc8004: {
+        standard: "ERC-8004 Trustless Agents",
+        identityRegistry: process.env.ERC8004_REGISTRY_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+        reputationRegistry: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+        validationRegistry: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
       },
       usdc: {
         address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        basescan: `${BASESCAN}/0x036CbD53842c5426634e7929541eC2318f3dCF7e`,
+        basescan: `${BASESCAN_ADDR}/0x036CbD53842c5426634e7929541eC2318f3dCF7e`,
       },
       oracle: {
         wallet: "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
-        basescan: `https://sepolia.basescan.org/address/0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`,
+        basescan: `${EXPLORER}/address/0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`,
+      },
+      security: {
+        rateLimiting: "enabled",
+        captcha: "disabled",
+        walletAuth: "HMAC-SHA256",
+        adminWallets: "allowlist",
+        inputValidation: "Zod",
+        circuitBreaker: "enabled",
+        auditStatus: "pending",
       },
     });
   });
@@ -2296,38 +2314,57 @@ export async function registerRoutes(
           tokenId = passportData.tokenId?.toString() || null;
           dbAgent = await storage.getAgentByWallet(walletAddress);
         }
+        // Also try DB lookup for agents with .molt but not on-chain
+        if (!dbAgent) {
+          const domainName = identifier.replace(/.molt$/, '');
+          const domainRecord = await storage.getMoltDomain(domainName).catch(() => null);
+          if (domainRecord?.agentId) dbAgent = await storage.getAgent(domainRecord.agentId).catch(() => null);
+        }
       } else if (identifier.startsWith("0x")) {
         const result = await readPassportByWallet(identifier);
         if (result) {
           passportData = result.passport;
           tokenId = result.tokenId;
           walletAddress = identifier;
-          dbAgent = await storage.getAgentByWallet(identifier);
         }
-      } else if (!isNaN(parseInt(identifier))) {
+        dbAgent = await storage.getAgentByWallet(identifier).catch(() => null);
+      } else if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(identifier.toLowerCase())) {
+        // UUID lookup
+        dbAgent = await storage.getAgent(identifier).catch(() => null);
+        if (dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
+      } else if (/^\d+$/.test(identifier)) {
+        // Pure numeric = tokenId
         passportData = await readPassportById(identifier);
         if (passportData?.wallet) {
           walletAddress = passportData.wallet;
           tokenId = identifier;
           dbAgent = await storage.getAgentByWallet(walletAddress);
         }
+      } else {
+        // Handle lookup
+        const allAgents = await storage.getAgents();
+        dbAgent = allAgents.find((a: any) => a.handle?.toLowerCase() === identifier.toLowerCase()) || null;
+        if (dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
       }
 
       if (!passportData) {
-        let dbAgentFallback: any = null;
-        if (identifier.endsWith(".molt")) {
-          const domainName = identifier.replace(/\.molt$/, "");
-          const domainRecord = await storage.getMoltDomain(domainName).catch(() => null);
-          if (domainRecord?.agentId) {
-            dbAgentFallback = await storage.getAgent(domainRecord.agentId).catch(() => null);
+        // If dbAgent was already found from identifier lookup, reuse it
+        let dbAgentFallback: any = dbAgent || null;
+        if (!dbAgentFallback) {
+          if (identifier.endsWith(".molt")) {
+            const domainName = identifier.replace(/\.molt$/, "");
+            const domainRecord = await storage.getMoltDomain(domainName).catch(() => null);
+            if (domainRecord?.agentId) {
+              dbAgentFallback = await storage.getAgent(domainRecord.agentId).catch(() => null);
+            }
+          } else if (identifier.startsWith("0x")) {
+            dbAgentFallback = await storage.getAgentByWallet(identifier).catch(() => null);
           }
-        } else if (identifier.startsWith("0x")) {
-          dbAgentFallback = await storage.getAgentByWallet(identifier).catch(() => null);
         }
 
-        if (dbAgentFallback?.erc8004TokenId) {
-          const tid = dbAgentFallback.erc8004TokenId;
-          const bsUrl = `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}`;
+        if (dbAgentFallback) {
+          const tid = dbAgentFallback.erc8004TokenId || null;
+          const bsUrl = tid ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}` : null;
           return res.json({
             valid: true,
             standard: "ERC-8004",
@@ -2340,24 +2377,37 @@ export async function registerRoutes(
               handle: dbAgentFallback.handle,
               skills: dbAgentFallback.skills || [],
               registeredAt: dbAgentFallback.registeredAt,
+              profileUrl: dbAgentFallback.moltDomain
+                ? `clawtrust.org/profile/${dbAgentFallback.moltDomain}`
+                : `clawtrust.org/profile/${dbAgentFallback.id}`,
+              active: true,
             },
             reputation: {
               fusedScore: dbAgentFallback.fusedScore || 0,
-              tier: dbAgentFallback.tier || "Hatchling",
+              tier: getTier(dbAgentFallback.fusedScore || 0),
               riskIndex: dbAgentFallback.riskIndex || 0,
+              riskLevel: getRiskLevel(dbAgentFallback.riskIndex || 0),
+            },
+            trust: {
+              verdict: (dbAgentFallback.riskIndex || 0) < 60 ? "TRUSTED" : "CAUTION",
+              hireRecommendation: (dbAgentFallback.fusedScore || 0) >= 50 && (dbAgentFallback.riskIndex || 0) < 40,
+              bondStatus: dbAgentFallback.bondTier || "UNBONDED",
+            },
+            work: {
+              gigsCompleted: dbAgentFallback.totalGigsCompleted || 0,
+              totalEarned: dbAgentFallback.totalEarned || 0,
+              currency: "USDC",
             },
             active: true,
             source: "db-verified",
-            scanUrl: dbAgentFallback.officialRegistryAgentId
-              ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${dbAgentFallback.officialRegistryAgentId}`
-              : `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${tid}`,
+            scanUrl: bsUrl,
             metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${dbAgentFallback.id}/card/metadata`,
           });
         }
 
         return res.json({
           valid: false,
-          error: "No on-chain passport found for this identifier",
+          error: "No agent found for this identifier",
           register: "https://clawtrust.org/register",
           identifier,
         });
@@ -2367,15 +2417,14 @@ export async function registerRoutes(
         ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
         : null;
 
-      const fusedScore = passportData.fusedScore !== undefined
-        ? Number(passportData.fusedScore) / 100
-        : dbAgent?.fusedScore || 0;
-
-      const riskIndex = passportData.riskIndex !== undefined
-        ? Number(passportData.riskIndex)
-        : dbAgent?.riskIndex || 0;
-
+      // Prefer DB data — on-chain values may be stale or unset
+      const fusedScore = dbAgent?.fusedScore ?? (passportData.fusedScore !== undefined ? Number(passportData.fusedScore) / 100 : 0);
+      const riskIndex = dbAgent?.riskIndex ?? (passportData.riskIndex !== undefined ? Number(passportData.riskIndex) : 0);
       const tierLevel = passportData.tier !== undefined ? Number(passportData.tier) : 0;
+      // Use DB tokenId if on-chain didn't resolve it
+      if (!tokenId && dbAgent?.erc8004TokenId) tokenId = dbAgent.erc8004TokenId;
+      // Use DB wallet if on-chain didn't resolve it
+      if (!walletAddress && dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
 
       let registeredAt: string | null = null;
       try {
@@ -2412,7 +2461,7 @@ export async function registerRoutes(
         },
         reputation: {
           fusedScore,
-          tier: getTierName(tierLevel),
+          tier: getTier(fusedScore),
           tierLevel,
           riskIndex,
           riskLevel: getRiskLevel(riskIndex),
@@ -2423,10 +2472,10 @@ export async function registerRoutes(
         trust: {
           verdict: active && riskIndex < 60 ? "TRUSTED" : "CAUTION",
           hireRecommendation: fusedScore >= 50 && riskIndex < 40,
-          bondStatus: dbAgent?.bondStatus || "UNBONDED",
+          bondStatus: dbAgent?.bondTier || "UNBONDED",
         },
         work: {
-          gigsCompleted: dbAgent?.gigsCompleted || 0,
+          gigsCompleted: dbAgent?.totalGigsCompleted || 0,
           totalEarned: dbAgent?.totalEarned || "0",
           currency: "USDC",
         },
@@ -2437,10 +2486,8 @@ export async function registerRoutes(
           basescanUrl,
           standard: "ERC-8004",
         },
-        scanUrl: dbAgent?.officialRegistryAgentId
-          ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${dbAgent.officialRegistryAgentId}`
-          : tokenId
-            ? `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${tokenId}`
+        scanUrl: tokenId
+            ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${tokenId}`
             : null,
         metadataUri: dbAgent
           ? `${PRODUCTION_BASE_URL}/api/agents/${dbAgent.id}/card/metadata`
@@ -2814,7 +2861,8 @@ export async function registerRoutes(
 
       const updatedAgent = await storage.updateAgent(agent.id, {
         onChainScore: 5,
-        fusedScore: computeFusedScore(5, 0),
+        bondReliability: 1.0,
+        fusedScore: computeFusedScore(5, 0, 0, 1.0),
         lastHeartbeat: new Date(),
       });
 
@@ -3980,6 +4028,16 @@ export async function registerRoutes(
   app.post("/api/admin/github-sync-all", strictLimiter, adminAuthMiddleware, async (_req, res) => {
     try {
       const result = await syncAllRepos();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post("/api/admin/publish-clawhub", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { version } = req.body || {};
+      const result = await publishToClawHub(version);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
