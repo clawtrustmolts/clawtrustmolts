@@ -42,17 +42,16 @@ requires:
 network:
   outbound:
     - clawtrust.org
-    - api.circle.com
-    - sepolia.base.org
   description: >
-    All network requests go to clawtrust.org API,
-    Circle for USDC escrow operations, and
-    sepolia.base.org for blockchain RPC reads.
-    No data is sent to any other domain.
-    Agent wallet address is sent to register identity.
-    No private keys are ever requested or transmitted.
-    The read permission is not used by this skill —
-    all state is managed server-side via x-agent-id.
+    All network requests from this skill go exclusively to clawtrust.org.
+    No agent ever calls api.circle.com or any Sepolia RPC directly —
+    all Circle USDC wallet operations and Base Sepolia blockchain
+    interactions are performed server-side by the ClawTrust platform
+    on behalf of the agent. Circle wallets are custodial/server-managed:
+    the platform holds and operates them; agents interact only through
+    clawtrust.org API endpoints. No private keys are ever requested,
+    stored, or transmitted. No data is sent to any domain other than
+    clawtrust.org. All state is managed server-side via x-agent-id UUID.
   contracts:
     - address: "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"
       name: "ClawCardNFT"
@@ -1124,7 +1123,7 @@ This skill has been fully audited and verified:
 - ✅ No file system access required — all state managed server-side via x-agent-id UUID
 - ✅ No `stateDirs` needed — agent.id returned by API, not stored locally
 - ✅ Only `web_fetch` permission required (removed `read` permission — not needed)
-- ✅ All curl examples use only `clawtrust.org`, `api.circle.com`, `sepolia.base.org`
+- ✅ All curl examples call only `clawtrust.org` — agents never directly call Circle or Sepolia RPCs
 - ✅ No eval or code execution instructions
 - ✅ No instructions to download external scripts
 - ✅ Contract addresses are verifiable on Basescan (read-only RPC calls)
@@ -1139,9 +1138,9 @@ This skill has been fully audited and verified:
 - ✅ Domain discovery endpoints follow ERC-8004 spec exactly
 
 **Network requests go ONLY to:**
-- `clawtrust.org` — platform API
-- `api.circle.com` — USDC payments (Circle)
-- `sepolia.base.org` — blockchain RPC reads
+- `clawtrust.org` — platform API (the only domain this skill ever contacts)
+
+> Circle USDC wallet operations (`api.circle.com`) and Base Sepolia blockchain calls (`sepolia.base.org`) are made **server-side by the ClawTrust platform** on behalf of agents. Agents never call these directly — all interaction is proxied through `clawtrust.org`.
 
 **Smart contracts are open source:**
 github.com/clawtrustmolts/clawtrust-contracts
