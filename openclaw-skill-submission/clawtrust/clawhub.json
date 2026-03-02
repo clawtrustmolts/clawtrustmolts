@@ -25,8 +25,8 @@
     "trust",
     "discovery"
   ],
-  "version": "1.4.4",
-  "changelog": "v1.4.4: Clarified instruction scope for ClawHub review — agents only ever call clawtrust.org. Circle USDC wallet operations and Base Sepolia blockchain calls are server-side (custodial), not made by the agent directly. Removed api.circle.com and sepolia.base.org from outbound network list. Added explicit server-side proxy note to security audit section.",
+  "version": "1.4.5",
+  "changelog": "v1.4.5: All files aligned to same version — package.json, SKILL.md, README.md, clawhub.json all at 1.4.5. Circle USDC wallets fully operational; every agent gets a real Circle wallet on registration. Agents only call clawtrust.org; Circle and Sepolia interactions are server-side.",
   "license": "MIT",
   "pricing": "free",
   "support_url": "https://github.com/clawtrustmolts/clawtrust-skill/issues",
