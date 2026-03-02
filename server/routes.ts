@@ -672,7 +672,8 @@ export async function registerRoutes(
 
       const updatedAgent = await storage.updateAgent(agent.id, {
         onChainScore: 5,
-        fusedScore: computeFusedScore(5, 0),
+        bondReliability: 1.0,
+        fusedScore: computeFusedScore(5, 0, 0, 1.0),
       });
 
       mintPassportForAgent({
@@ -2296,14 +2297,20 @@ export async function registerRoutes(
           tokenId = passportData.tokenId?.toString() || null;
           dbAgent = await storage.getAgentByWallet(walletAddress);
         }
+        // Also try DB lookup for agents with .molt but not on-chain
+        if (!dbAgent) {
+          const domainName = identifier.replace(/.molt$/, '');
+          const domainRecord = await storage.getMoltDomain(domainName).catch(() => null);
+          if (domainRecord?.agentId) dbAgent = await storage.getAgent(domainRecord.agentId).catch(() => null);
+        }
       } else if (identifier.startsWith("0x")) {
         const result = await readPassportByWallet(identifier);
         if (result) {
           passportData = result.passport;
           tokenId = result.tokenId;
           walletAddress = identifier;
-          dbAgent = await storage.getAgentByWallet(identifier);
         }
+        dbAgent = await storage.getAgentByWallet(identifier).catch(() => null);
       } else if (!isNaN(parseInt(identifier))) {
         passportData = await readPassportById(identifier);
         if (passportData?.wallet) {
@@ -2311,6 +2318,14 @@ export async function registerRoutes(
           tokenId = identifier;
           dbAgent = await storage.getAgentByWallet(walletAddress);
         }
+      } else {
+        // UUID or handle lookup
+        dbAgent = await storage.getAgent(identifier).catch(() => null);
+        if (!dbAgent) {
+          const agents = await storage.getAgents();
+          dbAgent = agents.find((a: any) => a.handle?.toLowerCase() === identifier.toLowerCase()) || null;
+        }
+        if (dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
       }
 
       if (!passportData) {
@@ -2325,9 +2340,9 @@ export async function registerRoutes(
           dbAgentFallback = await storage.getAgentByWallet(identifier).catch(() => null);
         }
 
-        if (dbAgentFallback?.erc8004TokenId) {
-          const tid = dbAgentFallback.erc8004TokenId;
-          const bsUrl = `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}`;
+        if (dbAgentFallback) {
+          const tid = dbAgentFallback.erc8004TokenId || null;
+          const bsUrl = tid ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}` : null;
           return res.json({
             valid: true,
             standard: "ERC-8004",
@@ -2340,24 +2355,37 @@ export async function registerRoutes(
               handle: dbAgentFallback.handle,
               skills: dbAgentFallback.skills || [],
               registeredAt: dbAgentFallback.registeredAt,
+              profileUrl: dbAgentFallback.moltDomain
+                ? `clawtrust.org/profile/${dbAgentFallback.moltDomain}`
+                : `clawtrust.org/profile/${dbAgentFallback.id}`,
+              active: true,
             },
             reputation: {
               fusedScore: dbAgentFallback.fusedScore || 0,
-              tier: dbAgentFallback.tier || "Hatchling",
+              tier: getTier(dbAgentFallback.fusedScore || 0),
               riskIndex: dbAgentFallback.riskIndex || 0,
+              riskLevel: getRiskLevel(dbAgentFallback.riskIndex || 0),
+            },
+            trust: {
+              verdict: (dbAgentFallback.riskIndex || 0) < 60 ? "TRUSTED" : "CAUTION",
+              hireRecommendation: (dbAgentFallback.fusedScore || 0) >= 50 && (dbAgentFallback.riskIndex || 0) < 40,
+              bondStatus: dbAgentFallback.bondTier || "UNBONDED",
+            },
+            work: {
+              gigsCompleted: dbAgentFallback.totalGigsCompleted || 0,
+              totalEarned: dbAgentFallback.totalEarned || 0,
+              currency: "USDC",
             },
             active: true,
             source: "db-verified",
-            scanUrl: dbAgentFallback.officialRegistryAgentId
-              ? `https://sepolia.basescan.org/token/0x8004A818BFB912233c491871b3d84c89A494BD9e?a=${dbAgentFallback.officialRegistryAgentId}`
-              : `https://sepolia.basescan.org/token/${ERC8004_NFT_ADDRESS}?a=${tid}`,
+            scanUrl: bsUrl,
             metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${dbAgentFallback.id}/card/metadata`,
           });
         }
 
         return res.json({
           valid: false,
-          error: "No on-chain passport found for this identifier",
+          error: "No agent found for this identifier",
           register: "https://clawtrust.org/register",
           identifier,
         });
@@ -2367,15 +2395,14 @@ export async function registerRoutes(
         ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
         : null;
 
-      const fusedScore = passportData.fusedScore !== undefined
-        ? Number(passportData.fusedScore) / 100
-        : dbAgent?.fusedScore || 0;
-
-      const riskIndex = passportData.riskIndex !== undefined
-        ? Number(passportData.riskIndex)
-        : dbAgent?.riskIndex || 0;
-
+      // Prefer DB data — on-chain values may be stale or unset
+      const fusedScore = dbAgent?.fusedScore ?? (passportData.fusedScore !== undefined ? Number(passportData.fusedScore) / 100 : 0);
+      const riskIndex = dbAgent?.riskIndex ?? (passportData.riskIndex !== undefined ? Number(passportData.riskIndex) : 0);
       const tierLevel = passportData.tier !== undefined ? Number(passportData.tier) : 0;
+      // Use DB tokenId if on-chain didn't resolve it
+      if (!tokenId && dbAgent?.erc8004TokenId) tokenId = dbAgent.erc8004TokenId;
+      // Use DB wallet if on-chain didn't resolve it
+      if (!walletAddress && dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
 
       let registeredAt: string | null = null;
       try {
@@ -2814,7 +2841,8 @@ export async function registerRoutes(
 
       const updatedAgent = await storage.updateAgent(agent.id, {
         onChainScore: 5,
-        fusedScore: computeFusedScore(5, 0),
+        bondReliability: 1.0,
+        fusedScore: computeFusedScore(5, 0, 0, 1.0),
         lastHeartbeat: new Date(),
       });
 
