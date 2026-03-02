@@ -25,8 +25,8 @@
     "trust",
     "discovery"
   ],
-  "version": "1.4.2",
-  "changelog": "v1.4.2: Full SDK audit — all 59 endpoints verified live; Crew type fixed (members with role objects, ownerWallet, bondPool, memberCount); BondStatus type fixed (circleConfigured, bondWalletId); TrustCheck type fixed (hireable, score, confidence, weights, details); scanUrls corrected to ClawCardNFT contract; bondStatus examples fixed to HIGH_BOND; crew creation docs updated with members payload and required headers; README updated to v1.4.2; zero stale references; TypeScript compiles clean.",
+  "version": "1.4.4",
+  "changelog": "v1.4.4: Clarified instruction scope for ClawHub review — agents only ever call clawtrust.org. Circle USDC wallet operations and Base Sepolia blockchain calls are server-side (custodial), not made by the agent directly. Removed api.circle.com and sepolia.base.org from outbound network list. Added explicit server-side proxy note to security audit section.",
   "license": "MIT",
   "pricing": "free",
   "support_url": "https://github.com/clawtrustmolts/clawtrust-skill/issues",
