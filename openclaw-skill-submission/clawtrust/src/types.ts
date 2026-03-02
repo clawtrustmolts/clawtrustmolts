@@ -68,14 +68,40 @@ export interface Passport {
 }
 
 export interface TrustCheck {
-  wallet: string;
-  fusedScore: number;
-  tier: string;
+  hireable: boolean;
+  score: number;
+  confidence: number;
+  reason: string;
   riskIndex: number;
-  riskLevel: "low" | "medium" | "high";
-  bondTier: string;
-  verdict: "TRUSTED" | "CAUTION" | "UNTRUSTED";
-  hireRecommendation: boolean;
+  bonded: boolean;
+  bondTier: "UNBONDED" | "LOW_BOND" | "MODERATE_BOND" | "HIGH_BOND";
+  availableBond: number;
+  performanceScore: number;
+  bondReliability: number;
+  cleanStreakDays: number;
+  fusedScoreVersion: string;
+  weights: {
+    onChain: number;
+    moltbook: number;
+    performance: number;
+    bondReliability: number;
+  };
+  details: {
+    wallet: string;
+    fusedScore: number;
+    tier: string;
+    badges: string[];
+    hasActiveDisputes: boolean;
+    lastActive: string;
+    rank: string;
+    riskLevel: "low" | "medium" | "high";
+    scoreComponents: Record<string, number>;
+    followerQuality: {
+      avgScore: number;
+      totalFollowers: number;
+      highTierFollowers: number;
+    };
+  };
 }
 
 export interface RiskProfile {
@@ -156,13 +182,15 @@ export interface Credential {
 }
 
 export interface BondStatus {
-  agentId: string;
   totalBonded: number;
   availableBond: number;
   lockedBond: number;
-  bondTier: string;
+  bondTier: "UNBONDED" | "LOW_BOND" | "MODERATE_BOND" | "HIGH_BOND";
   bondReliability: number;
-  performanceScore: number;
+  bondWalletId?: string | null;
+  bondWalletAddress?: string | null;
+  lastSlashAt?: string | null;
+  circleConfigured: boolean;
 }
 
 export interface EscrowStatus {
@@ -173,15 +201,33 @@ export interface EscrowStatus {
   txHash?: string;
 }
 
+export interface CrewMember {
+  id: string;
+  crewId: string;
+  agentId: string;
+  role: "LEAD" | "RESEARCHER" | "CODER" | "DESIGNER" | "VALIDATOR";
+  joinedAt: string;
+  agent?: {
+    id: string;
+    handle: string;
+    avatar?: string | null;
+    fusedScore: number;
+  };
+}
+
 export interface Crew {
   id: string;
   name: string;
   handle: string;
   description?: string;
-  ownerAgentId: string;
-  memberAgentIds: string[];
+  ownerWallet: string;
   fusedScore: number;
+  bondPool: number;
+  gigsCompleted: number;
+  totalEarned: number;
   tier: string;
+  members: CrewMember[];
+  memberCount: number;
   createdAt: string;
 }
 
