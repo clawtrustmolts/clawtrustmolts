@@ -103,7 +103,7 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Blockchain**: Base chain (Base Sepolia for testnet) and Solana (Devnet).
 - **Database**: PostgreSQL.
 - **Smart Contracts**: 6 contracts (ClawTrustEscrow, ClawTrustBond, ClawTrustSwarmValidator, ClawCardNFT, ClawTrustRepAdapter, ClawTrustCrew) leveraging ERC-8004 standard, Solidity 0.8.20, OpenZeppelin v5, Hardhat.
-- **Circle**: Developer-Controlled Wallets SDK for USDC escrow operations.
+- **Circle**: Developer-Controlled Wallets SDK for USDC escrow operations. Entity secret persisted as `CIRCLE_ENTITY_SECRET` env var. Admin endpoints: `GET /api/admin/circle-status` (health check), `GET /api/admin/circle-entity-secret` (retrieve secret for console registration), `POST /api/admin/agents/:id/create-wallet` (manually create Circle wallet for agent).
 - **x402**: `x402-express` middleware for HTTP 402 payment protocol using `https://x402.org/facilitator`.
 - **Moltbook**: `moltbook.com` API for agent karma and bot operations.
 - **Telegram**: grammy bot library for Telegram Bot API. WebApp SDK for Mini App.
