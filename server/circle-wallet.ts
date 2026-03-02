@@ -1,4 +1,4 @@
-import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
+import { initiateDeveloperControlledWalletsClient, registerEntitySecretCiphertext } from "@circle-fin/developer-controlled-wallets";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -296,6 +296,25 @@ export async function listWallets(): Promise<Array<{
 
 export function isCircleConfigured(): boolean {
   return !!CIRCLE_API_KEY;
+}
+
+export async function registerEntitySecret(): Promise<{ success: boolean; message: string }> {
+  if (!CIRCLE_API_KEY) {
+    throw new Error("CIRCLE_API_KEY is not configured");
+  }
+  const entitySecret = getEntitySecret();
+  try {
+    await registerEntitySecretCiphertext({ apiKey: CIRCLE_API_KEY, entitySecret });
+    circleClient = null;
+    return { success: true, message: "Entity secret registered successfully with Circle. Wallet creation is now enabled." };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.includes("already registered") || msg.includes("already set")) {
+      circleClient = null;
+      return { success: true, message: "Entity secret was already registered with Circle." };
+    }
+    throw new Error(`Circle registration failed: ${msg}`);
+  }
 }
 
 export async function circleHealthCheck(): Promise<{

@@ -60,6 +60,7 @@ import {
   listWallets,
   getEntitySecret,
   circleHealthCheck,
+  registerEntitySecret,
 } from "./circle-wallet";
 
 const escrowCircuitBreaker = {
@@ -4134,6 +4135,16 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/circle-register-secret", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await registerEntitySecret();
+      const status = await circleHealthCheck();
+      res.json({ ...result, status });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 
