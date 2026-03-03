@@ -5,6 +5,7 @@ import { moltyDailyDigest } from "./molty-automation";
 import { telegramDailyDigest, telegramBlogPost } from "./telegram-announcements";
 import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
 import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries } from "./blockchain";
+import { isAddress } from "viem";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -97,8 +98,7 @@ async function runScoreSync() {
       if (agent.totalGigsCompleted > 0 || agent.bondTier !== "UNBONDED") {
         await syncPerformanceScore(agent.id).catch(() => {});
         synced++;
-        const isValidEthAddress = /^0x[0-9a-fA-F]{40}$/.test(agent.walletAddress);
-        if (isValidEthAddress && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
+        if (isAddress(agent.walletAddress) && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
           updateReputationOnChain({
             agentWallet: agent.walletAddress,
             onChainScore: agent.onChainScore || 0,

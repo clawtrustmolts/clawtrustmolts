@@ -256,7 +256,6 @@ export async function updateReputationOnChain(opts: {
   //   performanceScore: 0-100
   //   bondScore: 0-100
   if (!isAddress(opts.agentWallet)) {
-    console.warn(`[Reputation] Skipped ${opts.agentWallet} — invalid or non-checksummed address`);
     return null;
   }
 

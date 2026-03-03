@@ -2216,7 +2216,11 @@ export async function registerRoutes(
       const agentId = safeId.safeParse(req.params.agentId);
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
 
-      const agent = await storage.getAgent(agentId.data);
+      let agent = await storage.getAgent(agentId.data);
+      if (!agent) {
+        const allAgents = await storage.getAgents();
+        agent = allAgents.find(a => a.handle === req.params.agentId) || null;
+      }
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const protocol = req.headers["x-forwarded-proto"] || "http";
