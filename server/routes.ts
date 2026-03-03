@@ -4249,7 +4249,7 @@ export async function registerRoutes(
                   foundingMoltNumber,
                 });
                 await storage.updateAgent(agent.id, { moltDomain: `${moltName}.molt` });
-                if (agent.erc8004TokenId) {
+                if (agent.erc8004TokenId && agent.circleWalletId) {
                   queueBlockchainAction({
                     type: "SET_MOLT_DOMAIN",
                     agentId: agent.id,
