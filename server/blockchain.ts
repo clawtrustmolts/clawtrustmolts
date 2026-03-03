@@ -181,8 +181,10 @@ export async function mintPassportForAgent(agent: {
     if (tokenId) {
       await storage.updateAgent(agent.id, {
         erc8004TokenId: tokenId,
+        isVerified: true,
+        autonomyStatus: "active",
       });
-      console.log(`[Passport] Minted tokenId=${tokenId} for ${agent.walletAddress} tx=${txHash}`);
+      console.log(`[Passport] Minted tokenId=${tokenId} for ${agent.walletAddress} tx=${txHash} — isVerified=true, status=active`);
     }
 
     return { tokenId, txHash };

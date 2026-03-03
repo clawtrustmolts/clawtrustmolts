@@ -6,7 +6,7 @@ import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchem
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
-import { type Address } from "viem";
+import { type Address, getAddress as toChecksumAddress } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
@@ -2835,6 +2835,8 @@ export async function registerRoutes(
       if (!hasRealWallet) {
         walletAddress = "0x0000000000000000000000000000000000000000";
         console.warn(`[Autonomous Register] No valid wallet for ${data.handle} — Circle failed or no wallet provided`);
+      } else {
+        try { walletAddress = toChecksumAddress(walletAddress); } catch {}
       }
 
       const agent = await storage.createAgent({
@@ -2877,6 +2879,35 @@ export async function registerRoutes(
         fusedScore: computeFusedScore(5, 0, 0, 1.0),
         lastHeartbeat: new Date(),
       });
+
+      const autoMoltName = data.handle.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32);
+      if (autoMoltName.length >= 3 && !MOLT_RESERVED_NAMES.has(autoMoltName)) {
+        try {
+          const existingMolt = await storage.getMoltDomain(autoMoltName);
+          if (!existingMolt || existingMolt.status !== "ACTIVE") {
+            const foundingMoltNumber = await storage.getNextFoundingMoltNumber();
+            const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+            await storage.createMoltDomain({
+              name: autoMoltName,
+              agentId: agent.id,
+              walletAddress,
+              expiresAt,
+              status: "ACTIVE",
+              foundingMoltNumber,
+            });
+            await storage.updateAgent(agent.id, { moltDomain: `${autoMoltName}.molt` });
+            queueBlockchainAction({
+              type: "SET_MOLT_DOMAIN",
+              agentId: agent.id,
+              payload: { moltDomain: `${autoMoltName}.molt` },
+            }).catch(() => {});
+            moltyAnnounceMoltClaim({ ...agent, id: agent.id }, autoMoltName, foundingMoltNumber).catch(() => {});
+            console.log(`[Autonomous Register] Auto-claimed .molt: ${autoMoltName}.molt for ${data.handle}`);
+          }
+        } catch (moltErr: any) {
+          console.warn(`[Autonomous Register] Auto-molt claim failed for ${data.handle}:`, moltErr.message);
+        }
+      }
 
       mintPassportForAgent({
         id: agent.id,
@@ -4178,6 +4209,73 @@ export async function registerRoutes(
         }
       }
       res.json({ success: true, processed: zeroAddress.length, results });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/admin/repair-agents", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const allAgents = await storage.getAgents();
+      const results: Array<{ handle: string; id: string; fixes: string[] }> = [];
+
+      for (const agent of allAgents) {
+        const fixes: string[] = [];
+
+        if (agent.erc8004TokenId && !agent.isVerified) {
+          await storage.updateAgent(agent.id, { isVerified: true, autonomyStatus: "active" });
+          fixes.push("isVerified=true, autonomyStatus=active");
+        } else if (agent.erc8004TokenId && agent.autonomyStatus === "registered") {
+          await storage.updateAgent(agent.id, { autonomyStatus: "active" });
+          fixes.push("autonomyStatus=active");
+        }
+
+        if (!agent.moltDomain) {
+          const moltName = agent.handle.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32);
+          if (moltName.length >= 3 && !MOLT_RESERVED_NAMES.has(moltName)) {
+            try {
+              const existing = await storage.getMoltDomain(moltName);
+              if (!existing || existing.status !== "ACTIVE") {
+                const foundingMoltNumber = await storage.getNextFoundingMoltNumber();
+                const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+                await storage.createMoltDomain({
+                  name: moltName,
+                  agentId: agent.id,
+                  walletAddress: agent.walletAddress,
+                  expiresAt,
+                  status: "ACTIVE",
+                  foundingMoltNumber,
+                });
+                await storage.updateAgent(agent.id, { moltDomain: `${moltName}.molt` });
+                if (agent.erc8004TokenId) {
+                  queueBlockchainAction({
+                    type: "SET_MOLT_DOMAIN",
+                    agentId: agent.id,
+                    payload: { moltDomain: `${moltName}.molt` },
+                  }).catch(() => {});
+                }
+                fixes.push(`moltDomain=${moltName}.molt`);
+              }
+            } catch {}
+          }
+        }
+
+        if (!agent.walletAddress || agent.walletAddress === agent.walletAddress.toLowerCase()) {
+          try {
+            const checksummed = toChecksumAddress(agent.walletAddress);
+            if (checksummed !== agent.walletAddress) {
+              await storage.updateAgent(agent.id, { walletAddress: checksummed });
+              fixes.push(`walletAddress checksummed`);
+            }
+          } catch {}
+        }
+
+        if (fixes.length > 0) {
+          results.push({ handle: agent.handle, id: agent.id, fixes });
+        }
+      }
+
+      res.json({ success: true, repaired: results.length, results });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
