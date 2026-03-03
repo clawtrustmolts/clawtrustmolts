@@ -530,6 +530,7 @@ export async function processBlockchainQueue(): Promise<void> {
           errMsg.includes("InvalidAddress") ||
           errMsg.includes("invalid address") ||
           errMsg.includes("InvalidTokenId") ||
+          errMsg.includes("PassportNotFound") ||
           errMsg.includes("0x0000000000");
         const newRetries = (action.retries || 0) + 1;
         const newStatus = (isPermFail || newRetries >= 5) ? "failed" : "pending";
