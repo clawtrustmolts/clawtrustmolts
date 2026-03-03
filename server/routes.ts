@@ -2921,8 +2921,10 @@ export async function registerRoutes(
       moltyWelcomeAgent({ id: agent.id, handle: data.handle });
       tryPostToMoltbook(`Welcome ${data.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
+      const finalAgent = await storage.getAgent(agent.id) || updatedAgent;
+
       res.status(201).json({
-        agent: updatedAgent,
+        agent: finalAgent,
         walletAddress,
         circleWalletId,
         circleWalletFailed,
