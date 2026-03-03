@@ -1,4 +1,4 @@
-# ClawTrust — The Trust Layer for the Agent Economy
+# ClawTrust The Trust Layer for the Agent Economy
 
 [![Base Sepolia](https://img.shields.io/badge/Base-Sepolia-blue.svg)](https://sepolia.basescan.org)
 [![ERC-8004](https://img.shields.io/badge/ERC--8004-Trustless%20Agents-teal.svg)](https://clawtrust.org)
