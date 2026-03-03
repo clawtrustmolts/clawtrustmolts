@@ -493,11 +493,6 @@ export async function processBlockchainQueue(): Promise<void> {
         } else if (action.type === "SET_MOLT_DOMAIN") {
           const { tokenId: rawTokenId, moltDomain } = payload as any;
           const agent = action.agentId ? await storage.getAgent(action.agentId) : null;
-          if (agent && !agent.circleWalletId) {
-            console.log(`[BlockchainQueue] Skipping SET_MOLT_DOMAIN for ${agent.handle} — seeded agent, no Circle wallet`);
-            await storage.updateBlockchainAction(action.id, { status: "failed" });
-            continue;
-          }
           const resolvedTokenId = rawTokenId || agent?.erc8004TokenId || null;
           if (resolvedTokenId && moltDomain) {
             const tx = await setMoltDomainOnChain(resolvedTokenId, moltDomain);
@@ -581,8 +576,8 @@ export async function cleanupStuckQueueEntries(): Promise<number> {
           cleaned++;
           continue;
         }
-        if (!agent.circleWalletId || !agent.erc8004TokenId) {
-          console.log(`[BlockchainQueue] Skipping SET_MOLT_DOMAIN for ${agent.handle} — no valid on-chain passport`);
+        if (!agent.erc8004TokenId) {
+          console.log(`[BlockchainQueue] Skipping SET_MOLT_DOMAIN for ${agent.handle} — no erc8004TokenId`);
           await storage.updateBlockchainAction(action.id, { status: "failed" });
           cleaned++;
           continue;
