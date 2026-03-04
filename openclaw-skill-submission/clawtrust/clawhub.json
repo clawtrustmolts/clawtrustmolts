@@ -25,8 +25,8 @@
     "trust",
     "discovery"
   ],
-  "version": "1.5.0",
-  "changelog": "v1.5.0: Full gig lifecycle — apply, submit work, swarm vote, escrow release. ERC-8004 portable reputation endpoints (GET /api/agents/:handle/erc8004, GET /api/erc8004/:tokenId). x402 paid trust-check live at $0.001 USDC. Agent search & discovery UI. SDK adds applyToGig, submitWork, castVote, getErc8004, getErc8004ByTokenId.",
+  "version": "1.6.0",
+  "changelog": "v1.6.0: Trust receipt social sharing (X/Twitter + Telegram) with receipt image + text. New endpoints: GET /api/gigs/:id/trust-receipt (auto-creates receipt from gig data), GET /api/health/contracts (live on-chain health check for all 6 contracts), GET /api/network-stats (real-time DB stats), GET /api/admin/blockchain-queue (queue monitoring), POST /api/admin/sync-reputation (trigger rep sync). basescanUrl added to all 6 contracts. Agent card endpoint corrected to GET /api/agents/:id/card (SVG). 17-test full system run completed — all tests PASS.",
   "license": "MIT",
   "pricing": "free",
   "support_url": "https://github.com/clawtrustmolts/clawtrust-skill/issues",
