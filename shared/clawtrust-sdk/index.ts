@@ -314,6 +314,69 @@ export class ClawTrustClient {
     }
   }
 
+  async applyToGig(gigId: string, agentId: string, message?: string): Promise<any> {
+    const url = `${this.baseUrl}/api/gigs/${encodeURIComponent(gigId)}/apply`;
+    const headers = { ...this.getHeaders(), "Content-Type": "application/json", "x-agent-id": agentId };
+    try {
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ message: message || "Applying for this gig." }) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust applyToGig failed:", err);
+      return null;
+    }
+  }
+
+  async submitWork(gigId: string, agentId: string, description: string, proofUrl?: string): Promise<any> {
+    const url = `${this.baseUrl}/api/swarm/validate`;
+    const headers = { ...this.getHeaders(), "Content-Type": "application/json", "x-agent-id": agentId };
+    try {
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ gigId, assigneeId: agentId, description, proofUrl }) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust submitWork failed:", err);
+      return null;
+    }
+  }
+
+  async castVote(validationId: string, voterId: string, vote: "approve" | "reject", reasoning?: string): Promise<any> {
+    const url = `${this.baseUrl}/api/validations/vote`;
+    const headers = { ...this.getHeaders(), "Content-Type": "application/json", "x-agent-id": voterId };
+    try {
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ validationId, voterId, vote, reasoning }) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust castVote failed:", err);
+      return null;
+    }
+  }
+
+  async getErc8004(handle: string): Promise<any> {
+    const url = `${this.baseUrl}/api/agents/${encodeURIComponent(handle)}/erc8004`;
+    try {
+      const res = await fetch(url, { headers: this.getHeaders() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust getErc8004 failed:", err);
+      return null;
+    }
+  }
+
+  async getErc8004ByTokenId(tokenId: string | number): Promise<any> {
+    const url = `${this.baseUrl}/api/erc8004/${encodeURIComponent(String(tokenId))}`;
+    try {
+      const res = await fetch(url, { headers: this.getHeaders() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.error("ClawTrust getErc8004ByTokenId failed:", err);
+      return null;
+    }
+  }
+
   async checkTrustBatch(
     wallets: string[],
     options?: TrustCheckOptions,

@@ -1,6 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
-import { Zap, Users, Clock, TrendingUp, DollarSign, CheckCircle, XCircle, ShieldCheck, ShieldX, Activity } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { Zap, Users, Clock, TrendingUp, DollarSign, CheckCircle, XCircle, ShieldCheck, ShieldX, Activity, ChevronDown, ChevronUp } from "lucide-react";
 import { formatUSDC, SkeletonCard, ErrorState } from "@/components/ui-shared";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 const validatorNodes = [
   { angle: 0, label: "V1" },
@@ -16,6 +19,8 @@ function StatusBadge({ status }: { status: string }) {
     pending: { bg: "rgba(242, 130, 10, 0.12)", color: "var(--claw-amber)", pulse: false },
     passing: { bg: "rgba(10, 236, 184, 0.12)", color: "var(--teal-glow)", pulse: true },
     failing: { bg: "rgba(200, 57, 26, 0.12)", color: "var(--claw-red)", pulse: false },
+    approved: { bg: "rgba(34, 197, 94, 0.12)", color: "#22c55e", pulse: false },
+    rejected: { bg: "rgba(239, 68, 68, 0.12)", color: "#ef4444", pulse: false },
   };
   const c = config[status] || config.pending;
 
@@ -30,7 +35,219 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function getMyAgentId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("clawtrust_agent_id");
+}
+
+function VotePanel({ validation, myAgentId, onClose }: {
+  validation: any;
+  myAgentId: string;
+  onClose: () => void;
+}) {
+  const [vote, setVote] = useState<"approve" | "reject" | null>(null);
+  const [reasoning, setReasoning] = useState("");
+  const { toast } = useToast();
+
+  const voteMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/validations/vote", {
+        validationId: validation.id,
+        voterId: myAgentId,
+        vote,
+        reasoning: reasoning || undefined,
+      }, { "x-agent-id": myAgentId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/validations"] });
+      toast({ title: "Vote cast!", description: `You voted to ${vote} this gig.` });
+      onClose();
+    },
+    onError: (err: any) => {
+      toast({ title: "Vote failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div
+      className="mt-3 p-4 rounded-sm space-y-3"
+      style={{ background: "rgba(0,0,0,0.06)", border: "1px solid rgba(0,0,0,0.08)" }}
+      data-testid="panel-vote"
+    >
+      <p className="text-[10px] uppercase font-mono tracking-widest" style={{ color: "var(--text-muted)" }}>
+        Cast Your Vote
+      </p>
+      <div className="flex gap-3">
+        <button
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-sm font-mono text-sm font-bold transition-all"
+          style={{
+            background: vote === "approve" ? "rgba(34,197,94,0.2)" : "rgba(34,197,94,0.06)",
+            color: "#22c55e",
+            border: `2px solid ${vote === "approve" ? "#22c55e" : "rgba(34,197,94,0.2)"}`,
+          }}
+          onClick={() => setVote("approve")}
+          data-testid="button-approve"
+        >
+          <CheckCircle className="w-4 h-4" /> APPROVE
+        </button>
+        <button
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-sm font-mono text-sm font-bold transition-all"
+          style={{
+            background: vote === "reject" ? "rgba(239,68,68,0.2)" : "rgba(239,68,68,0.06)",
+            color: "#ef4444",
+            border: `2px solid ${vote === "reject" ? "#ef4444" : "rgba(239,68,68,0.2)"}`,
+          }}
+          onClick={() => setVote("reject")}
+          data-testid="button-reject"
+        >
+          <XCircle className="w-4 h-4" /> REJECT
+        </button>
+      </div>
+      <textarea
+        className="w-full p-3 rounded-sm text-sm font-mono resize-none"
+        style={{
+          background: "var(--ocean-surface)",
+          border: "1px solid rgba(0,0,0,0.12)",
+          color: "var(--shell-white)",
+          minHeight: 72,
+        }}
+        placeholder="Explain your vote… (recommended)"
+        value={reasoning}
+        onChange={(e) => setReasoning(e.target.value)}
+        data-testid="input-vote-reasoning"
+      />
+      <div className="flex gap-2">
+        <button
+          className="text-xs font-mono px-3 py-1.5 rounded-sm"
+          style={{ color: "var(--text-muted)", background: "rgba(0,0,0,0.06)" }}
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+        <button
+          className="text-xs font-mono px-4 py-1.5 rounded-sm font-bold"
+          style={{
+            background: vote ? "rgba(10,236,184,0.15)" : "rgba(0,0,0,0.08)",
+            color: vote ? "var(--teal-glow)" : "var(--text-muted)",
+            border: `1px solid ${vote ? "rgba(10,236,184,0.3)" : "rgba(0,0,0,0.1)"}`,
+            cursor: vote ? "pointer" : "not-allowed",
+          }}
+          disabled={!vote || voteMutation.isPending}
+          onClick={() => voteMutation.mutate()}
+          data-testid="button-submit-vote"
+        >
+          {voteMutation.isPending ? "Submitting…" : "Submit Vote"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ValidationRow({ v, myAgentId }: { v: any; myAgentId: string | null }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const canVote = myAgentId && (v.selectedValidators || []).includes(myAgentId);
+  const myVote = myAgentId && (v.voterIds || []).find((vid: string) => vid === myAgentId);
+  const hasVoted = !!myVote;
+
+  const votesApprove = v.votesApprove ?? 0;
+  const votesReject = v.votesReject ?? 0;
+  const votesPending = v.votesPending ?? 0;
+  const threshold = v.threshold ?? 3;
+  const totalCast = votesApprove + votesReject;
+  const approvePercent = totalCast > 0 ? (votesApprove / (votesApprove + votesReject)) * 100 : 0;
+
+  return (
+    <>
+      <tr
+        style={{
+          background: "var(--ocean-mid)",
+          borderBottom: "1px solid rgba(0,0,0,0.04)",
+        }}
+        data-testid={`validation-row-${v.id || v.gigTitle}`}
+      >
+        <td className="px-4 py-3 text-sm font-medium" style={{ color: "var(--shell-white)" }}>
+          <div className="flex items-center gap-2">
+            {v.gigTitle}
+            <div className="flex-1" />
+            {hasVoted && (
+              <span
+                className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+                style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                data-testid={`badge-voted-${v.id}`}
+              >
+                Voted ✓
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--shell-cream)" }}>
+          {v.posterHandle}
+        </td>
+        <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--shell-cream)" }}>
+          {v.assigneeHandle}
+        </td>
+        <td className="px-4 py-3 text-xs font-mono whitespace-nowrap">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1">
+              <span style={{ color: "var(--teal-glow)" }}>{votesApprove} <CheckCircle className="w-3 h-3 inline" /></span>
+              <span className="mx-1" style={{ color: "var(--text-muted)" }}>/</span>
+              <span style={{ color: "var(--claw-red)" }}>{votesReject} <XCircle className="w-3 h-3 inline" /></span>
+              <span className="mx-1" style={{ color: "var(--text-muted)" }}>/</span>
+              <span style={{ color: "var(--text-muted)" }}>{votesPending}</span>
+            </div>
+            {totalCast > 0 && (
+              <div className="rounded-sm overflow-hidden" style={{ height: 4, background: "rgba(0,0,0,0.1)", width: 80 }}>
+                <div style={{ height: "100%", width: `${approvePercent}%`, background: "var(--teal-glow)" }} />
+              </div>
+            )}
+            <p className="text-[9px]" style={{ color: "var(--text-muted)" }}>
+              need {threshold} approve
+            </p>
+          </div>
+        </td>
+        <td className="px-4 py-3">
+          <StatusBadge status={v.status} />
+        </td>
+        <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--shell-white)" }}>
+          {formatUSDC(v.escrow)}
+        </td>
+        <td className="px-4 py-3">
+          {canVote && !hasVoted && (
+            <button
+              className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm"
+              style={{
+                background: expanded ? "rgba(10,236,184,0.15)" : "rgba(10,236,184,0.08)",
+                color: "var(--teal-glow)",
+                border: "1px solid rgba(10,236,184,0.25)",
+              }}
+              onClick={() => setExpanded(!expanded)}
+              data-testid={`button-cast-vote-${v.id}`}
+            >
+              {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              Cast Vote
+            </button>
+          )}
+        </td>
+      </tr>
+      {expanded && canVote && !hasVoted && myAgentId && (
+        <tr style={{ background: "var(--ocean-surface)" }}>
+          <td colSpan={7} className="px-4 pb-4">
+            <VotePanel
+              validation={v}
+              myAgentId={myAgentId}
+              onClose={() => setExpanded(false)}
+            />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function SwarmPage() {
+  const myAgentId = getMyAgentId();
+
   const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<{
     totalAgents: number;
     totalGigs: number;
@@ -52,6 +269,8 @@ export default function SwarmPage() {
 
   const displayValidations = validations && validations.length > 0
     ? validations.map((v: any) => ({
+        id: v.id,
+        gigId: v.gigId,
         gigTitle: v.gigTitle || "Untitled Gig",
         posterHandle: v.posterHandle || "Unknown",
         assigneeHandle: v.assigneeHandle || "Unknown",
@@ -60,6 +279,9 @@ export default function SwarmPage() {
         votesPending: v.votes?.pending ?? 0,
         status: v.status || "pending",
         escrow: v.escrowAmount ?? 0,
+        threshold: v.threshold ?? 3,
+        selectedValidators: v.selectedValidators || [],
+        voterIds: v.voterIds || [],
       }))
     : [];
 
@@ -99,6 +321,11 @@ export default function SwarmPage() {
         <p className="font-mono text-sm mt-2" style={{ color: "var(--text-muted)" }} data-testid="text-swarm-subtitle">
           Decentralized Validation Network
         </p>
+        {myAgentId && (
+          <p className="font-mono text-[11px] mt-1" style={{ color: "var(--teal-glow)" }}>
+            Viewing as: {myAgentId.slice(0, 8)}…
+          </p>
+        )}
       </div>
 
       {isLoading ? (
@@ -239,11 +466,19 @@ export default function SwarmPage() {
         >
           Active Validations
         </h2>
+        {!myAgentId && (
+          <div
+            className="mb-4 px-4 py-3 rounded-sm text-xs font-mono"
+            style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.15)", color: "var(--claw-amber)" }}
+          >
+            Set your Agent ID in your profile to cast votes as a selected validator.
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full" data-testid="validations-table">
             <thead>
               <tr>
-                {["GIG TITLE", "POSTER", "ASSIGNEE", "VOTES", "STATUS", "ESCROW"].map((col) => (
+                {["GIG TITLE", "POSTER", "ASSIGNEE", "VOTES", "STATUS", "ESCROW", "ACTION"].map((col) => (
                   <th
                     key={col}
                     className="text-left font-mono text-[10px] uppercase px-4 py-3 font-normal"
@@ -255,39 +490,17 @@ export default function SwarmPage() {
               </tr>
             </thead>
             <tbody>
-              {displayValidations.map((v, idx) => (
-                <tr
-                  key={idx}
-                  style={{
-                    background: "var(--ocean-mid)",
-                    borderBottom: "1px solid rgba(0,0,0,0.04)",
-                  }}
-                  data-testid={`validation-row-${idx}`}
-                >
-                  <td className="px-4 py-3 text-sm font-medium" style={{ color: "var(--shell-white)" }}>
-                    {v.gigTitle}
-                  </td>
-                  <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--shell-cream)" }}>
-                    {v.posterHandle}
-                  </td>
-                  <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--shell-cream)" }}>
-                    {v.assigneeHandle}
-                  </td>
-                  <td className="px-4 py-3 text-xs font-mono whitespace-nowrap">
-                    <span style={{ color: "var(--teal-glow)" }}>{v.votesApprove} <CheckCircle className="w-3 h-3 inline" /></span>
-                    <span className="mx-1" style={{ color: "var(--text-muted)" }}>/</span>
-                    <span style={{ color: "var(--claw-red)" }}>{v.votesReject} <XCircle className="w-3 h-3 inline" /></span>
-                    <span className="mx-1" style={{ color: "var(--text-muted)" }}>/</span>
-                    <span style={{ color: "var(--text-muted)" }}>{v.votesPending} pending</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={v.status} />
-                  </td>
-                  <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--shell-white)" }}>
-                    {formatUSDC(v.escrow)}
+              {displayValidations.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm font-mono" style={{ color: "var(--text-muted)" }}>
+                    No active validations.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                displayValidations.map((v, idx) => (
+                  <ValidationRow key={v.id || idx} v={v} myAgentId={myAgentId} />
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -441,6 +441,13 @@ export async function registerRoutes(
                 description: "ClawTrust reputation lookup — returns detailed fused reputation breakdown, on-chain verification, and event history",
               },
             },
+            "GET /api/agents/:handle/erc8004": {
+              price: "$0.001",
+              network: "base-sepolia",
+              config: {
+                description: "ClawTrust ERC-8004 portable reputation — returns full on-chain identity and trust passport for any agent by .molt handle",
+              },
+            },
           },
         ),
       );
@@ -472,6 +479,58 @@ export async function registerRoutes(
       const agent = await storage.getAgentByHandle(req.params.handle);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
       res.json(agent);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const CLAW_CARD_NFT_ADDR = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+  const ERC8004_REGISTRY_ADDR = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
+
+  function buildErc8004Payload(agent: any) {
+    return {
+      agentId: agent.id,
+      handle: agent.handle,
+      moltDomain: agent.moltDomain || null,
+      walletAddress: agent.walletAddress,
+      erc8004TokenId: agent.erc8004TokenId || null,
+      registryAddress: ERC8004_REGISTRY_ADDR,
+      nftAddress: CLAW_CARD_NFT_ADDR,
+      chain: "base-sepolia",
+      fusedScore: agent.fusedScore,
+      onChainScore: agent.onChainScore,
+      moltbookKarma: agent.moltbookKarma,
+      bondTier: agent.bondTier,
+      totalBonded: agent.totalBonded,
+      riskIndex: agent.riskIndex,
+      isVerified: agent.isVerified,
+      skills: agent.skills || [],
+      basescanUrl: agent.erc8004TokenId
+        ? `https://sepolia.basescan.org/token/${CLAW_CARD_NFT_ADDR}?a=${agent.erc8004TokenId}`
+        : null,
+      clawtrust: `https://clawtrust.org/profile/${agent.handle}`,
+      resolvedAt: new Date().toISOString(),
+    };
+  }
+
+  app.get("/api/agents/:handle/erc8004", apiLimiter, async (req, res) => {
+    try {
+      const handle = req.params.handle.replace(/\.molt$/, "");
+      const agent = await storage.getAgentByHandle(handle);
+      if (!agent) return res.status(404).json({ message: "Agent not found", handle });
+      res.json(buildErc8004Payload(agent));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/erc8004/:tokenId", apiLimiter, async (req, res) => {
+    try {
+      const tokenId = req.params.tokenId;
+      const agents = await storage.getAgents();
+      const agent = agents.find((a) => a.erc8004TokenId === tokenId);
+      if (!agent) return res.status(404).json({ message: "No agent found with that ERC-8004 token ID", tokenId });
+      res.json(buildErc8004Payload(agent));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -4084,6 +4143,15 @@ export async function registerRoutes(
   app.post("/api/admin/github-sync-all", strictLimiter, adminAuthMiddleware, async (_req, res) => {
     try {
       const result = await syncAllRepos();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post("/api/admin/github-sync-skill", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await syncSkillRepo();
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

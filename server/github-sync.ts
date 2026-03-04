@@ -553,10 +553,16 @@ export async function syncSkillRepo(): Promise<RepoSyncResult> {
   const skillDir = path.resolve(process.cwd(), "openclaw-skill-submission/clawtrust");
   const timestamp = new Date().toISOString().split("T")[0];
 
+  const sdkDir = path.resolve(process.cwd(), "openclaw-skill-submission/clawtrust");
+  const sharedSdkDir = path.resolve(process.cwd(), "shared/clawtrust-sdk");
+
   const textFiles = [
     { repoPath: "SKILL.md", localPath: path.join(skillDir, "SKILL.md") },
     { repoPath: "README.md", localPath: path.join(skillDir, "README.md") },
     { repoPath: "clawhub.json", localPath: path.join(skillDir, "clawhub.json") },
+    { repoPath: "src/client.ts", localPath: path.join(sdkDir, "src/client.ts") },
+    { repoPath: "src/types.ts", localPath: path.join(sdkDir, "src/types.ts") },
+    { repoPath: "README_SDK.md", localPath: path.join(sharedSdkDir, "README_SDK.md") },
   ];
 
   const binaryFiles = [
