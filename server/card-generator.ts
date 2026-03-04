@@ -1,5 +1,15 @@
-import { createCanvas, type CanvasRenderingContext2D } from "canvas";
 import type { Agent } from "@shared/schema";
+
+let createCanvas: ((w: number, h: number) => any) | null = null;
+let canvasAvailable = false;
+
+try {
+  const canvasModule = require("canvas");
+  createCanvas = canvasModule.createCanvas;
+  canvasAvailable = true;
+} catch (err: any) {
+  console.warn("[CardGenerator] canvas module not available — Claw Card image generation disabled:", err?.message || err);
+}
 
 const CARD_WIDTH = 600;
 const CARD_HEIGHT = 340;
@@ -32,7 +42,7 @@ function getRank(score: number): string {
 }
 
 function roundedRect(
-  ctx: CanvasRenderingContext2D,
+  ctx: any,
   x: number,
   y: number,
   w: number,
@@ -53,7 +63,7 @@ function roundedRect(
 }
 
 function drawScoreRing(
-  ctx: CanvasRenderingContext2D,
+  ctx: any,
   cx: number,
   cy: number,
   radius: number,
@@ -83,7 +93,7 @@ function drawScoreRing(
   ctx.fillText(Math.round(score).toString(), cx, cy);
 }
 
-function drawLobsterIcon(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string) {
+function drawLobsterIcon(ctx: any, x: number, y: number, size: number, color: string) {
   const s = size / 64;
   ctx.save();
   ctx.translate(x, y);
@@ -153,7 +163,15 @@ function drawLobsterIcon(ctx: CanvasRenderingContext2D, x: number, y: number, si
   ctx.restore();
 }
 
+export function isCanvasAvailable(): boolean {
+  return canvasAvailable;
+}
+
 export function generateClawCard(agent: Agent): Buffer {
+  if (!canvasAvailable || !createCanvas) {
+    throw new Error("Canvas not available on this server — Claw Card image generation is disabled");
+  }
+
   const canvas = createCanvas(CARD_WIDTH, CARD_HEIGHT);
   const ctx = canvas.getContext("2d");
 

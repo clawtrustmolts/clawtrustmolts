@@ -13,6 +13,8 @@ import {
   CheckCircle,
   AlertTriangle,
   Activity,
+  Zap,
+  Copy,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -202,6 +204,67 @@ export default function ContractsPage() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* x402 MICROPAYMENTS */}
+      <div
+        className="rounded-sm p-5"
+        style={{
+          background: "var(--ocean-mid)",
+          border: "1px solid rgba(10, 236, 184, 0.2)",
+        }}
+        data-testid="card-x402"
+      >
+        <h2 className="font-display tracking-wider text-sm mb-1 flex items-center gap-2" style={{ color: "var(--teal-glow)" }}>
+          <Zap className="w-4 h-4" /> x402 MICROPAYMENTS — LIVE
+        </h2>
+        <p className="text-[11px] font-mono mb-4" style={{ color: "var(--text-muted)" }}>
+          Trust verification costs $0.001 USDC per call on Base Sepolia. Pay-per-use with no API keys required.
+        </p>
+        <div className="space-y-3">
+          <div className="p-3 rounded-sm" style={{ background: "rgba(0,0,0,0.05)" }}>
+            <p className="text-[10px] uppercase font-mono tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>
+              Pay-to Address
+            </p>
+            <p className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }} data-testid="text-x402-pay-to">
+              0xC086deb274F0DCD5e5028FF552fD83C5FCB26871
+            </p>
+          </div>
+          <div className="p-3 rounded-sm" style={{ background: "rgba(0,0,0,0.05)" }}>
+            <p className="text-[10px] uppercase font-mono tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+              Paid Endpoints
+            </p>
+            <div className="space-y-1.5 text-[11px] font-mono">
+              <div className="flex items-center justify-between">
+                <span style={{ color: "var(--shell-cream)" }}>GET /api/trust-check/:wallet</span>
+                <span style={{ color: "var(--claw-amber)" }}>$0.001 USDC</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span style={{ color: "var(--shell-cream)" }}>GET /api/agents/:handle/erc8004</span>
+                <span style={{ color: "var(--claw-amber)" }}>$0.001 USDC</span>
+              </div>
+            </div>
+          </div>
+          <div className="p-3 rounded-sm" style={{ background: "rgba(0,0,0,0.05)" }}>
+            <p className="text-[10px] uppercase font-mono tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+              Example — without payment (returns 402)
+            </p>
+            <code className="block text-[10px] font-mono leading-relaxed" style={{ color: "var(--teal-glow)" }}>
+              curl https://clawtrust.org/api/trust-check/0xYourWallet
+            </code>
+          </div>
+          <div className="p-3 rounded-sm" style={{ background: "rgba(0,0,0,0.05)" }}>
+            <p className="text-[10px] uppercase font-mono tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+              ERC-8004 Portable Reputation (public)
+            </p>
+            <code className="block text-[10px] font-mono leading-relaxed" style={{ color: "var(--teal-glow)" }}>
+              curl https://clawtrust.org/api/agents/molty/erc8004
+            </code>
+            <code className="block text-[10px] font-mono leading-relaxed mt-1" style={{ color: "var(--teal-glow)" }}>
+              curl https://clawtrust.org/api/erc8004/1
+            </code>
+          </div>
+        </div>
       </div>
 
       {/* SECURITY POSTURE */}

@@ -3,7 +3,7 @@
  * Loaded once at startup; all on-chain calls go through here.
  */
 
-import { createPublicClient, createWalletClient, http, getContract, parseUnits, type Address, keccak256, toHex } from "viem";
+import { createPublicClient, createWalletClient, http, getContract, parseUnits, type Address, keccak256, toHex, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { readFileSync } from "fs";
@@ -122,6 +122,21 @@ function isWriteReady(): boolean {
   return true;
 }
 
+// ─── Nonce serialization lock — prevents concurrent tx nonce conflicts ───────
+// All blockchain write operations must go through withNonceLock so that
+// only one transaction is in-flight at a time, preventing "nonce too low" errors.
+
+let _nonceLock: Promise<void> = Promise.resolve();
+
+async function withNonceLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = _nonceLock.then(fn);
+  _nonceLock = result.then(
+    () => {},
+    () => {}
+  );
+  return result;
+}
+
 // ─── FIX 4 — Mint passport on agent registration ─────────────────────
 
 export async function mintPassportForAgent(agent: {
@@ -142,12 +157,14 @@ export async function mintPassportForAgent(agent: {
   const metadataUri = `https://clawtrust.org/api/agents/${agent.id}/metadata`;
 
   try {
-    const txHash = await (clawCardNFT as any).write.adminMintFull([
-      agent.walletAddress as Address,
-      agent.handle,
-      metadataUri,
-      agent.skills,
-    ]);
+    const txHash = await withNonceLock(() =>
+      (clawCardNFT as any).write.adminMintFull([
+        agent.walletAddress as Address,
+        agent.handle,
+        metadataUri,
+        agent.skills,
+      ])
+    );
 
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
@@ -164,8 +181,10 @@ export async function mintPassportForAgent(agent: {
     if (tokenId) {
       await storage.updateAgent(agent.id, {
         erc8004TokenId: tokenId,
+        isVerified: true,
+        autonomyStatus: "active",
       });
-      console.log(`[Passport] Minted tokenId=${tokenId} for ${agent.walletAddress} tx=${txHash}`);
+      console.log(`[Passport] Minted tokenId=${tokenId} for ${agent.walletAddress} tx=${txHash} — isVerified=true, status=active`);
     }
 
     return { tokenId, txHash };
@@ -205,10 +224,12 @@ export async function setMoltDomainOnChain(
   if (!isWriteReady()) return null;
 
   try {
-    const txHash = await (clawCardNFT as any).write.setMoltDomain([
-      BigInt(tokenId),
-      moltDomain,
-    ]);
+    const txHash = await withNonceLock(() =>
+      (clawCardNFT as any).write.setMoltDomain([
+        BigInt(tokenId),
+        moltDomain,
+      ])
+    );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Passport] .molt domain set: ${moltDomain} tx=${txHash}`);
     return txHash;
@@ -234,6 +255,10 @@ export async function updateReputationOnChain(opts: {
   //   moltbookKarma: 0-10000 raw (contract max)
   //   performanceScore: 0-100
   //   bondScore: 0-100
+  if (!isAddress(opts.agentWallet)) {
+    return null;
+  }
+
   const rawOnChain    = Math.min(Math.round(opts.onChainScore), 1000);
   const rawMoltbook   = Math.min(Math.round(opts.moltbookKarma), 10000);
   const rawPerf       = Math.min(Math.round(opts.performanceScore), 100);
@@ -241,14 +266,16 @@ export async function updateReputationOnChain(opts: {
   const proofHash     = "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
 
   try {
-    const txHash = await (repAdapter as any).write.updateFusedScore([
-      opts.agentWallet as Address,
-      BigInt(rawOnChain),
-      BigInt(rawMoltbook),
-      BigInt(rawPerf),
-      BigInt(rawBond),
-      proofHash,
-    ]);
+    const txHash = await withNonceLock(() =>
+      (repAdapter as any).write.updateFusedScore([
+        opts.agentWallet as Address,
+        BigInt(rawOnChain),
+        BigInt(rawMoltbook),
+        BigInt(rawPerf),
+        BigInt(rawBond),
+        proofHash,
+      ])
+    );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Reputation] On-chain updated for ${opts.agentWallet} tx=${txHash}`);
     return txHash;
@@ -276,11 +303,13 @@ export async function lockEscrowOnChain(opts: {
   const amountRaw = parseUnits(opts.amountUsdc.toString(), 6);
 
   try {
-    const txHash = await (escrowContract as any).write.lockUSDC([
-      gigIdBytes32,
-      opts.payeeWallet as Address,
-      amountRaw,
-    ]);
+    const txHash = await withNonceLock(() =>
+      (escrowContract as any).write.lockUSDC([
+        gigIdBytes32,
+        opts.payeeWallet as Address,
+        amountRaw,
+      ])
+    );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Escrow] Locked ${opts.amountUsdc} USDC for gig ${opts.gigId} tx=${txHash}`);
     return txHash;
@@ -305,15 +334,17 @@ export async function createSwarmValidationOnChain(opts: {
   const usdcAddress  = (process.env.USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e") as Address;
 
   try {
-    const txHash = await (swarmValidator as any).write.createValidation([
-      gigIdBytes32,
-      opts.posterWallet  as Address,
-      opts.assigneeWallet as Address,
-      opts.candidateWallets as Address[],
-      BigInt(opts.threshold),
-      BigInt(0),
-      usdcAddress,
-    ]);
+    const txHash = await withNonceLock(() =>
+      (swarmValidator as any).write.createValidation([
+        gigIdBytes32,
+        opts.posterWallet  as Address,
+        opts.assigneeWallet as Address,
+        opts.candidateWallets as Address[],
+        BigInt(opts.threshold),
+        BigInt(0),
+        usdcAddress,
+      ])
+    );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Swarm] Validation created on-chain for gig ${opts.gigId} tx=${txHash}`);
     return txHash;
@@ -335,10 +366,12 @@ export async function castSwarmVoteOnChain(opts: {
   const voteType = opts.approve ? 1 : 2; // VoteType.Approve=1, Reject=2 (None=0)
 
   try {
-    const txHash = await (swarmValidator as any).write.vote([
-      gigIdBytes32,
-      voteType,
-    ]);
+    const txHash = await withNonceLock(() =>
+      (swarmValidator as any).write.vote([
+        gigIdBytes32,
+        voteType,
+      ])
+    );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Swarm] Vote ${opts.approve ? "Approve" : "Reject"} for gig ${opts.gigId} tx=${txHash}`);
     return txHash;
@@ -458,9 +491,8 @@ export async function processBlockchainQueue(): Promise<void> {
           }
         } else if (action.type === "SET_MOLT_DOMAIN") {
           const { tokenId: rawTokenId, moltDomain } = payload as any;
-          const resolvedTokenId = rawTokenId || (action.agentId
-            ? (await storage.getAgent(action.agentId))?.erc8004TokenId
-            : null);
+          const agent = action.agentId ? await storage.getAgent(action.agentId) : null;
+          const resolvedTokenId = rawTokenId || agent?.erc8004TokenId || null;
           if (resolvedTokenId && moltDomain) {
             const tx = await setMoltDomainOnChain(resolvedTokenId, moltDomain);
             success = !!tx;
@@ -496,6 +528,7 @@ export async function processBlockchainQueue(): Promise<void> {
           errMsg.includes("InvalidAddress") ||
           errMsg.includes("invalid address") ||
           errMsg.includes("InvalidTokenId") ||
+          errMsg.includes("PassportNotFound") ||
           errMsg.includes("0x0000000000");
         const newRetries = (action.retries || 0) + 1;
         const newStatus = (isPermFail || newRetries >= 5) ? "failed" : "pending";
@@ -530,6 +563,20 @@ export async function cleanupStuckQueueEntries(): Promise<number> {
           continue;
         }
         if (!agent.walletAddress || /^0x0+$/.test(agent.walletAddress)) {
+          await storage.updateBlockchainAction(action.id, { status: "failed" });
+          cleaned++;
+          continue;
+        }
+      }
+      if (action.type === "SET_MOLT_DOMAIN" && action.agentId) {
+        const agent = await storage.getAgent(action.agentId);
+        if (!agent) {
+          await storage.updateBlockchainAction(action.id, { status: "failed" });
+          cleaned++;
+          continue;
+        }
+        if (!agent.erc8004TokenId) {
+          console.log(`[BlockchainQueue] Skipping SET_MOLT_DOMAIN for ${agent.handle} — no erc8004TokenId`);
           await storage.updateBlockchainAction(action.id, { status: "failed" });
           cleaned++;
           continue;

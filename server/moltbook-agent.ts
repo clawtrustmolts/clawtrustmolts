@@ -6,7 +6,7 @@ import { directPost } from "./moltbook-bot";
 
 const MOLTBOOK_API = "https://www.moltbook.com/api/v1";
 
-const DEDUP_WINDOW_MS = 60_000;
+const DEDUP_WINDOW_MS = 4 * 60 * 60 * 1000;
 const MAX_POSTS_PER_HOUR = 20;
 const dedupMap = new Map<string, number>();
 let postsThisHour = 0;
@@ -63,6 +63,24 @@ async function logPost(postType: string, content: string, success: boolean, post
   }
 }
 
+async function isRecentDbDuplicate(postType: string): Promise<boolean> {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recent = await db.select()
+      .from(moltyPostLog)
+      .where(and(
+        eq(moltyPostLog.postType, postType),
+        eq(moltyPostLog.success, true),
+        gte(moltyPostLog.postedAt, cutoff)
+      ))
+      .limit(1);
+    return recent.length > 0;
+  } catch (err) {
+    console.error("[Molty Agent] DB dedup check failed:", err);
+    return false;
+  }
+}
+
 async function safePost(postType: string, content: string, title?: string): Promise<boolean> {
   try {
     if (!process.env.MOLTBOOK_API_KEY) {
@@ -71,7 +89,13 @@ async function safePost(postType: string, content: string, title?: string): Prom
     }
 
     if (isDuplicate(content)) {
-      console.log(`[Molty Agent] Skipping duplicate: ${postType}`);
+      console.log(`[Molty Agent] Skipping in-memory duplicate: ${postType}`);
+      return false;
+    }
+
+    const dbDup = await isRecentDbDuplicate(postType);
+    if (dbDup) {
+      console.log(`[Molty Agent] Skipping DB duplicate (posted in last 24h): ${postType}`);
       return false;
     }
 

@@ -299,6 +299,36 @@ export class ClawTrustClient {
     return this.post("/validations/vote", vote);
   }
 
+  async submitWork(gigId: string, agentId: string, description: string, proofUrl?: string): Promise<{ validationId: string; status: string }> {
+    return this.post("/swarm/validate", { gigId, assigneeId: agentId, description, proofUrl });
+  }
+
+  async castVote(validationId: string, voterId: string, vote: "approve" | "reject", reasoning?: string): Promise<{ success: boolean }> {
+    return this.post("/validations/vote", { validationId, voterId, vote, reasoning });
+  }
+
+  // ─── ERC-8004 PORTABLE REPUTATION ──────────────────────────────────────────
+
+  async getErc8004(handle: string): Promise<{
+    agentId: string; handle: string; moltDomain: string | null; walletAddress: string;
+    erc8004TokenId: string | null; registryAddress: string; nftAddress: string; chain: string;
+    fusedScore: number; onChainScore: number; moltbookKarma: number; bondTier: string;
+    totalBonded: number; riskIndex: number; isVerified: boolean; skills: string[];
+    basescanUrl: string | null; clawtrust: string; resolvedAt: string;
+  }> {
+    return this.get(`/agents/${encodeURIComponent(handle)}/erc8004`);
+  }
+
+  async getErc8004ByTokenId(tokenId: string | number): Promise<{
+    agentId: string; handle: string; moltDomain: string | null; walletAddress: string;
+    erc8004TokenId: string | null; registryAddress: string; nftAddress: string; chain: string;
+    fusedScore: number; onChainScore: number; moltbookKarma: number; bondTier: string;
+    totalBonded: number; riskIndex: number; isVerified: boolean; skills: string[];
+    basescanUrl: string | null; clawtrust: string; resolvedAt: string;
+  }> {
+    return this.get(`/erc8004/${encodeURIComponent(String(tokenId))}`);
+  }
+
   // ─── MESSAGING ─────────────────────────────────────────────────────────────
 
   async getMessages(otherAgentId?: string): Promise<unknown[]> {

@@ -6,7 +6,7 @@ import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchem
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
-import { type Address } from "viem";
+import { type Address, getAddress as toChecksumAddress } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
@@ -24,7 +24,7 @@ import {
   registerOnOfficialERC8004Registry,
 } from "./erc8004";
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
-import { generateClawCard, generateCardMetadata } from "./card-generator";
+import { generateClawCard, generateCardMetadata, isCanvasAvailable } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
 import { generateReceiptImage } from "./receipt-generator";
 import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generator";
@@ -441,6 +441,13 @@ export async function registerRoutes(
                 description: "ClawTrust reputation lookup — returns detailed fused reputation breakdown, on-chain verification, and event history",
               },
             },
+            "GET /api/agents/:handle/erc8004": {
+              price: "$0.001",
+              network: "base-sepolia",
+              config: {
+                description: "ClawTrust ERC-8004 portable reputation — returns full on-chain identity and trust passport for any agent by .molt handle",
+              },
+            },
           },
         ),
       );
@@ -472,6 +479,58 @@ export async function registerRoutes(
       const agent = await storage.getAgentByHandle(req.params.handle);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
       res.json(agent);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const CLAW_CARD_NFT_ADDR = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+  const ERC8004_REGISTRY_ADDR = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
+
+  function buildErc8004Payload(agent: any) {
+    return {
+      agentId: agent.id,
+      handle: agent.handle,
+      moltDomain: agent.moltDomain || null,
+      walletAddress: agent.walletAddress,
+      erc8004TokenId: agent.erc8004TokenId || null,
+      registryAddress: ERC8004_REGISTRY_ADDR,
+      nftAddress: CLAW_CARD_NFT_ADDR,
+      chain: "base-sepolia",
+      fusedScore: agent.fusedScore,
+      onChainScore: agent.onChainScore,
+      moltbookKarma: agent.moltbookKarma,
+      bondTier: agent.bondTier,
+      totalBonded: agent.totalBonded,
+      riskIndex: agent.riskIndex,
+      isVerified: agent.isVerified,
+      skills: agent.skills || [],
+      basescanUrl: agent.erc8004TokenId
+        ? `https://sepolia.basescan.org/token/${CLAW_CARD_NFT_ADDR}?a=${agent.erc8004TokenId}`
+        : null,
+      clawtrust: `https://clawtrust.org/profile/${agent.handle}`,
+      resolvedAt: new Date().toISOString(),
+    };
+  }
+
+  app.get("/api/agents/:handle/erc8004", apiLimiter, async (req, res) => {
+    try {
+      const handle = req.params.handle.replace(/\.molt$/, "");
+      const agent = await storage.getAgentByHandle(handle);
+      if (!agent) return res.status(404).json({ message: "Agent not found", handle });
+      res.json(buildErc8004Payload(agent));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/erc8004/:tokenId", apiLimiter, async (req, res) => {
+    try {
+      const tokenId = req.params.tokenId;
+      const agents = await storage.getAgents();
+      const agent = agents.find((a) => a.erc8004TokenId === tokenId);
+      if (!agent) return res.status(404).json({ message: "No agent found with that ERC-8004 token ID", tokenId });
+      res.json(buildErc8004Payload(agent));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -2193,6 +2252,10 @@ export async function registerRoutes(
 
   app.get("/api/agents/:agentId/card", apiLimiter, async (req, res) => {
     try {
+      if (!isCanvasAvailable()) {
+        return res.status(503).json({ message: "Claw Card image generation is not available on this server" });
+      }
+
       const agentId = safeId.safeParse(req.params.agentId);
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
 
@@ -2216,7 +2279,11 @@ export async function registerRoutes(
       const agentId = safeId.safeParse(req.params.agentId);
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
 
-      const agent = await storage.getAgent(agentId.data);
+      let agent = await storage.getAgent(agentId.data);
+      if (!agent) {
+        const allAgents = await storage.getAgents();
+        agent = allAgents.find(a => a.handle === req.params.agentId) || null;
+      }
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const protocol = req.headers["x-forwarded-proto"] || "http";
@@ -2835,6 +2902,8 @@ export async function registerRoutes(
       if (!hasRealWallet) {
         walletAddress = "0x0000000000000000000000000000000000000000";
         console.warn(`[Autonomous Register] No valid wallet for ${data.handle} — Circle failed or no wallet provided`);
+      } else {
+        try { walletAddress = toChecksumAddress(walletAddress); } catch {}
       }
 
       const agent = await storage.createAgent({
@@ -2878,6 +2947,35 @@ export async function registerRoutes(
         lastHeartbeat: new Date(),
       });
 
+      const autoMoltName = data.handle.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32);
+      if (autoMoltName.length >= 3 && !MOLT_RESERVED_NAMES.has(autoMoltName)) {
+        try {
+          const existingMolt = await storage.getMoltDomain(autoMoltName);
+          if (!existingMolt || existingMolt.status !== "ACTIVE") {
+            const foundingMoltNumber = await storage.getNextFoundingMoltNumber();
+            const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+            await storage.createMoltDomain({
+              name: autoMoltName,
+              agentId: agent.id,
+              walletAddress,
+              expiresAt,
+              status: "ACTIVE",
+              foundingMoltNumber,
+            });
+            await storage.updateAgent(agent.id, { moltDomain: `${autoMoltName}.molt` });
+            queueBlockchainAction({
+              type: "SET_MOLT_DOMAIN",
+              agentId: agent.id,
+              payload: { moltDomain: `${autoMoltName}.molt` },
+            }).catch(() => {});
+            moltyAnnounceMoltClaim({ ...agent, id: agent.id }, autoMoltName, foundingMoltNumber).catch(() => {});
+            console.log(`[Autonomous Register] Auto-claimed .molt: ${autoMoltName}.molt for ${data.handle}`);
+          }
+        } catch (moltErr: any) {
+          console.warn(`[Autonomous Register] Auto-molt claim failed for ${data.handle}:`, moltErr.message);
+        }
+      }
+
       mintPassportForAgent({
         id: agent.id,
         handle: data.handle,
@@ -2890,8 +2988,10 @@ export async function registerRoutes(
       moltyWelcomeAgent({ id: agent.id, handle: data.handle });
       tryPostToMoltbook(`Welcome ${data.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
+      const finalAgent = await storage.getAgent(agent.id) || updatedAgent;
+
       res.status(201).json({
-        agent: updatedAgent,
+        agent: finalAgent,
         walletAddress,
         circleWalletId,
         circleWalletFailed,
@@ -4049,6 +4149,15 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/github-sync-skill", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await syncSkillRepo();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   app.post("/api/admin/publish-clawhub", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
       const { version } = req.body || {};
@@ -4178,6 +4287,73 @@ export async function registerRoutes(
         }
       }
       res.json({ success: true, processed: zeroAddress.length, results });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/admin/repair-agents", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const allAgents = await storage.getAgents();
+      const results: Array<{ handle: string; id: string; fixes: string[] }> = [];
+
+      for (const agent of allAgents) {
+        const fixes: string[] = [];
+
+        if (agent.erc8004TokenId && !agent.isVerified) {
+          await storage.updateAgent(agent.id, { isVerified: true, autonomyStatus: "active" });
+          fixes.push("isVerified=true, autonomyStatus=active");
+        } else if (agent.erc8004TokenId && agent.autonomyStatus === "registered") {
+          await storage.updateAgent(agent.id, { autonomyStatus: "active" });
+          fixes.push("autonomyStatus=active");
+        }
+
+        if (!agent.moltDomain) {
+          const moltName = agent.handle.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32);
+          if (moltName.length >= 3 && !MOLT_RESERVED_NAMES.has(moltName)) {
+            try {
+              const existing = await storage.getMoltDomain(moltName);
+              if (!existing || existing.status !== "ACTIVE") {
+                const foundingMoltNumber = await storage.getNextFoundingMoltNumber();
+                const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+                await storage.createMoltDomain({
+                  name: moltName,
+                  agentId: agent.id,
+                  walletAddress: agent.walletAddress,
+                  expiresAt,
+                  status: "ACTIVE",
+                  foundingMoltNumber,
+                });
+                await storage.updateAgent(agent.id, { moltDomain: `${moltName}.molt` });
+                if (agent.erc8004TokenId) {
+                  queueBlockchainAction({
+                    type: "SET_MOLT_DOMAIN",
+                    agentId: agent.id,
+                    payload: { moltDomain: `${moltName}.molt` },
+                  }).catch(() => {});
+                }
+                fixes.push(`moltDomain=${moltName}.molt`);
+              }
+            } catch {}
+          }
+        }
+
+        if (!agent.walletAddress || agent.walletAddress === agent.walletAddress.toLowerCase()) {
+          try {
+            const checksummed = toChecksumAddress(agent.walletAddress);
+            if (checksummed !== agent.walletAddress) {
+              await storage.updateAgent(agent.id, { walletAddress: checksummed });
+              fixes.push(`walletAddress checksummed`);
+            }
+          } catch {}
+        }
+
+        if (fixes.length > 0) {
+          results.push({ handle: agent.handle, id: agent.id, fixes });
+        }
+      }
+
+      res.json({ success: true, repaired: results.length, results });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

@@ -79,10 +79,41 @@ app.use((req, res, next) => {
   next();
 });
 
+let appReady = false;
+
+app.get("/api/ready", (_req, res) => {
+  res.json({ ready: appReady, ts: Date.now() });
+});
+
+app.get("/", (req, res, next) => {
+  if (!appReady) {
+    return res.status(200).send("ClawTrust starting...");
+  }
+  next();
+});
+
+const port = parseInt(process.env.PORT || "5000", 10);
+
+httpServer.listen(
+  {
+    port,
+    host: "0.0.0.0",
+    reusePort: true,
+  },
+  () => {
+    log(`serving on port ${port}`);
+  },
+);
+
 (async () => {
-  const { seedDatabase, ensureMoltyAgent } = await import("./seed");
-  await seedDatabase();
-  await ensureMoltyAgent();
+  try {
+    const { seedDatabase, ensureMoltyAgent } = await import("./seed");
+    await seedDatabase();
+    await ensureMoltyAgent();
+  } catch (err: any) {
+    console.error("[Startup] Seed/init failed (non-fatal, continuing):", err?.message || err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -101,9 +132,6 @@ app.use((req, res, next) => {
   const { injectOgTags } = await import("./og-tags");
   app.use(injectOgTags);
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -111,48 +139,34 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    async () => {
-      log(`serving on port ${port}`);
+  appReady = true;
 
-      startScheduler();
+  startScheduler();
 
-      if (process.env.MOLTBOOK_API_KEY) {
-        log("Moltbook bot auto-starting...", "bot");
-        startBot();
-      }
+  if (process.env.MOLTBOOK_API_KEY) {
+    log("Moltbook bot auto-starting...", "bot");
+    startBot();
+  }
 
-      if (process.env.TELEGRAM_BOT_TOKEN) {
-        log("Telegram bot auto-starting...", "telegram");
-        try {
-          const { startTelegramBot, stopTelegramBot } = await import("./telegram-bot");
-          startTelegramBot().catch((err: any) => {
-            log(`Telegram bot startup failed (non-fatal): ${err?.message || err}`, "telegram");
-          });
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    log("Telegram bot auto-starting...", "telegram");
+    try {
+      const { startTelegramBot, stopTelegramBot } = await import("./telegram-bot");
+      startTelegramBot().catch((err: any) => {
+        log(`Telegram bot startup failed (non-fatal): ${err?.message || err}`, "telegram");
+      });
 
-          const shutdown = () => {
-            log("Shutting down...", "express");
-            try { stopTelegramBot(); } catch {}
-            httpServer.close(() => process.exit(0));
-            setTimeout(() => process.exit(0), 3000);
-          };
+      const shutdown = () => {
+        log("Shutting down...", "express");
+        try { stopTelegramBot(); } catch {}
+        httpServer.close(() => process.exit(0));
+        setTimeout(() => process.exit(0), 3000);
+      };
 
-          process.once("SIGTERM", shutdown);
-          process.once("SIGINT", shutdown);
-        } catch (err: any) {
-          log(`Telegram bot import failed (non-fatal): ${err?.message || err}`, "telegram");
-        }
-      }
-    },
-  );
+      process.once("SIGTERM", shutdown);
+      process.once("SIGINT", shutdown);
+    } catch (err: any) {
+      log(`Telegram bot import failed (non-fatal): ${err?.message || err}`, "telegram");
+    }
+  }
 })();

@@ -2,9 +2,10 @@ import { storage } from "./storage";
 import { syncPerformanceScore } from "./bond-service";
 import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
-import { telegramDailyDigest } from "./telegram-announcements";
+import { telegramDailyDigest, telegramBlogPost } from "./telegram-announcements";
 import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
 import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries } from "./blockchain";
+import { isAddress } from "viem";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -56,6 +57,7 @@ export function startScheduler() {
   }, 2 * 60 * 60 * 1000);
 
   scheduleEducationalPosts();
+  scheduleBlogPosts();
 
   setInterval(runBlockchainQueue, 5 * 60 * 1000);
   setTimeout(runBlockchainQueue, 30_000);
@@ -96,8 +98,7 @@ async function runScoreSync() {
       if (agent.totalGigsCompleted > 0 || agent.bondTier !== "UNBONDED") {
         await syncPerformanceScore(agent.id).catch(() => {});
         synced++;
-        const isValidEthAddress = /^0x[0-9a-fA-F]{40}$/.test(agent.walletAddress);
-        if (isValidEthAddress && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
+        if (isAddress(agent.walletAddress) && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
           updateReputationOnChain({
             agentWallet: agent.walletAddress,
             onChainScore: agent.onChainScore || 0,
@@ -190,4 +191,38 @@ function scheduleEducationalPosts() {
 
   setInterval(checkAndPost, 60 * 60 * 1000);
   console.log("[Scheduler] Educational posts scheduled for Tue/Thu 2pm UTC");
+}
+
+let lastBlogPostDay: string | null = null;
+
+function scheduleBlogPosts() {
+  const checkAndPost = async () => {
+    const now = new Date();
+    const dayOfWeek = now.getUTCDay();
+    const hour = now.getUTCHours();
+    const todayKey = `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}`;
+
+    if ((dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 5) && hour === 15) {
+      if (lastBlogPostDay === todayKey) {
+        console.log("[Scheduler] Blog post already sent today, skipping");
+        return;
+      }
+      try {
+        console.log("[Scheduler] Firing Telegram blog post (day=" + dayOfWeek + ", hour=" + hour + ")");
+        await telegramBlogPost();
+        lastBlogPostDay = todayKey;
+        console.log("[Scheduler] Telegram blog post completed successfully");
+      } catch (err: any) {
+        console.error("[Scheduler] Telegram blog post failed:", err.message);
+      }
+    }
+  };
+
+  setTimeout(() => {
+    console.log("[Scheduler] Running startup blog post check...");
+    checkAndPost();
+  }, 2 * 60 * 1000);
+
+  setInterval(checkAndPost, 60 * 60 * 1000);
+  console.log("[Scheduler] Blog posts scheduled for Mon/Wed/Fri 3pm UTC (startup check in 2 min)");
 }
