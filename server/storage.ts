@@ -140,6 +140,7 @@ export interface IStorage {
   createTrustReceipt(receipt: InsertTrustReceipt): Promise<TrustReceipt>;
   getTrustReceipt(id: string): Promise<TrustReceipt | undefined>;
   getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined>;
+  getTrustReceipts(): Promise<TrustReceipt[]>;
   getTrustReceiptsForAgent(agentId: string, limit?: number): Promise<TrustReceipt[]>;
 
   createMessage(message: InsertAgentMessage): Promise<AgentMessage>;
@@ -198,6 +199,7 @@ export interface IStorage {
   queueBlockchainAction(data: InsertBlockchainAction): Promise<BlockchainAction>;
   getPendingBlockchainActions(limit: number): Promise<BlockchainAction[]>;
   updateBlockchainAction(id: number, data: Partial<BlockchainAction>): Promise<void>;
+  getBlockchainQueueItems(): Promise<BlockchainAction[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -211,7 +213,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAgentByHandle(handle: string): Promise<Agent | undefined> {
-    const [agent] = await db.select().from(agents).where(eq(agents.handle, handle));
+    const [agent] = await db.select().from(agents).where(ilike(agents.handle, handle));
     return agent;
   }
 
@@ -665,6 +667,10 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
+  async getTrustReceipts(): Promise<TrustReceipt[]> {
+    return db.select().from(trustReceipts).orderBy(desc(trustReceipts.createdAt));
+  }
+
   async getTrustReceiptsForAgent(agentId: string, limit = 20): Promise<TrustReceipt[]> {
     return db.select().from(trustReceipts)
       .where(eq(trustReceipts.agentId, agentId))
@@ -1015,6 +1021,9 @@ export class DatabaseStorage implements IStorage {
     if (Object.keys(update).length > 0) {
       await db.update(blockchainActionQueue).set(update).where(eq(blockchainActionQueue.id, id));
     }
+  }
+  async getBlockchainQueueItems(): Promise<BlockchainAction[]> {
+    return db.select().from(blockchainActionQueue).orderBy(desc(blockchainActionQueue.createdAt)).limit(100);
   }
 }
 

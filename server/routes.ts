@@ -49,6 +49,14 @@ import {
   queueBlockchainAction,
   getDeployerAddress,
   cleanupStuckQueueEntries,
+  publicClient,
+  clawCardNFT,
+  escrowContract,
+  swarmValidator,
+  repAdapter,
+  bondContract,
+  crewContract,
+  updateReputationOnChain,
 } from "./blockchain";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import {
@@ -2484,10 +2492,6 @@ export async function registerRoutes(
         });
       }
 
-      const basescanUrl = tokenId
-        ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
-        : null;
-
       // Prefer DB data — on-chain values may be stale or unset
       const fusedScore = dbAgent?.fusedScore ?? (passportData.fusedScore !== undefined ? Number(passportData.fusedScore) / 100 : 0);
       const riskIndex = dbAgent?.riskIndex ?? (passportData.riskIndex !== undefined ? Number(passportData.riskIndex) : 0);
@@ -2496,6 +2500,10 @@ export async function registerRoutes(
       if (!tokenId && dbAgent?.erc8004TokenId) tokenId = dbAgent.erc8004TokenId;
       // Use DB wallet if on-chain didn't resolve it
       if (!walletAddress && dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
+
+      const basescanUrl = tokenId
+        ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
+        : null;
 
       let registeredAt: string | null = null;
       try {
@@ -5769,6 +5777,7 @@ export async function registerRoutes(
         endpoints: {
           "trust-check": { price: 0.001, currency: "USDC", chain: "base-sepolia" },
           "reputation": { price: 0.002, currency: "USDC", chain: "base-sepolia" },
+          "erc8004": { price: 0.001, currency: "USDC", chain: "base-sepolia" },
         },
         protocol: "x402",
         facilitator: "https://x402.org/facilitator",
@@ -5987,6 +5996,148 @@ export async function registerRoutes(
           handle: relatedAgent.handle,
           avatar: relatedAgent.avatar,
         } : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Health: Contract Status ────────────────────────────────────────
+  app.get("/api/health/contracts", async (_req, res) => {
+    const results: Record<string, any> = {};
+    const nftAddr = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+    const escrowAddr = process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe";
+    const repAddr = process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818";
+    const swarmAddr = process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6";
+    const bondAddr = process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c";
+    const crewAddr = process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3";
+
+    try {
+      const totalSupply = await (clawCardNFT as any).read.totalSupply();
+      results.ClawCardNFT = { address: nftAddr, responding: true, totalSupply: Number(totalSupply) };
+    } catch (e: any) {
+      results.ClawCardNFT = { address: nftAddr, responding: false, error: e.message?.slice(0, 100) };
+    }
+
+    try {
+      const fee = await (escrowContract as any).read.platformFeeRate();
+      results.ClawTrustEscrow = { address: escrowAddr, responding: true, platformFee: Number(fee) };
+    } catch (e: any) {
+      results.ClawTrustEscrow = { address: escrowAddr, responding: false, error: e.message?.slice(0, 100) };
+    }
+
+    try {
+      await publicClient.getCode({ address: repAddr as `0x${string}` });
+      results.ClawTrustRepAdapter = { address: repAddr, responding: true };
+    } catch (e: any) {
+      results.ClawTrustRepAdapter = { address: repAddr, responding: false, error: e.message?.slice(0, 100) };
+    }
+
+    try {
+      await publicClient.getCode({ address: swarmAddr as `0x${string}` });
+      results.ClawTrustSwarmValidator = { address: swarmAddr, responding: true };
+    } catch (e: any) {
+      results.ClawTrustSwarmValidator = { address: swarmAddr, responding: false, error: e.message?.slice(0, 100) };
+    }
+
+    try {
+      const minDep = await (bondContract as any).read.MIN_DEPOSIT();
+      results.ClawTrustBond = { address: bondAddr, responding: true, minDeposit: minDep.toString() };
+    } catch (e: any) {
+      results.ClawTrustBond = { address: bondAddr, responding: false, error: e.message?.slice(0, 100) };
+    }
+
+    try {
+      await publicClient.getCode({ address: crewAddr as `0x${string}` });
+      results.ClawTrustCrew = { address: crewAddr, responding: true };
+    } catch (e: any) {
+      results.ClawTrustCrew = { address: crewAddr, responding: false, error: e.message?.slice(0, 100) };
+    }
+
+    res.json(results);
+  });
+
+  // ─── Network Stats ────────────────────────────────────────────────
+  app.get("/api/network-stats", async (_req, res) => {
+    try {
+      const allAgents = await storage.getAgents();
+      const allGigs = await storage.getGigs();
+      const allCrews = await storage.getCrews();
+      const allDomains = await storage.getAllMoltDomains();
+
+      const completedGigs = allGigs.filter((g: any) => g.status === "completed");
+      const escrowTxs = await storage.getEscrowTransactions();
+      const lockedEscrow = escrowTxs.filter((e: any) => e.status === "locked" || e.status === "released");
+      const releasedEscrow = escrowTxs.filter((e: any) => e.status === "released");
+      const validations = await storage.getValidations();
+      const receipts = await storage.getTrustReceipts();
+
+      res.json({
+        agentsRegistered: allAgents.length,
+        moltDomainsRegistered: allDomains.length,
+        gigsPosted: allGigs.length,
+        gigsCompleted: completedGigs.length,
+        usdcEscrowed: lockedEscrow.reduce((sum: number, e: any) => sum + (parseFloat(e.amount) || 0), 0),
+        usdcPaid: releasedEscrow.reduce((sum: number, e: any) => sum + (parseFloat(e.amount) || 0), 0),
+        swarmValidations: validations.length,
+        trustReceipts: receipts.length,
+        crewsFormed: allCrews.length,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Admin: Blockchain Queue Status ───────────────────────────────
+  app.get("/api/admin/blockchain-queue", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const allItems = await storage.getBlockchainQueueItems();
+      const pending = allItems.filter((i: any) => i.status === "pending").length;
+      const failed = allItems.filter((i: any) => i.status === "failed").length;
+      const completed = allItems.filter((i: any) => i.status === "completed").length;
+      const processing = allItems.filter((i: any) => i.status === "processing").length;
+
+      res.json({
+        total: allItems.length,
+        pending,
+        failed,
+        completed,
+        processing,
+        items: allItems.slice(0, 50),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Admin: Sync Reputation On-Chain ──────────────────────────────
+  app.post("/api/admin/sync-reputation", adminAuthMiddleware, async (req, res) => {
+    try {
+      const { agentId } = req.body;
+      if (!agentId) return res.status(400).json({ message: "agentId required" });
+
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      if (!agent.walletAddress) return res.status(400).json({ message: "Agent has no wallet address" });
+
+      const txHash = await updateReputationOnChain({
+        agentWallet: agent.walletAddress,
+        onChainScore: agent.onChainScore || 0,
+        moltbookKarma: agent.moltbookKarma || 0,
+        performanceScore: agent.performanceScore || 0,
+        bondScore: agent.bondReliability || 0,
+      });
+
+      if (!txHash) {
+        return res.status(500).json({ message: "On-chain update failed or skipped (cooldown)" });
+      }
+
+      res.json({
+        success: true,
+        txHash,
+        basescanUrl: `https://sepolia.basescan.org/tx/${txHash}`,
+        agentId: agent.id,
+        wallet: agent.walletAddress,
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
