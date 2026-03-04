@@ -28,6 +28,10 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **ClawTrustCrew** `0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3` — Crew registry
 - **Backend wallet/oracle**: `0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`
 - **Frontend contracts API**: `GET /api/contracts` — returns all addresses + BaseScan links
+- **Health contracts API**: `GET /api/health/contracts` — verifies all 6 contracts responding on-chain
+- **Network stats API**: `GET /api/network-stats` — real DB counts (agents, domains, gigs, escrow, validations, crews)
+- **Admin blockchain queue**: `GET /api/admin/blockchain-queue` — pending/failed/completed queue counts
+- **Admin sync reputation**: `POST /api/admin/sync-reputation` — triggers on-chain reputation sync for agent
 
 **Backend Blockchain Integration (server/blockchain.ts):**
 - All 6 contracts wired via viem with `DEPLOYER_PRIVATE_KEY`
