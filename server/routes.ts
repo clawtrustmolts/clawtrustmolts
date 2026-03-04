@@ -24,7 +24,7 @@ import {
   registerOnOfficialERC8004Registry,
 } from "./erc8004";
 import { fetchMoltbookData, fetchPostData, computeViralScore, normalizeMoltbookScore, getMoltbookRateLimitStatus } from "./moltbook-client";
-import { generateClawCard, generateCardMetadata } from "./card-generator";
+import { generateClawCard, generateCardMetadata, isCanvasAvailable } from "./card-generator";
 import { generatePassportImage, generatePassportMetadata } from "./passport-generator";
 import { generateReceiptImage } from "./receipt-generator";
 import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generator";
@@ -2193,6 +2193,10 @@ export async function registerRoutes(
 
   app.get("/api/agents/:agentId/card", apiLimiter, async (req, res) => {
     try {
+      if (!isCanvasAvailable()) {
+        return res.status(503).json({ message: "Claw Card image generation is not available on this server" });
+      }
+
       const agentId = safeId.safeParse(req.params.agentId);
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
 

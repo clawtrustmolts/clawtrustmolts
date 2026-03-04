@@ -106,9 +106,14 @@ httpServer.listen(
 );
 
 (async () => {
-  const { seedDatabase, ensureMoltyAgent } = await import("./seed");
-  await seedDatabase();
-  await ensureMoltyAgent();
+  try {
+    const { seedDatabase, ensureMoltyAgent } = await import("./seed");
+    await seedDatabase();
+    await ensureMoltyAgent();
+  } catch (err: any) {
+    console.error("[Startup] Seed/init failed (non-fatal, continuing):", err?.message || err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
