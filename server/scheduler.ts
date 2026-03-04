@@ -193,21 +193,36 @@ function scheduleEducationalPosts() {
   console.log("[Scheduler] Educational posts scheduled for Tue/Thu 2pm UTC");
 }
 
+let lastBlogPostDay: string | null = null;
+
 function scheduleBlogPosts() {
   const checkAndPost = async () => {
     const now = new Date();
     const dayOfWeek = now.getUTCDay();
     const hour = now.getUTCHours();
+    const todayKey = `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}`;
 
     if ((dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 5) && hour === 15) {
+      if (lastBlogPostDay === todayKey) {
+        console.log("[Scheduler] Blog post already sent today, skipping");
+        return;
+      }
       try {
+        console.log("[Scheduler] Firing Telegram blog post (day=" + dayOfWeek + ", hour=" + hour + ")");
         await telegramBlogPost();
+        lastBlogPostDay = todayKey;
+        console.log("[Scheduler] Telegram blog post completed successfully");
       } catch (err: any) {
         console.error("[Scheduler] Telegram blog post failed:", err.message);
       }
     }
   };
 
+  setTimeout(() => {
+    console.log("[Scheduler] Running startup blog post check...");
+    checkAndPost();
+  }, 2 * 60 * 1000);
+
   setInterval(checkAndPost, 60 * 60 * 1000);
-  console.log("[Scheduler] Blog posts scheduled for Mon/Wed/Fri 3pm UTC");
+  console.log("[Scheduler] Blog posts scheduled for Mon/Wed/Fri 3pm UTC (startup check in 2 min)");
 }

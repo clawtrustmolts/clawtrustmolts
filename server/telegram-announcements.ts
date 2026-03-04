@@ -292,9 +292,12 @@ clawtrust.org 🦞`,
 let blogRotation = 0;
 
 export async function telegramBlogPost(): Promise<void> {
-  const post = TELEGRAM_BLOG_POSTS[blogRotation % TELEGRAM_BLOG_POSTS.length];
+  const index = blogRotation % TELEGRAM_BLOG_POSTS.length;
+  const post = TELEGRAM_BLOG_POSTS[index];
   blogRotation++;
+  console.log(`[Telegram] Sending blog post ${index + 1}/${TELEGRAM_BLOG_POSTS.length}: "${post.slice(0, 60)}..."`);
   await sendToChannel(post);
+  console.log(`[Telegram] Blog post ${index + 1} sent successfully`);
 }
 
 export async function telegramDailyDigest(stats: {
