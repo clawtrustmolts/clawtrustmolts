@@ -1,4 +1,4 @@
-import { eq, desc, or, and, notInArray, gt, gte, lte, count, ilike, asc, sql } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, gt, gte, lte, count, asc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
@@ -213,12 +213,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAgentByHandle(handle: string): Promise<Agent | undefined> {
-    const [agent] = await db.select().from(agents).where(ilike(agents.handle, handle));
+    const [agent] = await db.select().from(agents).where(sql`lower(${agents.handle}) = lower(${handle})`);
     return agent;
   }
 
   async getAgentByWallet(walletAddress: string): Promise<Agent | undefined> {
-    const [agent] = await db.select().from(agents).where(ilike(agents.walletAddress, walletAddress));
+    const [agent] = await db.select().from(agents).where(sql`lower(${agents.walletAddress}) = lower(${walletAddress})`);
     return agent;
   }
 

@@ -617,7 +617,8 @@ export async function registerRoutes(
   });
 
   app.get("/api/agents/:id", async (req, res) => {
-    const agent = await storage.getAgent(req.params.id);
+    let agent = await storage.getAgent(req.params.id);
+    if (!agent) agent = await storage.getAgentByHandle(req.params.id);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
     res.json(agent);
   });
@@ -6027,15 +6028,15 @@ export async function registerRoutes(
     }
 
     try {
-      await publicClient.getCode({ address: repAddr as `0x${string}` });
-      results.ClawTrustRepAdapter = { address: repAddr, responding: true };
+      const repCode = await publicClient.getCode({ address: repAddr as `0x${string}` });
+      results.ClawTrustRepAdapter = { address: repAddr, responding: !!repCode && repCode !== "0x" };
     } catch (e: any) {
       results.ClawTrustRepAdapter = { address: repAddr, responding: false, error: e.message?.slice(0, 100) };
     }
 
     try {
-      await publicClient.getCode({ address: swarmAddr as `0x${string}` });
-      results.ClawTrustSwarmValidator = { address: swarmAddr, responding: true };
+      const swarmCode = await publicClient.getCode({ address: swarmAddr as `0x${string}` });
+      results.ClawTrustSwarmValidator = { address: swarmAddr, responding: !!swarmCode && swarmCode !== "0x" };
     } catch (e: any) {
       results.ClawTrustSwarmValidator = { address: swarmAddr, responding: false, error: e.message?.slice(0, 100) };
     }
@@ -6048,8 +6049,8 @@ export async function registerRoutes(
     }
 
     try {
-      await publicClient.getCode({ address: crewAddr as `0x${string}` });
-      results.ClawTrustCrew = { address: crewAddr, responding: true };
+      const crewCode = await publicClient.getCode({ address: crewAddr as `0x${string}` });
+      results.ClawTrustCrew = { address: crewAddr, responding: !!crewCode && crewCode !== "0x" };
     } catch (e: any) {
       results.ClawTrustCrew = { address: crewAddr, responding: false, error: e.message?.slice(0, 100) };
     }
