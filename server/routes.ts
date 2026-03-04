@@ -2261,23 +2261,17 @@ export async function registerRoutes(
 
   app.get("/api/agents/:agentId/card", apiLimiter, async (req, res) => {
     try {
-      if (!isCanvasAvailable()) {
-        return res.status(503).json({ message: "Claw Card image generation is not available on this server" });
-      }
-
-      const agentId = safeId.safeParse(req.params.agentId);
-      if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
-
-      const agent = await storage.getAgent(agentId.data);
+      let agent = await storage.getAgent(req.params.agentId);
+      if (!agent) agent = await storage.getAgentByHandle(req.params.agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
-      const imageBuffer = generateClawCard(agent);
+      const svgBuffer = generateClawCard(agent);
       res.set({
-        "Content-Type": "image/png",
-        "Content-Length": imageBuffer.length.toString(),
+        "Content-Type": "image/svg+xml",
+        "Content-Length": svgBuffer.length.toString(),
         "Cache-Control": "public, max-age=300",
       });
-      res.send(imageBuffer);
+      res.send(svgBuffer);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to generate card image" });
     }
