@@ -245,10 +245,24 @@ function solveChallenge(challenge: string): string | null {
     let workingText = decoded;
     const numbers: number[] = [];
 
-    for (const [compound, val] of Object.entries(compoundNums)) {
+    // Also search the space-stripped decoded text to handle obfuscated word-numbers
+    // e.g. "th ir ty t wo" → joined = "thirtytwo" (=32), "tw el ve" → "twelve" (=12)
+    // Use a mutable remainingJoined so matched fragments are consumed and not re-matched
+    let remainingJoined = decoded.replace(/\s+/g, "");
+
+    // Check compound numbers first (longest match first), in both spaced and joined forms
+    const sortedCompounds = Object.entries(compoundNums).sort((a, b) => b[0].length - a[0].length);
+    for (const [compound, val] of sortedCompounds) {
+      const compoundJoined = compound.replace(/\s+/g, "");
       if (workingText.includes(compound)) {
         numbers.push(val);
         workingText = workingText.replace(compound, ` __NUM${numbers.length - 1}__ `);
+        remainingJoined = remainingJoined.replace(compoundJoined, "");
+      } else if (remainingJoined.includes(compoundJoined)) {
+        // Found in space-stripped form (e.g. "thirtytwo" for "thirty two" = 32)
+        numbers.push(val);
+        remainingJoined = remainingJoined.replace(compoundJoined, "");
+        console.log(`[moltbook-bot] Matched compound "${compound}" (${val}) via joined form "${compoundJoined}"`);
       }
     }
 
@@ -257,6 +271,12 @@ function solveChallenge(challenge: string): string | null {
       if (regex.test(workingText)) {
         numbers.push(val);
         workingText = workingText.replace(regex, ` __NUM${numbers.length - 1}__ `);
+        remainingJoined = remainingJoined.replace(word, "");
+      } else if (remainingJoined.includes(word)) {
+        // Found in joined form (e.g. "twelve" inside "adstwelvemore")
+        numbers.push(val);
+        remainingJoined = remainingJoined.replace(word, "");
+        console.log(`[moltbook-bot] Matched word "${word}"=${val} via joined form`);
       }
     }
 
@@ -271,7 +291,11 @@ function solveChallenge(challenge: string): string | null {
     const hasMultiply = /\*|times|multiply|multiplied/i.test(challenge) || /\*|times|multiply|multiplied/i.test(decoded);
     const hasDivide = /\/|divided|split|ratio/i.test(challenge) || /\/|divided|split|ratio/i.test(decoded);
     const hasSubtract = /subtract|minus|less than|difference/i.test(decoded);
-    const hasAdd = /\+|add|plus|sum|total|combine|together/i.test(challenge) || /\+|add|plus|sum|total|combine|together/i.test(decoded);
+    const hasAdd = /\+|add|plus|sum|total|combine|together|adds|more/i.test(challenge) || /\+|add|plus|sum|total|combine|together|adds|more/i.test(decoded);
+
+    const formatAnswer = (n: number): string => {
+      return Number.isInteger(n) ? String(n) : n.toFixed(2);
+    };
 
     if (numbers.length >= 2) {
       let result: number;
@@ -292,13 +316,13 @@ function solveChallenge(challenge: string): string | null {
         console.log(`[moltbook-bot] Default multiply: ${numbers[0]} * ${numbers[1]} = ${result}`);
       }
 
-      const answer = result.toFixed(2);
+      const answer = formatAnswer(result);
       console.log(`[moltbook-bot] Answer: ${answer}`);
       return answer;
     }
 
     if (numbers.length === 1) {
-      const answer = numbers[0].toFixed(2);
+      const answer = formatAnswer(numbers[0]);
       console.log(`[moltbook-bot] Single number answer: ${answer}`);
       return answer;
     }
