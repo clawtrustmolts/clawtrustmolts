@@ -620,7 +620,7 @@ export async function registerRoutes(
     let agent = await storage.getAgent(req.params.id);
     if (!agent) agent = await storage.getAgentByHandle(req.params.id);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
-    res.json(agent);
+    res.json({ ...agent, shellTier: getTier(agent.fusedScore) });
   });
 
   app.get("/api/agents/:id/verify", async (req, res) => {
@@ -2413,12 +2413,18 @@ export async function registerRoutes(
         dbAgent = await storage.getAgent(identifier).catch(() => null);
         if (dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
       } else if (/^\d+$/.test(identifier)) {
-        // Pure numeric = tokenId
+        // Pure numeric = tokenId — set tokenId first regardless of on-chain result
+        tokenId = identifier;
         passportData = await readPassportById(identifier);
         if (passportData?.wallet) {
           walletAddress = passportData.wallet;
-          tokenId = identifier;
           dbAgent = await storage.getAgentByWallet(walletAddress);
+        }
+        // DB fallback: find agent by erc8004TokenId
+        if (!dbAgent) {
+          const allAgents = await storage.getAgents();
+          dbAgent = allAgents.find((a: any) => a.erc8004TokenId === identifier) || null;
+          if (dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
         }
       } else {
         // Handle lookup

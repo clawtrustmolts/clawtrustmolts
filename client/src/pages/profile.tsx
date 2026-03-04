@@ -119,14 +119,17 @@ interface CommentsResponse {
 
 interface BondStatus {
   agentId: string;
-  tier: string;
+  tier?: string;
+  bondTier?: string;
   totalBonded: number;
   availableBond: number;
   lockedBond: number;
   bondReliability: number;
   bondWalletId: string | null;
-  slashProtection: boolean;
+  bondWalletAddress?: string | null;
+  slashProtection?: boolean;
   lastSlashAt: string | null;
+  circleConfigured?: boolean;
 }
 
 interface BondEvent {
@@ -354,10 +357,11 @@ export default function ProfilePage() {
     enabled: !!agentId,
   });
 
-  const { data: slashesData } = useQuery<SlashEvent[]>({
+  const { data: slashesData } = useQuery<{ slashes: SlashEvent[]; count: number }>({
     queryKey: ["/api/slashes/agent", agentId],
     enabled: !!agentId,
   });
+  const slashEvents: SlashEvent[] = slashesData?.slashes ?? [];
 
   const { data: migrationData } = useQuery<{ migration: ReputationMigration | null }>({
     queryKey: ["/api/agents", agentId, "migration-status"],
@@ -413,7 +417,7 @@ export default function ProfilePage() {
   const assignedGigs = gigs.filter((g) => g.assigneeId === agentId);
   const displayedGigs = gigSubTab === "posted" ? postedGigs : assignedGigs;
 
-  const slashCount = slashesData?.length ?? 0;
+  const slashCount = slashEvents.length;
   const migration = migrationData?.migration ?? null;
   const foundingMoltNumber = moltInfo?.record?.foundingMoltNumber ?? null;
 
@@ -1041,7 +1045,7 @@ export default function ProfilePage() {
             />
           )}
           {activeTab === "slashes" && (
-            <SlashRecordTab slashes={slashesData || []} />
+            <SlashRecordTab slashes={slashEvents} />
           )}
           {activeTab === "social" && (
             <SocialTab
@@ -1403,11 +1407,17 @@ function BondRiskTab({
           <StatBox label="Locked" value={formatUSDC(bd?.lockedBond ?? agent.lockedBond)} color="var(--claw-amber)" />
           <StatBox
             label="Reliability"
-            value={`${((bd?.bondReliability ?? agent.bondReliability ?? 0) * 100).toFixed(0)}%`}
+            value={(() => {
+              const raw = bd?.bondReliability ?? agent.bondReliability ?? 0;
+              const pct = raw > 1 ? raw : raw * 100;
+              return `${pct.toFixed(0)}%`;
+            })()}
             color={
-              (bd?.bondReliability ?? agent.bondReliability ?? 0) >= 0.9
-                ? "var(--teal-glow)"
-                : "var(--claw-orange)"
+              (() => {
+                const raw = bd?.bondReliability ?? agent.bondReliability ?? 0;
+                const pct = raw > 1 ? raw : raw * 100;
+                return pct >= 90 ? "var(--teal-glow)" : "var(--claw-orange)";
+              })()
             }
           />
         </div>
@@ -1419,15 +1429,15 @@ function BondRiskTab({
               className="uppercase font-bold"
               style={{
                 color:
-                  (bd?.tier || agent.bondTier) === "HIGH_BOND"
+                  (bd?.bondTier || bd?.tier || agent.bondTier) === "HIGH_BOND"
                     ? "var(--teal-glow)"
-                    : (bd?.tier || agent.bondTier) === "BONDED"
+                    : (bd?.bondTier || bd?.tier || agent.bondTier) === "BONDED"
                       ? "var(--claw-orange)"
                       : "var(--text-muted)",
               }}
               data-testid="text-bond-tier"
             >
-              {(bd?.tier || agent.bondTier).replace("_", " ")}
+              {(bd?.bondTier || bd?.tier || agent.bondTier || "UNBONDED").replace("_", " ")}
             </span>
           </div>
           <div className="flex justify-between px-2 py-1">
