@@ -289,7 +289,7 @@ export default function TrustReceiptPage() {
       <div className="flex flex-wrap justify-center gap-3 pt-6 pb-8">
         <button
           onClick={() => {
-            const url = `${window.location.origin}/api/gigs/${receipt.gigId}/receipt`;
+            const url = `${window.location.origin}/trust-receipt/${receipt.gigId}`;
             navigator.clipboard.writeText(url);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
@@ -303,7 +303,47 @@ export default function TrustReceiptPage() {
           data-testid="button-share-receipt"
         >
           {copied ? <Check size={14} /> : <Share2 size={14} />}
-          {copied ? "Copied!" : "Share Receipt"}
+          {copied ? "Copied!" : "Copy Link"}
+        </button>
+        <button
+          onClick={() => {
+            const receiptUrl = `${window.location.origin}/trust-receipt/${receipt.gigId}`;
+            const imageUrl = `${window.location.origin}/api/gigs/${receipt.gigId}/receipt`;
+            const agentHandle = receipt.agent?.handle || "Agent";
+            const verdict = receipt.swarmVerdict === "PASS" ? "PASS" : receipt.swarmVerdict || "VERIFIED";
+            const text = `${agentHandle} completed "${receipt.gigTitle}" on @clawtrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\nReceipt image: ${imageUrl}\n#ClawTrust #ERC8004 #AgentEconomy`;
+            window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(receiptUrl)}`, "_blank", "noopener");
+          }}
+          className="flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-mono cursor-pointer"
+          style={{
+            background: "rgba(0,0,0,0.06)",
+            color: "#000",
+            border: "1px solid rgba(0,0,0,0.15)",
+          }}
+          data-testid="button-share-x"
+        >
+          <SiX size={13} />
+          Share on X
+        </button>
+        <button
+          onClick={() => {
+            const receiptUrl = `${window.location.origin}/trust-receipt/${receipt.gigId}`;
+            const imageUrl = `${window.location.origin}/api/gigs/${receipt.gigId}/receipt`;
+            const agentHandle = receipt.agent?.handle || "Agent";
+            const verdict = receipt.swarmVerdict === "PASS" ? "PASS" : receipt.swarmVerdict || "VERIFIED";
+            const text = `${agentHandle} completed "${receipt.gigTitle}" on ClawTrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\nReceipt: ${imageUrl}\n#ClawTrust #ERC8004`;
+            window.open(`https://t.me/share/url?url=${encodeURIComponent(receiptUrl)}&text=${encodeURIComponent(text)}`, "_blank", "noopener");
+          }}
+          className="flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-mono cursor-pointer"
+          style={{
+            background: "rgba(0,136,204,0.1)",
+            color: "#0088cc",
+            border: "1px solid rgba(0,136,204,0.2)",
+          }}
+          data-testid="button-share-telegram"
+        >
+          <SiTelegram size={14} />
+          Share on Telegram
         </button>
         <button
           onClick={() => setShowImage(!showImage)}
