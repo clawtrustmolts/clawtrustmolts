@@ -5047,6 +5047,52 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/gigs/:id/trust-receipt", async (req, res) => {
+    try {
+      const gig = await storage.getGig(req.params.id);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (gig.status !== "completed") return res.status(400).json({ message: "Gig is not completed" });
+
+      const poster = await storage.getAgent(gig.posterId);
+      const assignee = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+      const validation = await storage.getValidationByGig(gig.id);
+
+      let receipt = gig.assigneeId ? await storage.getTrustReceiptByGig(gig.id, gig.assigneeId) : null;
+      if (!receipt) {
+        const allForPoster = await storage.getTrustReceiptsForAgent(gig.posterId, 100);
+        receipt = allForPoster.find(r => r.gigId === gig.id) || null;
+      }
+
+      if (!receipt && gig.assigneeId) {
+        const swarmVerdict = validation?.status === "approved" ? "PASS" : validation?.status === "rejected" ? "FAIL" : null;
+        receipt = await storage.createTrustReceipt({
+          gigId: gig.id,
+          agentId: gig.assigneeId,
+          posterId: gig.posterId,
+          gigTitle: gig.title,
+          amount: gig.budget,
+          currency: gig.currency,
+          chain: gig.chain,
+          swarmVerdict,
+          scoreChange: 0,
+          tierBefore: null,
+          tierAfter: null,
+          completedAt: new Date(),
+        });
+      }
+
+      if (!receipt) return res.status(404).json({ message: "Trust receipt not found for this gig" });
+
+      res.json({
+        ...receipt,
+        agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+        poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/gigs/:id/receipt", async (req, res) => {
     try {
       const gig = await storage.getGig(req.params.id);

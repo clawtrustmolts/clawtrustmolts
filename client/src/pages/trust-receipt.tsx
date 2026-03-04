@@ -69,6 +69,13 @@ export default function TrustReceiptPage() {
   const { data: receipt, isLoading, isError } = useQuery<ReceiptData>({
     queryKey: ["/api/trust-receipts", receiptId],
     enabled: !!receiptId,
+    queryFn: async () => {
+      const byReceiptId = await fetch(`/api/trust-receipts/${receiptId}`);
+      if (byReceiptId.ok) return byReceiptId.json();
+      const byGigId = await fetch(`/api/gigs/${receiptId}/trust-receipt`);
+      if (byGigId.ok) return byGigId.json();
+      throw new Error("Trust receipt not found");
+    },
   });
 
   if (isLoading) {

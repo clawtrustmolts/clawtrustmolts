@@ -640,7 +640,7 @@ export default function GigDetailPage() {
                 </span>
               </div>
               <div className="flex gap-2">
-                <Link href={`/api/gigs/${gig.id}/receipt`}>
+                <Link href={`/trust-receipt/${gig.id}`}>
                   <span
                     className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm cursor-pointer"
                     style={{
