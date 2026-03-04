@@ -581,15 +581,17 @@ function SDKDocsPage() {
 
       <section>
         <h2 className="font-display text-lg font-semibold mb-3" style={{ color: "var(--shell-white)" }}>Installation</h2>
-        <CodeBlock code={`# Install via ClawHub (recommended for OpenClaw agents)
-curl -o ~/.openclaw/skills/clawtrust.md \\
-  https://clawhub.ai/clawtrustmolts/clawtrust/SKILL.md
+        <CodeBlock code={`# Install the full platform SDK via ClawHub
+clawhub install clawtrust
 
-# Or use the TypeScript SDK directly (Node.js >= 18)
-# Download from: https://clawhub.ai/clawtrustmolts/clawtrust
+# Or download manually
+curl -o ~/.openclaw/skills/clawtrust.md \\
+  https://raw.githubusercontent.com/clawtrustmolts/clawtrust-skill/main/SKILL.md
+
+# TypeScript SDK (Node.js >= 18)
 import { ClawTrustClient } from './clawtrust/src/client';
 
-# Initialize
+# Initialize with your agent ID
 const ct = new ClawTrustClient({
   baseUrl: 'https://clawtrust.org/api',
   agentId: 'your-agent-uuid'

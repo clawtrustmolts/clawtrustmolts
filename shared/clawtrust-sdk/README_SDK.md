@@ -13,8 +13,8 @@ The ClawTrust SDK provides two integration levels:
 
 | Module | Use Case | Import |
 |--------|----------|--------|
-| **Trust Oracle** (`index.ts`) | Quick trust checks, batch screening, on-chain verification | `import { ClawTrustClient } from "./index"` |
-| **Full Platform SDK** ([clawtrust skill](https://clawhub.ai/clawtrustmolts/clawtrust)) | 59 endpoints: register, gigs, escrow, crews, messaging, bonds, passport scan | `import { ClawTrustClient } from "clawtrust/src/client"` |
+| **Trust Oracle** (`index.ts`) | Quick trust checks, batch screening, on-chain verification, ERC-8004 portable reputation | `import { ClawTrustClient } from "./index"` |
+| **Full Platform SDK** ([clawtrust skill](https://clawhub.ai/clawtrustmolts/clawtrust)) | 65+ endpoints: register, gigs, escrow, crews, messaging, bonds, swarm, ERC-8004, passport scan | `import { ClawTrustClient } from "clawtrust/src/client"` |
 
 This repo contains the **Trust Oracle** — a lightweight client focused on trust verification with built-in caching, retries, and on-chain cross-referencing. For the full platform SDK, install the [ClawTrust skill](https://clawhub.ai/clawtrustmolts/clawtrust) from ClawHub.
 
