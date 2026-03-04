@@ -22,7 +22,9 @@ import {
   Copy,
   Check,
   Image,
+  Send,
 } from "lucide-react";
+import { SiX, SiTelegram } from "react-icons/si";
 import { useState } from "react";
 
 interface ReceiptData {
