@@ -1,29 +1,7 @@
 import type { Agent } from "@shared/schema";
 
-let createCanvas: ((w: number, h: number) => any) | null = null;
-let canvasAvailable = false;
-
-try {
-  const canvasModule = require("canvas");
-  createCanvas = canvasModule.createCanvas;
-  canvasAvailable = true;
-} catch (err: any) {
-  console.warn("[CardGenerator] canvas module not available — Claw Card image generation disabled:", err?.message || err);
-}
-
 const CARD_WIDTH = 600;
 const CARD_HEIGHT = 340;
-
-const COLORS = {
-  bg: "#020203",
-  bgCard: "#0c0c0f",
-  border: "#1a1a1f",
-  primary: "#F94144",
-  textLight: "#e4e4e7",
-  textMuted: "#71717a",
-  textDim: "#3f3f46",
-  white: "#ffffff",
-};
 
 const RANK_COLORS: Record<string, { main: string; glow: string }> = {
   "Diamond Claw": { main: "#38bdf8", glow: "#0ea5e933" },
@@ -41,313 +19,175 @@ function getRank(score: number): string {
   return "Hatchling";
 }
 
-function roundedRect(
-  ctx: any,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
-) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
-function drawScoreRing(
-  ctx: any,
-  cx: number,
-  cy: number,
-  radius: number,
-  score: number,
-  color: string
-) {
-  const lineWidth = 5;
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-  ctx.strokeStyle = "#27272a";
-  ctx.lineWidth = lineWidth;
-  ctx.stroke();
-
-  const startAngle = -Math.PI / 2;
-  const endAngle = startAngle + (Math.min(score, 100) / 100) * Math.PI * 2;
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, startAngle, endAngle);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = lineWidth + 1;
-  ctx.lineCap = "round";
-  ctx.stroke();
-
-  ctx.fillStyle = COLORS.white;
-  ctx.font = "bold 22px Inter, system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(Math.round(score).toString(), cx, cy);
+function scoreRingPath(cx: number, cy: number, r: number, score: number): string {
+  const pct = Math.min(score, 100) / 100;
+  if (pct >= 1) {
+    return `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r}`;
+  }
+  const angle = pct * 2 * Math.PI - Math.PI / 2;
+  const x = cx + r * Math.cos(angle);
+  const y = cy + r * Math.sin(angle);
+  const large = pct > 0.5 ? 1 : 0;
+  return `M ${cx} ${cy - r} A ${r} ${r} 0 ${large} 1 ${x} ${y}`;
 }
 
-function drawLobsterIcon(ctx: any, x: number, y: number, size: number, color: string) {
-  const s = size / 64;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(s, s);
-  
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.9;
-  ctx.beginPath();
-  ctx.moveTo(32, 8);
-  ctx.bezierCurveTo(27, 3, 18, 5, 15, 12);
-  ctx.bezierCurveTo(12, 19, 16, 25, 21, 24);
-  ctx.bezierCurveTo(17, 29, 20, 36, 25, 34);
-  ctx.lineTo(30, 42);
-  ctx.lineTo(34, 42);
-  ctx.lineTo(39, 34);
-  ctx.bezierCurveTo(44, 36, 47, 29, 43, 24);
-  ctx.bezierCurveTo(48, 25, 52, 19, 49, 12);
-  ctx.bezierCurveTo(46, 5, 37, 3, 32, 8);
-  ctx.closePath();
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2.5;
-  ctx.lineCap = "round";
-
-  ctx.beginPath();
-  ctx.moveTo(15, 12);
-  ctx.bezierCurveTo(10, 10, 4, 14, 6, 20);
-  ctx.bezierCurveTo(8, 26, 14, 26, 16, 23);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(49, 12);
-  ctx.bezierCurveTo(54, 10, 60, 14, 58, 20);
-  ctx.bezierCurveTo(56, 26, 50, 26, 48, 23);
-  ctx.stroke();
-
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(4, 18);
-  ctx.lineTo(2, 14);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(6, 20);
-  ctx.lineTo(3, 22);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(60, 18);
-  ctx.lineTo(62, 14);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(58, 20);
-  ctx.lineTo(61, 22);
-  ctx.stroke();
-
-  ctx.fillStyle = "#2dd4bf";
-  ctx.globalAlpha = 0.8;
-  ctx.beginPath();
-  ctx.arc(27, 14, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(37, 14, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  ctx.restore();
+function skillPill(x: number, y: number, text: string): string {
+  const charW = 6.5;
+  const w = Math.max(text.length * charW + 16, 40);
+  return `
+    <rect x="${x}" y="${y}" width="${w}" height="22" rx="6" fill="#27272a"/>
+    <text x="${x + 8}" y="${y + 14}" font-family="monospace" font-size="10" fill="#e4e4e7">${escapeXml(text)}</text>`;
 }
 
 export function isCanvasAvailable(): boolean {
-  return canvasAvailable;
+  return true;
 }
 
 export function generateClawCard(agent: Agent): Buffer {
-  if (!canvasAvailable || !createCanvas) {
-    throw new Error("Canvas not available on this server — Claw Card image generation is disabled");
-  }
-
-  const canvas = createCanvas(CARD_WIDTH, CARD_HEIGHT);
-  const ctx = canvas.getContext("2d");
-
   const rank = getRank(agent.fusedScore);
   const rankColor = RANK_COLORS[rank] || RANK_COLORS["Hatchling"];
+  const score = Math.round(agent.fusedScore);
+  const walletShort = `${agent.walletAddress.slice(0, 6)}...${agent.walletAddress.slice(-4)}`;
+  const primaryName = escapeXml(agent.moltDomain || agent.handle);
+  const bioText = agent.bio
+    ? escapeXml(agent.bio.length > 72 ? agent.bio.slice(0, 69) + "..." : agent.bio)
+    : "";
 
-  ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+  const ringCX = CARD_WIDTH - 76;
+  const ringCY = 62;
+  const ringR = 30;
+  const arcPath = scoreRingPath(ringCX, ringCY, ringR, agent.fusedScore);
 
-  roundedRect(ctx, 12, 12, CARD_WIDTH - 24, CARD_HEIGHT - 24, 16);
-  ctx.fillStyle = COLORS.bgCard;
-  ctx.fill();
-  ctx.strokeStyle = rankColor.main + "55";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  const grd = ctx.createRadialGradient(480, 60, 10, 480, 60, 200);
-  grd.addColorStop(0, rankColor.glow);
-  grd.addColorStop(1, "transparent");
-  ctx.fillStyle = grd;
-  ctx.fillRect(12, 12, CARD_WIDTH - 24, CARD_HEIGHT - 24);
-
-  drawLobsterIcon(ctx, 32, 36, 38, COLORS.primary);
-
-  const primaryName = agent.moltDomain || agent.handle;
-  ctx.fillStyle = COLORS.white;
-  ctx.font = "bold 20px Inter, system-ui, sans-serif";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText(primaryName, 80, 40);
-
-  ctx.fillStyle = COLORS.textMuted;
-  ctx.font = "500 11px 'JetBrains Mono', monospace";
-  ctx.fillText(
-    `${agent.walletAddress.slice(0, 6)}...${agent.walletAddress.slice(-4)}`,
-    80,
-    65
-  );
-
-  if (agent.isVerified) {
-    const verifX = 80 + ctx.measureText(`${agent.walletAddress.slice(0, 6)}...${agent.walletAddress.slice(-4)}`).width + 10;
-    ctx.fillStyle = "#2dd4bf";
-    ctx.font = "500 10px Inter, system-ui, sans-serif";
-    ctx.fillText("VERIFIED", verifX, 66);
-  }
-
-  const ringX = CARD_WIDTH - 76;
-  const ringY = 62;
-  drawScoreRing(ctx, ringX, ringY, 32, agent.fusedScore, COLORS.primary);
-
-  ctx.fillStyle = COLORS.textMuted;
-  ctx.font = "600 8px Inter, system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("FUSED", ringX, ringY + 45);
-  ctx.textAlign = "left";
-
-  roundedRect(ctx, 80, 88, ctx.measureText(rank).width + 20, 22, 6);
-  ctx.fillStyle = rankColor.main + "22";
-  ctx.fill();
-  ctx.strokeStyle = rankColor.main + "66";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  ctx.fillStyle = rankColor.main;
-  ctx.font = "bold 11px Inter, system-ui, sans-serif";
-  ctx.fillText(rank.toUpperCase(), 90, 94);
-
-  if (agent.erc8004TokenId) {
-    const erc8004Text = `ERC-8004 #${agent.erc8004TokenId}`;
-    const rankBadgeWidth = ctx.measureText(rank.toUpperCase()).width + 20;
-    const ercX = 80 + rankBadgeWidth + 12;
-    roundedRect(ctx, ercX, 88, ctx.measureText(erc8004Text).width + 16, 22, 6);
-    ctx.fillStyle = "#2dd4bf22";
-    ctx.fill();
-    ctx.strokeStyle = "#2dd4bf66";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.fillStyle = "#2dd4bf";
-    ctx.font = "500 10px 'JetBrains Mono', monospace";
-    ctx.fillText(erc8004Text, ercX + 8, 94);
-  }
-
-  if (agent.bio) {
-    ctx.fillStyle = COLORS.textMuted;
-    ctx.font = "400 12px Inter, system-ui, sans-serif";
-    const bioText = agent.bio.length > 70 ? agent.bio.slice(0, 67) + "..." : agent.bio;
-    ctx.fillText(bioText, 32, 128);
-  }
-
-  const skillsY = agent.bio ? 156 : 136;
+  const skillsY = bioText ? 158 : 140;
   let skillX = 32;
-  const displaySkills = agent.skills.slice(0, 5);
+  const skillPills: string[] = [];
+  const displaySkills = (agent.skills || []).slice(0, 5);
   displaySkills.forEach((skill) => {
-    const tw = ctx.measureText(skill).width;
-    const pillW = tw + 16;
-    if (skillX + pillW > CARD_WIDTH - 32) return;
-
-    roundedRect(ctx, skillX, skillsY, pillW, 22, 6);
-    ctx.fillStyle = "#27272a";
-    ctx.fill();
-
-    ctx.fillStyle = COLORS.textLight;
-    ctx.font = "500 10px Inter, system-ui, sans-serif";
-    ctx.fillText(skill, skillX + 8, skillsY + 6);
-    skillX += pillW + 6;
+    const charW = 6.5;
+    const w = Math.max(skill.length * charW + 16, 40);
+    if (skillX + w > CARD_WIDTH - 32) return;
+    skillPills.push(skillPill(skillX, skillsY, skill));
+    skillX += w + 6;
   });
-
-  if (agent.skills.length > 5) {
-    ctx.fillStyle = COLORS.textDim;
-    ctx.font = "500 10px Inter, system-ui, sans-serif";
-    ctx.fillText(`+${agent.skills.length - 5}`, skillX + 4, skillsY + 6);
-  }
+  const extraSkills =
+    (agent.skills || []).length > 5
+      ? `<text x="${skillX + 4}" y="${skillsY + 14}" font-family="monospace" font-size="10" fill="#3f3f46">+${agent.skills.length - 5}</text>`
+      : "";
 
   const statsY = skillsY + 40;
+  const statItemY = statsY + 28;
 
-  ctx.strokeStyle = COLORS.border;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(32, statsY);
-  ctx.lineTo(CARD_WIDTH - 32, statsY);
-  ctx.stroke();
+  const rankLabelW = rank.length * 7.5 + 20;
+  const ercLabel = agent.erc8004TokenId ? `ERC-8004 #${agent.erc8004TokenId}` : "";
+  const ercLabelW = ercLabel.length * 6.5 + 16;
+  const ercX = 80 + rankLabelW + 12;
 
-  const statItemY = statsY + 16;
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" viewBox="0 0 ${CARD_WIDTH} ${CARD_HEIGHT}">
+  <defs>
+    <radialGradient id="rankGlow" cx="80%" cy="18%" r="40%">
+      <stop offset="0%" stop-color="${rankColor.main}" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="${rankColor.main}" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111114"/>
+      <stop offset="100%" stop-color="#0c0c0f"/>
+    </linearGradient>
+    <clipPath id="cardClip">
+      <rect x="12" y="12" width="${CARD_WIDTH - 24}" height="${CARD_HEIGHT - 24}" rx="16"/>
+    </clipPath>
+  </defs>
 
-  ctx.fillStyle = COLORS.textMuted;
-  ctx.font = "500 9px Inter, system-ui, sans-serif";
-  ctx.fillText("GIGS", 32, statItemY);
-  ctx.fillStyle = COLORS.white;
-  ctx.font = "bold 16px Inter, system-ui, sans-serif";
-  ctx.fillText(agent.totalGigsCompleted.toString(), 32, statItemY + 14);
+  <!-- Outer bg -->
+  <rect width="${CARD_WIDTH}" height="${CARD_HEIGHT}" fill="#020203"/>
 
-  ctx.fillStyle = COLORS.textMuted;
-  ctx.font = "500 9px Inter, system-ui, sans-serif";
-  ctx.fillText("EARNED", 120, statItemY);
-  ctx.fillStyle = COLORS.white;
-  ctx.font = "bold 16px Inter, system-ui, sans-serif";
-  ctx.fillText(`$${agent.totalEarned.toLocaleString()}`, 120, statItemY + 14);
+  <!-- Card surface -->
+  <rect x="12" y="12" width="${CARD_WIDTH - 24}" height="${CARD_HEIGHT - 24}" rx="16" fill="url(#bgGrad)" stroke="${rankColor.main}88" stroke-width="1.5"/>
 
-  ctx.fillStyle = COLORS.textMuted;
-  ctx.font = "500 9px Inter, system-ui, sans-serif";
-  ctx.fillText("ON-CHAIN", 240, statItemY);
-  ctx.fillStyle = COLORS.white;
-  ctx.font = "bold 16px Inter, system-ui, sans-serif";
-  ctx.fillText(agent.onChainScore.toString(), 240, statItemY + 14);
+  <!-- Rank glow -->
+  <rect x="12" y="12" width="${CARD_WIDTH - 24}" height="${CARD_HEIGHT - 24}" rx="16" fill="url(#rankGlow)" clip-path="url(#cardClip)"/>
 
-  ctx.fillStyle = COLORS.textMuted;
-  ctx.font = "500 9px Inter, system-ui, sans-serif";
-  ctx.fillText("KARMA", 340, statItemY);
-  ctx.fillStyle = COLORS.white;
-  ctx.font = "bold 16px Inter, system-ui, sans-serif";
-  ctx.fillText(agent.moltbookKarma.toString(), 340, statItemY + 14);
+  <!-- Lobster icon (simplified claw shape) -->
+  <g transform="translate(32,36)">
+    <ellipse cx="19" cy="20" rx="12" ry="16" fill="#F94144" opacity="0.9"/>
+    <ellipse cx="19" cy="10" rx="7" ry="8" fill="#F94144"/>
+    <ellipse cx="8" cy="18" rx="5" ry="6" fill="none" stroke="#F94144" stroke-width="2.5"/>
+    <ellipse cx="30" cy="18" rx="5" ry="6" fill="none" stroke="#F94144" stroke-width="2.5"/>
+    <line x1="3" y1="14" x2="1" y2="10" stroke="#F94144" stroke-width="2" stroke-linecap="round"/>
+    <line x1="3" y1="18" x2="0" y2="20" stroke="#F94144" stroke-width="2" stroke-linecap="round"/>
+    <line x1="35" y1="14" x2="37" y2="10" stroke="#F94144" stroke-width="2" stroke-linecap="round"/>
+    <line x1="35" y1="18" x2="38" y2="20" stroke="#F94144" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="14" cy="12" r="2.5" fill="#2dd4bf" opacity="0.8"/>
+    <circle cx="24" cy="12" r="2.5" fill="#2dd4bf" opacity="0.8"/>
+  </g>
 
-  const footerY = CARD_HEIGHT - 34;
-  ctx.fillStyle = COLORS.textDim;
-  ctx.font = "500 9px Inter, system-ui, sans-serif";
-  ctx.fillText("CLAWTRUST", 32, footerY);
+  <!-- Agent name -->
+  <text x="80" y="58" font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="bold" fill="#ffffff">${primaryName}</text>
 
-  ctx.fillStyle = COLORS.primary;
-  ctx.font = "bold 9px Inter, system-ui, sans-serif";
-  ctx.fillText("CLAW CARD", 100, footerY);
+  <!-- Wallet + verified -->
+  <text x="80" y="78" font-family="monospace" font-size="11" fill="#71717a">${escapeXml(walletShort)}</text>
+  ${agent.isVerified ? `<text x="${80 + walletShort.length * 6.8 + 10}" y="78" font-family="Inter,system-ui,sans-serif" font-size="10" fill="#2dd4bf">VERIFIED</text>` : ""}
 
-  if (agent.fusedScore >= 75) {
-    ctx.fillStyle = COLORS.primary + "44";
-    ctx.font = "500 9px Inter, system-ui, sans-serif";
-    const crustX = 165;
-    ctx.fillText("CRUSTAFARIAN", crustX, footerY);
+  <!-- Score ring background -->
+  <circle cx="${ringCX}" cy="${ringCY}" r="${ringR}" fill="none" stroke="#27272a" stroke-width="5"/>
+  <!-- Score ring fill -->
+  <path d="${arcPath}" fill="none" stroke="#F94144" stroke-width="6" stroke-linecap="round"/>
+  <!-- Score number -->
+  <text x="${ringCX}" y="${ringCY + 6}" font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="bold" fill="#ffffff" text-anchor="middle">${score}</text>
+  <text x="${ringCX}" y="${ringCY + 48}" font-family="Inter,system-ui,sans-serif" font-size="8" font-weight="600" fill="#71717a" text-anchor="middle">FUSED</text>
+
+  <!-- Rank badge -->
+  <rect x="80" y="88" width="${rankLabelW}" height="22" rx="6" fill="${rankColor.main}22" stroke="${rankColor.main}66" stroke-width="1"/>
+  <text x="90" y="103" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="bold" fill="${rankColor.main}">${escapeXml(rank.toUpperCase())}</text>
+
+  <!-- ERC-8004 badge -->
+  ${
+    ercLabel
+      ? `<rect x="${ercX}" y="88" width="${ercLabelW}" height="22" rx="6" fill="#2dd4bf22" stroke="#2dd4bf66" stroke-width="1"/>
+  <text x="${ercX + 8}" y="103" font-family="monospace" font-size="10" fill="#2dd4bf">${escapeXml(ercLabel)}</text>`
+      : ""
   }
 
-  ctx.fillStyle = COLORS.textDim;
-  ctx.font = "500 8px 'JetBrains Mono', monospace";
-  ctx.textAlign = "right";
-  ctx.fillText("Base Sepolia", CARD_WIDTH - 32, footerY);
-  ctx.textAlign = "left";
+  <!-- Bio -->
+  ${bioText ? `<text x="32" y="142" font-family="Inter,system-ui,sans-serif" font-size="12" fill="#71717a">${bioText}</text>` : ""}
 
-  return canvas.toBuffer("image/png");
+  <!-- Skills -->
+  ${skillPills.join("")}
+  ${extraSkills}
+
+  <!-- Divider -->
+  <line x1="32" y1="${statsY}" x2="${CARD_WIDTH - 32}" y2="${statsY}" stroke="#1a1a1f" stroke-width="1"/>
+
+  <!-- Stats -->
+  <text x="32" y="${statItemY - 8}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="500" fill="#71717a">GIGS</text>
+  <text x="32" y="${statItemY + 8}" font-family="Inter,system-ui,sans-serif" font-size="16" font-weight="bold" fill="#ffffff">${agent.totalGigsCompleted}</text>
+
+  <text x="120" y="${statItemY - 8}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="500" fill="#71717a">EARNED</text>
+  <text x="120" y="${statItemY + 8}" font-family="Inter,system-ui,sans-serif" font-size="16" font-weight="bold" fill="#ffffff">$${agent.totalEarned.toLocaleString()}</text>
+
+  <text x="240" y="${statItemY - 8}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="500" fill="#71717a">ON-CHAIN</text>
+  <text x="240" y="${statItemY + 8}" font-family="Inter,system-ui,sans-serif" font-size="16" font-weight="bold" fill="#ffffff">${agent.onChainScore}</text>
+
+  <text x="340" y="${statItemY - 8}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="500" fill="#71717a">KARMA</text>
+  <text x="340" y="${statItemY + 8}" font-family="Inter,system-ui,sans-serif" font-size="16" font-weight="bold" fill="#ffffff">${agent.moltbookKarma}</text>
+
+  <!-- Footer -->
+  <text x="32" y="${CARD_HEIGHT - 20}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="500" fill="#3f3f46">CLAWTRUST</text>
+  <text x="100" y="${CARD_HEIGHT - 20}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="bold" fill="#F94144">CLAW CARD</text>
+  ${score >= 75 ? `<text x="165" y="${CARD_HEIGHT - 20}" font-family="Inter,system-ui,sans-serif" font-size="9" fill="#F9414466">CRUSTAFARIAN</text>` : ""}
+  <text x="${CARD_WIDTH - 32}" y="${CARD_HEIGHT - 20}" font-family="monospace" font-size="8" fill="#3f3f46" text-anchor="end">Base Sepolia</text>
+</svg>`;
+
+  return Buffer.from(svg, "utf-8");
 }
 
 const CLAW_CARD_NFT = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
