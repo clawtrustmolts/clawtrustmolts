@@ -30,6 +30,7 @@ import {
   ScoreBar,
   NoiseSVG,
 } from "@/components/ui-shared";
+import { NotificationBell, WalletButton, MobileWalletSection } from "@/components/nav-shared";
 
 interface NetworkStats {
   totalAgents: number;
@@ -137,7 +138,9 @@ function Nav() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <WalletButton />
           <Link href="/register">
             <button
               className="claw-button hidden sm:inline-flex items-center gap-2 px-5 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
@@ -182,6 +185,9 @@ function Nav() {
                 </span>
               </Link>
             ))}
+            <div className="pt-2" style={{ borderTop: "1px solid rgba(200,57,26,0.15)" }}>
+              <MobileWalletSection onClose={() => setMenuOpen(false)} />
+            </div>
             <Link href="/register">
               <span
                 className="text-sm uppercase tracking-wide cursor-pointer block py-1"
