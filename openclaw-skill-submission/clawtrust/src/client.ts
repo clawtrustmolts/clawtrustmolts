@@ -1,5 +1,8 @@
 import type {
   Agent,
+  UpdateProfileInput,
+  AgentNotification,
+  NetworkReceipt,
   RegisterAgentInput,
   RegisterAgentResponse,
   Passport,
@@ -65,6 +68,16 @@ export class ClawTrustClient {
     return res.json() as Promise<T>;
   }
 
+  private async patch<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "PATCH",
+      headers: this.headers(),
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error(`ClawTrust PATCH ${path} → ${res.status}: ${await res.text()}`);
+    return res.json() as Promise<T>;
+  }
+
   private async del<T>(path: string): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: "DELETE",
@@ -94,6 +107,23 @@ export class ClawTrustClient {
 
   async getAgentByHandle(handle: string): Promise<Agent> {
     return this.get(`/agents/handle/${handle}`);
+  }
+
+  /**
+   * Update your agent's profile. Only the fields you provide will be changed.
+   * Requires agentId to be set on the client (x-agent-id auth).
+   */
+  async updateProfile(data: UpdateProfileInput, agentId?: string): Promise<Agent> {
+    return this.patch(`/agents/${agentId ?? this.agentId}`, data);
+  }
+
+  /**
+   * Set your agent's webhook URL. ClawTrust will POST to this URL for every
+   * notification event (gig_assigned, escrow_released, etc.)
+   * Pass null to remove the webhook.
+   */
+  async setWebhook(webhookUrl: string | null, agentId?: string): Promise<{ webhookUrl: string | null }> {
+    return this.patch(`/agents/${agentId ?? this.agentId}/webhook`, { webhookUrl });
   }
 
   async discoverAgents(filters: AgentDiscoverFilters = {}): Promise<{ agents: Agent[]; total: number; limit: number; offset: number }> {
@@ -237,6 +267,15 @@ export class ClawTrustClient {
 
   async getEarnings(agentId?: string): Promise<{ totalEarned: number; breakdown: unknown[] }> {
     return this.get(`/agents/${agentId ?? this.agentId}/earnings`);
+  }
+
+  /**
+   * Get the oracle wallet address for a gig's escrow deposit.
+   * Hirers should send USDC here to fund escrow before calling createEscrow().
+   * Returns { depositAddress: string, gigId: string }
+   */
+  async getEscrowDepositAddress(gigId: string): Promise<{ depositAddress: string; gigId: string }> {
+    return this.get(`/escrow/${gigId}/deposit-address`);
   }
 
   // ─── CREWS ─────────────────────────────────────────────────────────────────
@@ -400,10 +439,46 @@ export class ClawTrustClient {
     return this.get(`/slashes/agent/${agentId ?? this.agentId}`);
   }
 
+  // ─── NOTIFICATIONS ─────────────────────────────────────────────────────────
+
+  /**
+   * Get the last 50 notifications for your agent (newest first).
+   * Requires agentId to be set on the client (x-agent-id auth).
+   */
+  async getNotifications(agentId?: string): Promise<AgentNotification[]> {
+    return this.get(`/agents/${agentId ?? this.agentId}/notifications`);
+  }
+
+  /**
+   * Get unread notification count. Cheap to poll every 30 seconds.
+   * Returns { count: number }
+   */
+  async getNotificationUnreadCount(agentId?: string): Promise<{ count: number }> {
+    return this.get(`/agents/${agentId ?? this.agentId}/notifications/unread-count`);
+  }
+
+  /** Mark all notifications read for your agent. */
+  async markAllNotificationsRead(agentId?: string): Promise<{ success: boolean }> {
+    return this.patch(`/agents/${agentId ?? this.agentId}/notifications/read-all`);
+  }
+
+  /** Mark a single notification read by its numeric ID. */
+  async markNotificationRead(notifId: number): Promise<{ success: boolean }> {
+    return this.patch(`/notifications/${notifId}/read`);
+  }
+
   // ─── TRUST RECEIPTS ────────────────────────────────────────────────────────
 
   async getAgentTrustReceipts(agentId?: string): Promise<unknown[]> {
     return this.get(`/trust-receipts/agent/${agentId ?? this.agentId}`);
+  }
+
+  /**
+   * Get all completed trust receipts across the entire network (public, no auth).
+   * Useful for building a live activity feed or verifying platform activity.
+   */
+  async getNetworkReceipts(): Promise<{ receipts: NetworkReceipt[] }> {
+    return this.get("/network-receipts");
   }
 
   // ─── REPUTATION MIGRATION ──────────────────────────────────────────────────
