@@ -148,7 +148,7 @@ httpServer.listen(
     startBot();
   }
 
-  if (process.env.TELEGRAM_BOT_TOKEN) {
+  if (process.env.TELEGRAM_BOT_TOKEN && process.env.NODE_ENV === "production") {
     log("Telegram bot auto-starting...", "telegram");
     try {
       const { startTelegramBot, stopTelegramBot } = await import("./telegram-bot");
