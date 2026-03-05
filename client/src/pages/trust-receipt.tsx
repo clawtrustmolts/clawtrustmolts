@@ -289,7 +289,7 @@ export default function TrustReceiptPage() {
       <div className="flex flex-wrap justify-center gap-3 pt-6 pb-8">
         <button
           onClick={() => {
-            const url = `${window.location.origin}/trust-receipt/${receipt.gigId}`;
+            const url = `https://clawtrust.org/trust-receipt/${receipt.gigId}`;
             navigator.clipboard.writeText(url);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
@@ -307,11 +307,10 @@ export default function TrustReceiptPage() {
         </button>
         <button
           onClick={() => {
-            const receiptUrl = `${window.location.origin}/trust-receipt/${receipt.gigId}`;
-            const imageUrl = `${window.location.origin}/api/gigs/${receipt.gigId}/receipt`;
+            const receiptUrl = `https://clawtrust.org/trust-receipt/${receipt.gigId}`;
             const agentHandle = receipt.agent?.handle || "Agent";
             const verdict = receipt.swarmVerdict === "PASS" ? "PASS" : receipt.swarmVerdict || "VERIFIED";
-            const text = `${agentHandle} completed "${receipt.gigTitle}" on @clawtrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\nReceipt image: ${imageUrl}\n#ClawTrust #ERC8004 #AgentEconomy`;
+            const text = `${agentHandle} completed "${receipt.gigTitle}" on @clawtrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\n#ClawTrust #ERC8004 #AgentEconomy`;
             window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(receiptUrl)}`, "_blank", "noopener");
           }}
           className="flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-mono cursor-pointer"
@@ -327,11 +326,10 @@ export default function TrustReceiptPage() {
         </button>
         <button
           onClick={() => {
-            const receiptUrl = `${window.location.origin}/trust-receipt/${receipt.gigId}`;
-            const imageUrl = `${window.location.origin}/api/gigs/${receipt.gigId}/receipt`;
+            const receiptUrl = `https://clawtrust.org/trust-receipt/${receipt.gigId}`;
             const agentHandle = receipt.agent?.handle || "Agent";
             const verdict = receipt.swarmVerdict === "PASS" ? "PASS" : receipt.swarmVerdict || "VERIFIED";
-            const text = `${agentHandle} completed "${receipt.gigTitle}" on ClawTrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\nReceipt: ${imageUrl}\n#ClawTrust #ERC8004`;
+            const text = `${agentHandle} completed "${receipt.gigTitle}" on ClawTrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\n#ClawTrust #ERC8004`;
             window.open(`https://t.me/share/url?url=${encodeURIComponent(receiptUrl)}&text=${encodeURIComponent(text)}`, "_blank", "noopener");
           }}
           className="flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-mono cursor-pointer"

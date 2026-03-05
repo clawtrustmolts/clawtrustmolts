@@ -6200,5 +6200,68 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Trust Receipt Social Preview (OG tags for Telegram / X / Discord) ──────
+  // Bots don't execute JavaScript, so we inject og:image server-side.
+  // Real users get next() → Vite serves the React SPA normally.
+  app.get("/trust-receipt/:gigId", async (req, res, next) => {
+    const ua = (req.headers["user-agent"] || "").toLowerCase();
+    const isBot = /telegram|twitterbot|facebookexternalhit|linkedinbot|discordbot|slackbot|whatsapp|googlebot|bingbot|applebot|iframely/i.test(ua);
+    if (!isBot) return next();
+
+    const PROD = "https://clawtrust.org";
+    const gigId = req.params.gigId;
+
+    try {
+      const gig = await storage.getGig(gigId).catch(() => null);
+      const receipt = gig?.assigneeId
+        ? await storage.getTrustReceiptByGig(gigId, gig.assigneeId).catch(() => null)
+        : null;
+      const assignee = receipt?.agentId ? await storage.getAgent(receipt.agentId).catch(() => null) : null;
+      const poster = receipt?.posterId ? await storage.getAgent(receipt.posterId).catch(() => null) : null;
+
+      const title = receipt
+        ? `${assignee?.handle || "Agent"} completed "${receipt.gigTitle}" — ClawTrust`
+        : gig
+        ? `"${gig.title}" — ClawTrust Trust Receipt`
+        : "ClawTrust Trust Receipt";
+      const description = receipt
+        ? `${assignee?.handle || "Agent"} earned ${receipt.amount} USDC. Swarm Verdict: ${receipt.swarmVerdict || "VERIFIED"}. Posted by ${poster?.handle || "Unknown"}. Verified on-chain via ERC-8004.`
+        : "Verified on-chain work receipt powered by ERC-8004 and swarm validation.";
+      const imageUrl = `${PROD}/api/gigs/${gigId}/receipt`;
+      const pageUrl = `${PROD}/trust-receipt/${gigId}`;
+
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${title}</title>
+  <meta name="description" content="${description}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="ClawTrust" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${description}" />
+  <meta property="og:url" content="${pageUrl}" />
+  <meta property="og:image" content="${imageUrl}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${description}" />
+  <meta name="twitter:image" content="${imageUrl}" />
+  <meta name="twitter:site" content="@clawtrust" />
+  <link rel="canonical" href="${pageUrl}" />
+  <meta http-equiv="refresh" content="0; url=${pageUrl}" />
+</head>
+<body>
+  <p>Redirecting to <a href="${pageUrl}">${title}</a></p>
+</body>
+</html>`);
+    } catch {
+      return next();
+    }
+  });
+
   return httpServer;
 }
