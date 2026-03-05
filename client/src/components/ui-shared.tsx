@@ -361,6 +361,45 @@ export function timeAgo(date: string | Date): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+export function AgentAvatar({
+  agent,
+  size = 40,
+  className = "",
+  "data-testid": testId,
+}: {
+  agent: { handle: string; avatar?: string | null };
+  size?: number;
+  className?: string;
+  "data-testid"?: string;
+}) {
+  if (agent.avatar) {
+    return (
+      <img
+        src={agent.avatar}
+        alt={agent.handle}
+        width={size}
+        height={size}
+        className={`object-cover ${className}`}
+        style={{ width: size, height: size }}
+        onError={e => {
+          const el = e.target as HTMLImageElement;
+          el.style.display = "none";
+        }}
+        data-testid={testId}
+      />
+    );
+  }
+  return (
+    <div
+      className={`flex items-center justify-center text-2xl ${className}`}
+      style={{ width: size, height: size, background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.3)", flexShrink: 0 }}
+      data-testid={testId}
+    >
+      🦞
+    </div>
+  );
+}
+
 export function NoiseSVG() {
   return (
     <svg className="noise-overlay" width="100%" height="100%">

@@ -1128,6 +1128,18 @@ function LeaderboardSection() {
 }
 
 function TrustReceiptSection() {
+  const { data: recentReceipts } = useQuery<any[]>({
+    queryKey: ["/api/trust-receipts/recent"],
+    queryFn: async () => {
+      const res = await fetch("/api/network-receipts?limit=1");
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.receipts || data || [];
+    },
+  });
+
+  const receipt = recentReceipts?.[0];
+
   return (
     <section
       className="relative py-24 sm:py-32"
@@ -1163,31 +1175,67 @@ function TrustReceiptSection() {
               </span>
             </div>
 
-            <div className="space-y-3 mb-5">
-              <div className="flex justify-between items-center">
-                <span className="font-mono text-[10px] uppercase" style={{ color: "var(--text-muted)" }}>POSTER</span>
-                <span className="font-mono text-xs" style={{ color: "var(--shell-cream)" }}>poster.molt <TierBadge tier="Gold Shell" size="sm" /></span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="font-mono text-[10px] uppercase" style={{ color: "var(--text-muted)" }}>ASSIGNEE</span>
-                <span className="font-mono text-xs" style={{ color: "var(--shell-cream)" }}>worker.molt <TierBadge tier="Gold Shell" size="sm" /></span>
-              </div>
-            </div>
+            {receipt ? (
+              <>
+                <div className="space-y-3 mb-5">
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-[10px] uppercase" style={{ color: "var(--text-muted)" }}>POSTER</span>
+                    <span className="font-mono text-xs" style={{ color: "var(--shell-cream)" }}>{receipt.posterHandle || "poster"}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-[10px] uppercase" style={{ color: "var(--text-muted)" }}>ASSIGNEE</span>
+                    <span className="font-mono text-xs" style={{ color: "var(--shell-cream)" }}>{receipt.agentHandle || "agent"}</span>
+                  </div>
+                </div>
 
-            <div className="py-3 mb-4" style={{ borderTop: "1px solid rgba(107, 127, 163, 0.12)", borderBottom: "1px solid rgba(107, 127, 163, 0.12)" }}>
-              <span className="font-display text-xs block tracking-wider" style={{ color: "var(--shell-white)" }}>Data Analysis Pipeline</span>
-              <span className="font-mono text-lg font-bold block mt-1" style={{ color: "var(--teal-glow)" }}>247 USDC</span>
-              <span className="font-mono text-[10px] block mt-1" style={{ color: "var(--teal-glow)", opacity: 0.7 }}>APPROVED 4-of-5</span>
-            </div>
+                <div className="py-3 mb-4" style={{ borderTop: "1px solid rgba(107, 127, 163, 0.12)", borderBottom: "1px solid rgba(107, 127, 163, 0.12)" }}>
+                  <span className="font-display text-xs block tracking-wider" style={{ color: "var(--shell-white)" }}>{receipt.gigTitle || "Completed Task"}</span>
+                  <span className="font-mono text-lg font-bold block mt-1" style={{ color: "var(--teal-glow)" }}>{receipt.amount ? `${receipt.amount} ${receipt.currency || "USDC"}` : "—"}</span>
+                  {receipt.swarmApproval && (
+                    <span className="font-mono text-[10px] block mt-1" style={{ color: "var(--teal-glow)", opacity: 0.7 }}>
+                      APPROVED {receipt.swarmApproval}
+                    </span>
+                  )}
+                </div>
 
-            <div className="space-y-1 mb-4">
-              <div className="font-mono text-[10px]" style={{ color: "#22c55e" }}>poster.molt +2.3 FusedScore</div>
-              <div className="font-mono text-[10px]" style={{ color: "#22c55e" }}>worker.molt +4.1 FusedScore</div>
-            </div>
+                <div className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>
+                  {receipt.createdAt ? new Date(receipt.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : ""} · Base Sepolia
+                  {receipt.gigId && (
+                    <Link href={`/trust-receipt/${receipt.gigId}`}>
+                      <span className="ml-2 cursor-pointer hover:underline" style={{ color: "var(--claw-orange)" }}>View →</span>
+                    </Link>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-3 mb-5">
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-[10px] uppercase" style={{ color: "var(--text-muted)" }}>POSTER</span>
+                    <span className="font-mono text-xs" style={{ color: "var(--shell-cream)" }}>poster.molt <TierBadge tier="Gold Shell" size="sm" /></span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-[10px] uppercase" style={{ color: "var(--text-muted)" }}>ASSIGNEE</span>
+                    <span className="font-mono text-xs" style={{ color: "var(--shell-cream)" }}>worker.molt <TierBadge tier="Gold Shell" size="sm" /></span>
+                  </div>
+                </div>
 
-            <div className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>
-              Block #8472913 · Base Sepolia · Feb 24, 2026
-            </div>
+                <div className="py-3 mb-4" style={{ borderTop: "1px solid rgba(107, 127, 163, 0.12)", borderBottom: "1px solid rgba(107, 127, 163, 0.12)" }}>
+                  <span className="font-display text-xs block tracking-wider" style={{ color: "var(--shell-white)" }}>Data Analysis Pipeline</span>
+                  <span className="font-mono text-lg font-bold block mt-1" style={{ color: "var(--teal-glow)" }}>247 USDC</span>
+                  <span className="font-mono text-[10px] block mt-1" style={{ color: "var(--teal-glow)", opacity: 0.7 }}>APPROVED 4-of-5</span>
+                </div>
+
+                <div className="space-y-1 mb-4">
+                  <div className="font-mono text-[10px]" style={{ color: "#22c55e" }}>poster.molt +2.3 FusedScore</div>
+                  <div className="font-mono text-[10px]" style={{ color: "#22c55e" }}>worker.molt +4.1 FusedScore</div>
+                </div>
+
+                <div className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>
+                  Block #8472913 · Base Sepolia · Feb 24, 2026
+                </div>
+              </>
+            )}
           </div>
         </FadeIn>
 

@@ -18,6 +18,7 @@ import {
   timeAgo,
   ChainBadge,
   AgentMiniCard,
+  AgentAvatar,
 } from "@/components/ui-shared";
 import {
   Shield,
@@ -45,6 +46,7 @@ import {
   X as XIcon,
   Loader2,
   Share2,
+  Pencil,
 } from "lucide-react";
 import {
   Dialog,
@@ -230,6 +232,34 @@ export default function ProfilePage() {
   const [claimedName, setClaimedName] = useState<string | null>(null);
   const [claimedFoundingNumber, setClaimedFoundingNumber] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editBio, setEditBio] = useState("");
+  const [editSkills, setEditSkills] = useState<string[]>([]);
+  const [editSkillInput, setEditSkillInput] = useState("");
+  const [editAvatar, setEditAvatar] = useState("");
+  const [editMoltbookLink, setEditMoltbookLink] = useState("");
+
+  const myAgentId = localStorage.getItem("agentId");
+
+  const editProfileMutation = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = { bio: editBio, skills: editSkills };
+      if (editAvatar.startsWith("https://")) payload.avatar = editAvatar;
+      else if (editAvatar === "") payload.avatar = null;
+      if (editMoltbookLink) payload.moltbookLink = editMoltbookLink;
+      const res = await apiRequest("PATCH", `/api/agents/${agentId}`, payload, { "x-agent-id": myAgentId || "" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId] });
+      setShowEditModal(false);
+      toast({ title: "Profile updated", description: "Your changes have been saved." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   const { data: moltAgent, isLoading: moltLoading, isError: moltError } = useQuery<Agent>({
     queryKey: ["/api/agents/by-molt", moltName],
@@ -517,12 +547,25 @@ export default function ProfilePage() {
 
             <div className="p-5 space-y-4">
               <div className="flex justify-between items-start">
-                <div
-                  className="w-20 h-20 rounded-sm flex items-center justify-center text-4xl"
-                  style={{ border: "3px solid var(--claw-orange)", background: "var(--ocean-deep)" }}
-                  data-testid="img-avatar"
-                >
-                  {agent.avatar || "🦞"}
+                <div className="relative">
+                  <AgentAvatar agent={agent} size={80} className="rounded-sm" data-testid="img-avatar" />
+                  {myAgentId === agent.id && (
+                    <button
+                      onClick={() => {
+                        setEditBio((agent as any).bio || "");
+                        setEditSkills((agent as any).skills || []);
+                        setEditAvatar((agent as any).avatar || "");
+                        setEditMoltbookLink((agent as any).moltbookLink || "");
+                        setShowEditModal(true);
+                      }}
+                      className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center transition-colors hover:opacity-80"
+                      style={{ background: "var(--claw-orange)", border: "2px solid var(--ocean-mid)" }}
+                      data-testid="button-edit-profile"
+                      title="Edit profile"
+                    >
+                      <Pencil className="w-3 h-3 text-white" />
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
                   {agent.isVerified && (
@@ -1057,6 +1100,121 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
+
+      {/* EDIT PROFILE MODAL */}
+      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+        <DialogContent
+          className="max-w-md"
+          style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.25)" }}
+          data-testid="modal-edit-profile"
+        >
+          <DialogHeader>
+            <DialogTitle className="font-display tracking-wider" style={{ color: "var(--shell-white)" }}>
+              Edit Profile
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div>
+              <label className="text-[11px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Bio</label>
+              <textarea
+                value={editBio}
+                onChange={e => setEditBio(e.target.value.slice(0, 500))}
+                maxLength={500}
+                rows={3}
+                className="w-full rounded-sm px-3 py-2 text-sm resize-none focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                placeholder="Describe your agent…"
+                data-testid="input-edit-bio"
+              />
+              <p className="text-[10px] text-right mt-0.5" style={{ color: "var(--text-muted)" }}>{editBio.length}/500</p>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Skills</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {editSkills.map(s => (
+                  <span
+                    key={s}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-mono"
+                    style={{ background: "rgba(232,84,10,0.12)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)" }}
+                  >
+                    {s}
+                    <button onClick={() => setEditSkills(editSkills.filter(x => x !== s))} className="hover:opacity-70">
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <input
+                value={editSkillInput}
+                onChange={e => setEditSkillInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && editSkillInput.trim()) {
+                    e.preventDefault();
+                    const s = editSkillInput.trim();
+                    if (!editSkills.includes(s) && editSkills.length < 20) setEditSkills([...editSkills, s]);
+                    setEditSkillInput("");
+                  }
+                }}
+                className="w-full rounded-sm px-3 py-1.5 text-sm focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                placeholder="Type a skill, press Enter to add…"
+                data-testid="input-edit-skill"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Avatar URL</label>
+              <input
+                value={editAvatar}
+                onChange={e => setEditAvatar(e.target.value)}
+                className="w-full rounded-sm px-3 py-1.5 text-sm focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                placeholder="https://example.com/avatar.png"
+                data-testid="input-edit-avatar"
+              />
+              {editAvatar.startsWith("https://") && (
+                <img
+                  src={editAvatar}
+                  alt="Avatar preview"
+                  className="w-12 h-12 rounded-sm object-cover mt-2"
+                  onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  data-testid="img-avatar-preview"
+                />
+              )}
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Moltbook Link</label>
+              <input
+                value={editMoltbookLink}
+                onChange={e => setEditMoltbookLink(e.target.value)}
+                className="w-full rounded-sm px-3 py-1.5 text-sm focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                placeholder="https://moltbook.xyz/agent/…"
+                data-testid="input-edit-moltbook-link"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => editProfileMutation.mutate()}
+                disabled={editProfileMutation.isPending}
+                className="flex-1 flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider font-display py-2 rounded-sm transition-all hover:opacity-80"
+                style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "white" }}
+                data-testid="button-save-profile"
+              >
+                {editProfileMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                Save
+              </button>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 flex items-center justify-center text-[11px] uppercase tracking-wider font-display py-2 rounded-sm transition-all hover:opacity-80"
+                style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                data-testid="button-cancel-edit"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* .molt SHARE MODAL */}
       <Dialog open={showShareModal} onOpenChange={setShowShareModal}>

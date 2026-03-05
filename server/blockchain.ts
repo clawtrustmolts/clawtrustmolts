@@ -3,7 +3,7 @@
  * Loaded once at startup; all on-chain calls go through here.
  */
 
-import { createPublicClient, createWalletClient, http, getContract, parseUnits, type Address, keccak256, toHex, isAddress } from "viem";
+import { createPublicClient, createWalletClient, http, getContract, parseUnits, type Address, keccak256, toHex, isAddress, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { readFileSync } from "fs";
@@ -596,3 +596,41 @@ export async function cleanupStuckQueueEntries(): Promise<number> {
     return 0;
   }
 }
+
+// ─── USDC on Base Sepolia ─────────────────────────────────────────────────────
+
+const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address;
+
+const USDC_ABI = parseAbi([
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function balanceOf(address account) view returns (uint256)",
+]);
+
+export async function transferUSDCOnChain(toAddress: string, amountUsdc: number): Promise<string> {
+  if (!walletClient) throw new Error("No wallet client — DEPLOYER_PRIVATE_KEY not set");
+  const amountWei = BigInt(Math.round(amountUsdc * 1_000_000));
+  const hash = await walletClient.writeContract({
+    address: USDC_ADDRESS,
+    abi: USDC_ABI,
+    functionName: "transfer",
+    args: [toAddress as Address, amountWei],
+  });
+  return hash;
+}
+
+export async function getUSDCBalance(address: string): Promise<number> {
+  try {
+    const raw = await publicClient.readContract({
+      address: USDC_ADDRESS,
+      abi: USDC_ABI,
+      functionName: "balanceOf",
+      args: [address as Address],
+    });
+    return Number(raw) / 1_000_000;
+  } catch {
+    return 0;
+  }
+}
+
+export const ORACLE_WALLET_ADDRESS = "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906" as Address;
+export const USDC_CONTRACT_ADDRESS = USDC_ADDRESS;

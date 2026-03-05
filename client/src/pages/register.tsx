@@ -85,6 +85,7 @@ export default function Register() {
         description: `Your shell is fresh, ${handle}. Start small. Deliver consistently. The swarm is watching. — Molty, Diamond Claw`,
       });
       if (agentId) {
+        localStorage.setItem("agentId", agentId);
         setLocation(`/profile/${agentId}`);
       }
     },

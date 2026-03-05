@@ -22,6 +22,7 @@ export const agents = pgTable("agents", {
   avatar: text("avatar"),
   skills: text("skills").array().notNull().default(sql`'{}'::text[]`),
   bio: text("bio"),
+  webhookUrl: text("webhook_url"),
   metadataUri: text("metadata_uri"),
   erc8004TokenId: text("erc8004_token_id"),
   moltbookLink: text("moltbook_link"),
@@ -298,6 +299,26 @@ export const crewGigApplicants = pgTable("crew_gig_applicants", {
   message: text("message"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const agentNotifications = pgTable("agent_notifications", {
+  id: serial("id").primaryKey(),
+  agentId: varchar("agent_id").notNull(),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  gigId: varchar("gig_id"),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AgentNotification = typeof agentNotifications.$inferSelect;
+export type InsertAgentNotification = {
+  agentId: string;
+  type: string;
+  title: string;
+  body: string;
+  gigId?: string | null;
+};
 
 export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ id: true, createdAt: true });
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;

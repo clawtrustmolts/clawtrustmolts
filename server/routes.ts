@@ -57,8 +57,11 @@ import {
   repAdapter,
   bondContract,
   crewContract,
-  updateReputationOnChain,
+  transferUSDCOnChain,
+  getUSDCBalance,
+  ORACLE_WALLET_ADDRESS,
 } from "./blockchain";
+import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import {
   createEscrowWallet,
@@ -624,6 +627,50 @@ export async function registerRoutes(
     res.json({ ...agent, shellTier: getTier(agent.fusedScore) });
   });
 
+  app.patch("/api/agents/:id", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only edit your own profile" });
+      }
+      const updateSchema = z.object({
+        bio: z.string().max(500).optional(),
+        skills: z.array(z.string().min(1).max(100)).max(20).optional(),
+        avatar: z.string().url().nullable().optional(),
+        moltbookLink: z.string().url().nullable().optional(),
+      });
+      const data = updateSchema.parse(req.body);
+      const updated = await storage.updateAgent(agentId, data);
+      if (!updated) return res.status(404).json({ message: "Agent not found" });
+      res.json(updated);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/agents/:id/webhook", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only update your own webhook" });
+      }
+      const { webhookUrl } = z.object({
+        webhookUrl: z.string().url().nullable(),
+      }).parse(req.body);
+      const updated = await storage.updateAgent(agentId, { webhookUrl });
+      if (!updated) return res.status(404).json({ message: "Agent not found" });
+      res.json({ webhookUrl: updated.webhookUrl });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/agents/:id/verify", async (req, res) => {
     try {
       const agent = await storage.getAgent(req.params.id);
@@ -889,6 +936,8 @@ export async function registerRoutes(
         source: "escrow",
         details: `Assigned to gig: ${gig.title}`,
       });
+
+      notifyAgent(assigneeId, "gig_assigned", "Gig Assigned", `You've been selected for: ${gig.title}`, { gigId: gigId.data }).catch(() => {});
 
       res.json({ ...updated, bondLocked: gig.bondRequired > 0, bondAmount: gig.bondRequired });
     } catch (err: any) {
@@ -1483,6 +1532,22 @@ export async function registerRoutes(
           { id: assignee.id, handle: assignee.handle }
         );
         tryPostToMoltbook(`✅ Gig completed on ClawTrust. ${gig.budget} ${gig.currency} released. Swarm validated. The agent economy works. clawtrust.org`);
+        notifyAgent(gig.assigneeId, "escrow_released", "Escrow Released", `${escrow.amount} ${escrow.currency} has been released for: ${gig.title}`, { gigId }).catch(() => {});
+        notifyAgent(gig.posterId, "gig_completed", "Gig Completed", `${assignee.handle} completed "${gig.title}" — trust receipt ready.`, { gigId }).catch(() => {});
+      }
+
+      let onChainTxHash: string | undefined;
+      if (!isCircleConfigured() && gig.assigneeId) {
+        const assigneeAgent = await storage.getAgent(gig.assigneeId);
+        if (assigneeAgent?.walletAddress && escrow.amount > 0) {
+          try {
+            onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, escrow.amount);
+            await storage.updateEscrow(escrow.id, { releaseTxHash: onChainTxHash });
+            console.log(`[Escrow] On-chain USDC transfer: ${onChainTxHash}`);
+          } catch (txErr: any) {
+            console.error("[Escrow] On-chain USDC transfer failed (oracle may be unfunded):", txErr.message);
+          }
+        }
       }
 
       res.json({
@@ -1490,6 +1555,7 @@ export async function registerRoutes(
         escrowId: escrow.id,
         gigId,
         circleTransfer,
+        onChainTxHash,
         chain: escrow.chain,
       });
     } catch (err: any) {
@@ -1634,6 +1700,10 @@ export async function registerRoutes(
           threshold,
         }).catch(err => console.error("[Swarm] createValidation on-chain error:", err.message));
       }
+
+      selectedValidatorIds.forEach(validatorId => {
+        notifyAgent(validatorId, "swarm_vote_needed", "Swarm Vote Needed", `Your vote is needed to validate: "${gig.title}"`, { gigId }).catch(() => {});
+      });
 
       res.status(201).json({
         validation,
@@ -4556,7 +4626,13 @@ export async function registerRoutes(
       const { gigId, reason } = req.body;
       if (!gigId || !reason) return res.status(400).json({ message: "gigId and reason required" });
       const event = await slashBond(req.params.agentId as string, gigId, reason);
-      try { const slashedAgent = await storage.getAgent(req.params.agentId as string); if (slashedAgent) telegramAnnounceSlash(slashedAgent, 0, reason); } catch {}
+      try {
+        const slashedAgent = await storage.getAgent(req.params.agentId as string);
+        if (slashedAgent) {
+          telegramAnnounceSlash(slashedAgent, 0, reason);
+          notifyAgent(req.params.agentId as string, "slash_applied", "Bond Slash Applied", `A bond slash has been applied: ${reason}`, { gigId }).catch(() => {});
+        }
+      } catch {}
       res.json({ event });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -4818,6 +4894,7 @@ export async function registerRoutes(
       });
 
       await logSuspiciousActivity(req, "direct_offer_sent", `Agent "${fromAgent.handle}" sent offer to "${toAgent.handle}" for gig "${gig.title}"`, "info");
+      notifyAgent(targetAgentId.data, "offer_received", "New Direct Offer", `${fromAgent.handle} sent you a direct offer for: "${gig.title}"`, { gigId: gigId.data }).catch(() => {});
 
       res.status(201).json({
         offer,
@@ -5037,6 +5114,28 @@ export async function registerRoutes(
         completedAt: new Date(),
       });
       res.status(201).json(receipt);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/network-receipts", async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 10, 50);
+      const receipts = await storage.getTrustReceipts();
+      const recent = receipts.slice(0, limit);
+      const enriched = await Promise.all(
+        recent.map(async (r: any) => {
+          const agent = await storage.getAgent(r.agentId).catch(() => null);
+          const poster = await storage.getAgent(r.posterId).catch(() => null);
+          return {
+            ...r,
+            agentHandle: agent?.handle || null,
+            posterHandle: poster?.handle || null,
+          };
+        })
+      );
+      res.json({ receipts: enriched });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -5540,6 +5639,8 @@ export async function registerRoutes(
 
       await storage.upsertConversation(agentId, otherAgentId, body.content, true);
 
+      notifyAgent(otherAgentId, "message_received", "New Message", `${sender.handle}: ${body.content.substring(0, 80)}${body.content.length > 80 ? "…" : ""}`).catch(() => {});
+
       res.status(201).json(message);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -5859,6 +5960,77 @@ export async function registerRoutes(
       }
       const total = await storage.getTotalUnreadCount(agentId);
       res.json({ unreadCount: total });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Notification routes ─────────────────────────────────────────
+  app.get("/api/agents/:id/notifications", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) return res.status(403).json({ message: "Forbidden" });
+      const notifications = await storage.getNotificationsForAgent(agentId, 50);
+      res.json(notifications);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/notifications/unread-count", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) return res.status(403).json({ message: "Forbidden" });
+      const count = await storage.getUnreadNotificationCount(agentId);
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/agents/:id/notifications/read-all", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) return res.status(403).json({ message: "Forbidden" });
+      await storage.markAllNotificationsRead(agentId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/notifications/:notifId/read", agentAuthMiddleware, async (req, res) => {
+    try {
+      const id = parseInt(req.params.notifId);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid notification ID" });
+      await storage.markNotificationRead(id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Escrow oracle balance + deposit address ──────────────────────
+  app.get("/api/admin/escrow/oracle-balance", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const usdcBalance = await getUSDCBalance(ORACLE_WALLET_ADDRESS);
+      res.json({ wallet: ORACLE_WALLET_ADDRESS, usdcBalance });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/escrow/:gigId/deposit-address", async (req, res) => {
+    try {
+      const gig = await storage.getGig(req.params.gigId as string);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      res.json({
+        depositAddress: ORACLE_WALLET_ADDRESS,
+        gigId: gig.id,
+        amount: gig.budget,
+        currency: gig.currency,
+        memo: `ClawTrust escrow for gig ${gig.id}`,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
