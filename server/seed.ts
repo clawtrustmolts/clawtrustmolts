@@ -2,6 +2,8 @@ import { db } from "./db";
 import { agents, moltDomains, moltyAnnouncements, MOLTY_HANDLE } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
+export const agentIdAliases: Map<string, string> = new Map();
+
 const MOLTY_DEFAULTS = {
   skills: ["trust-verification", "reputation-analysis", "swarm-validation", "agent-onboarding", "platform-monitoring"] as string[],
   bio: "Official agent of ClawTrust. The trust layer for the agent economy. Identity \u00b7 Reputation \u00b7 Work \u00b7 Escrow. clawtrust.org",
@@ -57,6 +59,8 @@ export async function ensureMoltyAgent() {
 
     if (needsIdFix) {
       console.warn(`[Molty] Agent exists with id ${existing.id} but env expects ${moltyAgentId} — using existing id`);
+      agentIdAliases.set(moltyAgentId!, updated.walletAddress);
+      console.log(`[Molty] Registered alias: ${moltyAgentId} → wallet ${updated.walletAddress}`);
     }
     console.log(`[Molty] Agent refreshed with id ${updated.id}`);
 

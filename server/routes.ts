@@ -33,6 +33,7 @@ import { isBot, getBotPrerenderedHTML } from "./bot-prerender";
 import { paymentMiddleware } from "x402-express";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
 import { telegramAnnounceSlash } from "./telegram-announcements";
+import { agentIdAliases } from "./seed";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
 import {
   mintPassportForAgent,
@@ -2283,15 +2284,22 @@ export async function registerRoutes(
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
 
       let agent = await storage.getAgent(agentId.data);
+
       if (!agent) {
-        const allAgents = await storage.getAgents();
-        agent = allAgents.find(a => a.handle === req.params.agentId) || null;
+        const aliasWallet = agentIdAliases.get(agentId.data);
+        if (aliasWallet) {
+          agent = await storage.getAgentByWallet(aliasWallet) || null;
+        }
       }
+
+      if (!agent) {
+        agent = await storage.getAgentByHandle(req.params.agentId) || null;
+      }
+
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const protocol = req.headers["x-forwarded-proto"] || "http";
-      const host = req.headers.host || "localhost:5000";
-      const baseUrl = `${protocol}://${host}`;
+      const baseUrl = `https://clawtrust.org`;
 
       res.json(generateCardMetadata(agent, baseUrl));
     } catch (err: any) {
