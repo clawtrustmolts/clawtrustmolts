@@ -247,8 +247,9 @@ function solveChallenge(challenge: string): string | null {
 
     // Also search the space-stripped decoded text to handle obfuscated word-numbers
     // e.g. "th ir ty t wo" → joined = "thirtytwo" (=32), "tw el ve" → "twelve" (=12)
-    // Use a mutable remainingJoined so matched fragments are consumed and not re-matched
-    let remainingJoined = decoded.replace(/\s+/g, "");
+    // joinedDecoded is immutable (used for hasAdd/etc checks); remainingJoined is consumed as matches are found
+    const joinedDecoded = decoded.replace(/\s+/g, "");
+    let remainingJoined = joinedDecoded;
 
     // Check compound numbers first (longest match first), in both spaced and joined forms
     const sortedCompounds = Object.entries(compoundNums).sort((a, b) => b[0].length - a[0].length);
@@ -272,8 +273,9 @@ function solveChallenge(challenge: string): string | null {
         numbers.push(val);
         workingText = workingText.replace(regex, ` __NUM${numbers.length - 1}__ `);
         remainingJoined = remainingJoined.replace(word, "");
-      } else if (remainingJoined.includes(word)) {
-        // Found in joined form (e.g. "twelve" inside "adstwelvemore")
+      } else if (word.length >= 5 && remainingJoined.includes(word)) {
+        // Only match words ≥5 chars in joined text — short words like "one","two","six"
+        // appear as false substrings inside other words (e.g. "one" in "oponent")
         numbers.push(val);
         remainingJoined = remainingJoined.replace(word, "");
         console.log(`[moltbook-bot] Matched word "${word}"=${val} via joined form`);
@@ -288,10 +290,12 @@ function solveChallenge(challenge: string): string | null {
     console.log(`[moltbook-bot] Found numbers: ${numbers.join(", ")}`);
     console.log(`[moltbook-bot] Working text: "${workingText}"`);
 
-    const hasMultiply = /\*|times|multiply|multiplied/i.test(challenge) || /\*|times|multiply|multiplied/i.test(decoded);
-    const hasDivide = /\/|divided|split|ratio/i.test(challenge) || /\/|divided|split|ratio/i.test(decoded);
-    const hasSubtract = /subtract|minus|less than|difference/i.test(decoded);
-    const hasAdd = /\+|add|plus|sum|total|combine|together|adds|more/i.test(challenge) || /\+|add|plus|sum|total|combine|together|adds|more/i.test(decoded);
+    // Also check joinedDecoded for operation keywords because the decoded spaced text may
+    // have them split: "t otal" → "total", "m ore" → "more", "a ds" → "ads" in joined form
+    const hasMultiply = /\*|times|multiply|multiplied/i.test(challenge) || /\*|times|multiply|multiplied/i.test(joinedDecoded);
+    const hasDivide = /divided|split|ratio/i.test(challenge) || /divided|split|ratio/i.test(joinedDecoded);
+    const hasSubtract = /subtract|minus|lessThan|difference/i.test(joinedDecoded);
+    const hasAdd = /\+|add|plus|sum|total|combine|together|adds|more/i.test(challenge) || /add|plus|sum|total|combine|together|adds|more/i.test(joinedDecoded);
 
     const formatAnswer = (n: number): string => {
       return Number.isInteger(n) ? String(n) : n.toFixed(2);
