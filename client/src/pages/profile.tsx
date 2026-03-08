@@ -76,6 +76,15 @@ interface RepData {
     tier: string;
     badges: string[];
   };
+  liveFusion?: {
+    fusedScore: number;
+    onChainAvg: number;
+    moltWeight: number;
+    performanceNormalized: number;
+    bondReliabilityNormalized: number;
+    weights: { onChain: number; moltbook: number; performance: number; bondReliability: number };
+    source: string;
+  };
   events: ReputationEvent[];
   erc8004: {
     identityRegistry: string;
@@ -1072,6 +1081,7 @@ export default function ProfilePage() {
             <OverviewTab
               agent={agent}
               breakdown={breakdown}
+              liveFusion={repData?.liveFusion}
               events={events}
               erc8004={repData?.erc8004}
               mcpSkills={mcpSkills}
@@ -1500,32 +1510,48 @@ function SectionTitle({ children, icon, color }: { children: ReactNode; icon?: R
 function OverviewTab({
   agent,
   breakdown,
+  liveFusion,
   events,
   erc8004,
   mcpSkills,
 }: {
   agent: Agent;
   breakdown?: RepData["breakdown"];
+  liveFusion?: RepData["liveFusion"];
   events: ReputationEvent[];
   erc8004?: RepData["erc8004"];
   mcpSkills: AgentSkill[];
 }) {
+  const isLive = liveFusion && liveFusion.source !== "fallback";
+  const onChainNorm = isLive ? liveFusion.onChainAvg : (breakdown?.onChainNormalized ?? 0);
+  const moltNorm = isLive ? liveFusion.moltWeight : (breakdown?.moltbookNormalized ?? 0);
+  const perfNorm = isLive ? liveFusion.performanceNormalized : (breakdown?.performanceNormalized ?? 0);
+  const bondNorm = isLive ? liveFusion.bondReliabilityNormalized : (breakdown?.bondReliabilityNormalized ?? 0);
+  const liveScore = isLive ? liveFusion.fusedScore : (breakdown?.fusedScore ?? agent.fusedScore);
+
   return (
     <div className="space-y-6">
       {/* FUSED SCORE BREAKDOWN */}
       <SectionCard testId="card-fused-breakdown">
-        <h3 className="font-display tracking-wider text-sm mb-1" style={{ color: "var(--shell-white)" }}>
-          FUSED SCORE BREAKDOWN
-        </h3>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-display tracking-wider text-sm" style={{ color: "var(--shell-white)" }}>
+            FUSED SCORE BREAKDOWN
+          </h3>
+          {isLive && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,200,100,0.1)", color: "#22c55e", border: "1px solid rgba(0,200,100,0.2)" }}>
+              LIVE
+            </span>
+          )}
+        </div>
         <p className="text-[10px] font-mono mb-5" style={{ color: "var(--text-muted)" }}>
           fusedScore = (0.45 x onChain) + (0.25 x moltbook) + (0.20 x performance) + (0.10 x bond)
         </p>
 
         <div className="flex items-center gap-4 mb-6">
-          <ScoreRing score={agent.fusedScore} size={80} strokeWidth={6} />
+          <ScoreRing score={liveScore} size={80} strokeWidth={6} />
           <div>
             <p className="text-2xl font-mono font-bold" style={{ color: "var(--shell-white)" }}>
-              {agent.fusedScore.toFixed(1)}
+              {liveScore.toFixed(1)}
             </p>
             <p className="text-[10px] font-display tracking-wider" style={{ color: "var(--text-muted)" }}>
               FUSED SCORE
@@ -1535,10 +1561,10 @@ function OverviewTab({
 
         <div className="space-y-3">
           {[
-            { label: "On-Chain", norm: breakdown?.onChainNormalized, comp: breakdown?.onChainComponent, weight: "45%" },
-            { label: "Moltbook", norm: breakdown?.moltbookNormalized, comp: breakdown?.moltbookComponent, weight: "25%" },
-            { label: "Performance", norm: breakdown?.performanceNormalized, comp: breakdown?.performanceComponent, weight: "20%" },
-            { label: "Bond Reliability", norm: breakdown?.bondReliabilityNormalized, comp: breakdown?.bondReliabilityComponent, weight: "10%" },
+            { label: "On-Chain", norm: onChainNorm, comp: isLive ? onChainNorm * 0.45 : (breakdown?.onChainComponent ?? 0), weight: "45%" },
+            { label: "Moltbook", norm: moltNorm, comp: isLive ? moltNorm * 0.25 : (breakdown?.moltbookComponent ?? 0), weight: "25%" },
+            { label: "Performance", norm: perfNorm, comp: isLive ? perfNorm * 0.20 : (breakdown?.performanceComponent ?? 0), weight: "20%" },
+            { label: "Bond Reliability", norm: bondNorm, comp: isLive ? bondNorm * 0.10 : (breakdown?.bondReliabilityComponent ?? 0), weight: "10%" },
           ].map((item) => (
             <div key={item.label}>
               <ScoreBar label={item.label} value={item.norm ?? 0} weight={item.weight} />

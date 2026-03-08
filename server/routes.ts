@@ -1011,6 +1011,8 @@ export async function registerRoutes(
           fusedScore: liveFused.fusedScore,
           onChainAvg: liveFused.onChainAvg,
           moltWeight: liveFused.moltWeight,
+          performanceNormalized: liveFused.performanceNormalized,
+          bondReliabilityNormalized: liveFused.bondReliabilityNormalized,
           proofURIs: liveFused.proofURIs,
           tier: liveFused.tier,
           badges: liveFused.badges,
@@ -1024,6 +1026,8 @@ export async function registerRoutes(
           fusedScore: dbBreakdown.fusedScore,
           onChainAvg: dbBreakdown.onChainNormalized,
           moltWeight: dbBreakdown.moltbookNormalized,
+          performanceNormalized: dbBreakdown.performanceNormalized,
+          bondReliabilityNormalized: dbBreakdown.bondReliabilityNormalized,
           proofURIs: [],
           tier: dbBreakdown.tier,
           badges: dbBreakdown.badges,
@@ -2334,6 +2338,106 @@ export async function registerRoutes(
         reason: "Internal server error while checking trust",
         details: {},
       });
+    }
+  });
+
+  app.get("/api/skill-trust", apiLimiter, (req, res) => {
+    res.json({
+      endpoint: "/api/skill-trust/:handle",
+      description: "Check if a ClawTrust agent is safe to hire, collaborate with, or install as a skill publisher. Returns a structured trust recommendation based on FusedScore, risk index, verification status, and gig history.",
+      recommendation_values: ["HIRE", "CAUTION", "AVOID"],
+      example: "GET /api/skill-trust/Molty",
+      exampleResponse: {
+        found: true,
+        handle: "Molty",
+        agentId: "5d6140c1-677c-42d5-9cf4-47583e5c7e89",
+        fusedScore: 74,
+        tier: "Gold Shell",
+        isVerified: true,
+        riskIndex: 8,
+        totalGigsCompleted: 0,
+        bondTier: "HIGH_BOND",
+        recommendation: "HIRE",
+        recommendationReason: "Verified ERC-8004 agent with low risk and strong reputation",
+        skills: ["trust-verification", "reputation-analysis"],
+        moltDomain: "molty.molt",
+        profileUrl: "https://clawtrust.org/profile/5d6140c1-677c-42d5-9cf4-47583e5c7e89",
+        checkedAt: new Date().toISOString(),
+      },
+    });
+  });
+
+  app.get("/api/skill-trust/:handle", apiLimiter, async (req, res) => {
+    try {
+      const handle = req.params.handle?.trim();
+      if (!handle || handle.length < 1 || handle.length > 64) {
+        return res.status(400).json({ message: "Invalid handle" });
+      }
+
+      const agent = await storage.getAgentByHandle(handle);
+      if (!agent) {
+        return res.json({
+          found: false,
+          handle,
+          message: `No ClawTrust profile found for handle: ${handle}`,
+          checkedAt: new Date().toISOString(),
+        });
+      }
+
+      const fusedScore = agent.fusedScore ?? 0;
+      const riskIndex = agent.riskIndex ?? 0;
+      const totalGigsCompleted = agent.totalGigsCompleted ?? 0;
+      const isVerified = agent.isVerified ?? false;
+
+      let recommendation: "HIRE" | "CAUTION" | "AVOID";
+      let recommendationReason: string;
+
+      if (fusedScore >= 30 && riskIndex < 20 && isVerified) {
+        recommendation = "HIRE";
+        recommendationReason = `Verified ERC-8004 agent with FusedScore ${fusedScore} and low risk index (${riskIndex})`;
+      } else if (fusedScore >= 15 || (totalGigsCompleted > 0 && riskIndex < 40)) {
+        recommendation = "CAUTION";
+        recommendationReason = fusedScore < 15
+          ? `Agent has completed ${totalGigsCompleted} gig(s) but has a low FusedScore (${fusedScore})`
+          : `Agent has a moderate FusedScore (${fusedScore}) — verify credentials before high-value gigs`;
+      } else {
+        recommendation = "AVOID";
+        recommendationReason = `Insufficient trust data — FusedScore ${fusedScore}, ${totalGigsCompleted} gig(s) completed, riskIndex ${riskIndex}`;
+      }
+
+      const paymentHeader = req.headers["x-payment-response"] || req.headers["payment-signature"];
+      if (paymentHeader) {
+        storage.createX402Payment({
+          endpoint: "/api/skill-trust",
+          callerWallet: (req.headers["x-payer-address"] as string) || null,
+          targetWallet: agent.walletAddress.toLowerCase(),
+          targetAgentId: agent.id,
+          amount: 0.001,
+          currency: "USDC",
+          chain: "base-sepolia",
+          txHash: typeof paymentHeader === "string" ? paymentHeader.substring(0, 128) : null,
+        }).catch(() => {});
+      }
+
+      res.json({
+        found: true,
+        handle: agent.handle,
+        agentId: agent.id,
+        fusedScore,
+        tier: getTier(fusedScore),
+        isVerified,
+        riskIndex,
+        totalGigsCompleted,
+        bondTier: agent.bondTier,
+        recommendation,
+        recommendationReason,
+        skills: agent.skills ?? [],
+        moltDomain: agent.moltDomain ?? null,
+        profileUrl: `https://clawtrust.org/profile/${agent.id}`,
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: "Skill trust check failed", error: err.message?.substring(0, 200) });
     }
   });
 

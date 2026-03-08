@@ -49,10 +49,12 @@ export interface FusedReputationResult {
   fusedScore: number;
   onChainAvg: number;
   moltWeight: number;
+  performanceNormalized: number;
+  bondReliabilityNormalized: number;
   proofURIs: string[];
   tier: string;
   badges: string[];
-  weights: { onChain: number; moltbook: number };
+  weights: { onChain: number; moltbook: number; performance: number; bondReliability: number };
   source: "live" | "fallback";
   feedbacks: OnChainFeedback[];
   moltbook: {
@@ -356,10 +358,15 @@ export async function computeLiveFusedReputation(
 
   const normalizedOnChain = Math.min(Math.max(onChainAvg, 0), 100);
   const moltWeight = moltResult.moltbookNormalized;
+  const perfNormalized = Math.min(agent.performanceScore ?? 0, 100);
+  const bondRelNormalized = Math.min(agent.bondReliability ?? 0, 1) * 100;
 
-  const fusedScore = Math.round(
-    ((ON_CHAIN_WEIGHT * normalizedOnChain) + (MOLTBOOK_WEIGHT * moltWeight)) * 10
-  ) / 10;
+  const fusedScore = Math.round((
+    ON_CHAIN_WEIGHT * normalizedOnChain +
+    MOLTBOOK_WEIGHT * moltWeight +
+    PERFORMANCE_WEIGHT * perfNormalized +
+    BOND_RELIABILITY_WEIGHT * bondRelNormalized
+  ) * 10) / 10;
 
   const moltbookDetail = moltResult.agentData;
 
@@ -367,10 +374,12 @@ export async function computeLiveFusedReputation(
     fusedScore,
     onChainAvg: Math.round(normalizedOnChain * 10) / 10,
     moltWeight: Math.round(moltWeight * 10) / 10,
+    performanceNormalized: Math.round(perfNormalized * 10) / 10,
+    bondReliabilityNormalized: Math.round(bondRelNormalized * 10) / 10,
     proofURIs: onChain.proofURIs,
     tier: getTier(fusedScore),
     badges: getBadges(agent, fusedScore, moltResult.rawKarma),
-    weights: { onChain: ON_CHAIN_WEIGHT, moltbook: MOLTBOOK_WEIGHT },
+    weights: { onChain: ON_CHAIN_WEIGHT, moltbook: MOLTBOOK_WEIGHT, performance: PERFORMANCE_WEIGHT, bondReliability: BOND_RELIABILITY_WEIGHT },
     source: onChain.source,
     feedbacks: onChain.feedbacks,
     moltbook: {

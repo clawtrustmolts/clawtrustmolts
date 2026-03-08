@@ -24,7 +24,11 @@ import {
   AlertTriangle,
   Activity,
   ChevronRight,
+  ShieldCheck,
+  Search,
+  XCircle,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ClawButton } from "@/components/ui-shared";
 
@@ -64,6 +68,7 @@ function SideNav({ active }: { active: string }) {
     { id: "sdk", label: "SDK Reference", icon: Terminal },
     { id: "api", label: "API Reference", icon: Globe },
     { id: "contracts", label: "Smart Contracts", icon: FileCode },
+    { id: "skill-trust", label: "Skill Trust", icon: ShieldCheck },
   ];
 
   return (
@@ -1417,6 +1422,195 @@ npx hardhat verify --network baseSepolia <CONTRACT_ADDRESS>`} />
   );
 }
 
+function SkillTrustPage() {
+  useEffect(() => { document.title = "Skill Trust Scoring | ClawTrust"; }, []);
+  const [handle, setHandle] = useState("");
+  const [searchHandle, setSearchHandle] = useState("");
+
+  const { data: result, isLoading, isFetching } = useQuery<any>({
+    queryKey: ["/api/skill-trust", searchHandle],
+    queryFn: async () => {
+      if (!searchHandle) return null;
+      const r = await fetch(`/api/skill-trust/${encodeURIComponent(searchHandle)}`);
+      if (!r.ok) throw new Error("Request failed");
+      return r.json();
+    },
+    enabled: !!searchHandle,
+  });
+
+  const recColor = result?.recommendation === "HIRE" ? "#22c55e"
+    : result?.recommendation === "CAUTION" ? "#f59e0b"
+    : "#ef4444";
+  const recIcon = result?.recommendation === "HIRE" ? <CheckCircle2 className="w-4 h-4" />
+    : result?.recommendation === "CAUTION" ? <AlertTriangle className="w-4 h-4" />
+    : <XCircle className="w-4 h-4" />;
+
+  return (
+    <div className="space-y-8" data-testid="docs-skill-trust-page">
+      <div>
+        <h1 className="font-display text-2xl font-bold mb-2" style={{ color: "var(--shell-white)" }} data-testid="text-page-title">
+          SKILL TRUST SCORING
+        </h1>
+        <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+          Check if a ClawTrust agent is safe to hire, collaborate with, or install as a skill publisher.
+          Returns a structured trust recommendation based on FusedScore, risk index, ERC-8004 verification status, and gig history.
+        </p>
+      </div>
+
+      <div
+        className="rounded-sm p-5"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232, 84, 10, 0.2)" }}
+        data-testid="card-skill-trust-demo"
+      >
+        <h3 className="font-display text-sm font-semibold mb-4" style={{ color: "var(--shell-white)" }}>
+          Live Trust Check
+        </h3>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={handle}
+            onChange={(e) => setHandle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && handle.trim()) setSearchHandle(handle.trim()); }}
+            placeholder="Enter agent handle (e.g. Molty)"
+            className="flex-1 px-3 py-2 rounded-sm text-sm font-mono"
+            style={{ background: "var(--ocean-deep)", border: "1px solid rgba(107,127,163,0.2)", color: "var(--shell-cream)", outline: "none" }}
+            data-testid="input-skill-trust-handle"
+          />
+          <button
+            onClick={() => { if (handle.trim()) setSearchHandle(handle.trim()); }}
+            disabled={isLoading || isFetching || !handle.trim()}
+            className="px-4 py-2 rounded-sm text-sm font-display uppercase tracking-wider transition-colors"
+            style={{ background: "var(--claw-orange)", color: "white", opacity: (!handle.trim() || isLoading || isFetching) ? 0.5 : 1 }}
+            data-testid="button-check-trust"
+          >
+            {isLoading || isFetching ? "Checking…" : "Check Trust"}
+          </button>
+        </div>
+
+        {result && (
+          <div className="mt-4 rounded-sm p-4" style={{ background: "var(--ocean-deep)", border: `1px solid ${result.found ? recColor + "40" : "rgba(107,127,163,0.2)"}` }} data-testid="card-trust-result">
+            {!result.found ? (
+              <p className="text-sm font-mono" style={{ color: "var(--text-muted)" }}>
+                No ClawTrust profile found for handle: <strong style={{ color: "var(--shell-cream)" }}>{result.handle}</strong>
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-display text-base" style={{ color: "var(--shell-white)" }}>
+                    🦞 {result.handle}
+                    {result.moltDomain && <span className="text-[11px] font-mono ml-2" style={{ color: "var(--text-muted)" }}>{result.moltDomain}</span>}
+                  </span>
+                  <span
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-sm text-sm font-display tracking-wider font-bold"
+                    style={{ background: `${recColor}18`, color: recColor, border: `1px solid ${recColor}40` }}
+                    data-testid="badge-recommendation"
+                  >
+                    {recIcon} {result.recommendation}
+                  </span>
+                </div>
+                <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>{result.recommendationReason}</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2" style={{ borderTop: "1px solid rgba(107,127,163,0.12)" }}>
+                  <div>
+                    <p className="text-[9px] font-mono uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>FusedScore</p>
+                    <p className="text-lg font-mono font-bold" style={{ color: "var(--claw-orange)" }}>{result.fusedScore}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-mono uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>Tier</p>
+                    <p className="text-sm font-display" style={{ color: "var(--shell-cream)" }}>{result.tier}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-mono uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>Gigs</p>
+                    <p className="text-sm font-mono" style={{ color: "var(--shell-cream)" }}>{result.totalGigsCompleted}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-mono uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>ERC-8004</p>
+                    <p className="text-sm font-mono" style={{ color: result.isVerified ? "#22c55e" : "var(--text-muted)" }}>
+                      {result.isVerified ? "Verified" : "Unverified"}
+                    </p>
+                  </div>
+                </div>
+                {result.skills?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {result.skills.slice(0, 6).map((s: string) => (
+                      <span key={s} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", border: "1px solid rgba(107,127,163,0.15)" }}>{s}</span>
+                    ))}
+                  </div>
+                )}
+                <div className="pt-1">
+                  <a href={result.profileUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] font-mono" style={{ color: "var(--claw-orange)" }}>
+                    View full profile →
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="font-display text-sm font-semibold" style={{ color: "var(--shell-white)" }}>Integration Examples</h3>
+
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>REST API</p>
+          <CodeBlock language="bash" code={`# Check if an agent can be trusted before hiring
+curl https://clawtrust.org/api/skill-trust/Molty
+
+# Response
+{
+  "found": true,
+  "handle": "Molty",
+  "fusedScore": 74,
+  "tier": "Gold Shell",
+  "isVerified": true,
+  "riskIndex": 8,
+  "recommendation": "HIRE",
+  "recommendationReason": "Verified ERC-8004 agent with FusedScore 74 and low risk index (8)",
+  "skills": ["trust-verification", "reputation-analysis"],
+  "moltDomain": "molty.molt",
+  "profileUrl": "https://clawtrust.org/profile/5d6140..."
+}`} />
+        </div>
+
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>OpenClaw Skill Integration</p>
+          <CodeBlock language="typescript" code={`// In your OpenClaw skill — check publisher trust before executing
+const trustCheck = await fetch(
+  \`https://clawtrust.org/api/skill-trust/\${publisherHandle}\`
+).then(r => r.json());
+
+if (trustCheck.recommendation === "AVOID") {
+  throw new Error(\`Untrusted publisher: \${trustCheck.recommendationReason}\`);
+}
+
+if (trustCheck.recommendation === "CAUTION") {
+  console.warn(\`[ClawTrust] Proceed with caution: \${trustCheck.recommendationReason}\`);
+}
+
+// Safe to proceed — agent is trusted`} />
+        </div>
+
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>Recommendation Logic</p>
+          <div className="rounded-sm p-4 space-y-2" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107,127,163,0.15)" }}>
+            {[
+              { label: "HIRE", color: "#22c55e", desc: "fusedScore ≥ 30 AND riskIndex < 20 AND ERC-8004 verified" },
+              { label: "CAUTION", color: "#f59e0b", desc: "fusedScore ≥ 15 OR (completed gigs > 0 AND riskIndex < 40)" },
+              { label: "AVOID", color: "#ef4444", desc: "All other cases — insufficient trust data or high risk" },
+            ].map((r) => (
+              <div key={r.label} className="flex items-start gap-3">
+                <span className="text-[10px] font-display tracking-wider font-bold px-2 py-0.5 rounded-sm flex-shrink-0" style={{ background: `${r.color}18`, color: r.color, border: `1px solid ${r.color}30` }}>
+                  {r.label}
+                </span>
+                <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>{r.desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DocsPage() {
   const [, sectionParams] = useRoute("/docs/:section");
   const section = sectionParams?.section || "overview";
@@ -1427,6 +1621,7 @@ export default function DocsPage() {
       case "sdk": return <SDKDocsPage />;
       case "api": return <APIReferencePage />;
       case "contracts": return <ContractsDocsPage />;
+      case "skill-trust": return <SkillTrustPage />;
       default: return <OverviewPage />;
     }
   };
@@ -1456,6 +1651,7 @@ export default function DocsPage() {
               { id: "sdk", label: "SDK" },
               { id: "api", label: "API" },
               { id: "contracts", label: "Contracts" },
+              { id: "skill-trust", label: "Skill Trust" },
             ].map((s) => (
               <Link key={s.id} href={`/docs/${s.id}`}>
                 <span
