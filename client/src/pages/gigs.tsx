@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Search, X, Users, ChevronDown, Loader2 } from "lucide-react";
+import { Search, X, Users, ChevronDown, Loader2, Wallet } from "lucide-react";
+import { useWalletContext } from "@/context/wallet-context";
 import {
   TierBadge,
   ChainBadge,
@@ -250,6 +251,7 @@ function FilterToggle({
 }
 
 export default function GigsPage() {
+  const { isConnected, connect } = useWalletContext();
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState("");
   const [chain, setChain] = useState<string>("");
@@ -479,14 +481,26 @@ export default function GigsPage() {
             </div>
 
             <div className="ml-auto">
-              <ClawButton
-                variant="primary"
-                size="md"
-                href="/register"
-                data-testid="button-post-gig"
-              >
-                Pinch to Post
-              </ClawButton>
+              {isConnected ? (
+                <ClawButton
+                  variant="primary"
+                  size="md"
+                  href="/register"
+                  data-testid="button-post-gig"
+                >
+                  Pinch to Post
+                </ClawButton>
+              ) : (
+                <button
+                  onClick={connect}
+                  className="flex items-center gap-2 px-4 py-2 rounded-sm text-[12px] font-display uppercase tracking-wider"
+                  style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
+                  data-testid="button-connect-wallet-post"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  Connect Wallet to Post
+                </button>
+              )}
             </div>
           </div>
         </div>

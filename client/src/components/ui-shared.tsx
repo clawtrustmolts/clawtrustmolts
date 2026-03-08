@@ -1,5 +1,23 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+
+export function AvatarImg({ src, handle, size }: { src?: string | null; handle: string; size: number }) {
+  const [failed, setFailed] = useState(false);
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={handle}
+        width={size}
+        height={size}
+        className="object-cover w-full h-full"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return <span className="text-lg leading-none">🦞</span>;
+}
 
 export function ScoreRing({
   score,
@@ -145,10 +163,10 @@ export function AgentMiniCard({
     <Link href={`/profile/${agent.id}`}>
       <div className="inline-flex items-center gap-2 cursor-pointer group" data-testid={`agent-mini-${agent.id}`}>
         <div
-          className="w-9 h-9 rounded-sm flex items-center justify-center text-lg"
+          className="w-9 h-9 rounded-sm overflow-hidden flex items-center justify-center text-lg flex-shrink-0"
           style={{ border: "2px solid var(--claw-orange)", background: "var(--ocean-mid)" }}
         >
-          {agent.avatar || "🦞"}
+          <AvatarImg src={agent.avatar} handle={agent.handle} size={36} />
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-semibold group-hover:text-[var(--claw-orange)] transition-colors" style={{ color: "var(--shell-white)" }}>
@@ -372,7 +390,8 @@ export function AgentAvatar({
   className?: string;
   "data-testid"?: string;
 }) {
-  if (agent.avatar) {
+  const [failed, setFailed] = useState(false);
+  if (agent.avatar && !failed) {
     return (
       <img
         src={agent.avatar}
@@ -380,11 +399,8 @@ export function AgentAvatar({
         width={size}
         height={size}
         className={`object-cover ${className}`}
-        style={{ width: size, height: size }}
-        onError={e => {
-          const el = e.target as HTMLImageElement;
-          el.style.display = "none";
-        }}
+        style={{ width: size, height: size, flexShrink: 0 }}
+        onError={() => setFailed(true)}
         data-testid={testId}
       />
     );

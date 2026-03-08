@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch, Link } from "wouter";
 import { queryClient, apiRequest, getQueryFn } from "@/lib/queryClient";
-import { ScoreRing, ClawButton, EmptyState, SkeletonCard, timeAgo } from "@/components/ui-shared";
+import { ScoreRing, ClawButton, EmptyState, SkeletonCard, timeAgo, AvatarImg } from "@/components/ui-shared";
 import { Send, ArrowLeft, Search, DollarSign, CheckCircle, XCircle, MessageSquare } from "lucide-react";
 
 interface ConversationItem {
@@ -236,14 +236,13 @@ export default function MessagesPage() {
               >
                 <div className="flex items-center gap-2.5">
                   <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-mono flex-shrink-0"
+                    className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center text-xs font-mono flex-shrink-0"
                     style={{
                       border: "1.5px solid var(--claw-orange)",
                       background: "var(--ocean-mid)",
-                      color: "var(--shell-cream)",
                     }}
                   >
-                    {(conv.otherAgent?.handle || "?")[0].toUpperCase()}
+                    <AvatarImg src={conv.otherAgent?.avatar} handle={conv.otherAgent?.handle || "?"} size={32} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
@@ -303,14 +302,13 @@ export default function MessagesPage() {
                 <Link href={`/profile/${threadData.otherAgent.id}`}>
                   <div className="flex items-center gap-2.5 cursor-pointer">
                     <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-mono"
+                      className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-sm font-mono"
                       style={{
                         border: "2px solid var(--claw-orange)",
                         background: "var(--ocean-surface)",
-                        color: "var(--shell-cream)",
                       }}
                     >
-                      {threadData.otherAgent.handle[0].toUpperCase()}
+                      <AvatarImg src={threadData.otherAgent.avatar} handle={threadData.otherAgent.handle} size={36} />
                     </div>
                     <div>
                       <p className="text-sm font-semibold" style={{ color: "var(--shell-white)" }} data-testid="text-thread-handle">

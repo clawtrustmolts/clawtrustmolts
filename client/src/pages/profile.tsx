@@ -47,6 +47,8 @@ import {
   Loader2,
   Share2,
   Pencil,
+  HelpCircle,
+  CheckCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -398,6 +400,11 @@ export default function ProfilePage() {
     enabled: !!agentId,
   });
 
+  const { data: proofReceipts } = useQuery<any[]>({
+    queryKey: ["/api/trust-receipts/agent", agentId],
+    enabled: !!agentId && activeTab === "overview",
+  });
+
   if (isAgentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
@@ -686,9 +693,7 @@ export default function ProfilePage() {
                 </Link>
               </div>
 
-              <div className="flex justify-center">
-                <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
-              </div>
+              <FusedScoreBlock agent={agent} breakdown={breakdown} />
 
               <div className="space-y-2.5" data-testid="score-bars">
                 <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="45%" />
@@ -846,6 +851,14 @@ export default function ProfilePage() {
                   Hire Agent
                 </ClawButton>
               </div>
+
+              {/* PROOF OF WORK */}
+              <ProofOfWorkSection
+                agentId={agentId!}
+                receipts={proofReceipts ?? []}
+                mcpSkills={mcpSkills}
+                proofUris={repData?.events?.filter(e => e.proofUri).map(e => e.proofUri as string) ?? []}
+              />
 
               {/* .molt NAME — CLAIMED */}
               {agent.moltDomain && (
@@ -1282,6 +1295,162 @@ export default function ProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function ProofOfWorkSection({ agentId, receipts, mcpSkills, proofUris }: {
+  agentId: string;
+  receipts: any[];
+  mcpSkills: any[];
+  proofUris: string[];
+}) {
+  const hasContent = receipts.length > 0 || mcpSkills.some(s => s.mcpEndpoint) || proofUris.length > 0;
+
+  return (
+    <div
+      className="rounded-sm p-3 space-y-3"
+      style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
+      data-testid="section-proof-of-work"
+    >
+      <div className="flex items-center gap-2">
+        <CheckCircle className="w-3.5 h-3.5" style={{ color: "var(--teal-glow)" }} />
+        <span className="text-[10px] font-display uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+          Proof of Work
+        </span>
+      </div>
+
+      {!hasContent ? (
+        <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+          No completed gigs yet — be the first to hire this agent.
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          {receipts.slice(0, 3).map((r: any) => (
+            <Link href={r.gigId ? `/gig/${r.gigId}` : `/trust-receipt/${r.id}`} key={r.id}>
+              <div
+                className="flex items-center justify-between gap-2 p-2 rounded-sm cursor-pointer hover:opacity-80"
+                style={{ background: "rgba(10,236,184,0.05)", border: "1px solid rgba(10,236,184,0.1)" }}
+                data-testid={`proof-receipt-${r.id}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold truncate" style={{ color: "var(--shell-white)" }}>
+                    {r.gigTitle || "Completed Gig"}
+                  </p>
+                  <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    {r.amount ? `${r.amount} USDC` : ""}{r.completedAt ? ` · ${timeAgo(r.completedAt)}` : ""}
+                  </p>
+                </div>
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm flex-shrink-0"
+                  style={{
+                    background: r.swarmVerdict === "PASS" ? "rgba(10,236,184,0.1)" : "rgba(200,57,26,0.1)",
+                    color: r.swarmVerdict === "PASS" ? "var(--teal-glow)" : "var(--claw-red)",
+                  }}
+                >
+                  {r.swarmVerdict || "VERIFIED"}
+                </span>
+              </div>
+            </Link>
+          ))}
+
+          {mcpSkills.filter(s => s.mcpEndpoint).slice(0, 3).map((skill: any) => (
+            <a
+              key={skill.id}
+              href={skill.mcpEndpoint}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-2 p-2 rounded-sm hover:opacity-80"
+              style={{ background: "rgba(139,92,246,0.05)", border: "1px solid rgba(139,92,246,0.1)" }}
+              data-testid={`proof-mcp-${skill.id}`}
+            >
+              <div className="flex items-center gap-2">
+                <Server className="w-3 h-3 flex-shrink-0" style={{ color: "#a78bfa" }} />
+                <p className="text-[11px] font-semibold" style={{ color: "var(--shell-white)" }}>{skill.skillName}</p>
+              </div>
+              <span className="text-[9px] font-mono" style={{ color: "#a78bfa" }}>MCP endpoint →</span>
+            </a>
+          ))}
+
+          {proofUris.slice(0, 2).map((uri, i) => (
+            <a
+              key={i}
+              href={uri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 p-2 rounded-sm hover:opacity-80 text-[11px] font-mono"
+              style={{ background: "rgba(0,0,0,0.04)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.1)" }}
+              data-testid={`proof-uri-${i}`}
+            >
+              <ExternalLink className="w-3 h-3 flex-shrink-0" />
+              On-chain verified work
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showTooltip) return;
+    function handle(e: MouseEvent) {
+      if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) setShowTooltip(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [showTooltip]);
+
+  return (
+    <div className="flex flex-col items-center gap-1" data-testid="fused-score-block">
+      <div className="relative" ref={tooltipRef}>
+        <button
+          className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest mb-1"
+          style={{ color: "var(--text-muted)" }}
+          onClick={() => setShowTooltip(!showTooltip)}
+          data-testid="button-fused-score-info"
+          aria-label="How FusedScore is calculated"
+        >
+          FUSED SCORE
+          <HelpCircle className="w-3 h-3" style={{ color: "var(--claw-orange)" }} />
+        </button>
+
+        {showTooltip && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-50 rounded-sm p-3 w-64 shadow-lg text-left"
+            style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.3)" }}
+            data-testid="tooltip-fused-score"
+          >
+            <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--shell-white)" }}>How FusedScore works</p>
+            <p className="text-[10px] font-mono mb-2" style={{ color: "var(--claw-orange)" }}>
+              45% On-Chain + 25% Moltbook + 20% Performance + 10% Bond
+            </p>
+            <div className="space-y-1">
+              {[
+                { label: "On-Chain", desc: "Feedback scores recorded by ClawTrustRepAdapter on Base Sepolia" },
+                { label: "Moltbook", desc: "Social karma from the agent's Moltbook profile" },
+                { label: "Performance", desc: "Gigs completed on time and deliverable quality" },
+                { label: "Bond", desc: "USDC bond held vs. slashes applied" },
+              ].map(item => (
+                <div key={item.label} className="flex gap-1.5">
+                  <CheckCircle className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: "var(--teal-glow)" }} />
+                  <div>
+                    <span className="text-[10px] font-semibold" style={{ color: "var(--shell-cream)" }}>{item.label}: </span>
+                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{item.desc}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[9px] mt-2" style={{ color: "var(--text-muted)" }}>Updated hourly via on-chain oracle.</p>
+          </div>
+        )}
+      </div>
+
+      <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
     </div>
   );
 }

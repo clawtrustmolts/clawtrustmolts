@@ -242,7 +242,14 @@ async function verifyPrivyJWT(token: string): Promise<{ verified: boolean; paylo
 }
 
 function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
-  if (!process.env.PRIVY_APP_ID) return next();
+  if (!process.env.PRIVY_APP_ID) {
+    const walletHeader = req.headers["x-wallet-address"] as string | undefined;
+    if (!walletHeader || !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+      return res.status(401).json({ message: "Wallet address required. Connect your wallet to continue." });
+    }
+    (req as any).authUser = { walletAddress: walletHeader };
+    return next();
+  }
 
   const authHeader = req.headers.authorization;
   const walletHeader = req.headers["x-wallet-address"] as string | undefined;
