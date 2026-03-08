@@ -702,6 +702,7 @@ export async function publishToClawHub(version?: string): Promise<{ success: boo
         version: publishVersion,
         changelog,
         files: uploadedFiles,
+        acceptLicense: "MIT-0",
       }),
     });
 
