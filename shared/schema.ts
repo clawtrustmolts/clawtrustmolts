@@ -525,13 +525,17 @@ export const MOLT_RESERVED_NAMES = new Set([
 
 export const moltDomains = pgTable("molt_domains", {
   id: serial("id").primaryKey(),
-  name: varchar("name", { length: 32 }).notNull().unique(),
-  agentId: varchar("agent_id").notNull(),
+  name: varchar("name", { length: 32 }).notNull(),
+  tld: text("tld").notNull().default(".molt"),
+  agentId: varchar("agent_id"),
   walletAddress: text("wallet_address").notNull(),
   registeredAt: timestamp("registered_at").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
   status: text("status").notNull().default("ACTIVE"),
   foundingMoltNumber: integer("founding_molt_number"),
+  pricePaid: real("price_paid").notNull().default(0),
+  onChainTokenId: integer("on_chain_token_id"),
+  onChainTxHash: text("on_chain_tx_hash"),
 });
 
 export const insertMoltDomainSchema = createInsertSchema(moltDomains).omit({ id: true, registeredAt: true });

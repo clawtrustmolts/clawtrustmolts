@@ -3,7 +3,7 @@
  * Loaded once at startup; all on-chain calls go through here.
  */
 
-import { createPublicClient, createWalletClient, http, getContract, parseUnits, type Address, keccak256, toHex, isAddress, parseAbi } from "viem";
+import { createPublicClient, createWalletClient, http, getContract, parseUnits, type Address, keccak256, toHex, isAddress, parseAbi, decodeEventLog } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { readFileSync } from "fs";
@@ -22,6 +22,7 @@ const CONTRACT_ADDRESSES = {
   repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818") as Address,
   bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address,
   crew:                    (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address,
+  registry:                (process.env.CLAW_TRUST_REGISTRY_ADDRESS       || "0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b") as Address,
 };
 
 // ─── ABI loader ──────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ const ABIS = {
   repAdapter:     loadAbi("ClawTrustRepAdapter"),
   bond:           loadAbi("ClawTrustBond"),
   crew:           loadAbi("ClawTrustCrew"),
+  registry:       loadAbi("ClawTrustRegistry"),
 };
 
 // ─── Clients ─────────────────────────────────────────────────────────
@@ -105,12 +107,16 @@ function makeContract(name: keyof typeof CONTRACT_ADDRESSES, abiKey: keyof typeo
   });
 }
 
-export const clawCardNFT    = makeContract("clawCardNFT",    "clawCardNFT");
-export const escrowContract = makeContract("escrow",         "escrow");
-export const swarmValidator = makeContract("swarmValidator", "swarmValidator");
-export const repAdapter     = makeContract("repAdapter",     "repAdapter");
-export const bondContract   = makeContract("bond",           "bond");
-export const crewContract   = makeContract("crew",           "crew");
+export const clawCardNFT      = makeContract("clawCardNFT",    "clawCardNFT");
+export const escrowContract   = makeContract("escrow",         "escrow");
+export const swarmValidator   = makeContract("swarmValidator", "swarmValidator");
+export const repAdapter       = makeContract("repAdapter",     "repAdapter");
+export const bondContract     = makeContract("bond",           "bond");
+export const crewContract     = makeContract("crew",           "crew");
+export const registryContract = makeContract("registry",       "registry");
+
+export const REGISTRY_ADDRESS = CONTRACT_ADDRESSES.registry;
+export const REGISTRY_BASESCAN = `https://sepolia.basescan.org/address/${CONTRACT_ADDRESSES.registry}`;
 
 // ─── Utility ─────────────────────────────────────────────────────────
 
@@ -634,3 +640,53 @@ export async function getUSDCBalance(address: string): Promise<number> {
 
 export const ORACLE_WALLET_ADDRESS = "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906" as Address;
 export const USDC_CONTRACT_ADDRESS = USDC_ADDRESS;
+
+export async function registerDomainOnChain(
+  name: string,
+  tld: string,
+  ownerAddress: string,
+  pricePaid: number = 0,
+): Promise<{ tokenId: number; txHash: string }> {
+  if (!isWriteReady()) throw new Error("Oracle wallet not configured");
+  try {
+    const hash = await (registryContract as any).write.register([
+      name,
+      tld,
+      ownerAddress as Address,
+      BigInt(Math.round(pricePaid * 1_000_000)),
+    ]);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const log = receipt.logs?.[0];
+    let tokenId = 0;
+    if (log) {
+      try {
+        const decoded = decodeEventLog({
+          abi: ABIS.registry,
+          eventName: "DomainRegistered",
+          topics: log.topics as any,
+          data: log.data,
+        });
+        tokenId = Number((decoded.args as any).tokenId);
+      } catch {
+        tokenId = 0;
+      }
+    }
+    return { tokenId, txHash: hash as string };
+  } catch (err: any) {
+    throw new Error(`registerDomainOnChain failed: ${err.message?.slice(0, 200)}`);
+  }
+}
+
+export async function isDomainAvailableOnChain(name: string, tld: string): Promise<boolean> {
+  try {
+    const available = await publicClient.readContract({
+      address: CONTRACT_ADDRESSES.registry,
+      abi: ABIS.registry,
+      functionName: "isAvailable",
+      args: [name, tld],
+    });
+    return Boolean(available);
+  } catch {
+    return true;
+  }
+}

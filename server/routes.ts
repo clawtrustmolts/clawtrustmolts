@@ -60,6 +60,10 @@ import {
   transferUSDCOnChain,
   getUSDCBalance,
   ORACLE_WALLET_ADDRESS,
+  registerDomainOnChain,
+  isDomainAvailableOnChain,
+  REGISTRY_ADDRESS,
+  REGISTRY_BASESCAN,
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
@@ -3043,6 +3047,245 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
       }
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  // ─── ClawTrust Name Service — Multi-TLD domain API ──────────────────────────
+
+  const DOMAIN_TLDS = [".molt", ".claw", ".shell", ".pinch"] as const;
+  const DOMAIN_TLD_PRICE: Record<string, number> = {
+    ".molt": 0,
+    ".claw": 50,
+    ".shell": 100,
+    ".pinch": 25,
+  };
+  const DOMAIN_TLD_FREE_SCORE: Record<string, number> = {
+    ".molt": 0,
+    ".claw": 70,
+    ".shell": 50,
+    ".pinch": 30,
+  };
+  const DOMAIN_NAME_REGEX = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$|^[a-z0-9]{3,32}$/;
+  const DOMAIN_RESERVED = new Set([...MOLT_RESERVED_NAMES, "claw", "molt", "shell", "pinch", "trust", "admin", "api", "app", "root", "registry", "contract", "token"]);
+
+  async function checkDomainAvailability(name: string, tld: string, wallet?: string) {
+    if (!name || name.length < 3 || name.length > 32 || !DOMAIN_NAME_REGEX.test(name)) {
+      return { available: false, reason: "invalid_name" };
+    }
+    if (DOMAIN_RESERVED.has(name)) {
+      return { available: false, reason: "reserved" };
+    }
+    if (!DOMAIN_TLDS.includes(tld as any)) {
+      return { available: false, reason: "invalid_tld" };
+    }
+    const existing = await storage.getMoltDomain(name, tld);
+    if (existing && existing.status === "ACTIVE") {
+      return { available: false, reason: "taken", takenBy: existing.walletAddress };
+    }
+    const price = DOMAIN_TLD_PRICE[tld] ?? 0;
+    const freeScore = DOMAIN_TLD_FREE_SCORE[tld] ?? 999;
+
+    let agentMeetsRequirement = tld === ".molt";
+    if (wallet && !agentMeetsRequirement) {
+      const agentList = await storage.getAgents();
+      const walletAgent = agentList.find(a => a.walletAddress?.toLowerCase() === wallet.toLowerCase());
+      if (walletAgent) {
+        const score = walletAgent.fusedScore ?? 0;
+        agentMeetsRequirement = score >= freeScore;
+      }
+    }
+    return { available: true, price, freeScore, agentMeetsRequirement };
+  }
+
+  app.post("/api/domains/check", async (req, res) => {
+    try {
+      const { name, tld } = req.body;
+      const wallet = (req as any).wallet as string | undefined;
+      const result = await checkDomainAvailability((name || "").toLowerCase(), tld || ".molt", wallet);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/domains/check-all", async (req, res) => {
+    try {
+      const { name } = req.body;
+      const wallet = (req as any).wallet as string | undefined;
+      const n = (name || "").toLowerCase().trim();
+      const results = await Promise.all(
+        DOMAIN_TLDS.map(async (tld) => {
+          const r = await checkDomainAvailability(n, tld, wallet);
+          return { tld, ...r };
+        })
+      );
+      res.json({ name: n, results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/domains/register", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const { name: rawName, tld: rawTld, pricePaid = 0, agentId } = req.body;
+      const wallet = (req as any).wallet as string;
+      const name = (rawName || "").toLowerCase().trim();
+      const tld = (rawTld || ".molt").toLowerCase();
+
+      if (!name || name.length < 3 || name.length > 32 || !DOMAIN_NAME_REGEX.test(name)) {
+        return res.status(400).json({ message: "Name must be 3–32 chars, lowercase alphanumeric + hyphens" });
+      }
+      if (DOMAIN_RESERVED.has(name)) {
+        return res.status(400).json({ message: "That name is reserved" });
+      }
+      if (!DOMAIN_TLDS.includes(tld as any)) {
+        return res.status(400).json({ message: "TLD must be one of: .molt .claw .shell .pinch" });
+      }
+
+      const existing = await storage.getMoltDomain(name, tld);
+      if (existing && existing.status === "ACTIVE") {
+        return res.status(409).json({ message: `${name}${tld} is already taken` });
+      }
+
+      const requiredPrice = DOMAIN_TLD_PRICE[tld] ?? 0;
+      const freeScore = DOMAIN_TLD_FREE_SCORE[tld] ?? 999;
+
+      let agentMeetsScore = tld === ".molt";
+      let resolvedAgent: any = null;
+      if (agentId) {
+        resolvedAgent = await storage.getAgent(agentId);
+      } else {
+        const allAgents = await storage.getAgents();
+        resolvedAgent = allAgents.find(a => a.walletAddress?.toLowerCase() === wallet.toLowerCase()) || null;
+      }
+      if (resolvedAgent) {
+        agentMeetsScore = (resolvedAgent.fusedScore ?? 0) >= freeScore;
+      }
+
+      const payingEnough = pricePaid >= requiredPrice;
+      const canRegisterFree = agentMeetsScore;
+      const canRegisterPaid = requiredPrice > 0 && payingEnough;
+
+      if (!canRegisterFree && !canRegisterPaid && requiredPrice > 0) {
+        return res.status(403).json({
+          message: `${tld} requires FusedScore ≥ ${freeScore} or payment of ${requiredPrice} USDC`,
+          freeScore,
+          requiredPrice,
+        });
+      }
+
+      const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      let onChainTokenId: number | null = null;
+      let onChainTxHash: string | null = null;
+      const free = canRegisterFree && !payingEnough;
+
+      if (tld === ".molt") {
+        if (resolvedAgent?.erc8004TokenId) {
+          setMoltDomainOnChain(resolvedAgent.erc8004TokenId, `${name}.molt`)
+            .catch(err => console.error("[Domains] setMoltDomain error:", err.message));
+        }
+      } else {
+        try {
+          const { tokenId, txHash } = await registerDomainOnChain(name, tld, wallet, free ? 0 : pricePaid);
+          onChainTokenId = tokenId;
+          onChainTxHash = txHash;
+        } catch (err: any) {
+          console.error("[Domains] on-chain register failed:", err.message);
+        }
+      }
+
+      const record = await storage.createMoltDomain({
+        name,
+        tld,
+        agentId: resolvedAgent?.id || null,
+        walletAddress: wallet.toLowerCase(),
+        expiresAt,
+        status: "ACTIVE",
+        pricePaid: free ? 0 : pricePaid,
+        onChainTokenId,
+        onChainTxHash,
+        foundingMoltNumber: null,
+      });
+
+      if (tld === ".molt" && resolvedAgent) {
+        await storage.updateAgent(resolvedAgent.id, { moltDomain: `${name}.molt` });
+      }
+
+      const fullDomain = `${name}${tld}`;
+      res.json({
+        success: true,
+        domain: name,
+        tld,
+        fullDomain,
+        free,
+        pricePaid: free ? 0 : pricePaid,
+        expiresAt,
+        onChainTokenId,
+        onChainTxHash,
+        basescanUrl: onChainTxHash
+          ? `https://sepolia.basescan.org/tx/${onChainTxHash}`
+          : tld === ".molt" && resolvedAgent?.erc8004TokenId
+            ? `https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4`
+            : null,
+        registryAddress: tld !== ".molt" ? REGISTRY_ADDRESS : "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
+        record,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/domains/search", async (req, res) => {
+    try {
+      const q = String(req.query.q || "").toLowerCase().trim();
+      const tld = req.query.tld ? String(req.query.tld) : undefined;
+      if (!q || q.length < 2) return res.json({ results: [] });
+      const results = await storage.searchDomains(q, tld);
+      res.json({ results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/domains/browse", async (req, res) => {
+    try {
+      const tld = req.query.tld ? String(req.query.tld) : undefined;
+      const all = await storage.getAllDomainsByTld(tld);
+      res.json({ domains: all, total: all.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/domains/wallet/:address", async (req, res) => {
+    try {
+      const address = req.params.address?.toLowerCase();
+      if (!address) return res.status(400).json({ message: "address required" });
+      const domains = await storage.getDomainsByWallet(address);
+      res.json({ domains, total: domains.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/domains/:fullDomain", async (req, res) => {
+    try {
+      const full = req.params.fullDomain?.toLowerCase();
+      const tldMatch = full?.match(/^(.+)(\.molt|\.claw|\.shell|\.pinch)$/);
+      if (!tldMatch) return res.status(400).json({ message: "Invalid domain format (e.g. jarvis.claw)" });
+      const [, name, tld] = tldMatch;
+      const record = await storage.getMoltDomain(name, tld);
+      if (!record || record.status !== "ACTIVE") return res.status(404).json({ message: "Domain not found" });
+      const agent = record.agentId ? await storage.getAgent(record.agentId) : null;
+      res.json({
+        domain: record,
+        agent: agent ? { id: agent.id, handle: agent.handle, fusedScore: agent.fusedScore } : null,
+        basescanUrl: record.onChainTxHash
+          ? `https://sepolia.basescan.org/tx/${record.onChainTxHash}`
+          : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

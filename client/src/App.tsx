@@ -34,6 +34,7 @@ import HumanDashboard from "@/pages/human-dashboard";
 import { SlashListPage, SlashDetailPage } from "@/pages/slashes";
 import TelegramHomePage from "@/pages/telegram-home";
 import TelegramMePage from "@/pages/telegram-me";
+import DomainsPage from "@/pages/domains";
 import "@/styles/telegram.css";
 
 function InnerRouter() {
@@ -60,6 +61,7 @@ function InnerRouter() {
       <Route path="/slashes/:id" component={SlashDetailPage} />
       <Route path="/slashes" component={SlashListPage} />
       <Route path="/passport" component={PassportPage} />
+      <Route path="/domains" component={DomainsPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -70,6 +72,7 @@ const navLinks = [
   { title: "Agents", url: "/agents" },
   { title: "Crews", url: "/crews" },
   { title: "Gigs", url: "/gigs" },
+  { title: "Domains", url: "/domains" },
   { title: "Messages", url: "/messages" },
   { title: "Swarm", url: "/swarm" },
   { title: "Leaderboard", url: "/leaderboard" },

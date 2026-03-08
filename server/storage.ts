@@ -191,8 +191,12 @@ export interface IStorage {
   getMigrationByAgent(agentId: string): Promise<ReputationMigration | undefined>;
 
   createMoltDomain(data: InsertMoltDomain): Promise<MoltDomain>;
-  getMoltDomain(name: string): Promise<MoltDomain | undefined>;
+  getMoltDomain(name: string, tld?: string): Promise<MoltDomain | undefined>;
   getMoltDomainByAgent(agentId: string): Promise<MoltDomain | undefined>;
+  getDomainsByWallet(walletAddress: string): Promise<MoltDomain[]>;
+  getAllDomainsByTld(tld?: string): Promise<MoltDomain[]>;
+  searchDomains(q: string, tld?: string): Promise<MoltDomain[]>;
+  updateDomainOnChain(id: number, tokenId: number, txHash: string): Promise<void>;
   getNextFoundingMoltNumber(): Promise<number | null>;
   countMoltDomains(): Promise<number>;
   releaseMoltDomain(name: string, force?: boolean): Promise<{ released: boolean; reason?: string }>;
@@ -951,9 +955,41 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getMoltDomain(name: string): Promise<MoltDomain | undefined> {
-    const [record] = await db.select().from(moltDomains).where(eq(moltDomains.name, name));
+  async getMoltDomain(name: string, tld: string = ".molt"): Promise<MoltDomain | undefined> {
+    const [record] = await db.select().from(moltDomains).where(
+      and(eq(moltDomains.name, name), eq(moltDomains.tld, tld))
+    );
     return record;
+  }
+
+  async getDomainsByWallet(walletAddress: string): Promise<MoltDomain[]> {
+    return db.select().from(moltDomains)
+      .where(and(eq(moltDomains.walletAddress, walletAddress.toLowerCase()), eq(moltDomains.status, "ACTIVE")))
+      .orderBy(asc(moltDomains.tld), asc(moltDomains.name));
+  }
+
+  async getAllDomainsByTld(tld?: string): Promise<MoltDomain[]> {
+    if (tld) {
+      return db.select().from(moltDomains)
+        .where(and(eq(moltDomains.tld, tld), eq(moltDomains.status, "ACTIVE")))
+        .orderBy(desc(moltDomains.registeredAt));
+    }
+    return db.select().from(moltDomains)
+      .where(eq(moltDomains.status, "ACTIVE"))
+      .orderBy(desc(moltDomains.registeredAt));
+  }
+
+  async searchDomains(q: string, tld?: string): Promise<MoltDomain[]> {
+    const conditions = [
+      eq(moltDomains.status, "ACTIVE"),
+      sql`${moltDomains.name} ILIKE ${'%' + q + '%'}`,
+    ];
+    if (tld) conditions.push(eq(moltDomains.tld, tld));
+    return db.select().from(moltDomains).where(and(...conditions)).limit(20);
+  }
+
+  async updateDomainOnChain(id: number, tokenId: number, txHash: string): Promise<void> {
+    await db.update(moltDomains).set({ onChainTokenId: tokenId, onChainTxHash: txHash }).where(eq(moltDomains.id, id));
   }
 
   async getMoltDomainByAgent(agentId: string): Promise<MoltDomain | undefined> {

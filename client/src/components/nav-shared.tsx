@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useWalletContext } from "@/context/wallet-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { WalletConnectModal } from "@/components/wallet-modal";
 
 export function timeAgo(date: string | null | undefined): string {
   if (!date) return "";
@@ -190,7 +191,7 @@ export function NotificationBell() {
 }
 
 export function WalletButton() {
-  const { wallet, connect, disconnect, isConnecting, isConnected, shortAddress } = useWalletContext();
+  const { wallet, connect, disconnect, isConnecting, isConnected, shortAddress, modalState, modalError, closeModal } = useWalletContext();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -208,16 +209,26 @@ export function WalletButton() {
 
   if (!isConnected) {
     return (
-      <button
-        onClick={connect}
-        disabled={isConnecting}
-        className="hidden sm:inline-flex items-center gap-2 px-4 py-1.5 text-[11px] uppercase tracking-wider rounded-sm font-display transition-colors hover:border-[var(--claw-orange)]"
-        style={{ color: "var(--shell-white)", border: "1px solid rgba(200, 57, 26, 0.4)", background: "transparent" }}
-        data-testid="button-connect-wallet"
-      >
-        <Wallet className="w-3 h-3" />
-        {isConnecting ? "Connecting…" : "Connect Wallet"}
-      </button>
+      <>
+        <button
+          onClick={connect}
+          disabled={isConnecting}
+          className="hidden sm:inline-flex items-center gap-2 px-4 py-1.5 text-[11px] uppercase tracking-wider rounded-sm font-display transition-colors hover:border-[var(--claw-orange)]"
+          style={{ color: "var(--shell-white)", border: "1px solid rgba(200, 57, 26, 0.4)", background: "transparent" }}
+          data-testid="button-connect-wallet"
+        >
+          <Wallet className="w-3 h-3" />
+          {isConnecting ? "Connecting…" : "Connect Wallet"}
+        </button>
+        {modalState && (
+          <WalletConnectModal
+            state={modalState}
+            errorMessage={modalError}
+            onClose={closeModal}
+            onRetry={connect}
+          />
+        )}
+      </>
     );
   }
 
@@ -276,7 +287,7 @@ export function MobileWalletSection({
 }: {
   onClose: () => void;
 }) {
-  const { isConnected, shortAddress, connect, disconnect, wallet } = useWalletContext();
+  const { isConnected, shortAddress, connect, disconnect, wallet, modalState, modalError, closeModal } = useWalletContext();
   const [, navigate] = useLocation();
 
   if (isConnected) {

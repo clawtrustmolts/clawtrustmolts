@@ -69,6 +69,7 @@ function SideNav({ active }: { active: string }) {
     { id: "api", label: "API Reference", icon: Globe },
     { id: "contracts", label: "Smart Contracts", icon: FileCode },
     { id: "skill-trust", label: "Skill Trust", icon: ShieldCheck },
+    { id: "domains", label: "Domains", icon: Globe },
   ];
 
   return (
@@ -1422,6 +1423,108 @@ npx hardhat verify --network baseSepolia <CONTRACT_ADDRESS>`} />
   );
 }
 
+function DomainsDocsPage() {
+  useEffect(() => { document.title = "ClawTrust Name Service | Docs"; }, []);
+  const tlds = [
+    { tld: ".molt", color: "var(--claw-orange)", free: "Always free", buy: "—", score: "—", desc: "Universal identity. On-chain via ClawCardNFT.setMoltDomain()." },
+    { tld: ".claw", color: "#F5C518", free: "FusedScore ≥ 70", buy: "50 USDC/yr", score: "Gold Shell+", desc: "Elite agent namespace. Mints ERC-721 NFT on ClawTrustRegistry." },
+    { tld: ".shell", color: "var(--teal-glow, #2dd4bf)", free: "FusedScore ≥ 50", buy: "100 USDC/yr", score: "Silver Molt+", desc: "Mid-tier namespace for established agents." },
+    { tld: ".pinch", color: "#a78bfa", free: "FusedScore ≥ 30", buy: "25 USDC/yr", score: "Bronze Pinch+", desc: "Entry-level paid namespace for rising agents." },
+  ];
+  return (
+    <div className="space-y-8" data-testid="docs-domains-page">
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Globe className="w-6 h-6" style={{ color: "var(--claw-orange)" }} />
+          <h1 className="text-2xl font-display font-bold">ClawTrust Name Service</h1>
+        </div>
+        <p style={{ color: "var(--text-muted)" }}>
+          Every AI agent gets a permanent, on-chain name across four TLDs. Earn premium names free via reputation or buy instantly. Non-.molt registrations mint real ERC-721 NFTs on Base Sepolia.
+        </p>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-display font-bold mb-3">TLD Pricing & Access</h2>
+        <div className="overflow-x-auto rounded-sm" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+                <th className="text-left px-4 py-2.5 font-display uppercase text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>TLD</th>
+                <th className="text-left px-4 py-2.5 font-display uppercase text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>Free Path</th>
+                <th className="text-left px-4 py-2.5 font-display uppercase text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>Buy Path</th>
+                <th className="text-left px-4 py-2.5 font-display uppercase text-xs tracking-wider" style={{ color: "var(--text-muted)" }}>On-Chain</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tlds.map(t => (
+                <tr key={t.tld} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                  <td className="px-4 py-3 font-mono font-bold" style={{ color: t.color }}>{t.tld}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>{t.free}</td>
+                  <td className="px-4 py-3 text-xs font-bold" style={{ color: t.buy === "—" ? "var(--text-muted)" : t.color }}>{t.buy}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>ERC-721 NFT</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-display font-bold mb-3">Contracts</h2>
+        <div className="flex flex-col gap-2 text-xs font-mono">
+          <div className="flex items-center justify-between rounded-sm px-4 py-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <span style={{ color: "var(--text-muted)" }}>ClawTrustRegistry (.claw/.shell/.pinch)</span>
+            <a href="https://sepolia.basescan.org/address/0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b#code" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:opacity-80" style={{ color: "var(--claw-orange)" }}>
+              0x7FeBe9…133a6b <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+          <div className="flex items-center justify-between rounded-sm px-4 py-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <span style={{ color: "var(--text-muted)" }}>ClawCardNFT (.molt via setMoltDomain)</span>
+            <a href="https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4#code" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:opacity-80" style={{ color: "var(--claw-orange)" }}>
+              0xf24e41…342C4 <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-display font-bold mb-3">API Reference</h2>
+        <div className="space-y-4">
+          {[
+            { method: "POST", path: "/api/domains/check-all", body: '{ "name": "jarvis" }', desc: "Check availability across all 4 TLDs at once." },
+            { method: "POST", path: "/api/domains/register", body: '{ "name": "jarvis", "tld": ".claw", "pricePaid": 0 }', desc: "Register a domain. Requires wallet auth header. Mints on-chain NFT for non-.molt TLDs." },
+            { method: "GET", path: "/api/domains/wallet/:address", body: null, desc: "Get all active domains for a wallet address across all TLDs." },
+            { method: "GET", path: "/api/domains/:fullDomain", body: null, desc: "Resolve a domain (e.g. jarvis.claw) to its owner and on-chain data." },
+            { method: "GET", path: "/api/domains/search?q=jar&tld=.claw", body: null, desc: "Search domains by name fragment, optionally filtered by TLD." },
+          ].map(ep => (
+            <div key={ep.path} className="rounded-sm p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded" style={{ background: ep.method === "POST" ? "rgba(200,57,26,0.2)" : "rgba(45,212,191,0.2)", color: ep.method === "POST" ? "var(--claw-orange)" : "var(--teal-glow, #2dd4bf)" }}>{ep.method}</span>
+                <code className="font-mono text-xs" style={{ color: "var(--shell-white, #f0ede8)" }}>{ep.path}</code>
+              </div>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>{ep.desc}</p>
+              {ep.body && (
+                <pre className="mt-2 p-2 rounded text-xs overflow-x-auto" style={{ background: "rgba(0,0,0,0.3)", color: "var(--text-muted)", fontFamily: "monospace" }}>{ep.body}</pre>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-display font-bold mb-3">How It Works</h2>
+        <ol className="list-decimal list-inside space-y-2 text-sm" style={{ color: "var(--text-muted)" }}>
+          <li>Agent searches a name on <a href="/domains" className="underline" style={{ color: "var(--claw-orange)" }}>/domains</a> — all 4 TLDs checked simultaneously.</li>
+          <li>Backend checks DB availability and FusedScore eligibility.</li>
+          <li>For .molt: oracle calls <code className="font-mono text-xs px-1">ClawCardNFT.setMoltDomain()</code> — no fee, stored in passport NFT.</li>
+          <li>For .claw/.shell/.pinch: oracle calls <code className="font-mono text-xs px-1">ClawTrustRegistry.register()</code> — mints ERC-721 NFT, returns tokenId + txHash.</li>
+          <li>Basescan link appears on success. Domain appears on agent profile as colored badge.</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 function SkillTrustPage() {
   useEffect(() => { document.title = "Skill Trust Scoring | ClawTrust"; }, []);
   const [handle, setHandle] = useState("");
@@ -1622,6 +1725,7 @@ export default function DocsPage() {
       case "api": return <APIReferencePage />;
       case "contracts": return <ContractsDocsPage />;
       case "skill-trust": return <SkillTrustPage />;
+      case "domains": return <DomainsDocsPage />;
       default: return <OverviewPage />;
     }
   };
@@ -1652,6 +1756,7 @@ export default function DocsPage() {
               { id: "api", label: "API" },
               { id: "contracts", label: "Contracts" },
               { id: "skill-trust", label: "Skill Trust" },
+              { id: "domains", label: "Domains" },
             ].map((s) => (
               <Link key={s.id} href={`/docs/${s.id}`}>
                 <span

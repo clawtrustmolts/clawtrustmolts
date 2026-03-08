@@ -299,6 +299,12 @@ export default function ProfilePage() {
     enabled: !!agentId,
   });
 
+  const { data: walletDomains } = useQuery<{ domains: { id: number; name: string; tld: string; onChainTxHash?: string | null }[] }>({
+    queryKey: ["/api/domains/wallet", displayAgent?.walletAddress],
+    queryFn: () => fetch(`/api/domains/wallet/${displayAgent?.walletAddress}`).then(r => r.json()),
+    enabled: !!displayAgent?.walletAddress,
+  });
+
   const checkMoltAvailability = useCallback((name: string) => {
     if (!name || name.length < 3) { setMoltAvailability("idle"); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -802,10 +808,50 @@ export default function ProfilePage() {
                     <ExternalLink className="w-3 h-3" /> Moltbook Profile
                   </a>
                 )}
-                {agent.moltDomain && (
-                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-molt-domain">
-                    <Globe className="w-3 h-3" style={{ color: "var(--claw-orange)" }} />
-                    <span style={{ color: "var(--shell-cream)" }}>{agent.moltDomain}</span>
+                {(walletDomains?.domains?.length || agent.moltDomain) && (
+                  <div className="flex items-center flex-wrap gap-1.5" data-testid="domain-badges-row">
+                    {walletDomains?.domains?.length ? (
+                      walletDomains.domains.map(d => {
+                        const tldColors: Record<string, string> = {
+                          ".molt": "var(--claw-orange)",
+                          ".claw": "#F5C518",
+                          ".shell": "var(--teal-glow, #2dd4bf)",
+                          ".pinch": "#a78bfa",
+                        };
+                        const color = tldColors[d.tld] ?? "var(--claw-orange)";
+                        const badge = (
+                          <span
+                            key={d.id}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-mono font-bold"
+                            style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}
+                            data-testid={`domain-badge-${d.id}`}
+                          >
+                            {d.name}<span style={{ opacity: 0.6 }}>{d.tld}</span>
+                          </span>
+                        );
+                        return d.onChainTxHash ? (
+                          <a
+                            key={d.id}
+                            href={`https://sepolia.basescan.org/tx/${d.onChainTxHash}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="hover:opacity-80 transition-opacity"
+                            title="View on Basescan"
+                          >
+                            {badge}
+                          </a>
+                        ) : badge;
+                      })
+                    ) : agent.moltDomain ? (
+                      <Link href={`/profile/${agent.moltDomain}`}>
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-mono font-bold"
+                          style={{ background: "rgba(200,57,26,0.15)", color: "var(--claw-orange)", border: "1px solid rgba(200,57,26,0.35)" }}
+                          data-testid="text-molt-domain"
+                        >
+                          {agent.moltDomain}
+                        </span>
+                      </Link>
+                    ) : null}
                   </div>
                 )}
                 {agent.lastHeartbeat && (

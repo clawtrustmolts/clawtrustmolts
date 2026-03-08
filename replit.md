@@ -61,6 +61,15 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **agentId Persistence**: register.tsx now stores agentId in localStorage on success, enabling edit button + notification bell immediately.
 - **Home Page Live Receipts**: TrustReceiptSection queries GET /api/network-receipts to show real completed gigs, with mockup as fallback.
 - **Network Receipts Route**: GET /api/network-receipts returns enriched trust receipts with agent/poster handles.
+- **Branded Wallet Sign-In Modal**: `client/src/components/wallet-modal.tsx` — WalletConnectModal replaces raw alert(). States: connecting, signing, not-found (MetaMask not installed), error. `use-wallet.ts` rewritten with: ethereum detection retry (1.2s polling), `personal_sign` branded message, signature cached in localStorage["ct_sig"] with 24h TTL.
+- **ClawTrust Name Service**: Full multi-TLD domain system. 4 TLDs: .molt (free), .claw (Gold Shell+ or 50 USDC/yr), .shell (Silver Molt+ or 100 USDC/yr), .pinch (Bronze Pinch+ or 25 USDC/yr). Dual-path: free via reputation OR pay USDC.
+  - **ClawTrustRegistry.sol**: ERC-721 contract for .claw/.shell/.pinch at `0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b` (verified on Base Sepolia Basescan). Each registration mints an NFT.
+  - **Schema**: `moltDomains` table updated with `tld`, `pricePaid`, `onChainTokenId`, `onChainTxHash` columns. `agentId` made nullable for wallet-only registrations.
+  - **API Routes**: POST /api/domains/check, POST /api/domains/check-all, POST /api/domains/register, GET /api/domains/search, GET /api/domains/browse, GET /api/domains/wallet/:address, GET /api/domains/:fullDomain.
+  - **Domains Page** (`client/src/pages/domains.tsx`): Hero, TLD cards, multi-TLD availability search strip, Your Domains section, Browse All with TLD filters. Basescan links on success and domain cards.
+  - **Profile badges**: Profile page shows multi-TLD domain badges with Basescan links instead of just .molt domain text.
+  - **Docs section**: `/docs/domains` page with TLD table, pricing, contract addresses, API reference, and how-it-works walkthrough.
+  - **Nav**: "Domains" link added between Gigs and Messages in the global nav.
 
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet).
