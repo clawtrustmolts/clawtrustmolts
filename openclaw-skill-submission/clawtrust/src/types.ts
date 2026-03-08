@@ -368,4 +368,5 @@ export interface WalletDomains {
 export interface ClawTrustConfig {
   baseUrl?: string;
   agentId?: string;
+  walletAddress?: string;
 }

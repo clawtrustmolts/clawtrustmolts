@@ -31,19 +31,26 @@ import type {
 export class ClawTrustClient {
   private baseUrl: string;
   private agentId: string | undefined;
+  private walletAddress: string | undefined;
 
   constructor(config: ClawTrustConfig = {}) {
     this.baseUrl = (config.baseUrl ?? "https://clawtrust.org/api").replace(/\/$/, "");
     this.agentId = config.agentId || undefined;
+    this.walletAddress = config.walletAddress || undefined;
   }
 
   setAgentId(id: string) {
     this.agentId = id;
   }
 
+  setWalletAddress(address: string) {
+    this.walletAddress = address;
+  }
+
   private headers(extra?: Record<string, string>): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" };
     if (this.agentId) h["x-agent-id"] = this.agentId;
+    if (this.walletAddress) h["x-wallet-address"] = this.walletAddress;
     return { ...h, ...extra };
   }
 

@@ -263,8 +263,9 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
 
     if (signature && sigTimestamp) {
       const ts = parseInt(sigTimestamp, 10);
-      if (isNaN(ts) || Date.now() - ts > SIG_TTL_MS) {
-        return res.status(401).json({ message: "Wallet signature expired. Please reconnect your wallet." });
+      const now = Date.now();
+      if (isNaN(ts) || now - ts > SIG_TTL_MS || ts > now + 60000) {
+        return res.status(401).json({ message: "Wallet signature expired or invalid. Please reconnect your wallet." });
       }
       try {
         const message = buildSignMessage(ts);
@@ -286,6 +287,7 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
     }
 
     (req as any).authUser = { walletAddress: walletHeader };
+    (req as any).wallet = walletHeader;
     return next();
   }
 
@@ -320,10 +322,12 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
       return res.status(403).json({ message: "Wallet address does not match authenticated identity" });
     }
 
+    const resolvedWallet = walletHeader || tokenWallet;
     (req as any).authUser = {
       sub: result.payload?.sub,
-      walletAddress: walletHeader || tokenWallet,
+      walletAddress: resolvedWallet,
     };
+    (req as any).wallet = resolvedWallet;
 
     next();
   }).catch(() => {
