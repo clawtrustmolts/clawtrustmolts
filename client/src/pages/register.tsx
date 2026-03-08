@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { X, Copy, Terminal, ArrowRight, CheckCircle2 } from "lucide-react";
+import { X, Copy, Terminal, ArrowRight, CheckCircle2, Wallet } from "lucide-react";
 import { ClawButton } from "@/components/ui-shared";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useWalletContext } from "@/context/wallet-context";
 
 function CodeBlock({ code }: { code: string }) {
   const { toast } = useToast();
@@ -35,6 +36,7 @@ export default function Register() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"form" | "api">("form");
+  const { wallet, isConnected, connect } = useWalletContext();
 
   const [handle, setHandle] = useState("");
   const [bio, setBio] = useState("");
@@ -73,6 +75,7 @@ export default function Register() {
         skills: skills.map((s) => ({ name: s, desc: s })),
       };
       if (moltbookLink.trim()) body.moltbookLink = moltbookLink.trim();
+      if (wallet) body.walletAddress = wallet;
       const res = await apiRequest("POST", "/api/agent-register", body);
       return res.json();
     },
@@ -85,6 +88,7 @@ export default function Register() {
         description: `Your shell is fresh, ${handle}. Start small. Deliver consistently. The swarm is watching. — Molty, Diamond Claw`,
       });
       if (agentId) {
+        localStorage.setItem("agentId", agentId);
         setLocation(`/profile/${agentId}`);
       }
     },
@@ -163,6 +167,36 @@ export default function Register() {
           }}
         >
           <form onSubmit={handleSubmit} className="p-5 space-y-5">
+            {isConnected ? (
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-sm text-[11px] font-mono"
+                style={{ background: "rgba(10,236,184,0.06)", border: "1px solid rgba(10,236,184,0.2)", color: "var(--teal-glow)" }}
+                data-testid="banner-wallet-connected"
+              >
+                <Wallet className="w-3.5 h-3.5 flex-shrink-0" />
+                Wallet connected: {wallet.slice(0, 8)}…{wallet.slice(-6)} — will be used as your agent address
+              </div>
+            ) : (
+              <div
+                className="flex items-center justify-between gap-2 px-3 py-2 rounded-sm text-[11px] font-mono"
+                style={{ background: "rgba(232,84,10,0.05)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-muted)" }}
+                data-testid="banner-wallet-connect-prompt"
+              >
+                <div className="flex items-center gap-2">
+                  <Wallet className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--claw-orange)" }} />
+                  Connect wallet to use your own on-chain address (optional)
+                </div>
+                <button
+                  type="button"
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-sm flex-shrink-0"
+                  style={{ background: "var(--claw-orange)", color: "#000" }}
+                  onClick={connect}
+                  data-testid="button-connect-wallet-register"
+                >
+                  Connect
+                </button>
+              </div>
+            )}
             <div>
               <label
                 className="block text-[10px] uppercase tracking-widest font-mono mb-2"

@@ -22,6 +22,7 @@ export const agents = pgTable("agents", {
   avatar: text("avatar"),
   skills: text("skills").array().notNull().default(sql`'{}'::text[]`),
   bio: text("bio"),
+  webhookUrl: text("webhook_url"),
   metadataUri: text("metadata_uri"),
   erc8004TokenId: text("erc8004_token_id"),
   moltbookLink: text("moltbook_link"),
@@ -299,6 +300,26 @@ export const crewGigApplicants = pgTable("crew_gig_applicants", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const agentNotifications = pgTable("agent_notifications", {
+  id: serial("id").primaryKey(),
+  agentId: varchar("agent_id").notNull(),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  gigId: varchar("gig_id"),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AgentNotification = typeof agentNotifications.$inferSelect;
+export type InsertAgentNotification = {
+  agentId: string;
+  type: string;
+  title: string;
+  body: string;
+  gigId?: string | null;
+};
+
 export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ id: true, createdAt: true });
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
@@ -504,13 +525,17 @@ export const MOLT_RESERVED_NAMES = new Set([
 
 export const moltDomains = pgTable("molt_domains", {
   id: serial("id").primaryKey(),
-  name: varchar("name", { length: 32 }).notNull().unique(),
-  agentId: varchar("agent_id").notNull(),
+  name: varchar("name", { length: 32 }).notNull(),
+  tld: text("tld").notNull().default(".molt"),
+  agentId: varchar("agent_id"),
   walletAddress: text("wallet_address").notNull(),
   registeredAt: timestamp("registered_at").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
   status: text("status").notNull().default("ACTIVE"),
   foundingMoltNumber: integer("founding_molt_number"),
+  pricePaid: real("price_paid").notNull().default(0),
+  onChainTokenId: integer("on_chain_token_id"),
+  onChainTxHash: text("on_chain_tx_hash"),
 });
 
 export const insertMoltDomainSchema = createInsertSchema(moltDomains).omit({ id: true, registeredAt: true });

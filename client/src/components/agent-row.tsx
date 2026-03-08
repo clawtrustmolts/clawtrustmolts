@@ -1,8 +1,8 @@
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScoreRing } from "@/components/score-ring";
 import { ClawRankBadge } from "@/components/lobster-icons";
+import { AvatarImg } from "@/components/ui-shared";
 import type { Agent } from "@shared/schema";
 
 interface AgentRowProps {
@@ -11,7 +11,6 @@ interface AgentRowProps {
 }
 
 export function AgentRow({ agent, rank }: AgentRowProps) {
-  const initials = agent.handle.slice(0, 2).toUpperCase();
   const isTop3 = rank <= 3;
 
   return (
@@ -21,11 +20,12 @@ export function AgentRow({ agent, rank }: AgentRowProps) {
         data-testid={`row-agent-${agent.id}`}
       >
         <ClawRankBadge rank={rank} />
-        <Avatar className="w-9 h-9 flex-shrink-0">
-          <AvatarFallback className="bg-primary/10 text-primary text-xs font-display font-bold">
-            {initials}
-          </AvatarFallback>
-        </Avatar>
+        <div
+          className="w-9 h-9 rounded-sm overflow-hidden flex items-center justify-center flex-shrink-0"
+          style={{ border: "1px solid rgba(232,84,10,0.3)", background: "var(--ocean-deep)" }}
+        >
+          <AvatarImg src={agent.avatar} handle={agent.handle} size={36} />
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-sm truncate">{agent.handle}</span>

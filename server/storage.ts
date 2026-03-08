@@ -4,6 +4,8 @@ import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements, x402Payments,
+  agentNotifications,
+  type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
   type ReputationEvent, type InsertReputationEvent,
@@ -189,8 +191,12 @@ export interface IStorage {
   getMigrationByAgent(agentId: string): Promise<ReputationMigration | undefined>;
 
   createMoltDomain(data: InsertMoltDomain): Promise<MoltDomain>;
-  getMoltDomain(name: string): Promise<MoltDomain | undefined>;
+  getMoltDomain(name: string, tld?: string): Promise<MoltDomain | undefined>;
   getMoltDomainByAgent(agentId: string): Promise<MoltDomain | undefined>;
+  getDomainsByWallet(walletAddress: string): Promise<MoltDomain[]>;
+  getAllDomainsByTld(tld?: string): Promise<MoltDomain[]>;
+  searchDomains(q: string, tld?: string): Promise<MoltDomain[]>;
+  updateDomainOnChain(id: number, tokenId: number, txHash: string): Promise<void>;
   getNextFoundingMoltNumber(): Promise<number | null>;
   countMoltDomains(): Promise<number>;
   releaseMoltDomain(name: string, force?: boolean): Promise<{ released: boolean; reason?: string }>;
@@ -200,6 +206,12 @@ export interface IStorage {
   getPendingBlockchainActions(limit: number): Promise<BlockchainAction[]>;
   updateBlockchainAction(id: number, data: Partial<BlockchainAction>): Promise<void>;
   getBlockchainQueueItems(): Promise<BlockchainAction[]>;
+
+  createNotification(data: InsertAgentNotification): Promise<AgentNotification>;
+  getNotificationsForAgent(agentId: string, limit?: number): Promise<AgentNotification[]>;
+  getUnreadNotificationCount(agentId: string): Promise<number>;
+  markNotificationRead(id: number): Promise<void>;
+  markAllNotificationsRead(agentId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -943,9 +955,41 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getMoltDomain(name: string): Promise<MoltDomain | undefined> {
-    const [record] = await db.select().from(moltDomains).where(eq(moltDomains.name, name));
+  async getMoltDomain(name: string, tld: string = ".molt"): Promise<MoltDomain | undefined> {
+    const [record] = await db.select().from(moltDomains).where(
+      and(eq(moltDomains.name, name), eq(moltDomains.tld, tld))
+    );
     return record;
+  }
+
+  async getDomainsByWallet(walletAddress: string): Promise<MoltDomain[]> {
+    return db.select().from(moltDomains)
+      .where(and(eq(moltDomains.walletAddress, walletAddress.toLowerCase()), eq(moltDomains.status, "ACTIVE")))
+      .orderBy(asc(moltDomains.tld), asc(moltDomains.name));
+  }
+
+  async getAllDomainsByTld(tld?: string): Promise<MoltDomain[]> {
+    if (tld) {
+      return db.select().from(moltDomains)
+        .where(and(eq(moltDomains.tld, tld), eq(moltDomains.status, "ACTIVE")))
+        .orderBy(desc(moltDomains.registeredAt));
+    }
+    return db.select().from(moltDomains)
+      .where(eq(moltDomains.status, "ACTIVE"))
+      .orderBy(desc(moltDomains.registeredAt));
+  }
+
+  async searchDomains(q: string, tld?: string): Promise<MoltDomain[]> {
+    const conditions = [
+      eq(moltDomains.status, "ACTIVE"),
+      sql`${moltDomains.name} ILIKE ${'%' + q + '%'}`,
+    ];
+    if (tld) conditions.push(eq(moltDomains.tld, tld));
+    return db.select().from(moltDomains).where(and(...conditions)).limit(20);
+  }
+
+  async updateDomainOnChain(id: number, tokenId: number, txHash: string): Promise<void> {
+    await db.update(moltDomains).set({ onChainTokenId: tokenId, onChainTxHash: txHash }).where(eq(moltDomains.id, id));
   }
 
   async getMoltDomainByAgent(agentId: string): Promise<MoltDomain | undefined> {
@@ -1024,6 +1068,38 @@ export class DatabaseStorage implements IStorage {
   }
   async getBlockchainQueueItems(): Promise<BlockchainAction[]> {
     return db.select().from(blockchainActionQueue).orderBy(desc(blockchainActionQueue.createdAt)).limit(100);
+  }
+
+  async createNotification(data: InsertAgentNotification): Promise<AgentNotification> {
+    const [row] = await db.insert(agentNotifications).values({
+      agentId: data.agentId,
+      type: data.type,
+      title: data.title,
+      body: data.body,
+      gigId: data.gigId || null,
+    }).returning();
+    return row;
+  }
+
+  async getNotificationsForAgent(agentId: string, limit = 50): Promise<AgentNotification[]> {
+    return db.select().from(agentNotifications)
+      .where(eq(agentNotifications.agentId, agentId))
+      .orderBy(desc(agentNotifications.createdAt))
+      .limit(limit);
+  }
+
+  async getUnreadNotificationCount(agentId: string): Promise<number> {
+    const [row] = await db.select({ cnt: count() }).from(agentNotifications)
+      .where(and(eq(agentNotifications.agentId, agentId), eq(agentNotifications.read, false)));
+    return row?.cnt ?? 0;
+  }
+
+  async markNotificationRead(id: number): Promise<void> {
+    await db.update(agentNotifications).set({ read: true }).where(eq(agentNotifications.id, id));
+  }
+
+  async markAllNotificationsRead(agentId: string): Promise<void> {
+    await db.update(agentNotifications).set({ read: true }).where(eq(agentNotifications.agentId, agentId));
   }
 }
 

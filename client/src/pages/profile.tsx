@@ -18,6 +18,7 @@ import {
   timeAgo,
   ChainBadge,
   AgentMiniCard,
+  AgentAvatar,
 } from "@/components/ui-shared";
 import {
   Shield,
@@ -45,6 +46,9 @@ import {
   X as XIcon,
   Loader2,
   Share2,
+  Pencil,
+  HelpCircle,
+  CheckCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -71,6 +75,15 @@ interface RepData {
     weights: { onChain: number; moltbook: number; performance: number; bondReliability: number };
     tier: string;
     badges: string[];
+  };
+  liveFusion?: {
+    fusedScore: number;
+    onChainAvg: number;
+    moltWeight: number;
+    performanceNormalized: number;
+    bondReliabilityNormalized: number;
+    weights: { onChain: number; moltbook: number; performance: number; bondReliability: number };
+    source: string;
   };
   events: ReputationEvent[];
   erc8004: {
@@ -231,6 +244,34 @@ export default function ProfilePage() {
   const [claimedFoundingNumber, setClaimedFoundingNumber] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editBio, setEditBio] = useState("");
+  const [editSkills, setEditSkills] = useState<string[]>([]);
+  const [editSkillInput, setEditSkillInput] = useState("");
+  const [editAvatar, setEditAvatar] = useState("");
+  const [editMoltbookLink, setEditMoltbookLink] = useState("");
+
+  const myAgentId = localStorage.getItem("agentId");
+
+  const editProfileMutation = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = { bio: editBio, skills: editSkills };
+      if (editAvatar.startsWith("https://")) payload.avatar = editAvatar;
+      else if (editAvatar === "") payload.avatar = null;
+      if (editMoltbookLink) payload.moltbookLink = editMoltbookLink;
+      const res = await apiRequest("PATCH", `/api/agents/${agentId}`, payload, { "x-agent-id": myAgentId || "" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId] });
+      setShowEditModal(false);
+      toast({ title: "Profile updated", description: "Your changes have been saved." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const { data: moltAgent, isLoading: moltLoading, isError: moltError } = useQuery<Agent>({
     queryKey: ["/api/agents/by-molt", moltName],
     queryFn: async () => {
@@ -256,6 +297,12 @@ export default function ProfilePage() {
   const { data: moltInfo } = useQuery<{ moltDomain: string | null; record: { foundingMoltNumber: number | null } | null }>({
     queryKey: ["/api/agents", agentId, "molt-info"],
     enabled: !!agentId,
+  });
+
+  const { data: walletDomains } = useQuery<{ domains: { id: number; name: string; tld: string; onChainTxHash?: string | null }[] }>({
+    queryKey: ["/api/domains/wallet", displayAgent?.walletAddress],
+    queryFn: () => fetch(`/api/domains/wallet/${displayAgent?.walletAddress}`).then(r => r.json()),
+    enabled: !!displayAgent?.walletAddress,
   });
 
   const checkMoltAvailability = useCallback((name: string) => {
@@ -366,6 +413,11 @@ export default function ProfilePage() {
   const { data: migrationData } = useQuery<{ migration: ReputationMigration | null }>({
     queryKey: ["/api/agents", agentId, "migration-status"],
     enabled: !!agentId,
+  });
+
+  const { data: proofReceipts } = useQuery<any[]>({
+    queryKey: ["/api/trust-receipts/agent", agentId],
+    enabled: !!agentId && activeTab === "overview",
   });
 
   if (isAgentLoading) {
@@ -517,12 +569,25 @@ export default function ProfilePage() {
 
             <div className="p-5 space-y-4">
               <div className="flex justify-between items-start">
-                <div
-                  className="w-20 h-20 rounded-sm flex items-center justify-center text-4xl"
-                  style={{ border: "3px solid var(--claw-orange)", background: "var(--ocean-deep)" }}
-                  data-testid="img-avatar"
-                >
-                  {agent.avatar || "🦞"}
+                <div className="relative">
+                  <AgentAvatar agent={agent} size={80} className="rounded-sm" data-testid="img-avatar" />
+                  {myAgentId === agent.id && (
+                    <button
+                      onClick={() => {
+                        setEditBio((agent as any).bio || "");
+                        setEditSkills((agent as any).skills || []);
+                        setEditAvatar((agent as any).avatar || "");
+                        setEditMoltbookLink((agent as any).moltbookLink || "");
+                        setShowEditModal(true);
+                      }}
+                      className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center transition-colors hover:opacity-80"
+                      style={{ background: "var(--claw-orange)", border: "2px solid var(--ocean-mid)" }}
+                      data-testid="button-edit-profile"
+                      title="Edit profile"
+                    >
+                      <Pencil className="w-3 h-3 text-white" />
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
                   {agent.isVerified && (
@@ -643,9 +708,7 @@ export default function ProfilePage() {
                 </Link>
               </div>
 
-              <div className="flex justify-center">
-                <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
-              </div>
+              <FusedScoreBlock agent={agent} breakdown={breakdown} />
 
               <div className="space-y-2.5" data-testid="score-bars">
                 <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="45%" />
@@ -745,10 +808,50 @@ export default function ProfilePage() {
                     <ExternalLink className="w-3 h-3" /> Moltbook Profile
                   </a>
                 )}
-                {agent.moltDomain && (
-                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-molt-domain">
-                    <Globe className="w-3 h-3" style={{ color: "var(--claw-orange)" }} />
-                    <span style={{ color: "var(--shell-cream)" }}>{agent.moltDomain}</span>
+                {(walletDomains?.domains?.length || agent.moltDomain) && (
+                  <div className="flex items-center flex-wrap gap-1.5" data-testid="domain-badges-row">
+                    {walletDomains?.domains?.length ? (
+                      walletDomains.domains.map(d => {
+                        const tldColors: Record<string, string> = {
+                          ".molt": "var(--claw-orange)",
+                          ".claw": "#F5C518",
+                          ".shell": "var(--teal-glow, #2dd4bf)",
+                          ".pinch": "#a78bfa",
+                        };
+                        const color = tldColors[d.tld] ?? "var(--claw-orange)";
+                        const badge = (
+                          <span
+                            key={d.id}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-mono font-bold"
+                            style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}
+                            data-testid={`domain-badge-${d.id}`}
+                          >
+                            {d.name}<span style={{ opacity: 0.6 }}>{d.tld}</span>
+                          </span>
+                        );
+                        return d.onChainTxHash ? (
+                          <a
+                            key={d.id}
+                            href={`https://sepolia.basescan.org/tx/${d.onChainTxHash}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="hover:opacity-80 transition-opacity"
+                            title="View on Basescan"
+                          >
+                            {badge}
+                          </a>
+                        ) : badge;
+                      })
+                    ) : agent.moltDomain ? (
+                      <Link href={`/profile/${agent.moltDomain}`}>
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-mono font-bold"
+                          style={{ background: "rgba(200,57,26,0.15)", color: "var(--claw-orange)", border: "1px solid rgba(200,57,26,0.35)" }}
+                          data-testid="text-molt-domain"
+                        >
+                          {agent.moltDomain}
+                        </span>
+                      </Link>
+                    ) : null}
                   </div>
                 )}
                 {agent.lastHeartbeat && (
@@ -803,6 +906,14 @@ export default function ProfilePage() {
                   Hire Agent
                 </ClawButton>
               </div>
+
+              {/* PROOF OF WORK */}
+              <ProofOfWorkSection
+                agentId={agentId!}
+                receipts={proofReceipts ?? []}
+                mcpSkills={mcpSkills}
+                proofUris={repData?.events?.filter(e => e.proofUri).map(e => e.proofUri as string) ?? []}
+              />
 
               {/* .molt NAME — CLAIMED */}
               {agent.moltDomain && (
@@ -1016,6 +1127,7 @@ export default function ProfilePage() {
             <OverviewTab
               agent={agent}
               breakdown={breakdown}
+              liveFusion={repData?.liveFusion}
               events={events}
               erc8004={repData?.erc8004}
               mcpSkills={mcpSkills}
@@ -1057,6 +1169,121 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
+
+      {/* EDIT PROFILE MODAL */}
+      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+        <DialogContent
+          className="max-w-md"
+          style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.25)" }}
+          data-testid="modal-edit-profile"
+        >
+          <DialogHeader>
+            <DialogTitle className="font-display tracking-wider" style={{ color: "var(--shell-white)" }}>
+              Edit Profile
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div>
+              <label className="text-[11px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Bio</label>
+              <textarea
+                value={editBio}
+                onChange={e => setEditBio(e.target.value.slice(0, 500))}
+                maxLength={500}
+                rows={3}
+                className="w-full rounded-sm px-3 py-2 text-sm resize-none focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                placeholder="Describe your agent…"
+                data-testid="input-edit-bio"
+              />
+              <p className="text-[10px] text-right mt-0.5" style={{ color: "var(--text-muted)" }}>{editBio.length}/500</p>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Skills</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {editSkills.map(s => (
+                  <span
+                    key={s}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-mono"
+                    style={{ background: "rgba(232,84,10,0.12)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)" }}
+                  >
+                    {s}
+                    <button onClick={() => setEditSkills(editSkills.filter(x => x !== s))} className="hover:opacity-70">
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <input
+                value={editSkillInput}
+                onChange={e => setEditSkillInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && editSkillInput.trim()) {
+                    e.preventDefault();
+                    const s = editSkillInput.trim();
+                    if (!editSkills.includes(s) && editSkills.length < 20) setEditSkills([...editSkills, s]);
+                    setEditSkillInput("");
+                  }
+                }}
+                className="w-full rounded-sm px-3 py-1.5 text-sm focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                placeholder="Type a skill, press Enter to add…"
+                data-testid="input-edit-skill"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Avatar URL</label>
+              <input
+                value={editAvatar}
+                onChange={e => setEditAvatar(e.target.value)}
+                className="w-full rounded-sm px-3 py-1.5 text-sm focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                placeholder="https://example.com/avatar.png"
+                data-testid="input-edit-avatar"
+              />
+              {editAvatar.startsWith("https://") && (
+                <img
+                  src={editAvatar}
+                  alt="Avatar preview"
+                  className="w-12 h-12 rounded-sm object-cover mt-2"
+                  onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  data-testid="img-avatar-preview"
+                />
+              )}
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Moltbook Link</label>
+              <input
+                value={editMoltbookLink}
+                onChange={e => setEditMoltbookLink(e.target.value)}
+                className="w-full rounded-sm px-3 py-1.5 text-sm focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                placeholder="https://moltbook.xyz/agent/…"
+                data-testid="input-edit-moltbook-link"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => editProfileMutation.mutate()}
+                disabled={editProfileMutation.isPending}
+                className="flex-1 flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider font-display py-2 rounded-sm transition-all hover:opacity-80"
+                style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "white" }}
+                data-testid="button-save-profile"
+              >
+                {editProfileMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                Save
+              </button>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 flex items-center justify-center text-[11px] uppercase tracking-wider font-display py-2 rounded-sm transition-all hover:opacity-80"
+                style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                data-testid="button-cancel-edit"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* .molt SHARE MODAL */}
       <Dialog open={showShareModal} onOpenChange={setShowShareModal}>
@@ -1128,6 +1355,162 @@ export default function ProfilePage() {
   );
 }
 
+function ProofOfWorkSection({ agentId, receipts, mcpSkills, proofUris }: {
+  agentId: string;
+  receipts: any[];
+  mcpSkills: any[];
+  proofUris: string[];
+}) {
+  const hasContent = receipts.length > 0 || mcpSkills.some(s => s.mcpEndpoint) || proofUris.length > 0;
+
+  return (
+    <div
+      className="rounded-sm p-3 space-y-3"
+      style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
+      data-testid="section-proof-of-work"
+    >
+      <div className="flex items-center gap-2">
+        <CheckCircle className="w-3.5 h-3.5" style={{ color: "var(--teal-glow)" }} />
+        <span className="text-[10px] font-display uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+          Proof of Work
+        </span>
+      </div>
+
+      {!hasContent ? (
+        <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+          No completed gigs yet — be the first to hire this agent.
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          {receipts.slice(0, 3).map((r: any) => (
+            <Link href={r.gigId ? `/gig/${r.gigId}` : `/trust-receipt/${r.id}`} key={r.id}>
+              <div
+                className="flex items-center justify-between gap-2 p-2 rounded-sm cursor-pointer hover:opacity-80"
+                style={{ background: "rgba(10,236,184,0.05)", border: "1px solid rgba(10,236,184,0.1)" }}
+                data-testid={`proof-receipt-${r.id}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold truncate" style={{ color: "var(--shell-white)" }}>
+                    {r.gigTitle || "Completed Gig"}
+                  </p>
+                  <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    {r.amount ? `${r.amount} USDC` : ""}{r.completedAt ? ` · ${timeAgo(r.completedAt)}` : ""}
+                  </p>
+                </div>
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm flex-shrink-0"
+                  style={{
+                    background: r.swarmVerdict === "PASS" ? "rgba(10,236,184,0.1)" : "rgba(200,57,26,0.1)",
+                    color: r.swarmVerdict === "PASS" ? "var(--teal-glow)" : "var(--claw-red)",
+                  }}
+                >
+                  {r.swarmVerdict || "VERIFIED"}
+                </span>
+              </div>
+            </Link>
+          ))}
+
+          {mcpSkills.filter(s => s.mcpEndpoint).slice(0, 3).map((skill: any) => (
+            <a
+              key={skill.id}
+              href={skill.mcpEndpoint}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-2 p-2 rounded-sm hover:opacity-80"
+              style={{ background: "rgba(139,92,246,0.05)", border: "1px solid rgba(139,92,246,0.1)" }}
+              data-testid={`proof-mcp-${skill.id}`}
+            >
+              <div className="flex items-center gap-2">
+                <Server className="w-3 h-3 flex-shrink-0" style={{ color: "#a78bfa" }} />
+                <p className="text-[11px] font-semibold" style={{ color: "var(--shell-white)" }}>{skill.skillName}</p>
+              </div>
+              <span className="text-[9px] font-mono" style={{ color: "#a78bfa" }}>MCP endpoint →</span>
+            </a>
+          ))}
+
+          {proofUris.slice(0, 2).map((uri, i) => (
+            <a
+              key={i}
+              href={uri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 p-2 rounded-sm hover:opacity-80 text-[11px] font-mono"
+              style={{ background: "rgba(0,0,0,0.04)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.1)" }}
+              data-testid={`proof-uri-${i}`}
+            >
+              <ExternalLink className="w-3 h-3 flex-shrink-0" />
+              On-chain verified work
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showTooltip) return;
+    function handle(e: MouseEvent) {
+      if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) setShowTooltip(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [showTooltip]);
+
+  return (
+    <div className="flex flex-col items-center gap-1" data-testid="fused-score-block">
+      <div className="relative" ref={tooltipRef}>
+        <button
+          className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest mb-1"
+          style={{ color: "var(--text-muted)" }}
+          onClick={() => setShowTooltip(!showTooltip)}
+          data-testid="button-fused-score-info"
+          aria-label="How FusedScore is calculated"
+        >
+          FUSED SCORE
+          <HelpCircle className="w-3 h-3" style={{ color: "var(--claw-orange)" }} />
+        </button>
+
+        {showTooltip && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-50 rounded-sm p-3 w-64 shadow-lg text-left"
+            style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.3)" }}
+            data-testid="tooltip-fused-score"
+          >
+            <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--shell-white)" }}>How FusedScore works</p>
+            <p className="text-[10px] font-mono mb-2" style={{ color: "var(--claw-orange)" }}>
+              45% On-Chain + 25% Moltbook + 20% Performance + 10% Bond
+            </p>
+            <div className="space-y-1">
+              {[
+                { label: "On-Chain", desc: "Feedback scores recorded by ClawTrustRepAdapter on Base Sepolia" },
+                { label: "Moltbook", desc: "Social karma from the agent's Moltbook profile" },
+                { label: "Performance", desc: "Gigs completed on time and deliverable quality" },
+                { label: "Bond", desc: "USDC bond held vs. slashes applied" },
+              ].map(item => (
+                <div key={item.label} className="flex gap-1.5">
+                  <CheckCircle className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: "var(--teal-glow)" }} />
+                  <div>
+                    <span className="text-[10px] font-semibold" style={{ color: "var(--shell-cream)" }}>{item.label}: </span>
+                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{item.desc}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[9px] mt-2" style={{ color: "var(--text-muted)" }}>Updated hourly via on-chain oracle.</p>
+          </div>
+        )}
+      </div>
+
+      <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
+    </div>
+  );
+}
+
 function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div
@@ -1173,32 +1556,48 @@ function SectionTitle({ children, icon, color }: { children: ReactNode; icon?: R
 function OverviewTab({
   agent,
   breakdown,
+  liveFusion,
   events,
   erc8004,
   mcpSkills,
 }: {
   agent: Agent;
   breakdown?: RepData["breakdown"];
+  liveFusion?: RepData["liveFusion"];
   events: ReputationEvent[];
   erc8004?: RepData["erc8004"];
   mcpSkills: AgentSkill[];
 }) {
+  const isLive = liveFusion && liveFusion.source !== "fallback";
+  const onChainNorm = isLive ? liveFusion.onChainAvg : (breakdown?.onChainNormalized ?? 0);
+  const moltNorm = isLive ? liveFusion.moltWeight : (breakdown?.moltbookNormalized ?? 0);
+  const perfNorm = isLive ? liveFusion.performanceNormalized : (breakdown?.performanceNormalized ?? 0);
+  const bondNorm = isLive ? liveFusion.bondReliabilityNormalized : (breakdown?.bondReliabilityNormalized ?? 0);
+  const liveScore = isLive ? liveFusion.fusedScore : (breakdown?.fusedScore ?? agent.fusedScore);
+
   return (
     <div className="space-y-6">
       {/* FUSED SCORE BREAKDOWN */}
       <SectionCard testId="card-fused-breakdown">
-        <h3 className="font-display tracking-wider text-sm mb-1" style={{ color: "var(--shell-white)" }}>
-          FUSED SCORE BREAKDOWN
-        </h3>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-display tracking-wider text-sm" style={{ color: "var(--shell-white)" }}>
+            FUSED SCORE BREAKDOWN
+          </h3>
+          {isLive && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,200,100,0.1)", color: "#22c55e", border: "1px solid rgba(0,200,100,0.2)" }}>
+              LIVE
+            </span>
+          )}
+        </div>
         <p className="text-[10px] font-mono mb-5" style={{ color: "var(--text-muted)" }}>
           fusedScore = (0.45 x onChain) + (0.25 x moltbook) + (0.20 x performance) + (0.10 x bond)
         </p>
 
         <div className="flex items-center gap-4 mb-6">
-          <ScoreRing score={agent.fusedScore} size={80} strokeWidth={6} />
+          <ScoreRing score={liveScore} size={80} strokeWidth={6} />
           <div>
             <p className="text-2xl font-mono font-bold" style={{ color: "var(--shell-white)" }}>
-              {agent.fusedScore.toFixed(1)}
+              {liveScore.toFixed(1)}
             </p>
             <p className="text-[10px] font-display tracking-wider" style={{ color: "var(--text-muted)" }}>
               FUSED SCORE
@@ -1208,10 +1607,10 @@ function OverviewTab({
 
         <div className="space-y-3">
           {[
-            { label: "On-Chain", norm: breakdown?.onChainNormalized, comp: breakdown?.onChainComponent, weight: "45%" },
-            { label: "Moltbook", norm: breakdown?.moltbookNormalized, comp: breakdown?.moltbookComponent, weight: "25%" },
-            { label: "Performance", norm: breakdown?.performanceNormalized, comp: breakdown?.performanceComponent, weight: "20%" },
-            { label: "Bond Reliability", norm: breakdown?.bondReliabilityNormalized, comp: breakdown?.bondReliabilityComponent, weight: "10%" },
+            { label: "On-Chain", norm: onChainNorm, comp: isLive ? onChainNorm * 0.45 : (breakdown?.onChainComponent ?? 0), weight: "45%" },
+            { label: "Moltbook", norm: moltNorm, comp: isLive ? moltNorm * 0.25 : (breakdown?.moltbookComponent ?? 0), weight: "25%" },
+            { label: "Performance", norm: perfNorm, comp: isLive ? perfNorm * 0.20 : (breakdown?.performanceComponent ?? 0), weight: "20%" },
+            { label: "Bond Reliability", norm: bondNorm, comp: isLive ? bondNorm * 0.10 : (breakdown?.bondReliabilityComponent ?? 0), weight: "10%" },
           ].map((item) => (
             <div key={item.label}>
               <ScoreBar label={item.label} value={item.norm ?? 0} weight={item.weight} />

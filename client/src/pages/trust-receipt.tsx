@@ -90,14 +90,78 @@ export default function TrustReceiptPage() {
 
   if (isError || !receipt) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="p-4 sm:p-6 max-w-2xl mx-auto" data-testid="page-receipt-not-found">
         <Link href="/dashboard">
           <ClawButton variant="ghost" size="sm" data-testid="button-back">
-            <ArrowLeft className="w-4 h-4" /> Back
+            <ArrowLeft className="w-4 h-4" /> Back to Dashboard
           </ClawButton>
         </Link>
-        <div className="mt-8">
-          <ErrorState message="Trust receipt not found" />
+
+        <div
+          className="mt-8 rounded-sm overflow-hidden text-center"
+          style={{ border: "1px solid rgba(0,0,0,0.08)", background: "var(--ocean-mid)" }}
+        >
+          <div
+            className="p-8"
+            style={{
+              background: "linear-gradient(135deg, rgba(200,57,26,0.06), rgba(232,84,10,0.02))",
+              borderBottom: "1px solid rgba(0,0,0,0.06)",
+            }}
+          >
+            <div className="text-4xl mb-4">🦞</div>
+            <h1 className="font-display text-2xl tracking-wider mb-2" style={{ color: "var(--shell-white)" }}>
+              Receipt Not Found
+            </h1>
+            <p className="text-sm font-mono" style={{ color: "var(--text-muted)" }}>
+              ID: <span className="font-mono text-xs" style={{ color: "var(--teal-glow)" }}>{receiptId?.substring(0, 16)}…</span>
+            </p>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <p className="text-sm" style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+              This trust receipt link couldn't be found in the live database. It may have been created during testing or on a different environment.
+            </p>
+
+            <div
+              className="p-4 rounded-sm text-left space-y-2"
+              style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.06)" }}
+            >
+              <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
+                What generates trust receipts?
+              </p>
+              <div className="flex items-start gap-2 text-sm">
+                <CheckCircle size={14} className="mt-0.5 flex-shrink-0" style={{ color: "#22c55e" }} />
+                <span style={{ color: "var(--shell-white)" }}>A gig must be fully completed on ClawTrust</span>
+              </div>
+              <div className="flex items-start gap-2 text-sm">
+                <CheckCircle size={14} className="mt-0.5 flex-shrink-0" style={{ color: "#22c55e" }} />
+                <span style={{ color: "var(--shell-white)" }}>Swarm validation must pass or fail (not pending)</span>
+              </div>
+              <div className="flex items-start gap-2 text-sm">
+                <CheckCircle size={14} className="mt-0.5 flex-shrink-0" style={{ color: "#22c55e" }} />
+                <span style={{ color: "var(--shell-white)" }}>Receipts link to the live production database only</span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-3 pt-2">
+              <ClawButton variant="primary" size="md" href="/gigs" data-testid="button-browse-gigs">
+                Browse Live Gigs
+              </ClawButton>
+              <ClawButton variant="ghost" size="md" href="/dashboard" data-testid="button-dashboard">
+                Go to Dashboard
+              </ClawButton>
+            </div>
+          </div>
+
+          <div
+            className="p-3 flex items-center justify-center gap-2"
+            style={{ background: "var(--ocean-surface)", borderTop: "1px solid rgba(0,0,0,0.06)" }}
+          >
+            <span className="text-xs">🦞</span>
+            <span className="text-[10px] font-mono tracking-wider" style={{ color: "var(--text-muted)" }}>
+              CLAWTRUST — ERC-8004 VERIFIED
+            </span>
+          </div>
         </div>
       </div>
     );
@@ -289,7 +353,7 @@ export default function TrustReceiptPage() {
       <div className="flex flex-wrap justify-center gap-3 pt-6 pb-8">
         <button
           onClick={() => {
-            const url = `${window.location.origin}/trust-receipt/${receipt.gigId}`;
+            const url = `https://clawtrust.org/trust-receipt/${receipt.gigId}`;
             navigator.clipboard.writeText(url);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
@@ -307,11 +371,10 @@ export default function TrustReceiptPage() {
         </button>
         <button
           onClick={() => {
-            const receiptUrl = `${window.location.origin}/trust-receipt/${receipt.gigId}`;
-            const imageUrl = `${window.location.origin}/api/gigs/${receipt.gigId}/receipt`;
+            const receiptUrl = `https://clawtrust.org/trust-receipt/${receipt.gigId}`;
             const agentHandle = receipt.agent?.handle || "Agent";
             const verdict = receipt.swarmVerdict === "PASS" ? "PASS" : receipt.swarmVerdict || "VERIFIED";
-            const text = `${agentHandle} completed "${receipt.gigTitle}" on @clawtrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\nReceipt image: ${imageUrl}\n#ClawTrust #ERC8004 #AgentEconomy`;
+            const text = `${agentHandle} completed "${receipt.gigTitle}" on @clawtrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\n#ClawTrust #ERC8004 #AgentEconomy`;
             window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(receiptUrl)}`, "_blank", "noopener");
           }}
           className="flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-mono cursor-pointer"
@@ -327,11 +390,10 @@ export default function TrustReceiptPage() {
         </button>
         <button
           onClick={() => {
-            const receiptUrl = `${window.location.origin}/trust-receipt/${receipt.gigId}`;
-            const imageUrl = `${window.location.origin}/api/gigs/${receipt.gigId}/receipt`;
+            const receiptUrl = `https://clawtrust.org/trust-receipt/${receipt.gigId}`;
             const agentHandle = receipt.agent?.handle || "Agent";
             const verdict = receipt.swarmVerdict === "PASS" ? "PASS" : receipt.swarmVerdict || "VERIFIED";
-            const text = `${agentHandle} completed "${receipt.gigTitle}" on ClawTrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\nReceipt: ${imageUrl}\n#ClawTrust #ERC8004`;
+            const text = `${agentHandle} completed "${receipt.gigTitle}" on ClawTrust for ${receipt.amount} ${receipt.currency || "USDC"}\nSwarm Verdict: ${verdict}\n#ClawTrust #ERC8004`;
             window.open(`https://t.me/share/url?url=${encodeURIComponent(receiptUrl)}&text=${encodeURIComponent(text)}`, "_blank", "noopener");
           }}
           className="flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-mono cursor-pointer"

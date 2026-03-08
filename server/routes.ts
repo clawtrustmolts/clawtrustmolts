@@ -6,7 +6,7 @@ import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchem
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
-import { type Address, getAddress as toChecksumAddress } from "viem";
+import { type Address, getAddress as toChecksumAddress, verifyMessage } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
@@ -33,6 +33,7 @@ import { isBot, getBotPrerenderedHTML } from "./bot-prerender";
 import { paymentMiddleware } from "x402-express";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
 import { telegramAnnounceSlash } from "./telegram-announcements";
+import { agentIdAliases } from "./seed";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
 import {
   mintPassportForAgent,
@@ -56,8 +57,15 @@ import {
   repAdapter,
   bondContract,
   crewContract,
-  updateReputationOnChain,
+  transferUSDCOnChain,
+  getUSDCBalance,
+  ORACLE_WALLET_ADDRESS,
+  registerDomainOnChain,
+  isDomainAvailableOnChain,
+  REGISTRY_ADDRESS,
+  REGISTRY_BASESCAN,
 } from "./blockchain";
+import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import {
   createEscrowWallet,
@@ -237,8 +245,49 @@ async function verifyPrivyJWT(token: string): Promise<{ verified: boolean; paylo
   }
 }
 
-function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
-  if (!process.env.PRIVY_APP_ID) return next();
+const SIG_TTL_MS = 24 * 60 * 60 * 1000;
+
+function buildSignMessage(nonce: number): string {
+  return `Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet ownership.\nNo gas required. No transaction is sent.\n\nNonce: ${nonce}\nChain: Base Sepolia (84532)`;
+}
+
+async function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  if (!process.env.PRIVY_APP_ID) {
+    const walletHeader = req.headers["x-wallet-address"] as string | undefined;
+    if (!walletHeader || !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+      return res.status(401).json({ message: "Wallet address required. Connect your wallet to continue." });
+    }
+
+    const signature = req.headers["x-wallet-signature"] as string | undefined;
+    const sigTimestamp = req.headers["x-wallet-sig-timestamp"] as string | undefined;
+
+    if (signature && sigTimestamp) {
+      const ts = parseInt(sigTimestamp, 10);
+      if (isNaN(ts) || Date.now() - ts > SIG_TTL_MS) {
+        return res.status(401).json({ message: "Wallet signature expired. Please reconnect your wallet." });
+      }
+      try {
+        const message = buildSignMessage(ts);
+        const valid = await verifyMessage({
+          address: walletHeader as Address,
+          message,
+          signature: signature as `0x${string}`,
+        });
+        if (!valid) {
+          logSuspiciousActivity(req, "sig_invalid", `Signature verification failed for ${walletHeader}`);
+          return res.status(401).json({ message: "Invalid wallet signature. Please reconnect your wallet." });
+        }
+      } catch (err: any) {
+        logSuspiciousActivity(req, "sig_error", `Signature verification error: ${err?.message}`);
+        return res.status(401).json({ message: "Wallet signature verification failed." });
+      }
+    } else {
+      console.warn(`[auth] Unsigned request from ${walletHeader} on ${req.method} ${req.path} — signature headers missing (SDK/backward compat)`);
+    }
+
+    (req as any).authUser = { walletAddress: walletHeader };
+    return next();
+  }
 
   const authHeader = req.headers.authorization;
   const walletHeader = req.headers["x-wallet-address"] as string | undefined;
@@ -623,6 +672,50 @@ export async function registerRoutes(
     res.json({ ...agent, shellTier: getTier(agent.fusedScore) });
   });
 
+  app.patch("/api/agents/:id", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only edit your own profile" });
+      }
+      const updateSchema = z.object({
+        bio: z.string().max(500).optional(),
+        skills: z.array(z.string().min(1).max(100)).max(20).optional(),
+        avatar: z.string().url().nullable().optional(),
+        moltbookLink: z.string().url().nullable().optional(),
+      });
+      const data = updateSchema.parse(req.body);
+      const updated = await storage.updateAgent(agentId, data);
+      if (!updated) return res.status(404).json({ message: "Agent not found" });
+      res.json(updated);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/agents/:id/webhook", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only update your own webhook" });
+      }
+      const { webhookUrl } = z.object({
+        webhookUrl: z.string().url().nullable(),
+      }).parse(req.body);
+      const updated = await storage.updateAgent(agentId, { webhookUrl });
+      if (!updated) return res.status(404).json({ message: "Agent not found" });
+      res.json({ webhookUrl: updated.webhookUrl });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/agents/:id/verify", async (req, res) => {
     try {
       const agent = await storage.getAgent(req.params.id);
@@ -889,6 +982,8 @@ export async function registerRoutes(
         details: `Assigned to gig: ${gig.title}`,
       });
 
+      notifyAgent(assigneeId, "gig_assigned", "Gig Assigned", `You've been selected for: ${gig.title}`, { gigId: gigId.data }).catch(() => {});
+
       res.json({ ...updated, bondLocked: gig.bondRequired > 0, bondAmount: gig.bondRequired });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -954,6 +1049,8 @@ export async function registerRoutes(
           fusedScore: liveFused.fusedScore,
           onChainAvg: liveFused.onChainAvg,
           moltWeight: liveFused.moltWeight,
+          performanceNormalized: liveFused.performanceNormalized,
+          bondReliabilityNormalized: liveFused.bondReliabilityNormalized,
           proofURIs: liveFused.proofURIs,
           tier: liveFused.tier,
           badges: liveFused.badges,
@@ -967,6 +1064,8 @@ export async function registerRoutes(
           fusedScore: dbBreakdown.fusedScore,
           onChainAvg: dbBreakdown.onChainNormalized,
           moltWeight: dbBreakdown.moltbookNormalized,
+          performanceNormalized: dbBreakdown.performanceNormalized,
+          bondReliabilityNormalized: dbBreakdown.bondReliabilityNormalized,
           proofURIs: [],
           tier: dbBreakdown.tier,
           badges: dbBreakdown.badges,
@@ -1482,6 +1581,22 @@ export async function registerRoutes(
           { id: assignee.id, handle: assignee.handle }
         );
         tryPostToMoltbook(`✅ Gig completed on ClawTrust. ${gig.budget} ${gig.currency} released. Swarm validated. The agent economy works. clawtrust.org`);
+        notifyAgent(gig.assigneeId, "escrow_released", "Escrow Released", `${escrow.amount} ${escrow.currency} has been released for: ${gig.title}`, { gigId }).catch(() => {});
+        notifyAgent(gig.posterId, "gig_completed", "Gig Completed", `${assignee.handle} completed "${gig.title}" — trust receipt ready.`, { gigId }).catch(() => {});
+      }
+
+      let onChainTxHash: string | undefined;
+      if (!isCircleConfigured() && gig.assigneeId) {
+        const assigneeAgent = await storage.getAgent(gig.assigneeId);
+        if (assigneeAgent?.walletAddress && escrow.amount > 0) {
+          try {
+            onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, escrow.amount);
+            await storage.updateEscrow(escrow.id, { releaseTxHash: onChainTxHash });
+            console.log(`[Escrow] On-chain USDC transfer: ${onChainTxHash}`);
+          } catch (txErr: any) {
+            console.error("[Escrow] On-chain USDC transfer failed (oracle may be unfunded):", txErr.message);
+          }
+        }
       }
 
       res.json({
@@ -1489,6 +1604,7 @@ export async function registerRoutes(
         escrowId: escrow.id,
         gigId,
         circleTransfer,
+        onChainTxHash,
         chain: escrow.chain,
       });
     } catch (err: any) {
@@ -1633,6 +1749,10 @@ export async function registerRoutes(
           threshold,
         }).catch(err => console.error("[Swarm] createValidation on-chain error:", err.message));
       }
+
+      selectedValidatorIds.forEach(validatorId => {
+        notifyAgent(validatorId, "swarm_vote_needed", "Swarm Vote Needed", `Your vote is needed to validate: "${gig.title}"`, { gigId }).catch(() => {});
+      });
 
       res.status(201).json({
         validation,
@@ -2259,6 +2379,106 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/skill-trust", apiLimiter, (req, res) => {
+    res.json({
+      endpoint: "/api/skill-trust/:handle",
+      description: "Check if a ClawTrust agent is safe to hire, collaborate with, or install as a skill publisher. Returns a structured trust recommendation based on FusedScore, risk index, verification status, and gig history.",
+      recommendation_values: ["HIRE", "CAUTION", "AVOID"],
+      example: "GET /api/skill-trust/Molty",
+      exampleResponse: {
+        found: true,
+        handle: "Molty",
+        agentId: "5d6140c1-677c-42d5-9cf4-47583e5c7e89",
+        fusedScore: 74,
+        tier: "Gold Shell",
+        isVerified: true,
+        riskIndex: 8,
+        totalGigsCompleted: 0,
+        bondTier: "HIGH_BOND",
+        recommendation: "HIRE",
+        recommendationReason: "Verified ERC-8004 agent with low risk and strong reputation",
+        skills: ["trust-verification", "reputation-analysis"],
+        moltDomain: "molty.molt",
+        profileUrl: "https://clawtrust.org/profile/5d6140c1-677c-42d5-9cf4-47583e5c7e89",
+        checkedAt: new Date().toISOString(),
+      },
+    });
+  });
+
+  app.get("/api/skill-trust/:handle", apiLimiter, async (req, res) => {
+    try {
+      const handle = req.params.handle?.trim();
+      if (!handle || handle.length < 1 || handle.length > 64) {
+        return res.status(400).json({ message: "Invalid handle" });
+      }
+
+      const agent = await storage.getAgentByHandle(handle);
+      if (!agent) {
+        return res.json({
+          found: false,
+          handle,
+          message: `No ClawTrust profile found for handle: ${handle}`,
+          checkedAt: new Date().toISOString(),
+        });
+      }
+
+      const fusedScore = agent.fusedScore ?? 0;
+      const riskIndex = agent.riskIndex ?? 0;
+      const totalGigsCompleted = agent.totalGigsCompleted ?? 0;
+      const isVerified = agent.isVerified ?? false;
+
+      let recommendation: "HIRE" | "CAUTION" | "AVOID";
+      let recommendationReason: string;
+
+      if (fusedScore >= 30 && riskIndex < 20 && isVerified) {
+        recommendation = "HIRE";
+        recommendationReason = `Verified ERC-8004 agent with FusedScore ${fusedScore} and low risk index (${riskIndex})`;
+      } else if (fusedScore >= 15 || (totalGigsCompleted > 0 && riskIndex < 40)) {
+        recommendation = "CAUTION";
+        recommendationReason = fusedScore < 15
+          ? `Agent has completed ${totalGigsCompleted} gig(s) but has a low FusedScore (${fusedScore})`
+          : `Agent has a moderate FusedScore (${fusedScore}) — verify credentials before high-value gigs`;
+      } else {
+        recommendation = "AVOID";
+        recommendationReason = `Insufficient trust data — FusedScore ${fusedScore}, ${totalGigsCompleted} gig(s) completed, riskIndex ${riskIndex}`;
+      }
+
+      const paymentHeader = req.headers["x-payment-response"] || req.headers["payment-signature"];
+      if (paymentHeader) {
+        storage.createX402Payment({
+          endpoint: "/api/skill-trust",
+          callerWallet: (req.headers["x-payer-address"] as string) || null,
+          targetWallet: agent.walletAddress.toLowerCase(),
+          targetAgentId: agent.id,
+          amount: 0.001,
+          currency: "USDC",
+          chain: "base-sepolia",
+          txHash: typeof paymentHeader === "string" ? paymentHeader.substring(0, 128) : null,
+        }).catch(() => {});
+      }
+
+      res.json({
+        found: true,
+        handle: agent.handle,
+        agentId: agent.id,
+        fusedScore,
+        tier: getTier(fusedScore),
+        isVerified,
+        riskIndex,
+        totalGigsCompleted,
+        bondTier: agent.bondTier,
+        recommendation,
+        recommendationReason,
+        skills: agent.skills ?? [],
+        moltDomain: agent.moltDomain ?? null,
+        profileUrl: `https://clawtrust.org/profile/${agent.id}`,
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: "Skill trust check failed", error: err.message?.substring(0, 200) });
+    }
+  });
+
   app.get("/api/agents/:agentId/card", apiLimiter, async (req, res) => {
     try {
       let agent = await storage.getAgent(req.params.agentId);
@@ -2283,15 +2503,22 @@ export async function registerRoutes(
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
 
       let agent = await storage.getAgent(agentId.data);
+
       if (!agent) {
-        const allAgents = await storage.getAgents();
-        agent = allAgents.find(a => a.handle === req.params.agentId) || null;
+        const aliasWallet = agentIdAliases.get(agentId.data);
+        if (aliasWallet) {
+          agent = await storage.getAgentByWallet(aliasWallet) || null;
+        }
       }
+
+      if (!agent) {
+        agent = await storage.getAgentByHandle(req.params.agentId) || null;
+      }
+
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const protocol = req.headers["x-forwarded-proto"] || "http";
-      const host = req.headers.host || "localhost:5000";
-      const baseUrl = `${protocol}://${host}`;
+      const baseUrl = `https://clawtrust.org`;
 
       res.json(generateCardMetadata(agent, baseUrl));
     } catch (err: any) {
@@ -2854,6 +3081,245 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
       }
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  // ─── ClawTrust Name Service — Multi-TLD domain API ──────────────────────────
+
+  const DOMAIN_TLDS = [".molt", ".claw", ".shell", ".pinch"] as const;
+  const DOMAIN_TLD_PRICE: Record<string, number> = {
+    ".molt": 0,
+    ".claw": 50,
+    ".shell": 100,
+    ".pinch": 25,
+  };
+  const DOMAIN_TLD_FREE_SCORE: Record<string, number> = {
+    ".molt": 0,
+    ".claw": 70,
+    ".shell": 50,
+    ".pinch": 30,
+  };
+  const DOMAIN_NAME_REGEX = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$|^[a-z0-9]{3,32}$/;
+  const DOMAIN_RESERVED = new Set([...MOLT_RESERVED_NAMES, "claw", "molt", "shell", "pinch", "trust", "admin", "api", "app", "root", "registry", "contract", "token"]);
+
+  async function checkDomainAvailability(name: string, tld: string, wallet?: string) {
+    if (!name || name.length < 3 || name.length > 32 || !DOMAIN_NAME_REGEX.test(name)) {
+      return { available: false, reason: "invalid_name" };
+    }
+    if (DOMAIN_RESERVED.has(name)) {
+      return { available: false, reason: "reserved" };
+    }
+    if (!DOMAIN_TLDS.includes(tld as any)) {
+      return { available: false, reason: "invalid_tld" };
+    }
+    const existing = await storage.getMoltDomain(name, tld);
+    if (existing && existing.status === "ACTIVE") {
+      return { available: false, reason: "taken", takenBy: existing.walletAddress };
+    }
+    const price = DOMAIN_TLD_PRICE[tld] ?? 0;
+    const freeScore = DOMAIN_TLD_FREE_SCORE[tld] ?? 999;
+
+    let agentMeetsRequirement = tld === ".molt";
+    if (wallet && !agentMeetsRequirement) {
+      const agentList = await storage.getAgents();
+      const walletAgent = agentList.find(a => a.walletAddress?.toLowerCase() === wallet.toLowerCase());
+      if (walletAgent) {
+        const score = walletAgent.fusedScore ?? 0;
+        agentMeetsRequirement = score >= freeScore;
+      }
+    }
+    return { available: true, price, freeScore, agentMeetsRequirement };
+  }
+
+  app.post("/api/domains/check", async (req, res) => {
+    try {
+      const { name, tld } = req.body;
+      const wallet = (req as any).wallet as string | undefined;
+      const result = await checkDomainAvailability((name || "").toLowerCase(), tld || ".molt", wallet);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/domains/check-all", async (req, res) => {
+    try {
+      const { name } = req.body;
+      const wallet = (req as any).wallet as string | undefined;
+      const n = (name || "").toLowerCase().trim();
+      const results = await Promise.all(
+        DOMAIN_TLDS.map(async (tld) => {
+          const r = await checkDomainAvailability(n, tld, wallet);
+          return { tld, ...r };
+        })
+      );
+      res.json({ name: n, results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/domains/register", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const { name: rawName, tld: rawTld, pricePaid = 0, agentId } = req.body;
+      const wallet = (req as any).wallet as string;
+      const name = (rawName || "").toLowerCase().trim();
+      const tld = (rawTld || ".molt").toLowerCase();
+
+      if (!name || name.length < 3 || name.length > 32 || !DOMAIN_NAME_REGEX.test(name)) {
+        return res.status(400).json({ message: "Name must be 3–32 chars, lowercase alphanumeric + hyphens" });
+      }
+      if (DOMAIN_RESERVED.has(name)) {
+        return res.status(400).json({ message: "That name is reserved" });
+      }
+      if (!DOMAIN_TLDS.includes(tld as any)) {
+        return res.status(400).json({ message: "TLD must be one of: .molt .claw .shell .pinch" });
+      }
+
+      const existing = await storage.getMoltDomain(name, tld);
+      if (existing && existing.status === "ACTIVE") {
+        return res.status(409).json({ message: `${name}${tld} is already taken` });
+      }
+
+      const requiredPrice = DOMAIN_TLD_PRICE[tld] ?? 0;
+      const freeScore = DOMAIN_TLD_FREE_SCORE[tld] ?? 999;
+
+      let agentMeetsScore = tld === ".molt";
+      let resolvedAgent: any = null;
+      if (agentId) {
+        resolvedAgent = await storage.getAgent(agentId);
+      } else {
+        const allAgents = await storage.getAgents();
+        resolvedAgent = allAgents.find(a => a.walletAddress?.toLowerCase() === wallet.toLowerCase()) || null;
+      }
+      if (resolvedAgent) {
+        agentMeetsScore = (resolvedAgent.fusedScore ?? 0) >= freeScore;
+      }
+
+      const payingEnough = pricePaid >= requiredPrice;
+      const canRegisterFree = agentMeetsScore;
+      const canRegisterPaid = requiredPrice > 0 && payingEnough;
+
+      if (!canRegisterFree && !canRegisterPaid && requiredPrice > 0) {
+        return res.status(403).json({
+          message: `${tld} requires FusedScore ≥ ${freeScore} or payment of ${requiredPrice} USDC`,
+          freeScore,
+          requiredPrice,
+        });
+      }
+
+      const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      let onChainTokenId: number | null = null;
+      let onChainTxHash: string | null = null;
+      const free = canRegisterFree && !payingEnough;
+
+      if (tld === ".molt") {
+        if (resolvedAgent?.erc8004TokenId) {
+          setMoltDomainOnChain(resolvedAgent.erc8004TokenId, `${name}.molt`)
+            .catch(err => console.error("[Domains] setMoltDomain error:", err.message));
+        }
+      } else {
+        try {
+          const { tokenId, txHash } = await registerDomainOnChain(name, tld, wallet, free ? 0 : pricePaid);
+          onChainTokenId = tokenId;
+          onChainTxHash = txHash;
+        } catch (err: any) {
+          console.error("[Domains] on-chain register failed:", err.message);
+        }
+      }
+
+      const record = await storage.createMoltDomain({
+        name,
+        tld,
+        agentId: resolvedAgent?.id || null,
+        walletAddress: wallet.toLowerCase(),
+        expiresAt,
+        status: "ACTIVE",
+        pricePaid: free ? 0 : pricePaid,
+        onChainTokenId,
+        onChainTxHash,
+        foundingMoltNumber: null,
+      });
+
+      if (tld === ".molt" && resolvedAgent) {
+        await storage.updateAgent(resolvedAgent.id, { moltDomain: `${name}.molt` });
+      }
+
+      const fullDomain = `${name}${tld}`;
+      res.json({
+        success: true,
+        domain: name,
+        tld,
+        fullDomain,
+        free,
+        pricePaid: free ? 0 : pricePaid,
+        expiresAt,
+        onChainTokenId,
+        onChainTxHash,
+        basescanUrl: onChainTxHash
+          ? `https://sepolia.basescan.org/tx/${onChainTxHash}`
+          : tld === ".molt" && resolvedAgent?.erc8004TokenId
+            ? `https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4`
+            : null,
+        registryAddress: tld !== ".molt" ? REGISTRY_ADDRESS : "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
+        record,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/domains/search", async (req, res) => {
+    try {
+      const q = String(req.query.q || "").toLowerCase().trim();
+      const tld = req.query.tld ? String(req.query.tld) : undefined;
+      if (!q || q.length < 2) return res.json({ results: [] });
+      const results = await storage.searchDomains(q, tld);
+      res.json({ results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/domains/browse", async (req, res) => {
+    try {
+      const tld = req.query.tld ? String(req.query.tld) : undefined;
+      const all = await storage.getAllDomainsByTld(tld);
+      res.json({ domains: all, total: all.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/domains/wallet/:address", async (req, res) => {
+    try {
+      const address = req.params.address?.toLowerCase();
+      if (!address) return res.status(400).json({ message: "address required" });
+      const domains = await storage.getDomainsByWallet(address);
+      res.json({ domains, total: domains.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/domains/:fullDomain", async (req, res) => {
+    try {
+      const full = req.params.fullDomain?.toLowerCase();
+      const tldMatch = full?.match(/^(.+)(\.molt|\.claw|\.shell|\.pinch)$/);
+      if (!tldMatch) return res.status(400).json({ message: "Invalid domain format (e.g. jarvis.claw)" });
+      const [, name, tld] = tldMatch;
+      const record = await storage.getMoltDomain(name, tld);
+      if (!record || record.status !== "ACTIVE") return res.status(404).json({ message: "Domain not found" });
+      const agent = record.agentId ? await storage.getAgent(record.agentId) : null;
+      res.json({
+        domain: record,
+        agent: agent ? { id: agent.id, handle: agent.handle, fusedScore: agent.fusedScore } : null,
+        basescanUrl: record.onChainTxHash
+          ? `https://sepolia.basescan.org/tx/${record.onChainTxHash}`
+          : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
@@ -4548,7 +5014,13 @@ export async function registerRoutes(
       const { gigId, reason } = req.body;
       if (!gigId || !reason) return res.status(400).json({ message: "gigId and reason required" });
       const event = await slashBond(req.params.agentId as string, gigId, reason);
-      try { const slashedAgent = await storage.getAgent(req.params.agentId as string); if (slashedAgent) telegramAnnounceSlash(slashedAgent, 0, reason); } catch {}
+      try {
+        const slashedAgent = await storage.getAgent(req.params.agentId as string);
+        if (slashedAgent) {
+          telegramAnnounceSlash(slashedAgent, 0, reason);
+          notifyAgent(req.params.agentId as string, "slash_applied", "Bond Slash Applied", `A bond slash has been applied: ${reason}`, { gigId }).catch(() => {});
+        }
+      } catch {}
       res.json({ event });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -4810,6 +5282,7 @@ export async function registerRoutes(
       });
 
       await logSuspiciousActivity(req, "direct_offer_sent", `Agent "${fromAgent.handle}" sent offer to "${toAgent.handle}" for gig "${gig.title}"`, "info");
+      notifyAgent(targetAgentId.data, "offer_received", "New Direct Offer", `${fromAgent.handle} sent you a direct offer for: "${gig.title}"`, { gigId: gigId.data }).catch(() => {});
 
       res.status(201).json({
         offer,
@@ -5029,6 +5502,28 @@ export async function registerRoutes(
         completedAt: new Date(),
       });
       res.status(201).json(receipt);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/network-receipts", async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 10, 50);
+      const receipts = await storage.getTrustReceipts();
+      const recent = receipts.slice(0, limit);
+      const enriched = await Promise.all(
+        recent.map(async (r: any) => {
+          const agent = await storage.getAgent(r.agentId).catch(() => null);
+          const poster = await storage.getAgent(r.posterId).catch(() => null);
+          return {
+            ...r,
+            agentHandle: agent?.handle || null,
+            posterHandle: poster?.handle || null,
+          };
+        })
+      );
+      res.json({ receipts: enriched });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -5532,6 +6027,8 @@ export async function registerRoutes(
 
       await storage.upsertConversation(agentId, otherAgentId, body.content, true);
 
+      notifyAgent(otherAgentId, "message_received", "New Message", `${sender.handle}: ${body.content.substring(0, 80)}${body.content.length > 80 ? "…" : ""}`).catch(() => {});
+
       res.status(201).json(message);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -5851,6 +6348,77 @@ export async function registerRoutes(
       }
       const total = await storage.getTotalUnreadCount(agentId);
       res.json({ unreadCount: total });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Notification routes ─────────────────────────────────────────
+  app.get("/api/agents/:id/notifications", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) return res.status(403).json({ message: "Forbidden" });
+      const notifications = await storage.getNotificationsForAgent(agentId, 50);
+      res.json(notifications);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/notifications/unread-count", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) return res.status(403).json({ message: "Forbidden" });
+      const count = await storage.getUnreadNotificationCount(agentId);
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/agents/:id/notifications/read-all", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) return res.status(403).json({ message: "Forbidden" });
+      await storage.markAllNotificationsRead(agentId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/notifications/:notifId/read", agentAuthMiddleware, async (req, res) => {
+    try {
+      const id = parseInt(req.params.notifId);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid notification ID" });
+      await storage.markNotificationRead(id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Escrow oracle balance + deposit address ──────────────────────
+  app.get("/api/admin/escrow/oracle-balance", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const usdcBalance = await getUSDCBalance(ORACLE_WALLET_ADDRESS);
+      res.json({ wallet: ORACLE_WALLET_ADDRESS, usdcBalance });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/escrow/:gigId/deposit-address", async (req, res) => {
+    try {
+      const gig = await storage.getGig(req.params.gigId as string);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      res.json({
+        depositAddress: ORACLE_WALLET_ADDRESS,
+        gigId: gig.id,
+        amount: gig.budget,
+        currency: gig.currency,
+        memo: `ClawTrust escrow for gig ${gig.id}`,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -6197,6 +6765,69 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Trust Receipt Social Preview (OG tags for Telegram / X / Discord) ──────
+  // Bots don't execute JavaScript, so we inject og:image server-side.
+  // Real users get next() → Vite serves the React SPA normally.
+  app.get("/trust-receipt/:gigId", async (req, res, next) => {
+    const ua = (req.headers["user-agent"] || "").toLowerCase();
+    const isBot = /telegram|twitterbot|facebookexternalhit|linkedinbot|discordbot|slackbot|whatsapp|googlebot|bingbot|applebot|iframely/i.test(ua);
+    if (!isBot) return next();
+
+    const PROD = "https://clawtrust.org";
+    const gigId = req.params.gigId;
+
+    try {
+      const gig = await storage.getGig(gigId).catch(() => null);
+      const receipt = gig?.assigneeId
+        ? await storage.getTrustReceiptByGig(gigId, gig.assigneeId).catch(() => null)
+        : null;
+      const assignee = receipt?.agentId ? await storage.getAgent(receipt.agentId).catch(() => null) : null;
+      const poster = receipt?.posterId ? await storage.getAgent(receipt.posterId).catch(() => null) : null;
+
+      const title = receipt
+        ? `${assignee?.handle || "Agent"} completed "${receipt.gigTitle}" — ClawTrust`
+        : gig
+        ? `"${gig.title}" — ClawTrust Trust Receipt`
+        : "ClawTrust Trust Receipt";
+      const description = receipt
+        ? `${assignee?.handle || "Agent"} earned ${receipt.amount} USDC. Swarm Verdict: ${receipt.swarmVerdict || "VERIFIED"}. Posted by ${poster?.handle || "Unknown"}. Verified on-chain via ERC-8004.`
+        : "Verified on-chain work receipt powered by ERC-8004 and swarm validation.";
+      const imageUrl = `${PROD}/api/gigs/${gigId}/receipt`;
+      const pageUrl = `${PROD}/trust-receipt/${gigId}`;
+
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${title}</title>
+  <meta name="description" content="${description}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="ClawTrust" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${description}" />
+  <meta property="og:url" content="${pageUrl}" />
+  <meta property="og:image" content="${imageUrl}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${description}" />
+  <meta name="twitter:image" content="${imageUrl}" />
+  <meta name="twitter:site" content="@clawtrust" />
+  <link rel="canonical" href="${pageUrl}" />
+  <meta http-equiv="refresh" content="0; url=${pageUrl}" />
+</head>
+<body>
+  <p>Redirecting to <a href="${pageUrl}">${title}</a></p>
+</body>
+</html>`);
+    } catch {
+      return next();
     }
   });
 

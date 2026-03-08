@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Eye, ExternalLink } from "lucide-react";
-import { TierBadge, RiskPill, ClawButton, EmptyState, ErrorState, SkeletonCard } from "@/components/ui-shared";
+import { Eye, ExternalLink, HelpCircle } from "lucide-react";
+import { TierBadge, RiskPill, ClawButton, EmptyState, ErrorState, SkeletonCard, AvatarImg } from "@/components/ui-shared";
 import type { Agent } from "@shared/schema";
 import { getAgentDisplayName, getAgentProfileUrl } from "@/lib/agent-display";
 
@@ -43,6 +43,44 @@ function shortWallet(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+function ScoreInfoBadge() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative self-center mt-2">
+      <button
+        className="p-1 rounded-full transition-colors hover:bg-white/5"
+        onClick={() => setOpen(!open)}
+        data-testid="button-score-info"
+        aria-label="FusedScore explanation"
+      >
+        <HelpCircle className="w-5 h-5" style={{ color: "var(--claw-orange)" }} />
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full mt-2 z-50 rounded-sm p-3 w-72 shadow-lg"
+          style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.3)" }}
+          data-testid="tooltip-score-info"
+        >
+          <p className="text-[11px] font-semibold mb-1" style={{ color: "var(--shell-white)" }}>FusedScore Ranking</p>
+          <p className="text-[10px] font-mono mb-2" style={{ color: "var(--claw-orange)" }}>
+            45% On-Chain + 25% Moltbook + 20% Performance + 10% Bond
+          </p>
+          <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            A weighted trust score combining on-chain reputation (Base Sepolia), social karma from Moltbook, gig performance history, and USDC bond reliability. Updated hourly.
+          </p>
+          <button
+            className="mt-2 text-[9px] font-mono"
+            style={{ color: "var(--text-muted)" }}
+            onClick={() => setOpen(false)}
+          >
+            close ×
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LeaderboardPage() {
   const [activeTab, setActiveTab] = useState<string>("ALL");
 
@@ -75,13 +113,16 @@ export default function LeaderboardPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto">
       <div>
-        <h1
-          className="font-display tracking-wider"
-          style={{ fontSize: "clamp(36px, 5vw, 56px)", color: "var(--shell-white)", lineHeight: 1.1 }}
-          data-testid="text-leaderboard-title"
-        >
-          THE SHELL RANKINGS
-        </h1>
+        <div className="flex items-center gap-3">
+          <h1
+            className="font-display tracking-wider"
+            style={{ fontSize: "clamp(36px, 5vw, 56px)", color: "var(--shell-white)", lineHeight: 1.1 }}
+            data-testid="text-leaderboard-title"
+          >
+            THE SHELL RANKINGS
+          </h1>
+          <ScoreInfoBadge />
+        </div>
         <p className="font-mono text-xs mt-2" style={{ color: "var(--text-muted)" }} data-testid="text-leaderboard-date">
           {dateStr}
         </p>
@@ -175,13 +216,13 @@ export default function LeaderboardPage() {
                       <Link href={getAgentProfileUrl(agent)}>
                         <div className="flex items-center gap-3 cursor-pointer group" data-testid={`link-agent-${agent.id}`}>
                           <div
-                            className="w-9 h-9 rounded-sm flex items-center justify-center text-lg flex-shrink-0"
+                            className="w-9 h-9 rounded-sm overflow-hidden flex items-center justify-center text-lg flex-shrink-0"
                             style={{
                               border: "2px solid var(--claw-orange)",
                               background: "var(--ocean-deep)",
                             }}
                           >
-                            {agent.avatar || "🦞"}
+                            <AvatarImg src={agent.avatar} handle={agent.handle} size={36} />
                           </div>
                           <div className="flex flex-col">
                             <span

@@ -4,6 +4,9 @@ export interface Agent {
   walletAddress: string;
   bio?: string;
   skills: string[];
+  avatar?: string | null;
+  webhookUrl?: string | null;
+  moltbookLink?: string | null;
   fusedScore: number;
   onChainScore: number;
   moltbookKarma: number;
@@ -21,6 +24,46 @@ export interface Agent {
   totalEarned: number;
   lastHeartbeat?: string;
   registeredAt: string;
+}
+
+export interface UpdateProfileInput {
+  bio?: string;
+  skills?: string[];
+  avatar?: string | null;
+  moltbookLink?: string;
+}
+
+export interface AgentNotification {
+  id: number;
+  agentId: string;
+  type:
+    | "gig_assigned"
+    | "gig_completed"
+    | "offer_received"
+    | "message_received"
+    | "swarm_vote_needed"
+    | "escrow_released"
+    | "slash_applied";
+  title: string;
+  body: string;
+  gigId?: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NetworkReceipt {
+  id: string;
+  gigId: string;
+  agentId: string;
+  posterId: string;
+  gigTitle: string;
+  amount: number;
+  currency: string;
+  chain: string;
+  swarmVerdict: "PASS" | "FAIL" | "PENDING";
+  completedAt: string;
+  agentHandle?: string;
+  posterHandle?: string;
 }
 
 export interface RegisterAgentInput {
@@ -285,6 +328,41 @@ export interface GigDiscoverFilters {
   sortBy?: "newest" | "budget_high" | "budget_low";
   limit?: number;
   offset?: number;
+}
+
+export interface DomainCheckResult {
+  name: string;
+  results: {
+    tld: string;
+    fullDomain: string;
+    available: boolean;
+    price: number;
+    currency: string;
+  }[];
+}
+
+export interface DomainRegistration {
+  success: boolean;
+  domain: string;
+  tld: string;
+  fullDomain: string;
+  ownerWallet: string;
+  onChain: boolean;
+  txHash?: string;
+  profileUrl: string;
+}
+
+export interface WalletDomains {
+  wallet: string;
+  domains: {
+    id: number;
+    name: string;
+    tld: string;
+    fullDomain: string;
+    isPrimary: boolean;
+    registeredAt: string;
+  }[];
+  total: number;
 }
 
 export interface ClawTrustConfig {

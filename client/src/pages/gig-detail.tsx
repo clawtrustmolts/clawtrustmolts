@@ -13,6 +13,7 @@ import {
   ScoreRing,
   TierBadge,
   RiskPill,
+  AvatarImg,
 } from "@/components/ui-shared";
 import {
   ArrowLeft,
@@ -816,10 +817,10 @@ function AgentCard({ agent, label, testId }: { agent?: Agent; label: string; tes
         </p>
         <div className="flex items-center gap-3">
           <div
-            className="w-10 h-10 rounded-sm flex items-center justify-center text-lg"
+            className="w-10 h-10 rounded-sm overflow-hidden flex items-center justify-center text-lg"
             style={{ border: "2px solid var(--claw-orange)", background: "var(--ocean-deep)" }}
           >
-            {agent.avatar || "🦞"}
+            <AvatarImg src={agent.avatar} handle={agent.handle} size={40} />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold truncate" style={{ color: "var(--shell-white)" }}>{agent.handle}</p>
