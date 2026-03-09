@@ -4,7 +4,7 @@ import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements, x402Payments,
-  agentNotifications,
+  agentNotifications, skillChallenges, challengeAttempts,
   type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
@@ -33,6 +33,8 @@ import {
   slashEvents, reputationMigrations,
   type SlashEvent, type InsertSlashEvent,
   type ReputationMigration, type InsertReputationMigration,
+  type SkillChallenge, type InsertSkillChallenge,
+  type ChallengeAttempt, type InsertChallengeAttempt,
   moltDomains,
   type MoltDomain, type InsertMoltDomain,
   blockchainActionQueue,
@@ -212,6 +214,17 @@ export interface IStorage {
   getUnreadNotificationCount(agentId: string): Promise<number>;
   markNotificationRead(id: number): Promise<void>;
   markAllNotificationsRead(agentId: string): Promise<void>;
+
+  getSkillVerification(agentId: string, skillName: string): Promise<AgentSkill | undefined>;
+  getSkillVerifications(agentId: string): Promise<AgentSkill[]>;
+  upsertSkillVerification(agentId: string, skillName: string, data: Partial<AgentSkill>): Promise<AgentSkill>;
+
+  getSkillChallenges(skill: string): Promise<SkillChallenge[]>;
+  getSkillChallenge(id: string): Promise<SkillChallenge | undefined>;
+  seedSkillChallenges(): Promise<void>;
+
+  createChallengeAttempt(attempt: InsertChallengeAttempt): Promise<ChallengeAttempt>;
+  getChallengeAttemptsForAgent(agentId: string, skill?: string): Promise<ChallengeAttempt[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1100,6 +1113,179 @@ export class DatabaseStorage implements IStorage {
 
   async markAllNotificationsRead(agentId: string): Promise<void> {
     await db.update(agentNotifications).set({ read: true }).where(eq(agentNotifications.agentId, agentId));
+  }
+
+  async getSkillVerification(agentId: string, skillName: string): Promise<AgentSkill | undefined> {
+    const [row] = await db.select().from(agentSkills)
+      .where(and(eq(agentSkills.agentId, agentId), eq(agentSkills.skillName, skillName)));
+    return row;
+  }
+
+  async getSkillVerifications(agentId: string): Promise<AgentSkill[]> {
+    return db.select().from(agentSkills).where(eq(agentSkills.agentId, agentId)).orderBy(asc(agentSkills.skillName));
+  }
+
+  async upsertSkillVerification(agentId: string, skillName: string, data: Partial<AgentSkill>): Promise<AgentSkill> {
+    const existing = await this.getSkillVerification(agentId, skillName);
+    if (existing) {
+      const [updated] = await db.update(agentSkills)
+        .set(data)
+        .where(and(eq(agentSkills.agentId, agentId), eq(agentSkills.skillName, skillName)))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(agentSkills)
+        .values({ agentId, skillName, ...data })
+        .returning();
+      return created;
+    }
+  }
+
+  async getSkillChallenges(skill: string): Promise<SkillChallenge[]> {
+    return db.select().from(skillChallenges)
+      .where(and(eq(skillChallenges.skill, skill.toLowerCase()), eq(skillChallenges.isActive, true)))
+      .orderBy(asc(skillChallenges.difficulty));
+  }
+
+  async getSkillChallenge(id: string): Promise<SkillChallenge | undefined> {
+    const [row] = await db.select().from(skillChallenges).where(eq(skillChallenges.id, id));
+    return row;
+  }
+
+  async seedSkillChallenges(): Promise<void> {
+    const challenges = [
+      {
+        skill: "solidity",
+        difficulty: "intermediate",
+        prompt: `You are applying for a gig as a Solidity developer. Demonstrate your skills:
+
+1. Explain the difference between 'storage', 'memory', and 'calldata' in Solidity and when you would use each.
+2. Describe a common reentrancy vulnerability, give a brief code example of the vulnerable pattern, and explain how to fix it using the checks-effects-interactions pattern.
+3. What is the purpose of the 'payable' keyword? When must a function be marked payable?
+4. Briefly describe how ERC-20 token allowances work (approve / transferFrom flow).
+
+Write clear, technical answers. Use code snippets where helpful.`,
+        starterHint: "Focus on accuracy and clarity. Show you understand the EVM's execution model.",
+        expectedKeywords: ["storage", "memory", "calldata", "reentrancy", "checks-effects-interactions", "payable", "approve", "transferFrom", "allowance", "ERC-20"],
+        minWordCount: 200,
+        maxWordCount: 800,
+        timeLimit: 20,
+        passThreshold: 70,
+      },
+      {
+        skill: "security-audit",
+        difficulty: "intermediate",
+        prompt: `You are conducting a security review. Read the following vulnerable contract snippet and answer:
+
+\`\`\`solidity
+contract VulnerableBank {
+    mapping(address => uint256) public balances;
+
+    function deposit() public payable {
+        balances[msg.sender] += msg.value;
+    }
+
+    function withdraw(uint256 amount) public {
+        require(balances[msg.sender] >= amount);
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success);
+        balances[msg.sender] -= amount;
+    }
+}
+\`\`\`
+
+1. Identify all vulnerabilities in this contract (name each, severity: Critical/High/Medium/Low).
+2. Explain exactly how an attacker would exploit the most critical vulnerability.
+3. Provide the corrected version of the withdraw function.
+4. What additional security measures would you recommend?`,
+        starterHint: "Think carefully about the order of operations in the withdraw function.",
+        expectedKeywords: ["reentrancy", "checks-effects-interactions", "nonReentrant", "balances", "call", "high", "critical", "exploit", "attacker", "fix"],
+        minWordCount: 150,
+        maxWordCount: 700,
+        timeLimit: 25,
+        passThreshold: 70,
+      },
+      {
+        skill: "content-writing",
+        difficulty: "beginner",
+        prompt: `Write a short, clear explainer about what a blockchain is for someone who has never heard of it before.
+
+Requirements:
+- Target audience: Complete beginners, no technical background
+- Length: 200-400 words
+- Must cover: What it is, why it matters, one real-world use case
+- Tone: Friendly and approachable, avoid jargon or explain any technical terms you use
+- Include a catchy opening sentence
+
+Your writing will be graded on clarity, completeness, and engagement.`,
+        starterHint: "Think of an analogy from everyday life to explain the concept.",
+        expectedKeywords: ["blockchain", "decentralized", "transaction", "trust", "record", "network", "immutable"],
+        minWordCount: 200,
+        maxWordCount: 400,
+        timeLimit: 15,
+        passThreshold: 70,
+      },
+      {
+        skill: "data-analysis",
+        difficulty: "intermediate",
+        prompt: `You are given a dataset of DeFi protocol transactions. Answer the following analytical questions:
+
+Dataset summary:
+- 10,000 transactions over 30 days
+- Columns: timestamp, user_address, protocol, action (deposit/withdraw/swap), amount_usd, gas_used
+- Total volume: $4.2M
+- Top 3 protocols: Uniswap (42%), Aave (31%), Curve (18%)
+
+1. Describe step-by-step how you would identify the top 10% of users by transaction volume. What SQL or pandas code would you write?
+2. You notice deposits spike every Monday morning. What hypotheses would you generate and how would you test them?
+3. How would you detect potential wash trading or suspicious activity in this dataset? What signals would you look for?
+4. If asked to build a simple dashboard summarizing this data, what 3-5 key metrics would you display and why?`,
+        starterHint: "Think about both the technical approach and the business interpretation.",
+        expectedKeywords: ["percentile", "aggregate", "group by", "hypothesis", "anomaly", "metric", "volume", "distribution", "correlation", "dashboard"],
+        minWordCount: 200,
+        maxWordCount: 700,
+        timeLimit: 20,
+        passThreshold: 70,
+      },
+      {
+        skill: "smart-contract-audit",
+        difficulty: "advanced",
+        prompt: `A client wants you to audit a new token contract before launch. Describe your complete audit process:
+
+1. **Scoping**: What information do you need from the client before starting? List at least 5 questions.
+2. **Manual Review**: Walk through the specific checks you perform line-by-line. What are the top 10 vulnerability classes you look for in token contracts specifically?
+3. **Tool Usage**: Name 3 automated tools you would use (e.g. Slither, Mythril, Echidna) and explain what each one is best at detecting.
+4. **Reporting**: What does a professional audit report include? Describe the sections and severity classification system you use.
+5. **Remediation**: After delivering findings, what is your process for verifying the client has properly fixed issues?`,
+        starterHint: "Draw from established audit frameworks (OpenZeppelin, Trail of Bits, ConsenSys Diligence methodologies).",
+        expectedKeywords: ["slither", "mythril", "reentrancy", "overflow", "access control", "critical", "high", "medium", "low", "remediation", "scope", "report", "severity"],
+        minWordCount: 300,
+        maxWordCount: 1000,
+        timeLimit: 35,
+        passThreshold: 70,
+      },
+    ];
+
+    for (const ch of challenges) {
+      const existing = await db.select({ id: skillChallenges.id }).from(skillChallenges)
+        .where(and(eq(skillChallenges.skill, ch.skill), eq(skillChallenges.difficulty, ch.difficulty)));
+      if (existing.length === 0) {
+        await db.insert(skillChallenges).values(ch);
+      }
+    }
+  }
+
+  async createChallengeAttempt(attempt: InsertChallengeAttempt): Promise<ChallengeAttempt> {
+    const [created] = await db.insert(challengeAttempts).values(attempt).returning();
+    return created;
+  }
+
+  async getChallengeAttemptsForAgent(agentId: string, skill?: string): Promise<ChallengeAttempt[]> {
+    const conditions = [eq(challengeAttempts.agentId, agentId)];
+    if (skill) conditions.push(eq(challengeAttempts.skill, skill));
+    return db.select().from(challengeAttempts)
+      .where(and(...conditions))
+      .orderBy(desc(challengeAttempts.createdAt));
   }
 }
 
