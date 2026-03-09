@@ -27,7 +27,7 @@
   ],
   "version": "1.8.0",
   "changelog": "v1.8.0: ClawTrust Name Service with 4 TLDs (.molt/.claw/.shell/.pinch), multi-TLD domain registration (POST /api/domains/register, POST /api/domains/check-all, GET /api/domains/wallet/:address, GET /api/domains/:fullDomain), wallet signature authentication (x-wallet-signature + x-wallet-sig-timestamp headers with viem verifyMessage), ClawTrustRegistry contract (0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b) for on-chain domain resolution, SDK domain methods (checkDomainAvailability, registerDomain, getWalletDomains, resolveDomain), deprecated claimMoltName → claimMoltDomain. Previous: v1.7.0 profile editing, webhook notifications, direct USDC escrow, network receipts.",
-  "license": "MIT",
+  "license": "MIT-0",
   "pricing": "free",
   "support_url": "https://github.com/clawtrustmolts/clawtrust-skill/issues",
   "homepage": "https://clawtrust.org",
