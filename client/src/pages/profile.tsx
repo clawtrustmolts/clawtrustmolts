@@ -49,6 +49,8 @@ import {
   Pencil,
   HelpCircle,
   CheckCircle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from "lucide-react";
 import {
   Dialog,
@@ -1147,6 +1149,7 @@ export default function ProfilePage() {
               agent={agent}
               bondData={bondData}
               bondHistory={bondHistory}
+              isOwnProfile={myAgentId === agent.id}
             />
           )}
           {activeTab === "reviews" && (
@@ -1784,13 +1787,69 @@ function BondRiskTab({
   agent,
   bondData,
   bondHistory,
+  isOwnProfile,
 }: {
   agent: Agent;
   bondData?: BondStatus;
   bondHistory?: BondHistoryResponse;
+  isOwnProfile?: boolean;
 }) {
   const bd = bondData;
   const events = bondHistory?.events || [];
+  const { toast } = useToast();
+
+  const [bondAction, setBondAction] = useState<"deposit" | "withdraw" | null>(null);
+  const [bondAmount, setBondAmount] = useState("");
+
+  const depositMutation = useMutation({
+    mutationFn: async (amount: number) => {
+      return apiRequest("POST", `/api/bond/${agent.id}/deposit`, { amount }, { "x-agent-id": agent.id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bond", agent.id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/agents/${agent.id}`] });
+      toast({ title: "Deposit successful!", description: `${bondAmount} USDC added to your bond.` });
+      setBondAction(null);
+      setBondAmount("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Deposit failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const withdrawMutation = useMutation({
+    mutationFn: async (amount: number) => {
+      return apiRequest("POST", `/api/bond/${agent.id}/withdraw`, { amount }, { "x-agent-id": agent.id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bond", agent.id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/agents/${agent.id}`] });
+      toast({ title: "Withdrawal successful!", description: `${bondAmount} USDC removed from your bond.` });
+      setBondAction(null);
+      setBondAmount("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Withdrawal failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSubmitBond = () => {
+    const amount = parseFloat(bondAmount);
+    if (isNaN(amount) || amount < 1) {
+      toast({ title: "Invalid amount", description: "Enter at least 1 USDC.", variant: "destructive" });
+      return;
+    }
+    if (bondAction === "deposit") {
+      depositMutation.mutate(amount);
+    } else if (bondAction === "withdraw") {
+      const available = bd?.availableBond ?? agent.availableBond ?? 0;
+      if (amount > available) {
+        toast({ title: "Insufficient balance", description: `Max available: ${available.toFixed(2)} USDC`, variant: "destructive" });
+        return;
+      }
+      withdrawMutation.mutate(amount);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1859,6 +1918,78 @@ function BondRiskTab({
           )}
         </div>
       </SectionCard>
+
+      {isOwnProfile && (
+        <SectionCard testId="card-bond-actions">
+          <SectionTitle icon={<DollarSign className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
+            MANAGE BOND
+          </SectionTitle>
+
+          {bondAction ? (
+            <div className="space-y-3">
+              <p className="text-[11px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                {bondAction === "deposit" ? "Deposit USDC into Bond" : "Withdraw USDC from Bond"}
+              </p>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  placeholder="Amount in USDC"
+                  value={bondAmount}
+                  onChange={e => setBondAmount(e.target.value)}
+                  className="flex-1 px-3 py-2 text-sm font-mono rounded-sm focus:outline-none"
+                  style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                  data-testid={`input-bond-${bondAction}-amount`}
+                />
+                <button
+                  className="px-4 py-2 text-xs font-mono rounded-sm"
+                  style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.25)" }}
+                  onClick={handleSubmitBond}
+                  disabled={depositMutation.isPending || withdrawMutation.isPending}
+                  data-testid={`button-bond-${bondAction}-confirm`}
+                >
+                  {depositMutation.isPending || withdrawMutation.isPending ? "Processing…" : "Confirm"}
+                </button>
+                <button
+                  className="px-3 py-2 text-xs font-mono rounded-sm"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  onClick={() => { setBondAction(null); setBondAmount(""); }}
+                  data-testid="button-bond-cancel"
+                >
+                  Cancel
+                </button>
+              </div>
+              {bondAction === "withdraw" && (
+                <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                  Available to withdraw: {(bd?.availableBond ?? agent.availableBond ?? 0).toFixed(2)} USDC
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <button
+                className="flex items-center gap-2 px-4 py-2 text-xs font-mono rounded-sm"
+                style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                onClick={() => setBondAction("deposit")}
+                data-testid="button-bond-deposit"
+              >
+                <ArrowDownToLine className="w-3 h-3" />
+                Deposit USDC
+              </button>
+              <button
+                className="flex items-center gap-2 px-4 py-2 text-xs font-mono rounded-sm"
+                style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                onClick={() => setBondAction("withdraw")}
+                data-testid="button-bond-withdraw"
+              >
+                <ArrowUpFromLine className="w-3 h-3" />
+                Withdraw USDC
+              </button>
+            </div>
+          )}
+        </SectionCard>
+      )}
 
       {/* RISK PROFILE */}
       <SectionCard testId="card-risk-profile">

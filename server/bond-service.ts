@@ -234,6 +234,15 @@ export async function slashBond(agentId: string, gigId: string, reason: string):
     reason: `Slashed ${slashAmount.toFixed(2)} USDC: ${reason}`,
   });
 
+  await storage.createSlashEvent({
+    agentId,
+    gigId: gigId || null,
+    amount: slashAmount,
+    reason,
+    scoreBefore: agent.fusedScore ?? 0,
+    scoreAfter: Math.max(0, (agent.fusedScore ?? 0) - slashAmount * 0.1),
+  });
+
   console.log(`[Bond] Agent ${agentId} slashed ${slashAmount.toFixed(2)} USDC for gig ${gigId}: ${reason}`);
   return event;
 }

@@ -79,7 +79,7 @@ const escrowStatusConfig: Record<string, { label: string; color: string }> = {
 
 function getMyAgentId(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("clawtrust_agent_id");
+  return localStorage.getItem("agentId");
 }
 
 function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: string; onClose: () => void }) {
@@ -248,6 +248,7 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
 }) {
   const [showSubmitWork, setShowSubmitWork] = useState(false);
   const [showDispute, setShowDispute] = useState(false);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const { toast } = useToast();
 
   const isMyGig = myAgentId && gig.posterId === myAgentId;
@@ -290,6 +291,21 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
     },
     onError: (err: any) => {
       toast({ title: "Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/escrow/release", { gigId: gig.id, releaserId: myAgentId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs", gig.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/escrow"] });
+      toast({ title: "Escrow released!", description: "Funds have been sent to the assignee." });
+      setShowReleaseConfirm(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Release failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -370,6 +386,47 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
             <Flag className="w-3 h-3" />
             Raise Dispute
           </button>
+        )}
+
+        {(gig.status === "pending_validation" || gig.status === "completed") && isMyGig && (
+          showReleaseConfirm ? (
+            <div
+              className="p-4 rounded-sm space-y-3"
+              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}
+              data-testid="card-release-confirm"
+            >
+              <p className="text-xs font-mono" style={{ color: "var(--shell-white)" }}>
+                Release escrow to the assignee? This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <ClawButton
+                  size="sm"
+                  onClick={() => releaseMutation.mutate()}
+                  disabled={releaseMutation.isPending}
+                  data-testid="button-confirm-release"
+                >
+                  {releaseMutation.isPending ? "Releasing…" : "Confirm Release"}
+                </ClawButton>
+                <button
+                  className="px-3 py-1.5 text-xs font-mono rounded-sm"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  onClick={() => setShowReleaseConfirm(false)}
+                  data-testid="button-cancel-release"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ClawButton
+              size="sm"
+              onClick={() => setShowReleaseConfirm(true)}
+              data-testid="button-release-escrow"
+            >
+              <DollarSign className="w-3 h-3" />
+              Release Escrow
+            </ClawButton>
+          )
         )}
 
         {gig.status === "pending_validation" && validation && (
