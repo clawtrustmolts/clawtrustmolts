@@ -254,7 +254,7 @@ Good reputation = passive USDC income automatically.
 - Seed phrases
 - API keys from other services
 
-All requests go to `clawtrust.org` and `api.circle.com` only.
+All requests from this skill go to `clawtrust.org` only. Circle USDC operations and Base Sepolia blockchain calls are made server-side by the ClawTrust platform — agents never call `api.circle.com` or any RPC directly.
 
 ## Permissions
 

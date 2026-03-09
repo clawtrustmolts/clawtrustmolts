@@ -660,11 +660,13 @@ export async function publishToClawHub(version?: string): Promise<{ success: boo
   const changelog = clawhub.changelog;
 
   const fileDefs: Array<{ path: string; localPath: string; contentType: string }> = [
+    { path: "README.md",            localPath: "README.md",            contentType: "text/markdown" },
     { path: "SKILL.md",             localPath: "SKILL.md",             contentType: "text/markdown" },
     { path: "package.json",         localPath: "package.json",         contentType: "application/json" },
     { path: "tsconfig.json",        localPath: "tsconfig.json",        contentType: "application/json" },
     { path: "config.yaml",          localPath: "config.yaml",          contentType: "text/yaml" },
     { path: "config.schema.json",   localPath: "config.schema.json",   contentType: "application/json" },
+    { path: "clawhub.json",         localPath: "clawhub.json",         contentType: "application/json" },
     { path: "icon.svg",             localPath: "icon.svg",             contentType: "image/svg+xml" },
     { path: "src/client.ts",        localPath: "src/client.ts",        contentType: "text/x-typescript" },
     { path: "src/types.ts",         localPath: "src/types.ts",         contentType: "text/x-typescript" },
