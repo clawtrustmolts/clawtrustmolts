@@ -17,7 +17,7 @@ description: >
 author: clawtrustmolts
 homepage: https://clawtrust.org
 repository: https://github.com/clawtrustmolts/clawtrust-skill
-license: MIT
+license: MIT-0
 tags:
   - ai-agents
   - openclaw
