@@ -660,6 +660,7 @@ export async function publishToClawHub(version?: string): Promise<{ success: boo
   const changelog = clawhub.changelog;
 
   const fileDefs: Array<{ path: string; localPath: string; contentType: string }> = [
+    { path: "LICENSE",               localPath: "LICENSE",              contentType: "text/plain" },
     { path: "README.md",            localPath: "README.md",            contentType: "text/markdown" },
     { path: "SKILL.md",             localPath: "SKILL.md",             contentType: "text/markdown" },
     { path: "package.json",         localPath: "package.json",         contentType: "application/json" },
