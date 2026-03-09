@@ -50,7 +50,8 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Smart Contract Security Hardening**: All Solidity contracts hardened with various security measures.
 
 ## Skill Publishing
-- **ClawHub Skill**: `clawtrust` published to ClawHub at `v1.7.0`. Files in `openclaw-skill-submission/clawtrust/`. Publish command: `npx clawhub@latest auth login --token "$CLAWHUB_TOKEN" --no-browser && npx clawhub@latest publish ./openclaw-skill-submission/clawtrust/ --version X.Y.Z`
+- **ClawHub Skill**: `clawtrust` published to ClawHub at `v1.8.0`. Files in `openclaw-skill-submission/clawtrust/`. Publish command: `npx clawhub@latest auth login --token "$CLAWHUB_TOKEN" --no-browser && npx clawhub@latest publish ./openclaw-skill-submission/clawtrust/ --version X.Y.Z`
+- **v1.8.0 changes**: ClawTrust Name Service (4 TLDs), domain API endpoints, wallet signature authentication, ClawTrustRegistry contract, SDK domain methods, updated all stale molt-names paths to molt-domains.
 - **v1.7.0 changes**: Profile editing, webhook notifications, notification API, on-chain USDC escrow routes, network receipts — all new endpoints documented in SKILL.md + SDK methods in `src/client.ts`.
 
 ## Recent Additions (March 2026)
@@ -62,6 +63,7 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Home Page Live Receipts**: TrustReceiptSection queries GET /api/network-receipts to show real completed gigs, with mockup as fallback.
 - **Network Receipts Route**: GET /api/network-receipts returns enriched trust receipts with agent/poster handles.
 - **Branded Wallet Sign-In Modal**: `client/src/components/wallet-modal.tsx` — WalletConnectModal replaces raw alert(). States: connecting, signing, not-found (MetaMask not installed), error. `use-wallet.ts` rewritten with: ethereum detection retry (1.2s polling), `personal_sign` branded message, signature cached in localStorage["ct_sig"] with 24h TTL.
+- **Wallet Signature Verification**: Frontend sends `x-wallet-signature` + `x-wallet-sig-timestamp` headers on all authenticated requests (queryClient.ts). Backend `walletAuthMiddleware` verifies signatures using viem's `verifyMessage` when Privy isn't configured. Invalid/expired (24h) signatures get 401. SDK/autonomous agents without signatures still work (backward compat) with console warning.
 - **ClawTrust Name Service**: Full multi-TLD domain system. 4 TLDs: .molt (free), .claw (Gold Shell+ or 50 USDC/yr), .shell (Silver Molt+ or 100 USDC/yr), .pinch (Bronze Pinch+ or 25 USDC/yr). Dual-path: free via reputation OR pay USDC.
   - **ClawTrustRegistry.sol**: ERC-721 contract for .claw/.shell/.pinch at `0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b` (verified on Base Sepolia Basescan). Each registration mints an NFT.
   - **Schema**: `moltDomains` table updated with `tld`, `pricePaid`, `onChainTokenId`, `onChainTxHash` columns. `agentId` made nullable for wallet-only registrations.
@@ -74,7 +76,7 @@ The design follows a warm, approachable light theme with professional crypto eco
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet).
 - **Database**: PostgreSQL.
-- **Smart Contracts**: 6 custom contracts (ClawTrustEscrow, ClawTrustBond, ClawTrustSwarmValidator, ClawCardNFT, ClawTrustRepAdapter, ClawTrustCrew) leveraging ERC-8004 standard, Solidity 0.8.20, OpenZeppelin v5, Hardhat.
+- **Smart Contracts**: 7 custom contracts (ClawTrustEscrow, ClawTrustBond, ClawTrustSwarmValidator, ClawCardNFT, ClawTrustRepAdapter, ClawTrustCrew, ClawTrustRegistry) leveraging ERC-8004 standard, Solidity 0.8.20, OpenZeppelin v5, Hardhat.
 - **Circle**: Developer-Controlled Wallets SDK for USDC escrow operations.
 - **x402**: `x402-express` middleware for HTTP 402 payment protocol.
 - **Moltbook**: `moltbook.com` API for agent karma and bot operations.

@@ -6,7 +6,7 @@ import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchem
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
-import { type Address, getAddress as toChecksumAddress } from "viem";
+import { type Address, getAddress as toChecksumAddress, verifyMessage } from "viem";
 import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
@@ -245,13 +245,49 @@ async function verifyPrivyJWT(token: string): Promise<{ verified: boolean; paylo
   }
 }
 
-function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+const SIG_TTL_MS = 24 * 60 * 60 * 1000;
+
+function buildSignMessage(nonce: number): string {
+  return `Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet ownership.\nNo gas required. No transaction is sent.\n\nNonce: ${nonce}\nChain: Base Sepolia (84532)`;
+}
+
+async function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
   if (!process.env.PRIVY_APP_ID) {
     const walletHeader = req.headers["x-wallet-address"] as string | undefined;
     if (!walletHeader || !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
       return res.status(401).json({ message: "Wallet address required. Connect your wallet to continue." });
     }
+
+    const signature = req.headers["x-wallet-signature"] as string | undefined;
+    const sigTimestamp = req.headers["x-wallet-sig-timestamp"] as string | undefined;
+
+    if (signature && sigTimestamp) {
+      const ts = parseInt(sigTimestamp, 10);
+      const now = Date.now();
+      if (isNaN(ts) || now - ts > SIG_TTL_MS || ts > now + 60000) {
+        return res.status(401).json({ message: "Wallet signature expired or invalid. Please reconnect your wallet." });
+      }
+      try {
+        const message = buildSignMessage(ts);
+        const valid = await verifyMessage({
+          address: walletHeader as Address,
+          message,
+          signature: signature as `0x${string}`,
+        });
+        if (!valid) {
+          logSuspiciousActivity(req, "sig_invalid", `Signature verification failed for ${walletHeader}`);
+          return res.status(401).json({ message: "Invalid wallet signature. Please reconnect your wallet." });
+        }
+      } catch (err: any) {
+        logSuspiciousActivity(req, "sig_error", `Signature verification error: ${err?.message}`);
+        return res.status(401).json({ message: "Wallet signature verification failed." });
+      }
+    } else {
+      console.warn(`[auth] Unsigned request from ${walletHeader} on ${req.method} ${req.path} — signature headers missing (SDK/backward compat)`);
+    }
+
     (req as any).authUser = { walletAddress: walletHeader };
+    (req as any).wallet = walletHeader;
     return next();
   }
 
@@ -286,10 +322,12 @@ function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
       return res.status(403).json({ message: "Wallet address does not match authenticated identity" });
     }
 
+    const resolvedWallet = walletHeader || tokenWallet;
     (req as any).authUser = {
       sub: result.payload?.sub,
-      walletAddress: walletHeader || tokenWallet,
+      walletAddress: resolvedWallet,
     };
+    (req as any).wallet = resolvedWallet;
 
     next();
   }).catch(() => {

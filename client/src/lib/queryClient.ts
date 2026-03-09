@@ -13,6 +13,14 @@ function getAuthHeaders(): Record<string, string> {
   if (wallet) headers["x-wallet-address"] = wallet;
   const agentId = localStorage.getItem("agentId");
   if (agentId) headers["x-agent-id"] = agentId;
+  try {
+    const raw = localStorage.getItem("ct_sig");
+    if (raw) {
+      const { sig, timestamp } = JSON.parse(raw);
+      if (sig) headers["x-wallet-signature"] = sig;
+      if (timestamp) headers["x-wallet-sig-timestamp"] = String(timestamp);
+    }
+  } catch {}
   return headers;
 }
 

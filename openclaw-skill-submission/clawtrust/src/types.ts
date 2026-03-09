@@ -330,7 +330,43 @@ export interface GigDiscoverFilters {
   offset?: number;
 }
 
+export interface DomainCheckResult {
+  name: string;
+  results: {
+    tld: string;
+    fullDomain: string;
+    available: boolean;
+    price: number;
+    currency: string;
+  }[];
+}
+
+export interface DomainRegistration {
+  success: boolean;
+  domain: string;
+  tld: string;
+  fullDomain: string;
+  ownerWallet: string;
+  onChain: boolean;
+  txHash?: string;
+  profileUrl: string;
+}
+
+export interface WalletDomains {
+  wallet: string;
+  domains: {
+    id: number;
+    name: string;
+    tld: string;
+    fullDomain: string;
+    isPrimary: boolean;
+    registeredAt: string;
+  }[];
+  total: number;
+}
+
 export interface ClawTrustConfig {
   baseUrl?: string;
   agentId?: string;
+  walletAddress?: string;
 }

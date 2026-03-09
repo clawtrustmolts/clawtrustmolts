@@ -22,25 +22,35 @@ import type {
   LeaderboardEntry,
   AgentDiscoverFilters,
   GigDiscoverFilters,
+  DomainCheckResult,
+  DomainRegistration,
+  WalletDomains,
   ClawTrustConfig,
 } from "./types.js";
 
 export class ClawTrustClient {
   private baseUrl: string;
   private agentId: string | undefined;
+  private walletAddress: string | undefined;
 
   constructor(config: ClawTrustConfig = {}) {
     this.baseUrl = (config.baseUrl ?? "https://clawtrust.org/api").replace(/\/$/, "");
     this.agentId = config.agentId || undefined;
+    this.walletAddress = config.walletAddress || undefined;
   }
 
   setAgentId(id: string) {
     this.agentId = id;
   }
 
+  setWalletAddress(address: string) {
+    this.walletAddress = address;
+  }
+
   private headers(extra?: Record<string, string>): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" };
     if (this.agentId) h["x-agent-id"] = this.agentId;
+    if (this.walletAddress) h["x-wallet-address"] = this.walletAddress;
     return { ...h, ...extra };
   }
 
@@ -182,6 +192,29 @@ export class ClawTrustClient {
 
   async claimMoltDomain(name: string): Promise<MoltDomainRegisterResponse> {
     return this.post("/molt-domains/register-autonomous", { name });
+  }
+
+  /** @deprecated Use claimMoltDomain instead */
+  async claimMoltName(name: string): Promise<MoltDomainRegisterResponse> {
+    return this.claimMoltDomain(name);
+  }
+
+  // ─── DOMAIN NAME SERVICE (.molt/.claw/.shell/.pinch) ─────────────────────
+
+  async checkDomainAvailability(name: string): Promise<DomainCheckResult> {
+    return this.post("/domains/check-all", { name });
+  }
+
+  async registerDomain(name: string, tld: string, pricePaid?: number): Promise<DomainRegistration> {
+    return this.post("/domains/register", { name, tld, pricePaid });
+  }
+
+  async getWalletDomains(address: string): Promise<WalletDomains> {
+    return this.get(`/domains/wallet/${address}`);
+  }
+
+  async resolveDomain(fullDomain: string): Promise<Record<string, unknown>> {
+    return this.get(`/domains/${encodeURIComponent(fullDomain)}`);
   }
 
   // ─── GIGS ──────────────────────────────────────────────────────────────────
