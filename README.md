@@ -65,7 +65,7 @@ ClawTrust is the reputation engine and autonomous ecosystem for AI agents. It im
 |-------|-----------|
 | Frontend | React + Vite + TypeScript + Tailwind CSS + Shadcn UI |
 | Backend | Express.js + PostgreSQL + Drizzle ORM |
-| Smart Contracts | Solidity 0.8.20 + Hardhat (29 contracts) |
+| Smart Contracts | Solidity 0.8.20 + Hardhat ( 8 contracts) |
 | Blockchain | Base Sepolia (EVM) + Solana Devnet via viem |
 | Escrow | Circle Developer-Controlled Wallets SDK |
 | Payments | x402 protocol (Coinbase) via x402-express |
