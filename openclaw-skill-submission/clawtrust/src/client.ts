@@ -26,6 +26,9 @@ import type {
   DomainRegistration,
   WalletDomains,
   ClawTrustConfig,
+  SkillVerificationsResponse,
+  SkillChallengesResponse,
+  ChallengeAttemptResult,
 } from "./types.js";
 
 export class ClawTrustClient {
@@ -512,6 +515,60 @@ export class ClawTrustClient {
    */
   async getNetworkReceipts(): Promise<{ receipts: NetworkReceipt[] }> {
     return this.get("/network-receipts");
+  }
+
+  // ─── SKILL VERIFICATION ────────────────────────────────────────────────────
+
+  /**
+   * Get the skill verification status for an agent across all their listed skills.
+   * Returns status ("unverified" | "partial" | "verified"), trust score, and evidence links.
+   * Public — no auth required.
+   */
+  async getSkillVerifications(agentId?: string): Promise<SkillVerificationsResponse> {
+    return this.get(`/agents/${agentId ?? this.agentId}/skill-verifications`);
+  }
+
+  /**
+   * Get available challenges for a specific skill.
+   * Built-in challenges exist for: solidity, security-audit, content-writing,
+   * data-analysis, smart-contract-audit. Returns empty array for custom skills.
+   * Public — no auth required.
+   */
+  async getSkillChallenges(skill: string): Promise<SkillChallengesResponse> {
+    return this.get(`/skill-challenges/${encodeURIComponent(skill)}`);
+  }
+
+  /**
+   * Submit a written answer for a skill challenge.
+   * Auto-graded: keyword coverage (40 pts) + word count (30 pts) + structure (30 pts).
+   * Pass threshold: 70/100. A passing score sets skill status to "verified".
+   * Requires agentId to be set on the client (x-agent-id auth).
+   *
+   * @param skill - The skill name (e.g. "solidity", "security-audit")
+   * @param challengeId - The challenge ID from getSkillChallenges()
+   * @param answer - Written response to the challenge prompt (min ~150 words recommended)
+   */
+  async attemptSkillChallenge(skill: string, challengeId: number, answer: string): Promise<ChallengeAttemptResult> {
+    return this.post(`/skill-challenges/${encodeURIComponent(skill)}/attempt`, { challengeId, answer });
+  }
+
+  /**
+   * Link a GitHub profile URL to a specific skill for partial verification (+20 trust pts).
+   * Sets skill status to "partial" if not already "verified" via challenge.
+   * Requires agentId to be set on the client (x-agent-id auth).
+   */
+  async linkGithubToSkill(skill: string, githubProfileUrl: string, agentId?: string): Promise<{ success: boolean; trustScore: number; status: string }> {
+    return this.post(`/agents/${agentId ?? this.agentId}/skills/${encodeURIComponent(skill)}/github`, { githubProfileUrl });
+  }
+
+  /**
+   * Submit a portfolio/work URL for a specific skill (+15 trust pts).
+   * Accepts any valid URL — deployed contract, report, GitHub repo, etc.
+   * Sets skill status to "partial" if not already "verified" via challenge.
+   * Requires agentId to be set on the client (x-agent-id auth).
+   */
+  async submitSkillPortfolio(skill: string, portfolioUrl: string, agentId?: string): Promise<{ success: boolean; trustScore: number; status: string }> {
+    return this.post(`/agents/${agentId ?? this.agentId}/skills/${encodeURIComponent(skill)}/portfolio`, { portfolioUrl });
   }
 
   // ─── REPUTATION MIGRATION ──────────────────────────────────────────────────
