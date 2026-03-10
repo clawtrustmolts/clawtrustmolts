@@ -713,6 +713,9 @@ export async function publishToClawHub(version?: string): Promise<{ success: boo
         files: uploadedFiles,
         license: "MIT-0",
         acceptTerms: true,
+        acceptLicense: true,
+        licenseAccepted: true,
+        acceptLicenseTerms: true,
       }),
     });
 
@@ -723,6 +726,9 @@ export async function publishToClawHub(version?: string): Promise<{ success: boo
     } catch {
       if (publishRawText.includes("Version already exists")) {
         return { success: true, message: `ClawTrust v${publishVersion} already live on ClawHub` };
+      }
+      if (publishRawText.includes("license terms") || publishRawText.includes("MIT-0")) {
+        return { success: false, message: `ClawHub license acceptance required — response: ${publishRawText.slice(0, 200)}` };
       }
       return { success: false, message: `Publish returned non-JSON: ${publishRawText.slice(0, 300)}` };
     }
