@@ -79,7 +79,7 @@ const escrowStatusConfig: Record<string, { label: string; color: string }> = {
 
 function getMyAgentId(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("clawtrust_agent_id");
+  return localStorage.getItem("agentId");
 }
 
 function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: string; onClose: () => void }) {
@@ -240,6 +240,87 @@ function DisputeModal({ gigId, agentId, onClose }: { gigId: string; agentId: str
   );
 }
 
+function ApplicantCard({
+  app,
+  requiredSkills,
+  onAssign,
+  assigning,
+}: {
+  app: GigApplicant;
+  requiredSkills: string[];
+  onAssign: () => void;
+  assigning: boolean;
+}) {
+  const { data: svData } = useQuery<{ skills: Array<{ skill: string; status: string; trustScore: number }> }>({
+    queryKey: ["/api/agents", app.agentId, "skill-verifications"],
+    enabled: requiredSkills.length > 0,
+  });
+
+  const verifiedSkills = svData?.skills.filter((s) => requiredSkills.map(r => r.toLowerCase()).includes(s.skill.toLowerCase()) && s.status === "verified") ?? [];
+  const verifiedCount = verifiedSkills.length;
+  const totalRequired = requiredSkills.length;
+
+  return (
+    <div
+      className="p-3 rounded-sm space-y-2"
+      style={{ background: "rgba(0,0,0,0.08)", border: "1px solid rgba(255,255,255,0.05)" }}
+      data-testid={`card-applicant-${app.agentId}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <span className="text-xs font-mono" style={{ color: "var(--shell-white)" }}>
+            {app.agent?.handle || app.agentId.slice(0, 8)}
+          </span>
+          {app.agent?.fusedScore !== undefined && (
+            <span className="ml-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              score {app.agent.fusedScore}
+            </span>
+          )}
+        </div>
+        <ClawButton
+          size="sm"
+          variant="ghost"
+          onClick={onAssign}
+          disabled={assigning}
+          data-testid={`button-assign-${app.agentId}`}
+        >
+          Assign
+        </ClawButton>
+      </div>
+      {totalRequired > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>Skills:</span>
+          {requiredSkills.map((skill) => {
+            const sv = svData?.skills.find((s) => s.skill.toLowerCase() === skill.toLowerCase());
+            const verified = sv?.status === "verified";
+            return (
+              <span
+                key={skill}
+                className="inline-flex items-center gap-0.5 text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                style={{
+                  background: verified ? "rgba(10,236,184,0.08)" : "rgba(255,255,255,0.04)",
+                  color: verified ? "var(--teal-glow)" : "var(--text-muted)",
+                  border: verified ? "1px solid rgba(10,236,184,0.2)" : "1px solid rgba(255,255,255,0.06)",
+                }}
+                title={verified ? `Verified skill` : "Unverified"}
+                data-testid={`skill-indicator-${app.agentId}-${skill}`}
+              >
+                {verified && <CheckCircle className="w-2 h-2" />}
+                {skill}
+              </span>
+            );
+          })}
+          {totalRequired > 0 && (
+            <span className="text-[9px] font-mono" style={{ color: verifiedCount === totalRequired ? "var(--teal-glow)" : "var(--text-muted)" }}>
+              {verifiedCount}/{totalRequired} verified
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ActionPanel({ gig, applicants, myAgentId, validation }: {
   gig: Gig;
   applicants: GigApplicant[];
@@ -248,6 +329,7 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
 }) {
   const [showSubmitWork, setShowSubmitWork] = useState(false);
   const [showDispute, setShowDispute] = useState(false);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const { toast } = useToast();
 
   const isMyGig = myAgentId && gig.posterId === myAgentId;
@@ -290,6 +372,21 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
     },
     onError: (err: any) => {
       toast({ title: "Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/escrow/release", { gigId: gig.id, releaserId: myAgentId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs", gig.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/escrow"] });
+      toast({ title: "Escrow released!", description: "Funds have been sent to the assignee." });
+      setShowReleaseConfirm(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Release failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -372,6 +469,47 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
           </button>
         )}
 
+        {(gig.status === "pending_validation" || gig.status === "completed") && isMyGig && (
+          showReleaseConfirm ? (
+            <div
+              className="p-4 rounded-sm space-y-3"
+              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}
+              data-testid="card-release-confirm"
+            >
+              <p className="text-xs font-mono" style={{ color: "var(--shell-white)" }}>
+                Release escrow to the assignee? This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <ClawButton
+                  size="sm"
+                  onClick={() => releaseMutation.mutate()}
+                  disabled={releaseMutation.isPending}
+                  data-testid="button-confirm-release"
+                >
+                  {releaseMutation.isPending ? "Releasing…" : "Confirm Release"}
+                </ClawButton>
+                <button
+                  className="px-3 py-1.5 text-xs font-mono rounded-sm"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  onClick={() => setShowReleaseConfirm(false)}
+                  data-testid="button-cancel-release"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ClawButton
+              size="sm"
+              onClick={() => setShowReleaseConfirm(true)}
+              data-testid="button-release-escrow"
+            >
+              <DollarSign className="w-3 h-3" />
+              Release Escrow
+            </ClawButton>
+          )
+        )}
+
         {gig.status === "pending_validation" && validation && (
           <div
             className="p-4 rounded-sm space-y-3"
@@ -410,20 +548,13 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
             </p>
             <div className="space-y-2">
               {applicants.map((app) => (
-                <div key={app.id} className="flex items-center justify-between gap-2 p-2 rounded-sm" style={{ background: "rgba(0,0,0,0.04)" }}>
-                  <span className="text-xs font-mono" style={{ color: "var(--shell-white)" }}>
-                    {app.agent?.handle || app.agentId.slice(0, 8)}
-                  </span>
-                  <ClawButton
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => assignMutation.mutate(app.agentId)}
-                    disabled={assignMutation.isPending}
-                    data-testid={`button-assign-${app.agentId}`}
-                  >
-                    Assign
-                  </ClawButton>
-                </div>
+                <ApplicantCard
+                  key={app.id}
+                  app={app}
+                  requiredSkills={gig.skillsRequired ?? []}
+                  onAssign={() => assignMutation.mutate(app.agentId)}
+                  assigning={assignMutation.isPending}
+                />
               ))}
             </div>
           </div>

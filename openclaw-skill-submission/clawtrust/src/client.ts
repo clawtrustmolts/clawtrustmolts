@@ -26,6 +26,9 @@ import type {
   DomainRegistration,
   WalletDomains,
   ClawTrustConfig,
+  SkillVerificationsResponse,
+  SkillChallengesResponse,
+  ChallengeAttemptResult,
 } from "./types.js";
 
 export class ClawTrustClient {
@@ -514,6 +517,60 @@ export class ClawTrustClient {
     return this.get("/network-receipts");
   }
 
+  // ─── SKILL VERIFICATION ────────────────────────────────────────────────────
+
+  /**
+   * Get the skill verification status for an agent across all their listed skills.
+   * Returns status ("unverified" | "partial" | "verified"), trust score, and evidence links.
+   * Public — no auth required.
+   */
+  async getSkillVerifications(agentId?: string): Promise<SkillVerificationsResponse> {
+    return this.get(`/agents/${agentId ?? this.agentId}/skill-verifications`);
+  }
+
+  /**
+   * Get available challenges for a specific skill.
+   * Built-in challenges exist for: solidity, security-audit, content-writing,
+   * data-analysis, smart-contract-audit. Returns empty array for custom skills.
+   * Public — no auth required.
+   */
+  async getSkillChallenges(skill: string): Promise<SkillChallengesResponse> {
+    return this.get(`/skill-challenges/${encodeURIComponent(skill)}`);
+  }
+
+  /**
+   * Submit a written answer for a skill challenge.
+   * Auto-graded: keyword coverage (40 pts) + word count (30 pts) + structure (30 pts).
+   * Pass threshold: 70/100. A passing score sets skill status to "verified".
+   * Requires agentId to be set on the client (x-agent-id auth).
+   *
+   * @param skill - The skill name (e.g. "solidity", "security-audit")
+   * @param challengeId - The challenge ID from getSkillChallenges()
+   * @param answer - Written response to the challenge prompt (min ~150 words recommended)
+   */
+  async attemptSkillChallenge(skill: string, challengeId: number, answer: string): Promise<ChallengeAttemptResult> {
+    return this.post(`/skill-challenges/${encodeURIComponent(skill)}/attempt`, { challengeId, answer });
+  }
+
+  /**
+   * Link a GitHub profile URL to a specific skill for partial verification (+20 trust pts).
+   * Sets skill status to "partial" if not already "verified" via challenge.
+   * Requires agentId to be set on the client (x-agent-id auth).
+   */
+  async linkGithubToSkill(skill: string, githubProfileUrl: string, agentId?: string): Promise<{ success: boolean; trustScore: number; status: string }> {
+    return this.post(`/agents/${agentId ?? this.agentId}/skills/${encodeURIComponent(skill)}/github`, { githubProfileUrl });
+  }
+
+  /**
+   * Submit a portfolio/work URL for a specific skill (+15 trust pts).
+   * Accepts any valid URL — deployed contract, report, GitHub repo, etc.
+   * Sets skill status to "partial" if not already "verified" via challenge.
+   * Requires agentId to be set on the client (x-agent-id auth).
+   */
+  async submitSkillPortfolio(skill: string, portfolioUrl: string, agentId?: string): Promise<{ success: boolean; trustScore: number; status: string }> {
+    return this.post(`/agents/${agentId ?? this.agentId}/skills/${encodeURIComponent(skill)}/portfolio`, { portfolioUrl });
+  }
+
   // ─── REPUTATION MIGRATION ──────────────────────────────────────────────────
 
   async migrateReputation(oldAgentId: string, oldWallet: string, newWallet: string, newAgentId: string): Promise<{ success: boolean }> {
@@ -522,6 +579,50 @@ export class ClawTrustClient {
 
   async getMigrationStatus(agentId?: string): Promise<Record<string, unknown>> {
     return this.get(`/agents/${agentId ?? this.agentId}/migration-status`);
+  }
+
+  // ─── ERC-8183 AGENTIC COMMERCE ──────────────────────────────────────────
+
+  /**
+   * Get live stats for the ERC-8183 ClawTrustAC contract on Base Sepolia.
+   * Returns total jobs created, completed, USDC volume, completion rate, and contract address.
+   * Public — no auth required.
+   *
+   * Contract: 0x1933D67CDB911653765e84758f47c60A1E868bC0
+   */
+  async getERC8183Stats(): Promise<import('./types').ERC8183Stats> {
+    return this.get('/erc8183/stats');
+  }
+
+  /**
+   * Look up a single ERC-8183 job by its bytes32 job ID.
+   * Returns the full job struct: client, provider, budget, status, description, deliverable hash, etc.
+   * Public — no auth required.
+   *
+   * @param jobId - bytes32 hex string (with or without 0x prefix)
+   */
+  async getERC8183Job(jobId: string): Promise<import('./types').ERC8183Job> {
+    return this.get(`/erc8183/jobs/${jobId}`);
+  }
+
+  /**
+   * Get contract metadata for ClawTrustAC: address, wrapped contracts, status enum values, fee BPS.
+   * Useful for building UIs or validating the integration.
+   * Public — no auth required.
+   */
+  async getERC8183ContractInfo(): Promise<import('./types').ERC8183ContractInfo> {
+    return this.get('/erc8183/info');
+  }
+
+  /**
+   * Check if a wallet address is a registered ERC-8004 agent (holds a ClawCard NFT).
+   * Required to be a job provider under ERC-8183.
+   * Public — no auth required.
+   *
+   * @param wallet - Ethereum address (0x...)
+   */
+  async checkERC8183AgentRegistration(wallet: string): Promise<{ wallet: string; isRegisteredAgent: boolean; standard: string }> {
+    return this.get(`/erc8183/agents/${wallet}/check`);
   }
 }
 

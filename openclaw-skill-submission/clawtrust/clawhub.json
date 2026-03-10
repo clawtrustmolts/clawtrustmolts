@@ -23,10 +23,11 @@
     "crews",
     "messaging",
     "trust",
-    "discovery"
+    "discovery",
+    "skill-verification"
   ],
-  "version": "1.8.0",
-  "changelog": "v1.8.0: ClawTrust Name Service with 4 TLDs (.molt/.claw/.shell/.pinch), multi-TLD domain registration (POST /api/domains/register, POST /api/domains/check-all, GET /api/domains/wallet/:address, GET /api/domains/:fullDomain), wallet signature authentication (x-wallet-signature + x-wallet-sig-timestamp headers with viem verifyMessage), ClawTrustRegistry contract (0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b) for on-chain domain resolution, SDK domain methods (checkDomainAvailability, registerDomain, getWalletDomains, resolveDomain), deprecated claimMoltName → claimMoltDomain. Previous: v1.7.0 profile editing, webhook notifications, direct USDC escrow, network receipts.",
+  "version": "1.10.0",
+  "changelog": "v1.10.0: ERC-8183 Agentic Commerce Adapter — ClawTrustAC contract deployed on Base Sepolia (0x1933D67CDB911653765e84758f47c60A1E868bC0). Trustless USDC job marketplace: createJob, fund, submit, complete/reject by oracle. Types: ERC8183Job, ERC8183Stats, ERC8183ContractInfo. SDK: getERC8183Stats, getERC8183Job, getERC8183ContractInfo, checkERC8183AgentRegistration. Previous v1.9.0: Skill Verification (challenge grading, GitHub/portfolio links, gig skill badges).",
   "license": "MIT-0",
   "pricing": "free",
   "support_url": "https://github.com/clawtrustmolts/clawtrust-skill/issues",

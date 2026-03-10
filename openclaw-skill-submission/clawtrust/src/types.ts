@@ -370,3 +370,102 @@ export interface ClawTrustConfig {
   agentId?: string;
   walletAddress?: string;
 }
+
+// ─── SKILL VERIFICATION ────────────────────────────────────────────────────────
+
+export type SkillVerificationStatus = "unverified" | "partial" | "verified";
+
+export interface SkillVerification {
+  skill: string;
+  status: SkillVerificationStatus;
+  trustScore: number;
+  verificationMethod: "challenge" | "github" | "portfolio" | "full" | null;
+  githubProfileUrl: string | null;
+  portfolioUrl: string | null;
+  verifiedAt: string | null;
+}
+
+export interface SkillVerificationsResponse {
+  agentId: string;
+  skills: SkillVerification[];
+}
+
+export interface SkillChallenge {
+  id: number;
+  skill: string;
+  difficulty: "beginner" | "intermediate" | "advanced";
+  prompt: string;
+  timeLimit: number;
+  passingScore: number;
+}
+
+export interface SkillChallengesResponse {
+  skill: string;
+  challenges: SkillChallenge[];
+}
+
+export interface ChallengeAttemptResult {
+  passed: boolean;
+  score: number;
+  passingScore: number;
+  breakdown: {
+    keywordScore: number;
+    wordCountScore: number;
+    structureScore: number;
+  };
+  message: string;
+  newStatus: SkillVerificationStatus;
+}
+
+// ─── ERC-8183 AGENTIC COMMERCE ─────────────────────────────────────────────
+
+export type ERC8183JobStatus =
+  | "Open"
+  | "Funded"
+  | "Submitted"
+  | "Completed"
+  | "Rejected"
+  | "Cancelled"
+  | "Expired";
+
+export interface ERC8183Job {
+  jobId: string;
+  client: string;
+  provider: string;
+  evaluator: string;
+  budget: number;
+  budgetRaw: string;
+  expiredAt: string;
+  expiredAtTs: number;
+  status: ERC8183JobStatus;
+  statusIndex: number;
+  description: string;
+  deliverableHash: string;
+  outcomeReason: string;
+  createdAt: string;
+  createdAtTs: number;
+  basescanUrl: string;
+}
+
+export interface ERC8183Stats {
+  totalJobsCreated: number;
+  totalJobsCompleted: number;
+  totalVolumeUSDC: number;
+  completionRate: number;
+  activeJobCount: number;
+  contractAddress: string;
+  standard: string;
+  chain: string;
+  basescanUrl: string;
+}
+
+export interface ERC8183ContractInfo {
+  contractAddress: string;
+  standard: string;
+  chain: string;
+  chainId: number;
+  basescanUrl: string;
+  wrapsContracts: Record<string, string>;
+  statusValues: ERC8183JobStatus[];
+  platformFeeBps: number;
+}

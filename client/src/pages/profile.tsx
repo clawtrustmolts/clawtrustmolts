@@ -49,6 +49,8 @@ import {
   Pencil,
   HelpCircle,
   CheckCircle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from "lucide-react";
 import {
   Dialog,
@@ -404,6 +406,22 @@ export default function ProfilePage() {
     enabled: !!agentId,
   });
 
+  const { data: skillVerificationsData, refetch: refetchSkillVerifications } = useQuery<{
+    skills: Array<{
+      skill: string;
+      status: string;
+      trustScore: number;
+      verifiedAt: string | null;
+      verificationMethod: string | null;
+      githubProfileUrl: string | null;
+      portfolioUrl: string | null;
+      challengeScore: number | null;
+    }>
+  }>({
+    queryKey: ["/api/agents", agentId, "skill-verifications"],
+    enabled: !!agentId,
+  });
+
   const { data: slashesData } = useQuery<{ slashes: SlashEvent[]; count: number }>({
     queryKey: ["/api/slashes/agent", agentId],
     enabled: !!agentId,
@@ -718,20 +736,35 @@ export default function ProfilePage() {
               </div>
 
               {agent.skills.length > 0 && (
-                <div className="flex flex-wrap gap-1.5" data-testid="skills-tags">
-                  {agent.skills.map((skill) => (
-                    <span
-                      key={skill}
-                      className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                      style={{
-                        background: "rgba(0,0,0,0.06)",
-                        color: "var(--shell-cream)",
-                        border: "1px solid rgba(0,0,0,0.12)",
-                      }}
-                    >
-                      {skill}
-                    </span>
-                  ))}
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-1.5" data-testid="skills-tags">
+                    {agent.skills.map((skill) => {
+                      const sv = skillVerificationsData?.skills.find((s) => s.skill === skill);
+                      const isVerified = sv?.status === "verified";
+                      const isPartial = sv?.status === "partial";
+                      return (
+                        <span
+                          key={skill}
+                          className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                          style={{
+                            background: isVerified ? "rgba(10,236,184,0.08)" : isPartial ? "rgba(232,84,10,0.07)" : "rgba(0,0,0,0.06)",
+                            color: isVerified ? "var(--teal-glow)" : isPartial ? "var(--claw-amber)" : "var(--shell-cream)",
+                            border: isVerified ? "1px solid rgba(10,236,184,0.25)" : isPartial ? "1px solid rgba(232,84,10,0.2)" : "1px solid rgba(0,0,0,0.12)",
+                          }}
+                          data-testid={`skill-tag-${skill}`}
+                          title={isVerified ? `Verified · Trust score: ${sv?.trustScore ?? 0}` : isPartial ? "Partially verified" : "Unverified"}
+                        >
+                          {isVerified && <CheckCircle className="w-2.5 h-2.5" />}
+                          {skill}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {myAgentId === agent.id && (
+                    <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                      Go to the Bond & Skills tab to verify your skills
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1147,6 +1180,9 @@ export default function ProfilePage() {
               agent={agent}
               bondData={bondData}
               bondHistory={bondHistory}
+              isOwnProfile={myAgentId === agent.id}
+              skillVerifications={skillVerificationsData?.skills ?? []}
+              onSkillVerified={refetchSkillVerifications}
             />
           )}
           {activeTab === "reviews" && (
@@ -1780,17 +1816,358 @@ function OverviewTab({
   );
 }
 
+type SkillVerificationInfo = {
+  skill: string;
+  status: string;
+  trustScore: number;
+  verifiedAt: string | null;
+  verificationMethod: string | null;
+  githubProfileUrl: string | null;
+  portfolioUrl: string | null;
+  challengeScore: number | null;
+};
+
+function SkillVerificationModal({
+  agentId,
+  skill,
+  onClose,
+  onSuccess,
+}: {
+  agentId: string;
+  skill: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [tab, setTab] = useState<"challenge" | "github" | "portfolio">("challenge");
+  const [submission, setSubmission] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
+  const [portfolioUrl, setPortfolioUrl] = useState("");
+  const [challengeData, setChallengeData] = useState<any>(null);
+  const [challengeLoading, setChallengeLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (tab === "challenge") {
+      setChallengeLoading(true);
+      apiRequest("GET", `/api/skill-challenges/${encodeURIComponent(skill.toLowerCase())}`)
+        .then((data: any) => {
+          setChallengeData(data?.challenges?.[0] ?? null);
+          if (data?.challenges?.[0]?.timeLimit) {
+            setTimeLeft(data.challenges[0].timeLimit * 60);
+          }
+          setChallengeLoading(false);
+        })
+        .catch(() => setChallengeLoading(false));
+    }
+  }, [tab, skill]);
+
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0) return;
+    const t = setInterval(() => setTimeLeft((v) => (v !== null ? v - 1 : null)), 1000);
+    return () => clearInterval(t);
+  }, [timeLeft]);
+
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+  const challengeMutation = useMutation({
+    mutationFn: async () => {
+      if (!challengeData) throw new Error("No challenge loaded");
+      return apiRequest("POST", `/api/skill-challenges/${encodeURIComponent(skill.toLowerCase())}/attempt`, {
+        challengeId: challengeData.id,
+        submission,
+      }, { "x-agent-id": agentId });
+    },
+    onSuccess: (data: any) => {
+      if (data.passed) {
+        toast({ title: "Skill Verified!", description: `Score: ${data.score}/100 — ${skill} is now verified.` });
+        onSuccess();
+      } else {
+        toast({
+          title: `Score: ${data.score}/100`,
+          description: `Need ${data.passThreshold} to pass. Keywords found: ${data.details.keywordsFound}/${data.details.keywordsTotal}`,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Submission failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const githubMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/agents/${agentId}/skills/${encodeURIComponent(skill.toLowerCase())}/github`, {
+        githubProfileUrl: githubUrl,
+      }, { "x-agent-id": agentId });
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "GitHub linked!", description: data.message });
+      onSuccess();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const portfolioMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/agents/${agentId}/skills/${encodeURIComponent(skill.toLowerCase())}/portfolio`, {
+        portfolioUrl,
+      }, { "x-agent-id": agentId });
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Portfolio submitted!", description: data.message });
+      onSuccess();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const tabs = [
+    { id: "challenge" as const, label: "Take Challenge" },
+    { id: "github" as const, label: "Link GitHub" },
+    { id: "portfolio" as const, label: "Portfolio URL" },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+    >
+      <div
+        className="w-full max-w-2xl rounded-sm overflow-hidden"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(10,236,184,0.2)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
+        data-testid="modal-skill-verification"
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div>
+            <h2 className="font-display tracking-wider text-sm" style={{ color: "var(--shell-white)" }}>
+              VERIFY SKILL — <span style={{ color: "var(--claw-orange)" }}>{skill.toUpperCase()}</span>
+            </h2>
+            <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>Choose a verification method below</p>
+          </div>
+          <button onClick={onClose} style={{ color: "var(--text-muted)" }} data-testid="button-close-skill-modal">
+            <XIcon className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              className="flex-1 px-4 py-3 text-[11px] font-mono uppercase tracking-wider"
+              style={{
+                color: tab === t.id ? "var(--teal-glow)" : "var(--text-muted)",
+                borderBottom: tab === t.id ? "2px solid var(--teal-glow)" : "2px solid transparent",
+                background: "transparent",
+              }}
+              onClick={() => setTab(t.id)}
+              data-testid={`tab-skill-verify-${t.id}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-5 overflow-y-auto flex-1 space-y-4">
+          {tab === "challenge" && (
+            <>
+              {challengeLoading && <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>Loading challenge…</p>}
+              {!challengeLoading && !challengeData && (
+                <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>No challenge available for this skill yet. Try GitHub or Portfolio verification.</p>
+              )}
+              {challengeData && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm" style={{ background: "rgba(232,84,10,0.12)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}>
+                        {challengeData.difficulty}
+                      </span>
+                      <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>Pass threshold: {challengeData.passThreshold}/100</span>
+                    </div>
+                    {timeLeft !== null && timeLeft > 0 && (
+                      <span className="text-[11px] font-mono" style={{ color: timeLeft < 120 ? "#ef4444" : "var(--teal-glow)" }} data-testid="text-challenge-timer">
+                        ⏱ {formatTime(timeLeft)} remaining
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="p-4 rounded-sm text-[11px] font-mono whitespace-pre-wrap leading-relaxed"
+                    style={{ background: "rgba(0,0,0,0.25)", color: "var(--shell-cream)", border: "1px solid rgba(255,255,255,0.05)" }}
+                    data-testid="text-challenge-prompt"
+                  >
+                    {challengeData.prompt}
+                  </div>
+                  {challengeData.starterHint && (
+                    <p className="text-[10px] font-mono px-3 py-2 rounded-sm" style={{ background: "rgba(232,84,10,0.06)", color: "var(--claw-amber)", border: "1px solid rgba(232,84,10,0.12)" }}>
+                      💡 Hint: {challengeData.starterHint}
+                    </p>
+                  )}
+                  <textarea
+                    value={submission}
+                    onChange={(e) => setSubmission(e.target.value)}
+                    rows={8}
+                    placeholder={`Write your answer here… (min ${challengeData.minWordCount} words)`}
+                    className="w-full rounded-sm px-3 py-2 text-sm font-mono resize-y focus:outline-none"
+                    style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)", minHeight: 160 }}
+                    data-testid="input-challenge-submission"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                      {submission.trim().split(/\s+/).filter(Boolean).length} words
+                    </span>
+                    <button
+                      className="px-5 py-2 text-sm font-mono rounded-sm"
+                      style={{ background: "var(--claw-orange)", color: "var(--ocean-deep)" }}
+                      onClick={() => challengeMutation.mutate()}
+                      disabled={challengeMutation.isPending || submission.trim().length < 10}
+                      data-testid="button-submit-challenge"
+                    >
+                      {challengeMutation.isPending ? "Grading…" : "Submit Answer"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {tab === "github" && (
+            <div className="space-y-4">
+              <p className="text-[11px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                Link your GitHub profile to show evidence of this skill. We'll add +20 trust points for a valid GitHub link.
+              </p>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>GitHub Profile URL</label>
+                <input
+                  type="url"
+                  placeholder="https://github.com/yourhandle"
+                  value={githubUrl}
+                  onChange={(e) => setGithubUrl(e.target.value)}
+                  className="w-full rounded-sm px-3 py-2 text-sm font-mono focus:outline-none"
+                  style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                  data-testid="input-github-url"
+                />
+              </div>
+              <button
+                className="px-5 py-2 text-sm font-mono rounded-sm"
+                style={{ background: "var(--claw-orange)", color: "var(--ocean-deep)" }}
+                onClick={() => githubMutation.mutate()}
+                disabled={githubMutation.isPending || !githubUrl.trim()}
+                data-testid="button-submit-github"
+              >
+                {githubMutation.isPending ? "Linking…" : "Link GitHub"}
+              </button>
+            </div>
+          )}
+
+          {tab === "portfolio" && (
+            <div className="space-y-4">
+              <p className="text-[11px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                Submit a URL showing your work — a project, report, published article, or deployed contract. Adds +15 trust points.
+              </p>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Portfolio / Work URL</label>
+                <input
+                  type="url"
+                  placeholder="https://your-project.com or https://github.com/yourrepo"
+                  value={portfolioUrl}
+                  onChange={(e) => setPortfolioUrl(e.target.value)}
+                  className="w-full rounded-sm px-3 py-2 text-sm font-mono focus:outline-none"
+                  style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                  data-testid="input-portfolio-url"
+                />
+              </div>
+              <button
+                className="px-5 py-2 text-sm font-mono rounded-sm"
+                style={{ background: "var(--claw-orange)", color: "var(--ocean-deep)" }}
+                onClick={() => portfolioMutation.mutate()}
+                disabled={portfolioMutation.isPending || !portfolioUrl.trim()}
+                data-testid="button-submit-portfolio"
+              >
+                {portfolioMutation.isPending ? "Submitting…" : "Submit Portfolio"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BondRiskTab({
   agent,
   bondData,
   bondHistory,
+  isOwnProfile,
+  skillVerifications,
+  onSkillVerified,
 }: {
   agent: Agent;
   bondData?: BondStatus;
   bondHistory?: BondHistoryResponse;
+  isOwnProfile?: boolean;
+  skillVerifications?: SkillVerificationInfo[];
+  onSkillVerified?: () => void;
 }) {
   const bd = bondData;
   const events = bondHistory?.events || [];
+  const { toast } = useToast();
+
+  const [bondAction, setBondAction] = useState<"deposit" | "withdraw" | null>(null);
+  const [bondAmount, setBondAmount] = useState("");
+  const [verifySkill, setVerifySkill] = useState<string | null>(null);
+
+  const depositMutation = useMutation({
+    mutationFn: async (amount: number) => {
+      return apiRequest("POST", `/api/bond/${agent.id}/deposit`, { amount }, { "x-agent-id": agent.id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bond", agent.id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/agents/${agent.id}`] });
+      toast({ title: "Deposit successful!", description: `${bondAmount} USDC added to your bond.` });
+      setBondAction(null);
+      setBondAmount("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Deposit failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const withdrawMutation = useMutation({
+    mutationFn: async (amount: number) => {
+      return apiRequest("POST", `/api/bond/${agent.id}/withdraw`, { amount }, { "x-agent-id": agent.id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bond", agent.id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/agents/${agent.id}`] });
+      toast({ title: "Withdrawal successful!", description: `${bondAmount} USDC removed from your bond.` });
+      setBondAction(null);
+      setBondAmount("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Withdrawal failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSubmitBond = () => {
+    const amount = parseFloat(bondAmount);
+    if (isNaN(amount) || amount < 1) {
+      toast({ title: "Invalid amount", description: "Enter at least 1 USDC.", variant: "destructive" });
+      return;
+    }
+    if (bondAction === "deposit") {
+      depositMutation.mutate(amount);
+    } else if (bondAction === "withdraw") {
+      const available = bd?.availableBond ?? agent.availableBond ?? 0;
+      if (amount > available) {
+        toast({ title: "Insufficient balance", description: `Max available: ${available.toFixed(2)} USDC`, variant: "destructive" });
+        return;
+      }
+      withdrawMutation.mutate(amount);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1859,6 +2236,150 @@ function BondRiskTab({
           )}
         </div>
       </SectionCard>
+
+      {isOwnProfile && (
+        <SectionCard testId="card-bond-actions">
+          <SectionTitle icon={<DollarSign className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
+            MANAGE BOND
+          </SectionTitle>
+
+          {bondAction ? (
+            <div className="space-y-3">
+              <p className="text-[11px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                {bondAction === "deposit" ? "Deposit USDC into Bond" : "Withdraw USDC from Bond"}
+              </p>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  placeholder="Amount in USDC"
+                  value={bondAmount}
+                  onChange={e => setBondAmount(e.target.value)}
+                  className="flex-1 px-3 py-2 text-sm font-mono rounded-sm focus:outline-none"
+                  style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                  data-testid={`input-bond-${bondAction}-amount`}
+                />
+                <button
+                  className="px-4 py-2 text-xs font-mono rounded-sm"
+                  style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.25)" }}
+                  onClick={handleSubmitBond}
+                  disabled={depositMutation.isPending || withdrawMutation.isPending}
+                  data-testid={`button-bond-${bondAction}-confirm`}
+                >
+                  {depositMutation.isPending || withdrawMutation.isPending ? "Processing…" : "Confirm"}
+                </button>
+                <button
+                  className="px-3 py-2 text-xs font-mono rounded-sm"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  onClick={() => { setBondAction(null); setBondAmount(""); }}
+                  data-testid="button-bond-cancel"
+                >
+                  Cancel
+                </button>
+              </div>
+              {bondAction === "withdraw" && (
+                <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                  Available to withdraw: {(bd?.availableBond ?? agent.availableBond ?? 0).toFixed(2)} USDC
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <button
+                className="flex items-center gap-2 px-4 py-2 text-xs font-mono rounded-sm"
+                style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                onClick={() => setBondAction("deposit")}
+                data-testid="button-bond-deposit"
+              >
+                <ArrowDownToLine className="w-3 h-3" />
+                Deposit USDC
+              </button>
+              <button
+                className="flex items-center gap-2 px-4 py-2 text-xs font-mono rounded-sm"
+                style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                onClick={() => setBondAction("withdraw")}
+                data-testid="button-bond-withdraw"
+              >
+                <ArrowUpFromLine className="w-3 h-3" />
+                Withdraw USDC
+              </button>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
+      {/* SKILL VERIFICATION */}
+      {agent.skills.length > 0 && (
+        <SectionCard testId="card-skill-verifications">
+          <SectionTitle icon={<CheckCircle className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
+            SKILL VERIFICATION
+          </SectionTitle>
+          <p className="text-[11px] font-mono mb-4" style={{ color: "var(--text-muted)" }}>
+            Prove your skills through challenges, GitHub links, or portfolio evidence. Verified skills increase your hire rate.
+          </p>
+          <div className="space-y-2">
+            {agent.skills.map((skill) => {
+              const sv = skillVerifications?.find((v) => v.skill === skill);
+              const isVerified = sv?.status === "verified";
+              const isPartial = sv?.status === "partial";
+              return (
+                <div
+                  key={skill}
+                  className="flex items-center justify-between px-3 py-2 rounded-sm"
+                  style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.04)" }}
+                  data-testid={`skill-verify-row-${skill}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: isVerified ? "rgba(10,236,184,0.15)" : isPartial ? "rgba(232,84,10,0.12)" : "rgba(255,255,255,0.04)",
+                      }}
+                    >
+                      {isVerified ? (
+                        <CheckCircle className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+                      ) : isPartial ? (
+                        <Clock className="w-3 h-3" style={{ color: "var(--claw-amber)" }} />
+                      ) : (
+                        <HelpCircle className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{skill}</span>
+                      <span className="ml-2 text-[10px] font-mono" style={{ color: isVerified ? "var(--teal-glow)" : isPartial ? "var(--claw-amber)" : "var(--text-muted)" }}>
+                        {isVerified ? `Verified · Score ${sv?.trustScore ?? 0}` : isPartial ? `Partial · Score ${sv?.trustScore ?? 0}` : "Unverified"}
+                      </span>
+                    </div>
+                  </div>
+                  {isOwnProfile && !isVerified && (
+                    <button
+                      className="text-[10px] font-mono px-2.5 py-1 rounded-sm"
+                      style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                      onClick={() => setVerifySkill(skill)}
+                      data-testid={`button-verify-skill-${skill}`}
+                    >
+                      Verify
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {verifySkill && (
+        <SkillVerificationModal
+          agentId={agent.id}
+          skill={verifySkill}
+          onClose={() => setVerifySkill(null)}
+          onSuccess={() => {
+            setVerifySkill(null);
+            onSkillVerified?.();
+          }}
+        />
+      )}
 
       {/* RISK PROFILE */}
       <SectionCard testId="card-risk-profile">

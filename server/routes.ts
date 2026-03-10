@@ -6428,6 +6428,249 @@ export async function registerRoutes(
     }
   });
 
+  // ─── SKILL VERIFICATION ROUTES ─────────────────────────────────────────────
+
+  // Seed challenges on startup
+  storage.seedSkillChallenges().catch((e) => console.error("[Skill] Seed failed:", e));
+
+  function gradeChallenge(submission: string, challenge: { expectedKeywords: string[]; minWordCount: number; maxWordCount: number }): { score: number; details: Record<string, number> } {
+    const words = submission.trim().split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const text = submission.toLowerCase();
+
+    const foundKeywords = challenge.expectedKeywords.filter((kw) => text.includes(kw.toLowerCase()));
+    const keywordScore = Math.round((foundKeywords.length / Math.max(challenge.expectedKeywords.length, 1)) * 40);
+
+    let wordCountScore = 0;
+    if (wordCount >= challenge.minWordCount && wordCount <= challenge.maxWordCount) {
+      wordCountScore = 30;
+    } else if (wordCount >= Math.round(challenge.minWordCount * 0.75)) {
+      wordCountScore = 15;
+    }
+
+    const paragraphs = submission.split(/\n\n+/).filter((p) => p.trim().length > 20);
+    const hasNumberedPoints = /\d+[\.\)]\s/.test(submission);
+    const hasCodeBlocks = /```/.test(submission);
+    const hasHeaders = /#{1,3}\s|^\*\*/.test(submission);
+    let structureScore = 10;
+    if (paragraphs.length >= 2) structureScore += 5;
+    if (hasNumberedPoints) structureScore += 5;
+    if (hasCodeBlocks || hasHeaders) structureScore += 10;
+    structureScore = Math.min(structureScore, 30);
+
+    const score = Math.min(100, keywordScore + wordCountScore + structureScore);
+    return {
+      score,
+      details: {
+        keywordScore,
+        wordCountScore,
+        structureScore,
+        wordCount,
+        keywordsFound: foundKeywords.length,
+        keywordsTotal: challenge.expectedKeywords.length,
+      },
+    };
+  }
+
+  app.get("/api/agents/:id/skill-verifications", apiLimiter, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const verifications = await storage.getSkillVerifications(agent.id);
+      const skillsWithStatus = agent.skills.map((skill) => {
+        const verification = verifications.find((v) => v.skillName === skill);
+        return {
+          skill,
+          status: verification?.status ?? "unverified",
+          trustScore: verification?.trustScore ?? 0,
+          verifiedAt: verification?.verifiedAt ?? null,
+          verificationMethod: verification?.verificationMethod ?? null,
+          githubProfileUrl: verification?.githubProfileUrl ?? null,
+          portfolioUrl: verification?.portfolioUrl ?? null,
+          challengeScore: verification?.challengeScore ?? null,
+        };
+      });
+      res.json({ skills: skillsWithStatus });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/skill-challenges/:skill", apiLimiter, async (req, res) => {
+    try {
+      const skill = req.params.skill.toLowerCase();
+      const challenges = await storage.getSkillChallenges(skill);
+      if (challenges.length === 0) {
+        return res.json({ challenges: [], message: `No challenges available for skill: ${skill}` });
+      }
+      res.json({
+        challenges: challenges.map((c) => ({
+          id: c.id,
+          skill: c.skill,
+          difficulty: c.difficulty,
+          prompt: c.prompt,
+          starterHint: c.starterHint,
+          timeLimit: c.timeLimit,
+          passThreshold: c.passThreshold,
+          minWordCount: c.minWordCount,
+          maxWordCount: c.maxWordCount,
+        })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/skill-challenges/:skill/attempt", apiLimiter, async (req, res) => {
+    try {
+      const skill = req.params.skill.toLowerCase();
+      const agentId = req.headers["x-agent-id"] as string;
+      if (!agentId) return res.status(401).json({ message: "x-agent-id header required" });
+
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      if (!agent.skills.map((s) => s.toLowerCase()).includes(skill)) {
+        return res.status(400).json({ message: `Skill '${skill}' not on your profile. Add it first.` });
+      }
+
+      const { challengeId, submission } = req.body;
+      if (!challengeId || !submission || typeof submission !== "string") {
+        return res.status(400).json({ message: "challengeId and submission required" });
+      }
+
+      const challenge = await storage.getSkillChallenge(challengeId);
+      if (!challenge) return res.status(404).json({ message: "Challenge not found" });
+      if (challenge.skill !== skill) return res.status(400).json({ message: "Challenge does not match skill" });
+
+      if (submission.trim().length < 20) {
+        return res.status(400).json({ message: "Submission too short" });
+      }
+
+      const { score, details } = gradeChallenge(submission, challenge);
+      const passed = score >= challenge.passThreshold;
+
+      const attempt = await storage.createChallengeAttempt({
+        agentId,
+        challengeId,
+        skill,
+        submission,
+        score,
+        passed,
+        gradingDetails: details,
+      });
+
+      if (passed) {
+        const existing = await storage.getSkillVerification(agentId, skill);
+        const newTrustScore = Math.max(existing?.trustScore ?? 0, Math.round(score * 0.6));
+        await storage.upsertSkillVerification(agentId, skill, {
+          status: "verified",
+          verifiedAt: new Date(),
+          challengeScore: score,
+          challengeCompletedAt: new Date(),
+          verificationMethod: "challenge",
+          trustScore: Math.min(100, (existing?.trustScore ?? 0) + newTrustScore),
+        });
+      }
+
+      res.json({
+        attemptId: attempt.id,
+        score,
+        passed,
+        passThreshold: challenge.passThreshold,
+        details,
+        message: passed
+          ? `Congratulations! You scored ${score}/100 — skill '${skill}' is now verified.`
+          : `Score: ${score}/100 (need ${challenge.passThreshold} to pass). Review the grading details and try again.`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/skills/:skill/github", apiLimiter, async (req, res) => {
+    try {
+      const { id, skill } = req.params;
+      const agentId = req.headers["x-agent-id"] as string;
+      if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
+
+      const agent = await storage.getAgent(id);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const { githubProfileUrl } = req.body;
+      if (!githubProfileUrl || typeof githubProfileUrl !== "string") {
+        return res.status(400).json({ message: "githubProfileUrl required" });
+      }
+
+      const githubUrlPattern = /^https?:\/\/(www\.)?github\.com\/[a-zA-Z0-9_-]+\/?$/;
+      if (!githubUrlPattern.test(githubProfileUrl.trim())) {
+        return res.status(400).json({ message: "Must be a valid GitHub profile URL (e.g. https://github.com/yourhandle)" });
+      }
+
+      const existing = await storage.getSkillVerification(id, skill.toLowerCase());
+      const addedScore = 20;
+      const newTrust = Math.min(100, (existing?.trustScore ?? 0) + addedScore);
+
+      await storage.upsertSkillVerification(id, skill.toLowerCase(), {
+        githubProfileUrl: githubProfileUrl.trim(),
+        trustScore: newTrust,
+        status: existing?.status === "verified" ? "verified" : "partial",
+        verificationMethod: existing?.verificationMethod ?? "github",
+      });
+
+      res.json({
+        message: `GitHub profile linked for skill '${skill}'. Trust score +${addedScore}.`,
+        trustScore: newTrust,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/skills/:skill/portfolio", apiLimiter, async (req, res) => {
+    try {
+      const { id, skill } = req.params;
+      const agentId = req.headers["x-agent-id"] as string;
+      if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
+
+      const agent = await storage.getAgent(id);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const { portfolioUrl } = req.body;
+      if (!portfolioUrl || typeof portfolioUrl !== "string") {
+        return res.status(400).json({ message: "portfolioUrl required" });
+      }
+
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(portfolioUrl.trim());
+        if (!["http:", "https:"].includes(parsedUrl.protocol)) throw new Error();
+      } catch {
+        return res.status(400).json({ message: "Must be a valid http/https URL" });
+      }
+
+      const existing = await storage.getSkillVerification(id, skill.toLowerCase());
+      const addedScore = 15;
+      const newTrust = Math.min(100, (existing?.trustScore ?? 0) + addedScore);
+
+      await storage.upsertSkillVerification(id, skill.toLowerCase(), {
+        portfolioUrl: parsedUrl.toString(),
+        trustScore: newTrust,
+        status: existing?.status === "verified" ? "verified" : "partial",
+        verificationMethod: existing?.verificationMethod ?? "portfolio",
+      });
+
+      res.json({
+        message: `Portfolio URL submitted for skill '${skill}'. Trust score +${addedScore}.`,
+        trustScore: newTrust,
+        portfolioUrl: parsedUrl.toString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── SLASHES ────────────────────────────────────────────────────────────────
+
   app.get("/api/slashes", apiLimiter, async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
@@ -6832,6 +7075,86 @@ export async function registerRoutes(
 </html>`);
     } catch {
       return next();
+    }
+  });
+
+  // ─── ERC-8183 AGENTIC COMMERCE ─────────────────────────────────────────────
+
+  const { getERC8183Stats, getERC8183Job, oracleCompleteJob, oracleRejectJob, isRegisteredAgent: isRegisteredERC8183, getClawTrustACAddress } = await import("./erc8183-service");
+
+  app.get("/api/erc8183/stats", apiLimiter, async (_req, res) => {
+    try {
+      const stats = await getERC8183Stats();
+      return res.json(stats);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch ERC-8183 stats", error: err.message });
+    }
+  });
+
+  app.get("/api/erc8183/jobs/:jobId", apiLimiter, async (req, res) => {
+    try {
+      const { jobId } = req.params;
+      if (!jobId || jobId.length < 10) return res.status(400).json({ message: "Invalid jobId" });
+      const job = await getERC8183Job(jobId);
+      return res.json(job);
+    } catch (err: any) {
+      if (err.message?.includes("JobNotFound") || err.message?.includes("0x8b2cb")) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      return res.status(500).json({ message: "Failed to fetch job", error: err.message });
+    }
+  });
+
+  app.get("/api/erc8183/info", async (_req, res) => {
+    return res.json({
+      contractAddress: getClawTrustACAddress(),
+      standard: "ERC-8183",
+      chain: "base-sepolia",
+      chainId: 84532,
+      basescanUrl: `https://sepolia.basescan.org/address/${getClawTrustACAddress()}`,
+      wrapsContracts: {
+        ClawCardNFT: "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
+        ClawTrustRepAdapter: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+        ClawTrustBond: "0x23a1E1e958C932639906d0650A13283f6E60132c",
+        USDC: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      },
+      statusValues: ["Open", "Funded", "Submitted", "Completed", "Rejected", "Cancelled", "Expired"],
+      platformFeeBps: 250,
+    });
+  });
+
+  app.get("/api/erc8183/agents/:wallet/check", apiLimiter, async (req, res) => {
+    try {
+      const { wallet } = req.params;
+      if (!wallet || !wallet.startsWith("0x")) return res.status(400).json({ message: "Invalid wallet address" });
+      const registered = await isRegisteredERC8183(wallet);
+      return res.json({ wallet, isRegisteredAgent: registered, standard: "ERC-8004" });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to check registration", error: err.message });
+    }
+  });
+
+  app.post("/api/admin/erc8183/complete", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { jobId, reason } = req.body;
+      if (!jobId) return res.status(400).json({ message: "jobId required" });
+      const reasonHex = reason ?? "0x535741524d5f415050524f564544000000000000000000000000000000000000";
+      const txHash = await oracleCompleteJob(jobId, reasonHex);
+      return res.json({ success: true, txHash, jobId, basescanUrl: `https://sepolia.basescan.org/tx/${txHash}` });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to complete job", error: err.message });
+    }
+  });
+
+  app.post("/api/admin/erc8183/reject", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { jobId, reason } = req.body;
+      if (!jobId) return res.status(400).json({ message: "jobId required" });
+      const reasonHex = reason ?? "0x535741524d5f52454a454354454400000000000000000000000000000000000";
+      const txHash = await oracleRejectJob(jobId, reasonHex);
+      return res.json({ success: true, txHash, jobId, basescanUrl: `https://sepolia.basescan.org/tx/${txHash}` });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to reject job", error: err.message });
     }
   });
 

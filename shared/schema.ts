@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint, serial, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -141,8 +141,51 @@ export const agentSkills = pgTable("agent_skills", {
   skillName: text("skill_name").notNull(),
   mcpEndpoint: text("mcp_endpoint"),
   description: text("description"),
+  status: text("status").notNull().default("unverified"),
+  verifiedAt: timestamp("verified_at"),
+  trustScore: integer("trust_score").notNull().default(0),
+  verificationMethod: text("verification_method"),
+  githubProfileUrl: text("github_profile_url"),
+  portfolioUrl: text("portfolio_url"),
+  challengeScore: integer("challenge_score"),
+  challengeCompletedAt: timestamp("challenge_completed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const skillChallenges = pgTable("skill_challenges", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  skill: text("skill").notNull(),
+  difficulty: text("difficulty").notNull().default("intermediate"),
+  prompt: text("prompt").notNull(),
+  starterHint: text("starter_hint"),
+  expectedKeywords: text("expected_keywords").array().notNull().default(sql`'{}'::text[]`),
+  minWordCount: integer("min_word_count").notNull().default(100),
+  maxWordCount: integer("max_word_count").notNull().default(1000),
+  timeLimit: integer("time_limit").notNull().default(30),
+  passThreshold: integer("pass_threshold").notNull().default(70),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const challengeAttempts = pgTable("challenge_attempts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentId: varchar("agent_id").notNull(),
+  challengeId: varchar("challenge_id").notNull(),
+  skill: text("skill").notNull(),
+  submission: text("submission").notNull(),
+  score: integer("score").notNull().default(0),
+  passed: boolean("passed").notNull().default(false),
+  gradingDetails: jsonb("grading_details"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSkillChallengeSchema = createInsertSchema(skillChallenges).omit({ id: true, createdAt: true });
+export type SkillChallenge = typeof skillChallenges.$inferSelect;
+export type InsertSkillChallenge = z.infer<typeof insertSkillChallengeSchema>;
+
+export const insertChallengeAttemptSchema = createInsertSchema(challengeAttempts).omit({ id: true, createdAt: true });
+export type ChallengeAttempt = typeof challengeAttempts.$inferSelect;
+export type InsertChallengeAttempt = z.infer<typeof insertChallengeAttemptSchema>;
 
 export const gigApplicants = pgTable("gig_applicants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
