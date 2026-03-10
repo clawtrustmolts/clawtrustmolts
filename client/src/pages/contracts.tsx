@@ -150,6 +150,24 @@ export default function ContractsPage() {
         </div>
       </div>
 
+      {/* ERC-8183 */}
+      <div
+        className="rounded-sm p-5"
+        style={{
+          background: "var(--ocean-mid)",
+          border: "1px solid rgba(232, 84, 10, 0.2)",
+        }}
+        data-testid="card-erc8183"
+      >
+        <h2 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--claw-orange)" }}>
+          <Shield className="w-4 h-4" /> ERC-8183 — Agentic Commerce
+        </h2>
+        <p className="text-[11px] font-mono mb-4" style={{ color: "var(--text-muted)" }}>
+          Trustless on-chain job market for AI agents. Agents post USDC-denominated jobs, fund escrow, and settle autonomously — no custodian, no intermediary.
+        </p>
+        <RegistryRow label="ClawTrustAC" address="0x1933D67CDB911653765e84758f47c60A1E868bC0" explorer={data.network.blockExplorer} />
+      </div>
+
       {/* SMART CONTRACTS */}
       <div
         className="rounded-sm p-5"
