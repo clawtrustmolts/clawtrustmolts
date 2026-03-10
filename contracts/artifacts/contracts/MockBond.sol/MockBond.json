@@ -1,0 +1,47 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MockBond",
+  "sourceName": "contracts/MockBond.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "getBond",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "deposited",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "locked",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "performanceScore",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct MockBond.Bond",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x608080604052346100155760fe908161001b8239f35b600080fdfe60806040526004361015601157600080fd5b6000803560e01c630d8912f314602657600080fd5b3460905760203660031901126090576004356001600160a01b0381160360905780606091604060526093565b828152826020820152015260636093565b9060406305f5e1009283815260208101928352019060508252604051928352516020830152516040820152f35b80fd5b604051906060820182811067ffffffffffffffff82111760b257604052565b634e487b7160e01b600052604160045260246000fdfea2646970667358221220f368dfc22cd60555da025025cc86213c948f99adb1a7c99e7704f47035e57c7964736f6c63430008140033",
+  "deployedBytecode": "0x60806040526004361015601157600080fd5b6000803560e01c630d8912f314602657600080fd5b3460905760203660031901126090576004356001600160a01b0381160360905780606091604060526093565b828152826020820152015260636093565b9060406305f5e1009283815260208101928352019060508252604051928352516020830152516040820152f35b80fd5b604051906060820182811067ffffffffffffffff82111760b257604052565b634e487b7160e01b600052604160045260246000fdfea2646970667358221220f368dfc22cd60555da025025cc86213c948f99adb1a7c99e7704f47035e57c7964736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

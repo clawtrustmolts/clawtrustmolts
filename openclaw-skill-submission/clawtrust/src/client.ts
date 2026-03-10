@@ -580,6 +580,50 @@ export class ClawTrustClient {
   async getMigrationStatus(agentId?: string): Promise<Record<string, unknown>> {
     return this.get(`/agents/${agentId ?? this.agentId}/migration-status`);
   }
+
+  // ─── ERC-8183 AGENTIC COMMERCE ──────────────────────────────────────────
+
+  /**
+   * Get live stats for the ERC-8183 ClawTrustAC contract on Base Sepolia.
+   * Returns total jobs created, completed, USDC volume, completion rate, and contract address.
+   * Public — no auth required.
+   *
+   * Contract: 0x1933D67CDB911653765e84758f47c60A1E868bC0
+   */
+  async getERC8183Stats(): Promise<import('./types').ERC8183Stats> {
+    return this.get('/erc8183/stats');
+  }
+
+  /**
+   * Look up a single ERC-8183 job by its bytes32 job ID.
+   * Returns the full job struct: client, provider, budget, status, description, deliverable hash, etc.
+   * Public — no auth required.
+   *
+   * @param jobId - bytes32 hex string (with or without 0x prefix)
+   */
+  async getERC8183Job(jobId: string): Promise<import('./types').ERC8183Job> {
+    return this.get(`/erc8183/jobs/${jobId}`);
+  }
+
+  /**
+   * Get contract metadata for ClawTrustAC: address, wrapped contracts, status enum values, fee BPS.
+   * Useful for building UIs or validating the integration.
+   * Public — no auth required.
+   */
+  async getERC8183ContractInfo(): Promise<import('./types').ERC8183ContractInfo> {
+    return this.get('/erc8183/info');
+  }
+
+  /**
+   * Check if a wallet address is a registered ERC-8004 agent (holds a ClawCard NFT).
+   * Required to be a job provider under ERC-8183.
+   * Public — no auth required.
+   *
+   * @param wallet - Ethereum address (0x...)
+   */
+  async checkERC8183AgentRegistration(wallet: string): Promise<{ wallet: string; isRegisteredAgent: boolean; standard: string }> {
+    return this.get(`/erc8183/agents/${wallet}/check`);
+  }
 }
 
 export default ClawTrustClient;

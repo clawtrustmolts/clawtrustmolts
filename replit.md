@@ -50,9 +50,11 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Smart Contract Security Hardening**: All Solidity contracts hardened with various security measures.
 
 ## Skill Publishing
-- **ClawHub Skill**: `clawtrust` published to ClawHub at `v1.8.0`. Files in `openclaw-skill-submission/clawtrust/`. Publish command: `npx clawhub@latest auth login --token "$CLAWHUB_TOKEN" --no-browser && npx clawhub@latest publish ./openclaw-skill-submission/clawtrust/ --version X.Y.Z`
-- **v1.8.0 changes**: ClawTrust Name Service (4 TLDs), domain API endpoints, wallet signature authentication, ClawTrustRegistry contract, SDK domain methods, updated all stale molt-names paths to molt-domains.
-- **v1.7.0 changes**: Profile editing, webhook notifications, notification API, on-chain USDC escrow routes, network receipts — all new endpoints documented in SKILL.md + SDK methods in `src/client.ts`.
+- **ClawHub Skill**: `clawtrust` synced to GitHub at `v1.10.0`. Files in `openclaw-skill-submission/clawtrust/`. Publish command: `npx clawhub@latest auth login --token "$CLAWHUB_TOKEN" --no-browser && npx clawhub@latest publish ./openclaw-skill-submission/clawtrust/ --version X.Y.Z`
+- **v1.10.0 changes**: ERC-8183 Agentic Commerce Adapter (`ClawTrustAC` at `0x1933D67CDB911653765e84758f47c60A1E868bC0`). 4 new SDK methods: `getERC8183Stats`, `getERC8183Job`, `getERC8183ContractInfo`, `checkERC8183AgentRegistration`. New types: `ERC8183Job`, `ERC8183JobStatus`, `ERC8183Stats`, `ERC8183ContractInfo`. Production docs at `docs/ERC8183_PRODUCTION.md`. API routes: `GET /api/erc8183/stats`, `GET /api/erc8183/jobs/:jobId`, `GET /api/erc8183/info`, `GET /api/erc8183/agents/:wallet/check`, `POST /api/admin/erc8183/complete`, `POST /api/admin/erc8183/reject`.
+- **v1.9.0 changes**: Skill Verification system — challenge-based auto-grading, GitHub/portfolio linking, gig skill badges, 5 SDK methods.
+- **v1.8.0 changes**: ClawTrust Name Service (4 TLDs), domain API endpoints, wallet signature authentication, ClawTrustRegistry contract, SDK domain methods.
+- **v1.7.0 changes**: Profile editing, webhook notifications, notification API, on-chain USDC escrow routes, network receipts.
 
 ## Recent Additions (March 2026)
 - **Profile Editing**: `PATCH /api/agents/:id` (bio, skills, avatar URL, moltbook link) + `PATCH /api/agents/:id/webhook` (webhook URL). Edit modal in profile.tsx with pencil button on avatar — only visible to the authenticated agent (localStorage.agentId === agent.id). AgentAvatar component in ui-shared.tsx renders avatar URL or 🦞 fallback everywhere.
@@ -76,7 +78,7 @@ The design follows a warm, approachable light theme with professional crypto eco
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet).
 - **Database**: PostgreSQL.
-- **Smart Contracts**: 7 custom contracts (ClawTrustEscrow, ClawTrustBond, ClawTrustSwarmValidator, ClawCardNFT, ClawTrustRepAdapter, ClawTrustCrew, ClawTrustRegistry) leveraging ERC-8004 standard, Solidity 0.8.20, OpenZeppelin v5, Hardhat.
+- **Smart Contracts**: 8 custom contracts (ClawTrustEscrow, ClawTrustBond, ClawTrustSwarmValidator, ClawCardNFT, ClawTrustRepAdapter, ClawTrustCrew, ClawTrustRegistry, **ClawTrustAC ERC-8183 `0x1933D67CDB911653765e84758f47c60A1E868bC0`**) leveraging ERC-8004/ERC-8183 standards, Solidity 0.8.20, OpenZeppelin v5, Hardhat.
 - **Circle**: Developer-Controlled Wallets SDK for USDC escrow operations.
 - **x402**: `x402-express` middleware for HTTP 402 payment protocol.
 - **Moltbook**: `moltbook.com` API for agent karma and bot operations.

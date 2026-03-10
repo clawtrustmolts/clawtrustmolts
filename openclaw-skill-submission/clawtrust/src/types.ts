@@ -416,3 +416,56 @@ export interface ChallengeAttemptResult {
   message: string;
   newStatus: SkillVerificationStatus;
 }
+
+// ─── ERC-8183 AGENTIC COMMERCE ─────────────────────────────────────────────
+
+export type ERC8183JobStatus =
+  | "Open"
+  | "Funded"
+  | "Submitted"
+  | "Completed"
+  | "Rejected"
+  | "Cancelled"
+  | "Expired";
+
+export interface ERC8183Job {
+  jobId: string;
+  client: string;
+  provider: string;
+  evaluator: string;
+  budget: number;
+  budgetRaw: string;
+  expiredAt: string;
+  expiredAtTs: number;
+  status: ERC8183JobStatus;
+  statusIndex: number;
+  description: string;
+  deliverableHash: string;
+  outcomeReason: string;
+  createdAt: string;
+  createdAtTs: number;
+  basescanUrl: string;
+}
+
+export interface ERC8183Stats {
+  totalJobsCreated: number;
+  totalJobsCompleted: number;
+  totalVolumeUSDC: number;
+  completionRate: number;
+  activeJobCount: number;
+  contractAddress: string;
+  standard: string;
+  chain: string;
+  basescanUrl: string;
+}
+
+export interface ERC8183ContractInfo {
+  contractAddress: string;
+  standard: string;
+  chain: string;
+  chainId: number;
+  basescanUrl: string;
+  wrapsContracts: Record<string, string>;
+  statusValues: ERC8183JobStatus[];
+  platformFeeBps: number;
+}

@@ -7078,5 +7078,85 @@ export async function registerRoutes(
     }
   });
 
+  // ─── ERC-8183 AGENTIC COMMERCE ─────────────────────────────────────────────
+
+  const { getERC8183Stats, getERC8183Job, oracleCompleteJob, oracleRejectJob, isRegisteredAgent: isRegisteredERC8183, getClawTrustACAddress } = await import("./erc8183-service");
+
+  app.get("/api/erc8183/stats", apiLimiter, async (_req, res) => {
+    try {
+      const stats = await getERC8183Stats();
+      return res.json(stats);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch ERC-8183 stats", error: err.message });
+    }
+  });
+
+  app.get("/api/erc8183/jobs/:jobId", apiLimiter, async (req, res) => {
+    try {
+      const { jobId } = req.params;
+      if (!jobId || jobId.length < 10) return res.status(400).json({ message: "Invalid jobId" });
+      const job = await getERC8183Job(jobId);
+      return res.json(job);
+    } catch (err: any) {
+      if (err.message?.includes("JobNotFound") || err.message?.includes("0x8b2cb")) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      return res.status(500).json({ message: "Failed to fetch job", error: err.message });
+    }
+  });
+
+  app.get("/api/erc8183/info", async (_req, res) => {
+    return res.json({
+      contractAddress: getClawTrustACAddress(),
+      standard: "ERC-8183",
+      chain: "base-sepolia",
+      chainId: 84532,
+      basescanUrl: `https://sepolia.basescan.org/address/${getClawTrustACAddress()}`,
+      wrapsContracts: {
+        ClawCardNFT: "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
+        ClawTrustRepAdapter: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+        ClawTrustBond: "0x23a1E1e958C932639906d0650A13283f6E60132c",
+        USDC: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      },
+      statusValues: ["Open", "Funded", "Submitted", "Completed", "Rejected", "Cancelled", "Expired"],
+      platformFeeBps: 250,
+    });
+  });
+
+  app.get("/api/erc8183/agents/:wallet/check", apiLimiter, async (req, res) => {
+    try {
+      const { wallet } = req.params;
+      if (!wallet || !wallet.startsWith("0x")) return res.status(400).json({ message: "Invalid wallet address" });
+      const registered = await isRegisteredERC8183(wallet);
+      return res.json({ wallet, isRegisteredAgent: registered, standard: "ERC-8004" });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to check registration", error: err.message });
+    }
+  });
+
+  app.post("/api/admin/erc8183/complete", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { jobId, reason } = req.body;
+      if (!jobId) return res.status(400).json({ message: "jobId required" });
+      const reasonHex = reason ?? "0x535741524d5f415050524f564544000000000000000000000000000000000000";
+      const txHash = await oracleCompleteJob(jobId, reasonHex);
+      return res.json({ success: true, txHash, jobId, basescanUrl: `https://sepolia.basescan.org/tx/${txHash}` });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to complete job", error: err.message });
+    }
+  });
+
+  app.post("/api/admin/erc8183/reject", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const { jobId, reason } = req.body;
+      if (!jobId) return res.status(400).json({ message: "jobId required" });
+      const reasonHex = reason ?? "0x535741524d5f52454a454354454400000000000000000000000000000000000";
+      const txHash = await oracleRejectJob(jobId, reasonHex);
+      return res.json({ success: true, txHash, jobId, basescanUrl: `https://sepolia.basescan.org/tx/${txHash}` });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to reject job", error: err.message });
+    }
+  });
+
   return httpServer;
 }

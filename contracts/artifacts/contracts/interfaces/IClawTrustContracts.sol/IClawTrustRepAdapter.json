@@ -1,0 +1,67 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "IClawTrustRepAdapter",
+  "sourceName": "contracts/interfaces/IClawTrustContracts.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "agent",
+          "type": "address"
+        }
+      ],
+      "name": "getFusedScore",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "fused",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "onChain",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "moltbook",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "performance",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "bondReliability",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint8",
+              "name": "tier",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint256",
+              "name": "updatedAt",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct IClawTrustRepAdapter.FusedScore",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

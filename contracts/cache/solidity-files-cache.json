@@ -1575,6 +1575,277 @@
       "artifacts": [
         "Base64"
       ]
+    },
+    "/home/runner/workspace/node_modules/@openzeppelin/contracts/access/Ownable2Step.sol": {
+      "lastModificationDate": 1771146170297,
+      "contentHash": "4c23c95621f1bdfb8c47bcb3795c53e8",
+      "sourceName": "@openzeppelin/contracts/access/Ownable2Step.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "./Ownable.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "Ownable2Step"
+      ]
+    },
+    "/home/runner/workspace/contracts/contracts/ClawTrustAC.sol": {
+      "lastModificationDate": 1773172382655,
+      "contentHash": "08868a2ff6b17a8e52c00c7b0ec269d5",
+      "sourceName": "contracts/ClawTrustAC.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/access/Ownable2Step.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+        "@openzeppelin/contracts/utils/Pausable.sol",
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+        "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
+        "./interfaces/IERC8183.sol",
+        "./interfaces/IClawTrustContracts.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "ClawTrustAC"
+      ]
+    },
+    "/home/runner/workspace/contracts/contracts/interfaces/IClawTrustContracts.sol": {
+      "lastModificationDate": 1773172328950,
+      "contentHash": "692230062297351ce70d26a493d96d93",
+      "sourceName": "contracts/interfaces/IClawTrustContracts.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IClawCardNFT",
+        "IClawTrustBond",
+        "IClawTrustRepAdapter"
+      ]
+    },
+    "/home/runner/workspace/contracts/contracts/interfaces/IERC8183.sol": {
+      "lastModificationDate": 1773172325426,
+      "contentHash": "8358da1cf34a7ff80cd9e8e43b52e361",
+      "sourceName": "contracts/interfaces/IERC8183.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IERC8183"
+      ]
+    },
+    "/home/runner/workspace/contracts/contracts/MockBond.sol": {
+      "lastModificationDate": 1773172473731,
+      "contentHash": "06cf837cbeac9d1f03358aa2d949e1a3",
+      "sourceName": "contracts/MockBond.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "MockBond"
+      ]
+    },
+    "/home/runner/workspace/contracts/contracts/MockClawCard.sol": {
+      "lastModificationDate": 1773172468221,
+      "contentHash": "1f2b997a54350244f042a103741cd9f9",
+      "sourceName": "contracts/MockClawCard.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "MockClawCard"
+      ]
+    },
+    "/home/runner/workspace/contracts/contracts/MockRepAdapter.sol": {
+      "lastModificationDate": 1773172485331,
+      "contentHash": "3039c2a39b4c89566c36b88968d7f3df",
+      "sourceName": "contracts/MockRepAdapter.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "MockRepAdapter"
+      ]
     }
   }
 }

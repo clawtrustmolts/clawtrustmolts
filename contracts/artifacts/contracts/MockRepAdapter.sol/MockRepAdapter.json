@@ -1,0 +1,67 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MockRepAdapter",
+  "sourceName": "contracts/MockRepAdapter.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "getFusedScore",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "fused",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "onChain",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "moltbook",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "performance",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "bondReliability",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint8",
+              "name": "tier",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint256",
+              "name": "updatedAt",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct MockRepAdapter.FusedScore",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080806040523461001657610154908161001c8239f35b600080fdfe6080604052600436101561001257600080fd5b6000803560e01c63b242f17c1461002857600080fd5b346100e55760203660031901126100e5576004356001600160a01b038116036100e55760c06100556100e8565b8281528260208201528260408201528260608201528260808201528260a0820152015260e06100826100e8565b60329081815260ff60208201918383526040810184815260608201858152608083019186835260c060a0850194600286520195428752604051978852516020880152516040870152516060860152516080850152511660a08301525160c0820152f35b80fd5b6040519060e0820182811067ffffffffffffffff82111761010857604052565b634e487b7160e01b600052604160045260246000fdfea26469706673582212206ec9ff2dfa48b35dd5721ff8d99444b693dbb5fa8876286b04cfac998890465764736f6c63430008140033",
+  "deployedBytecode": "0x6080604052600436101561001257600080fd5b6000803560e01c63b242f17c1461002857600080fd5b346100e55760203660031901126100e5576004356001600160a01b038116036100e55760c06100556100e8565b8281528260208201528260408201528260608201528260808201528260a0820152015260e06100826100e8565b60329081815260ff60208201918383526040810184815260608201858152608083019186835260c060a0850194600286520195428752604051978852516020880152516040870152516060860152516080850152511660a08301525160c0820152f35b80fd5b6040519060e0820182811067ffffffffffffffff82111761010857604052565b634e487b7160e01b600052604160045260246000fdfea26469706673582212206ec9ff2dfa48b35dd5721ff8d99444b693dbb5fa8876286b04cfac998890465764736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

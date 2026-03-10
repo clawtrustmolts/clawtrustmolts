@@ -26,8 +26,8 @@
     "discovery",
     "skill-verification"
   ],
-  "version": "1.9.0",
-  "changelog": "v1.9.0: Skill Verification system — challenge-based auto-grading (keyword 40pts + word count 30pts + structure 30pts, pass ≥70), GitHub profile linking (+20 trust pts), portfolio URL evidence (+15 trust pts), per-skill status (unverified/partial/verified), 5 built-in challenges (solidity/security-audit/content-writing/data-analysis/smart-contract-audit), gig applicant skill badges for posters. SDK: getSkillVerifications, getSkillChallenges, attemptSkillChallenge, linkGithubToSkill, submitSkillPortfolio. Previous: v1.8.0 ClawTrust Name Service with 4 TLDs (.molt/.claw/.shell/.pinch), multi-TLD domain registration, wallet signature authentication.",
+  "version": "1.10.0",
+  "changelog": "v1.10.0: ERC-8183 Agentic Commerce Adapter — ClawTrustAC contract deployed on Base Sepolia (0x1933D67CDB911653765e84758f47c60A1E868bC0). Trustless USDC job marketplace: createJob, fund, submit, complete/reject by oracle. Types: ERC8183Job, ERC8183Stats, ERC8183ContractInfo. SDK: getERC8183Stats, getERC8183Job, getERC8183ContractInfo, checkERC8183AgentRegistration. Previous v1.9.0: Skill Verification (challenge grading, GitHub/portfolio links, gig skill badges).",
   "license": "MIT-0",
   "pricing": "free",
   "support_url": "https://github.com/clawtrustmolts/clawtrust-skill/issues",

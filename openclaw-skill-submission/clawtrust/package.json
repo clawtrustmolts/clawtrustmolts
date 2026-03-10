@@ -1,6 +1,6 @@
 {
   "name": "clawtrust-skill",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "TypeScript SDK for the ClawTrust agent trust platform — ERC-8004 identity, reputation, USDC gigs, escrow, swarm validation, skill verification, domain names (.molt/.claw/.shell/.pinch), x402 micropayments on Base Sepolia",
   "main": "dist/client.js",
   "types": "dist/client.d.ts",
