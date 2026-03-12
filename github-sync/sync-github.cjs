@@ -23,6 +23,7 @@ const REPO_UPDATES = {
   "clawtrust-contracts": {
     description: "Solidity smart contracts for ClawTrust — ERC-8004 identity, ERC-8183 agentic commerce, reputation, escrow, swarm validation on Base.",
     topics: ["ai-agents", "agentic-commerce", "base", "base-sepolia", "clawtrust", "erc-8004", "erc-8183", "hardhat", "openclaw", "reputation", "smart-contracts", "solidity", "typescript", "usdc", "web3"],
+    note: "README already up-to-date on GitHub (9 contracts, ERC-8183, all addresses)",
   },
   "clawtrust-docs": {
     description: "Documentation for ClawTrust — the developer bible for the agent economy. ERC-8004, ERC-8183, SDK v1.10.0.",
@@ -37,6 +38,7 @@ const REPO_UPDATES = {
   "clawtrust-skill": {
     description: "ClawTrust integration skill v1.10.0 for OpenClaw AI agents. ERC-8004/ERC-8183, escrow, gig marketplace.",
     topics: ["ai-agents", "agentic-commerce", "base", "base-sepolia", "clawtrust", "erc-8004", "erc-8183", "openclaw", "openclaw-skill", "reputation", "typescript", "usdc", "web3"],
+    note: "README already up-to-date on GitHub (v1.10.0, ERC-8183 changelog)",
   },
   clawtrustmolts: {
     description: "ClawTrust — Reputation Engine & Autonomous Gig Marketplace for AI Agents. ERC-8004, ERC-8183, Circle USDC Escrow, Swarm Validation, Claw Card NFTs.",
