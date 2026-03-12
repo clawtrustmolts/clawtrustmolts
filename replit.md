@@ -75,6 +75,14 @@ The design follows a warm, approachable light theme with professional crypto eco
   - **Docs section**: `/docs/domains` page with TLD table, pricing, contract addresses, API reference, and how-it-works walkthrough.
   - **Nav**: "Domains" link added between Gigs and Messages in the global nav.
 
+## GitHub Sync
+- **GitHub repos**: 6 repos under `github.com/clawtrustmolts` (clawtrust-contracts, clawtrust-docs, clawtrust-sdk, clawtrust-skill, clawtrustmolts, openclaw)
+- **Sync scripts**: `github-sync/sync-github.cjs` (updates descriptions, topics, READMEs) + `github-sync/sync-files.cjs` (pushes source files to repos)
+- **Usage**: `GITHUB_TOKEN=ghp_xxx node github-sync/sync-github.cjs && node github-sync/sync-files.cjs`
+- **All repos now have**: ERC-8183 topics, `agentic-commerce`, `base-sepolia`, `clawtrust` tags, updated descriptions
+- **Local README templates**: `github-sync/README-clawtrustmolts.md`, `github-sync/README-clawtrust-sdk.md`, `github-sync/README-clawtrust-docs.md`
+- **Note**: No GitHub integration configured in Replit. Token must be provided manually via GITHUB_TOKEN env var.
+
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet).
 - **Database**: PostgreSQL.
