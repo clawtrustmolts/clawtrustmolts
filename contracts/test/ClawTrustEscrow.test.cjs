@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("ClawTrustEscrow", function () {
-  let escrow, swarmValidator, mockToken, owner, depositor, payee, other;
+  let escrow, swarmValidator, mockUsdc, owner, depositor, payee, other;
   const GIG_ID = ethers.id("gig-001");
   const GIG_ID_2 = ethers.id("gig-002");
   const FEE_RATE = 250;
@@ -10,21 +10,24 @@ describe("ClawTrustEscrow", function () {
   beforeEach(async function () {
     [owner, depositor, payee, other] = await ethers.getSigners();
 
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    mockUsdc = await MockERC20.deploy("Mock USDC", "MUSDC", 6);
+    await mockUsdc.waitForDeployment();
+
     const SwarmValidator = await ethers.getContractFactory("ClawTrustSwarmValidator");
     swarmValidator = await SwarmValidator.deploy(owner.address);
     await swarmValidator.waitForDeployment();
 
     const Escrow = await ethers.getContractFactory("ClawTrustEscrow");
-    escrow = await Escrow.deploy(await swarmValidator.getAddress(), FEE_RATE);
+    escrow = await Escrow.deploy(
+      await mockUsdc.getAddress(),
+      await swarmValidator.getAddress(),
+      FEE_RATE
+    );
     await escrow.waitForDeployment();
 
-    const MockERC20 = await ethers.getContractFactory("MockERC20");
-    mockToken = await MockERC20.deploy("Mock USDC", "MUSDC", 6);
-    await mockToken.waitForDeployment();
-
-    await escrow.setTokenApproval(await mockToken.getAddress(), true);
-    await mockToken.mint(depositor.address, ethers.parseUnits("10000", 6));
-    await mockToken.connect(depositor).approve(await escrow.getAddress(), ethers.parseUnits("10000", 6));
+    await mockUsdc.mint(depositor.address, ethers.parseUnits("10000", 6));
+    await mockUsdc.connect(depositor).approve(await escrow.getAddress(), ethers.parseUnits("10000", 6));
   });
 
   describe("lockETH", function () {
@@ -69,27 +72,27 @@ describe("ClawTrustEscrow", function () {
     });
   });
 
-  describe("lockERC20", function () {
-    it("should lock ERC20 escrow", async function () {
+  describe("lockUSDC", function () {
+    it("should lock USDC escrow", async function () {
       const amount = ethers.parseUnits("100", 6);
-      await escrow.connect(depositor).lockERC20(GIG_ID, payee.address, await mockToken.getAddress(), amount);
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, amount);
       const e = await escrow.getEscrow(GIG_ID);
       expect(e.amount).to.equal(amount);
-      expect(e.token).to.equal(await mockToken.getAddress());
-    });
-
-    it("should revert on unapproved token", async function () {
-      const MockERC20 = await ethers.getContractFactory("MockERC20");
-      const badToken = await MockERC20.deploy("Bad", "BAD", 18);
-      await expect(
-        escrow.connect(depositor).lockERC20(GIG_ID, payee.address, await badToken.getAddress(), 10000)
-      ).to.be.revertedWithCustomError(escrow, "TokenNotApproved");
+      expect(e.isUsdc).to.equal(true);
+      expect(e.status).to.equal(1);
     });
 
     it("should revert on self-dealing", async function () {
+      const amount = ethers.parseUnits("100", 6);
       await expect(
-        escrow.connect(depositor).lockERC20(GIG_ID, depositor.address, await mockToken.getAddress(), 10000)
+        escrow.connect(depositor).lockUSDC(GIG_ID, depositor.address, amount)
       ).to.be.revertedWithCustomError(escrow, "SelfDealingNotAllowed");
+    });
+
+    it("should revert below minimum amount", async function () {
+      await expect(
+        escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, 100)
+      ).to.be.revertedWithCustomError(escrow, "BelowMinimumAmount");
     });
   });
 
@@ -131,12 +134,12 @@ describe("ClawTrustEscrow", function () {
       expect(e.status).to.equal(3);
     });
 
-    it("should refund ERC20 to depositor", async function () {
+    it("should refund USDC to depositor", async function () {
       const amount = ethers.parseUnits("100", 6);
-      await escrow.connect(depositor).lockERC20(GIG_ID, payee.address, await mockToken.getAddress(), amount);
-      const before = await mockToken.balanceOf(depositor.address);
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, amount);
+      const before = await mockUsdc.balanceOf(depositor.address);
       await escrow.connect(depositor).refund(GIG_ID);
-      const after = await mockToken.balanceOf(depositor.address);
+      const after = await mockUsdc.balanceOf(depositor.address);
       expect(after - before).to.equal(amount);
     });
   });
@@ -155,7 +158,7 @@ describe("ClawTrustEscrow", function () {
       await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
       await expect(
         escrow.connect(other).refundAfterTimeout(GIG_ID)
-      ).to.be.revertedWithCustomError(escrow, "Unauthorized");
+      ).to.be.revertedWithCustomError(escrow, "EscrowNotTimedOut");
     });
   });
 

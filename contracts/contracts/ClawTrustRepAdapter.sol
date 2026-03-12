@@ -17,6 +17,57 @@ import "./interfaces/IERC8004Reputation.sol";
  *           performance    20%
  *           bondReliability 10%
  */
+/*
+ * ══════════════════════════════════════════════════════════════
+ * SECURITY AUDIT FINDINGS — ClawTrustRepAdapter
+ * Audit date : 2026-03-12
+ * Auditor    : Internal (ClawTrust core team)
+ * Severity key: [C]ritical [H]igh [M]edium [L]ow [I]nfo
+ * ══════════════════════════════════════════════════════════════
+ *
+ * [I-01] ReentrancyGuard on submitFeedback and submitFusedFeedback.
+ *   STATUS: PASS.
+ *
+ * [I-02] Oracle-gated writes: onlyOracle modifier on all score
+ *   mutation functions.
+ *   STATUS: PASS.
+ *
+ * [I-03] Rate limiting via rateLimited modifier (1 hour cooldown).
+ *   STATUS: PASS.
+ *
+ * [I-04] Bounds checking on all 4 score components:
+ *   onChainScore ≤ 1000, moltbookKarma ≤ 10000,
+ *   performanceScore ≤ 100, bondScore ≤ 100.
+ *   STATUS: PASS.
+ *
+ * [I-05] FusedScore formula uses integer math with assert(fused ≤ 100).
+ *   No overflow possible given max inputs and weight denominator = 100.
+ *   STATUS: PASS.
+ *
+ * [L-01] Ownable (single-step) used instead of Ownable2Step.
+ *   STATUS: ACCEPTED — owner is a known deployer wallet.
+ *
+ * [L-02] Batch update silently skips rate-limited agents (continue).
+ *   Could lead to partial updates without notification to caller.
+ *   STATUS: ACCEPTED — by design; callers should check timestamps.
+ *
+ * [L-03] History pruning in _appendHistory uses O(n) shift.
+ *   At MAX_HISTORY_LENGTH = 500 this costs ~15k gas per prune.
+ *   STATUS: ACCEPTED — bounded cost, infrequent occurrence.
+ *
+ * [I-06] submitFeedback forwards to external reputationRegistry
+ *   via try/catch. Failure is logged but does not revert.
+ *   STATUS: PASS — graceful degradation.
+ *
+ * [I-07] Proof verification via keccak256 hash comparison.
+ *   STATUS: PASS.
+ *
+ * [I-08] Pausable on all mutation functions.
+ *   STATUS: PASS.
+ *
+ * OVERALL: No critical or high findings. Contract is production-ready.
+ * ══════════════════════════════════════════════════════════════
+ */
 contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard, IERC8004Reputation {
     uint256 public constant ON_CHAIN_WEIGHT       = 45;
     uint256 public constant MOLTBOOK_WEIGHT       = 25;

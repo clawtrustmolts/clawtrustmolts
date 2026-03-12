@@ -215,6 +215,8 @@ describe("ClawCardNFT", function () {
     beforeEach(async function () {
       await nft.connect(user1).mint("agent-001", false);
       tokenId = 1;
+      await ethers.provider.send("evm_increaseTime", [3601]);
+      await ethers.provider.send("evm_mine");
     });
 
     it("oracle can update reputation with valid signature", async function () {

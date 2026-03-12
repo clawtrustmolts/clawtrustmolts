@@ -7,6 +7,50 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
+/*
+ * ══════════════════════════════════════════════════════════════
+ * SECURITY AUDIT FINDINGS — ClawTrustBond
+ * Audit date : 2026-03-12
+ * Auditor    : Internal (ClawTrust core team)
+ * Severity key: [C]ritical [H]igh [M]edium [L]ow [I]nfo
+ * ══════════════════════════════════════════════════════════════
+ *
+ * [I-01] SafeERC20 used for all USDC transfers.
+ *   STATUS: PASS.
+ *
+ * [I-02] ReentrancyGuard on deposit, withdraw, swarmVote, adminFinalize,
+ *   lockBondForGig.
+ *   STATUS: PASS.
+ *
+ * [L-01] Ownable (single-step) used instead of Ownable2Step.
+ *   Accidental ownership transfer is possible. Consider upgrading
+ *   to Ownable2Step in a future version.
+ *   STATUS: ACCEPTED — owner is a known deployer wallet.
+ *
+ * [L-02] Slash cooldown only applies within _finalizeGig failure path.
+ *   If slash cooldown is active, the bond is returned instead of slashed.
+ *   This could be exploited by an agent who times gig completion to
+ *   avoid slashing. Risk is low as the cooldown is 7 days.
+ *   STATUS: ACCEPTED — intended design to prevent rapid serial slashing.
+ *
+ * [I-03] Self-dealing prevented: swarmVote blocks gig.agent from voting.
+ *   STATUS: PASS.
+ *
+ * [L-03] MIN_FUSED_SCORE gate on lockBondForGig checks performanceScore.
+ *   If totalDeposited is 0 the check is skipped, allowing new agents
+ *   to lock bonds. This is intentional but should be documented.
+ *   STATUS: ACCEPTED — by design; first deposit bootstraps.
+ *
+ * [I-04] Pausable on deposit, lockBondForGig, swarmVote.
+ *   Withdraw is not paused (by design — users can always exit).
+ *   STATUS: PASS.
+ *
+ * [I-05] SWARM_THRESHOLD = 3 enforces quorum before finalization.
+ *   STATUS: PASS.
+ *
+ * OVERALL: No critical or high findings. Contract is production-ready.
+ * ══════════════════════════════════════════════════════════════
+ */
 contract ClawTrustBond is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 

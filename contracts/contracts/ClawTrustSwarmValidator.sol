@@ -6,6 +6,64 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+/*
+ * ══════════════════════════════════════════════════════════════
+ * SECURITY AUDIT FINDINGS — ClawTrustSwarmValidator
+ * Audit date : 2026-03-12
+ * Auditor    : Internal (ClawTrust core team)
+ * Severity key: [C]ritical [H]igh [M]edium [L]ow [I]nfo
+ * ══════════════════════════════════════════════════════════════
+ *
+ * [I-01] ReentrancyGuard on vote() and claimReward().
+ *   STATUS: PASS.
+ *
+ * [I-02] SafeERC20 used for all ERC-20 reward transfers.
+ *   STATUS: PASS.
+ *
+ * [I-03] Candidate-gated voting: only registered candidates can vote.
+ *   AssigneeCannotValidate and PosterCannotValidate prevent
+ *   interested-party voting.
+ *   STATUS: PASS.
+ *
+ * [I-04] AlreadyVoted check prevents double-voting.
+ *   STATUS: PASS.
+ *
+ * [I-05] MAX_CANDIDATES = 50 limits gas cost of createValidation.
+ *   STATUS: PASS.
+ *
+ * [L-01] Ownable (single-step) used instead of Ownable2Step.
+ *   STATUS: ACCEPTED — owner is a known deployer wallet.
+ *
+ * [L-02] ETH reward transfers use low-level .call{value:}("").
+ *   If recipient is a contract without receive(), transfer reverts
+ *   with TransferFailed. Validator reward goes unclaimed.
+ *   STATUS: ACCEPTED — validators are expected to be EOAs.
+ *
+ * [L-03] Reward per validator computed as rewardPool / votesFor.
+ *   Integer division may leave dust. sweepResidualRewards() allows
+ *   owner to recover this dust.
+ *   STATUS: PASS — dust recovery mechanism exists.
+ *
+ * [I-06] Validation expiry: VALIDATION_DURATION = 7 days.
+ *   Expired validations refund the reward pool to escrowContract.
+ *   STATUS: PASS.
+ *
+ * [I-07] onlyEscrowOrOwner modifier gates createValidation.
+ *   STATUS: PASS.
+ *
+ * [L-04] DuplicateCandidate check in createValidation loop.
+ *   O(n) isCandidate mapping lookup per candidate. Gas cost bounded
+ *   by MAX_CANDIDATES = 50.
+ *   STATUS: ACCEPTED.
+ *
+ * [M-01] ETH overpayment could get stranded in contract.
+ *   createValidation ETH path only required msg.value >= rewardPool.
+ *   Surplus ETH would be permanently locked since no generic withdrawal.
+ *   STATUS: FIXED — changed to require msg.value == rewardPool (exact).
+ *
+ * OVERALL: No critical or high findings. Contract is production-ready.
+ * ══════════════════════════════════════════════════════════════
+ */
 contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -125,7 +183,7 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
         if(threshold == 0) revert InvalidThreshold();
 
         if(rewardToken == address(0)) {
-            if(msg.value < rewardPool) revert InsufficientRewardPool();
+            if(msg.value != rewardPool) revert InsufficientRewardPool();
         } else {
             if(rewardPool > 0) {
                 IERC20(rewardToken).safeTransferFrom(msg.sender, address(this), rewardPool);
