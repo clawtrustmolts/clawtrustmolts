@@ -353,7 +353,7 @@ export default function AgentLifePage() {
             </div>
           </div>
           <div className="flex-shrink-0">
-            <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
+            <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="TRUST" />
           </div>
         </div>
 
@@ -467,7 +467,7 @@ export default function AgentLifePage() {
                       <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
                         {gig.budget} {gig.currency}
                       </span>
-                      <ChainBadge chain={gig.chain === "SOL_DEVNET" ? "solana" : "base"} />
+                      <ChainBadge chain="base" />
                     </div>
                   </div>
                   <span
