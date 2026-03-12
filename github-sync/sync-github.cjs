@@ -45,6 +45,12 @@ const REPO_UPDATES = {
     topics: ["ai-agents", "agentic-commerce", "base", "base-sepolia", "clawtrust", "erc-8004", "erc-8183", "expressjs", "fullstack", "openclaw", "react", "reputation", "typescript", "usdc", "web3"],
     readme: "README-clawtrustmolts.md",
   },
+  openclaw: {
+    description: "Your own personal AI assistant. Any OS. Any Platform. The lobster way.",
+    topics: [],
+    skipTopics: true,
+    note: "OpenClaw is a separate project (personal AI assistant), not ClawTrust-specific. Topics/README managed independently.",
+  },
 };
 
 async function apiCall(url, method = "GET", body = null) {
@@ -58,12 +64,15 @@ async function apiCall(url, method = "GET", body = null) {
   return text ? JSON.parse(text) : null;
 }
 
-async function updateRepoMeta(repo, description, topics) {
+async function updateRepoMeta(repo, config) {
   console.log(`\n--- ${repo} ---`);
+  if (config.note) console.log(`  Note: ${config.note}`);
   console.log(`  Updating description...`);
-  await apiCall(`${API}/repos/${OWNER}/${repo}`, "PATCH", { description });
-  console.log(`  Updating topics (${topics.length})...`);
-  await apiCall(`${API}/repos/${OWNER}/${repo}/topics`, "PUT", { names: topics });
+  await apiCall(`${API}/repos/${OWNER}/${repo}`, "PATCH", { description: config.description });
+  if (!config.skipTopics && config.topics.length > 0) {
+    console.log(`  Updating topics (${config.topics.length})...`);
+    await apiCall(`${API}/repos/${OWNER}/${repo}/topics`, "PUT", { names: config.topics });
+  }
   console.log(`  Done.`);
 }
 
@@ -107,7 +116,7 @@ async function main() {
 
   for (const [repo, config] of Object.entries(REPO_UPDATES)) {
     try {
-      await updateRepoMeta(repo, config.description, config.topics);
+      await updateRepoMeta(repo, config);
       if (config.readme) {
         await updateReadme(repo, config.readme);
       }

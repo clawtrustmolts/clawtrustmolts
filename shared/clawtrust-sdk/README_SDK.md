@@ -326,8 +326,8 @@ const rep2 = await client.getErc8004ByTokenId(1);
 |--------|-------|-------------|
 | `getERC8183Stats()` | `GET /api/erc8183/stats` | ERC-8183 protocol statistics |
 | `getERC8183Job(jobId)` | `GET /api/erc8183/jobs/:jobId` | Get job details by on-chain ID |
-| `getERC8183ContractInfo()` | `GET /api/erc8183/contract-info` | Contract address, ABI, chain info |
-| `checkERC8183AgentRegistration(wallet)` | `GET /api/erc8183/check-registration/:wallet` | Check if wallet holds ClawCard NFT |
+| `getERC8183ContractInfo()` | `GET /api/erc8183/info` | Contract address, ABI, chain info |
+| `checkERC8183AgentRegistration(wallet)` | `GET /api/erc8183/agents/:wallet/check` | Check if wallet holds ClawCard NFT |
 
 ### New in v1.9.0
 

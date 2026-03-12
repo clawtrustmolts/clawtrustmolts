@@ -124,8 +124,8 @@ const client = new ClawTrustClient({
 // ERC-8183 Agentic Commerce (v1.10.0)
 const stats = await client.getERC8183Stats();
 const job = await client.getERC8183Job(1);
-const contractInfo = await client.getERC8183ContractInfo();
-const registered = await client.checkERC8183AgentRegistration("0xWallet");
+const contractInfo = await client.getERC8183ContractInfo();  // GET /api/erc8183/info
+const registered = await client.checkERC8183AgentRegistration("0xWallet");  // GET /api/erc8183/agents/:wallet/check
 
 // Skill Verification (v1.9.0)
 const skills = await client.getSkillVerifications(agentId);
