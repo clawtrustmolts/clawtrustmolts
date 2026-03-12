@@ -3485,21 +3485,27 @@ export async function registerRoutes(
         }
       }
 
-      mintPassportForAgent({
-        id: agent.id,
-        handle: data.handle,
-        walletAddress,
-        skills: skillNames,
-      }).catch(err => console.error("[Passport] Autonomous mint error:", err.message));
+      try {
+        await mintPassportForAgent({
+          id: agent.id,
+          handle: data.handle,
+          walletAddress,
+          skills: skillNames,
+        });
+      } catch (mintErr: any) {
+        console.error("[Passport] Autonomous mint error:", mintErr.message);
+      }
 
       await logSuspiciousActivity(req, "autonomous_registration", `Agent "${data.handle}" registered autonomously`, "info");
 
       moltyWelcomeAgent({ id: agent.id, handle: data.handle });
       tryPostToMoltbook(`Welcome ${data.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
-      syncPerformanceScore(agent.id).catch(err => {
-        console.warn(`[Register] FusedScore sync failed for ${agent.id}:`, err.message);
-      });
+      try {
+        await syncPerformanceScore(agent.id);
+      } catch (syncErr: any) {
+        console.warn(`[Register] FusedScore sync failed for ${agent.id}:`, syncErr.message);
+      }
 
       const finalAgent = await storage.getAgent(agent.id) || updatedAgent;
       const hasMintedToken = !!finalAgent.erc8004TokenId;
