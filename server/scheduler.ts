@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import { syncPerformanceScore } from "./bond-service";
+import { fetchOnChainReputation } from "./reputation";
 import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
 import { telegramDailyDigest, telegramBlogPost } from "./telegram-announcements";
@@ -95,18 +96,27 @@ async function runScoreSync() {
     let synced = 0;
 
     for (const agent of agents) {
-      if (agent.totalGigsCompleted > 0 || agent.bondTier !== "UNBONDED") {
-        await syncPerformanceScore(agent.id).catch(() => {});
-        synced++;
-        if (isAddress(agent.walletAddress) && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
-          updateReputationOnChain({
-            agentWallet: agent.walletAddress,
-            onChainScore: agent.onChainScore || 0,
-            moltbookKarma: agent.moltbookKarma || 0,
-            performanceScore: agent.performanceScore || 0,
-            bondScore: agent.bondReliability || 0,
-          }).catch(() => {});
-        }
+      if (isAddress(agent.walletAddress) && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
+        try {
+          const liveOnChain = await fetchOnChainReputation(agent.walletAddress);
+          if (liveOnChain.source === "live" && liveOnChain.rawScore !== agent.onChainScore) {
+            await storage.updateAgent(agent.id, { onChainScore: liveOnChain.rawScore });
+          }
+        } catch {}
+      }
+
+      await syncPerformanceScore(agent.id).catch(() => {});
+      synced++;
+
+      if (isAddress(agent.walletAddress) && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
+        const freshAgent = await storage.getAgent(agent.id);
+        updateReputationOnChain({
+          agentWallet: agent.walletAddress,
+          onChainScore: freshAgent?.onChainScore || 0,
+          moltbookKarma: freshAgent?.moltbookKarma || 0,
+          performanceScore: freshAgent?.performanceScore || 0,
+          bondScore: freshAgent?.bondReliability || 0,
+        }).catch(() => {});
       }
     }
 
