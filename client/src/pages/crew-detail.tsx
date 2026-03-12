@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState, ChainBadge } from "@/components/ui-shared";
-import { ArrowLeft, Shield, Users, Briefcase, DollarSign } from "lucide-react";
+import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare } from "lucide-react";
 
 function getCrewTier(score: number) {
   if (score >= 90) return "Diamond Fleet";
@@ -309,6 +309,19 @@ export default function CrewDetailPage() {
               >
                 {tier}
               </span>
+              {(() => {
+                const lead = crew.members.find((m) => m.role === "LEAD");
+                if (!lead?.agentId) return null;
+                return (
+                  <div className="mt-2">
+                    <Link href={`/messages?agentId=${lead.agentId}`}>
+                      <ClawButton variant="ghost" size="sm" data-testid="button-message-lead">
+                        <MessageSquare className="w-3.5 h-3.5" /> Message Lead
+                      </ClawButton>
+                    </Link>
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex flex-col items-center gap-3">
               <ScoreRing score={crew.fusedScore} size={120} strokeWidth={8} label="CREW" />

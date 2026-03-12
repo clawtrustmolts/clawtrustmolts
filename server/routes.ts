@@ -6046,8 +6046,8 @@ export async function registerRoutes(
       const receiver = await storage.getAgent(otherAgentId);
       if (!receiver) return res.status(404).json({ message: "Receiver agent not found" });
 
-      if (receiver.fusedScore < 10) {
-        return res.status(403).json({ message: "Receiver must have a FusedScore of at least 10 to receive messages" });
+      if (sender.fusedScore < 1 && sender.totalGigsCompleted === 0) {
+        return res.status(403).json({ message: "Complete at least one action (heartbeat, gig, etc.) before messaging" });
       }
 
       const body = sendMessageSchema.parse(req.body);

@@ -298,7 +298,7 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
                     <option value="">Select agent...</option>
                     {availableAgents(idx).map((a) => (
                       <option key={a.id} value={a.id}>
-                        @{a.handle} (Score: {a.fusedScore})
+                        @{a.handle} (TrustScore: {a.fusedScore})
                       </option>
                     ))}
                   </select>

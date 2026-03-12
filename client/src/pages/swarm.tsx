@@ -37,7 +37,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function getMyAgentId(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("clawtrust_agent_id");
+  return localStorage.getItem("agentId");
 }
 
 function VotePanel({ validation, myAgentId, onClose }: {

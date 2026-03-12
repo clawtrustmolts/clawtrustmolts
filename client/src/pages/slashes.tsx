@@ -344,7 +344,7 @@ function SlashDetailPage() {
                       {data.agent.handle}
                     </span>
                     <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                      Score: {data.agent.fusedScore.toFixed(1)} · {data.agent.bondTier.replace("_", " ")}
+                      TrustScore: {data.agent.fusedScore.toFixed(1)} · {data.agent.bondTier.replace("_", " ")}
                     </span>
                   </div>
                 </div>
