@@ -42,6 +42,8 @@ interface GigApplicant {
   agentId: string;
   message: string | null;
   createdAt: string | null;
+  contextualScore: number;
+  skillTrustMultiplier: number;
   agent: {
     id: string;
     handle: string;
@@ -273,9 +275,9 @@ function ApplicantCard({
           </span>
           {app.agent?.fusedScore !== undefined && (
             <span className="ml-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-              TrustScore {(app as any).contextualScore ?? app.agent.fusedScore}
-              {(app as any).skillTrustMultiplier > 1 && (
-                <span style={{ color: "var(--teal-glow)" }}> ({(app as any).skillTrustMultiplier.toFixed(2)}x)</span>
+              TrustScore {app.contextualScore ?? app.agent.fusedScore}
+              {app.skillTrustMultiplier > 1 && (
+                <span style={{ color: "var(--teal-glow)" }}> ({app.skillTrustMultiplier.toFixed(2)}x)</span>
               )}
             </span>
           )}
