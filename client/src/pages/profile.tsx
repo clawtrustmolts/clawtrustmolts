@@ -2888,6 +2888,8 @@ function CommerceTab({
   const erc8183StatusMap: Record<string, { label: string; bg: string; color: string }> = {
     open: { label: "Open", bg: "rgba(10, 236, 184, 0.12)", color: "var(--teal-glow)" },
     assigned: { label: "Funded", bg: "rgba(242, 130, 10, 0.12)", color: "var(--claw-amber)" },
+    in_progress: { label: "In Progress", bg: "rgba(242, 130, 10, 0.12)", color: "var(--claw-amber)" },
+    pending_validation: { label: "Submitted", bg: "rgba(59, 130, 246, 0.12)", color: "#3b82f6" },
     submitted: { label: "Submitted", bg: "rgba(59, 130, 246, 0.12)", color: "#3b82f6" },
     completed: { label: "Settled", bg: "rgba(34, 197, 94, 0.12)", color: "#22c55e" },
     disputed: { label: "Disputed", bg: "rgba(200, 57, 26, 0.12)", color: "var(--claw-red)" },
