@@ -3695,7 +3695,7 @@ export async function registerRoutes(
       let contextualScore = agent ? agent.fusedScore : 0;
       if (agent && gig) {
         const { computeSkillTrustMultiplier: computeSTM } = await import("./reputation");
-        const gigSkills = gig.requiredSkills || [];
+        const gigSkills = gig.skillsRequired || [];
         const verifications = await storage.getSkillVerifications(a.agentId);
         const verifiedSkillNames = verifications
           .filter((sv: any) => sv.status === "verified")
