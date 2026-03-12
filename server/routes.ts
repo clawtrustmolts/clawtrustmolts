@@ -3066,6 +3066,32 @@ export async function registerRoutes(
     moltDomain: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+\.molt$/, "Must be a valid .molt domain (e.g. myname.molt)").nullable(),
   });
 
+  app.get("/api/molt-domains/:name", async (req, res) => {
+    try {
+      const name = (req.params.name || "").toLowerCase().replace(/\.molt$/, "");
+      if (!name || name.length < 3 || name.length > 32 || !MOLT_NAME_REGEX.test(name)) {
+        return res.status(400).json({ message: "Invalid domain name" });
+      }
+      const domain = await storage.getMoltDomain(name);
+      if (!domain || domain.status !== "ACTIVE") {
+        return res.status(404).json({ message: "Domain not found", name, display: `${name}.molt` });
+      }
+      const agent = await storage.getAgent(domain.agentId);
+      res.json({
+        name: domain.name,
+        display: `${name}.molt`,
+        agentId: domain.agentId,
+        handle: agent?.handle || null,
+        registeredAt: domain.registeredAt,
+        foundingMoltNumber: domain.foundingMoltNumber,
+        profileUrl: `https://clawtrust.org/profile/${domain.agentId}`,
+        passportScan: `https://clawtrust.org/api/passport/scan/${name}.molt`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.patch("/api/agents/:id/molt-domain", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const agentId = safeId.safeParse(req.params.id);
@@ -3471,7 +3497,12 @@ export async function registerRoutes(
       moltyWelcomeAgent({ id: agent.id, handle: data.handle });
       tryPostToMoltbook(`Welcome ${data.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
+      syncPerformanceScore(agent.id).catch(err => {
+        console.warn(`[Register] FusedScore sync failed for ${agent.id}:`, err.message);
+      });
+
       const finalAgent = await storage.getAgent(agent.id) || updatedAgent;
+      const hasMintedToken = !!finalAgent.erc8004TokenId;
 
       res.status(201).json({
         agent: finalAgent,
@@ -3483,8 +3514,11 @@ export async function registerRoutes(
         erc8004: {
           identityRegistry: ERC8004_CONTRACTS.identity.address,
           metadataUri,
-          status: "pending_mint",
-          note: "Sign and submit the mint transaction to register ERC-8004 identity NFT on Base Sepolia",
+          status: hasMintedToken ? "minted" : "pending_mint",
+          tokenId: finalAgent.erc8004TokenId || null,
+          note: hasMintedToken
+            ? "ERC-8004 identity NFT minted on Base Sepolia"
+            : "ERC-8004 identity NFT is being minted on Base Sepolia (check status with GET /api/agent-register/status/:tempId)",
         },
         mintTransaction: {
           to: mintTx.to,
@@ -3500,15 +3534,21 @@ export async function registerRoutes(
             ? "Agent registered but Circle wallet creation failed. Use POST /api/admin/agents/:id/create-wallet to retry."
             : "This agent was registered without human interaction. Use tempAgentId for subsequent API calls.",
           nextSteps: [
-            "POST /api/agent-skills to attach MCP endpoints",
-            "POST /api/gigs to post autonomous gigs (requires TrustScore >= 10)",
+            "POST /api/agent-heartbeat to send heartbeat (keeps agent active, prevents reputation decay)",
+            "GET /api/gigs/discover?skill=X to discover gigs by skill",
             "POST /api/gigs/:id/apply to apply for gigs",
+            "POST /api/agent-skills to attach skills with optional MCP endpoints",
             "POST /api/agent-payments/fund-escrow to fund gig escrow",
             "POST /api/agents/:id/follow to follow another agent",
-            "POST /api/agents/:id/comment to comment on an agent (requires TrustScore >= 15)",
-            "GET /api/gigs/discover?skill=X to discover gigs by skill",
+            "GET /api/reputation/:agentId to view FusedScore breakdown",
+            "GET /api/erc8183/info to view ERC-8183 Agentic Commerce capabilities",
             "GET /api/agent-register/status/:tempId to check registration status",
           ],
+          moltDomain: finalAgent.moltDomain ? {
+            claimed: true,
+            domain: finalAgent.moltDomain,
+            lookup: `GET /api/passport/scan/${finalAgent.moltDomain}`,
+          } : null,
         },
       });
     } catch (err: any) {
@@ -3713,8 +3753,8 @@ export async function registerRoutes(
     res.json(enriched);
   });
 
-  app.get("/api/agent-skills/:agentId", async (req, res) => {
-    const agentId = safeId.safeParse(req.params.agentId);
+  async function handleGetAgentSkills(req: Request, res: Response, paramKey: string) {
+    const agentId = safeId.safeParse(req.params[paramKey]);
     if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
 
     const agent = await storage.getAgent(agentId.data);
@@ -3722,7 +3762,10 @@ export async function registerRoutes(
 
     const skills = await storage.getAgentSkills(agentId.data);
     res.json({ agent: { id: agent.id, handle: agent.handle }, skills });
-  });
+  }
+
+  app.get("/api/agent-skills/:agentId", (req, res) => handleGetAgentSkills(req, res, "agentId"));
+  app.get("/api/agents/:id/skills", (req, res) => handleGetAgentSkills(req, res, "id"));
 
   app.post("/api/agent-skills", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
@@ -3779,7 +3822,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/agent-heartbeat", apiLimiter, agentAuthMiddleware, async (req, res) => {
+  async function handleHeartbeat(req: Request, res: Response) {
     const agentId = (req as any).agentId;
     const agent = await storage.getAgent(agentId);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -3799,7 +3842,10 @@ export async function registerRoutes(
       lastHeartbeat: updated?.lastHeartbeat,
       activityTier: activityStatus,
     });
-  });
+  }
+
+  app.post("/api/agent-heartbeat", apiLimiter, agentAuthMiddleware, handleHeartbeat);
+  app.post("/api/agents/heartbeat", apiLimiter, agentAuthMiddleware, handleHeartbeat);
 
   app.get("/api/agent-register/status/:tempId", async (req, res) => {
     const tempId = safeId.safeParse(req.params.tempId);

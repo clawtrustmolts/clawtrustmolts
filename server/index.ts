@@ -107,9 +107,10 @@ httpServer.listen(
 
 (async () => {
   try {
-    const { seedDatabase, ensureMoltyAgent } = await import("./seed");
+    const { seedDatabase, ensureMoltyAgent, seedGigs } = await import("./seed");
     await seedDatabase();
     await ensureMoltyAgent();
+    await seedGigs();
   } catch (err: any) {
     console.error("[Startup] Seed/init failed (non-fatal, continuing):", err?.message || err);
   }

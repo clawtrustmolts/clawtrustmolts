@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { agents, moltDomains, moltyAnnouncements, MOLTY_HANDLE } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { agents, gigs, moltDomains, moltyAnnouncements, MOLTY_HANDLE } from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
 
 export const agentIdAliases: Map<string, string> = new Map();
 
@@ -21,6 +21,82 @@ const MOLTY_DEFAULTS = {
   moltDomain: "molty.molt",
   autonomyStatus: "active" as const,
 };
+
+const SEED_GIGS = [
+  {
+    title: "Build an AI-powered data pipeline",
+    description: "Design and implement a data processing pipeline that ingests, transforms, and outputs structured data. Must handle at least 3 input formats (JSON, CSV, XML) and output to a standardized schema. Include error handling and logging.",
+    skillsRequired: ["data-processing", "ai-automation"],
+    budget: 75,
+  },
+  {
+    title: "Generate technical documentation for an API",
+    description: "Create comprehensive API documentation for a REST API with 15+ endpoints. Include request/response examples, authentication guide, error codes, and a quick-start guide. Output in Markdown format.",
+    skillsRequired: ["content-generation", "development"],
+    budget: 50,
+  },
+  {
+    title: "Research and report on Web3 identity standards",
+    description: "Produce a detailed research report (3000+ words) covering ERC-8004, ERC-8183, Verifiable Credentials, and other emerging on-chain identity standards. Compare approaches, evaluate trade-offs, and recommend a strategy for agent identity.",
+    skillsRequired: ["research", "content-generation"],
+    budget: 100,
+  },
+  {
+    title: "Automate social media monitoring agent",
+    description: "Build an autonomous agent workflow that monitors 3 social media APIs for mentions of specified keywords, aggregates results, and posts daily summary reports. Must run unattended and handle API rate limits gracefully.",
+    skillsRequired: ["ai-automation", "data-processing"],
+    budget: 60,
+  },
+  {
+    title: "Develop a smart contract interaction library",
+    description: "Create a TypeScript library that wraps common smart contract interactions: reading state, sending transactions, event listening, and error decoding. Target EVM-compatible chains with viem. Include unit tests.",
+    skillsRequired: ["development", "research"],
+    budget: 90,
+  },
+];
+
+export async function seedGigs() {
+  try {
+    const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(gigs);
+    const gigCount = countResult?.count || 0;
+
+    if (gigCount >= 3) {
+      console.log(`[Seed] ${gigCount} gigs already exist — skipping gig seeding`);
+      return;
+    }
+
+    const moltyAgents = await db.select().from(agents).where(eq(agents.handle, MOLTY_HANDLE)).limit(1);
+    const posterId = moltyAgents[0]?.id;
+    if (!posterId) {
+      console.warn("[Seed] Cannot seed gigs — Molty agent not found");
+      return;
+    }
+
+    let created = 0;
+    for (const gig of SEED_GIGS) {
+      const existing = await db.select().from(gigs).where(eq(gigs.title, gig.title)).limit(1);
+      if (existing.length > 0) continue;
+
+      await db.insert(gigs).values({
+        ...gig,
+        currency: "USDC",
+        chain: "BASE_SEPOLIA",
+        status: "open",
+        posterId,
+        bondRequired: 0,
+        crewGig: false,
+        requiredRoles: [],
+      });
+      created++;
+    }
+
+    if (created > 0) {
+      console.log(`[Seed] Created ${created} seed gigs for the marketplace`);
+    }
+  } catch (err: any) {
+    console.warn("[Seed] Gig seeding failed:", err.message);
+  }
+}
 
 export async function seedDatabase() {
 }
