@@ -123,6 +123,69 @@ async function syncDocsRepo() {
   await pushFile("clawtrust-docs", "skills/clawtrust-integration.md", "skills/clawtrust-integration.md", "chore: sync skill doc from main repo");
 }
 
+async function syncMainRepo() {
+  console.log("\n=== clawtrustmolts (main app) ===");
+
+  const clientPages = fs.readdirSync(path.join(ROOT, "client/src/pages")).filter(f => f.endsWith(".tsx"));
+  for (const f of clientPages) {
+    await pushFile("clawtrustmolts", `client/src/pages/${f}`, `client/src/pages/${f}`, `chore: sync client page ${f}`);
+  }
+
+  const clientComponents = fs.readdirSync(path.join(ROOT, "client/src/components/ui")).filter(f => f.endsWith(".tsx"));
+  for (const f of clientComponents) {
+    await pushFile("clawtrustmolts", `client/src/components/ui/${f}`, `client/src/components/ui/${f}`, `chore: sync ui component ${f}`);
+  }
+
+  const clientLibDir = path.join(ROOT, "client/src/lib");
+  if (fs.existsSync(clientLibDir)) {
+    const clientLibFiles = fs.readdirSync(clientLibDir).filter(f => f.endsWith(".ts") || f.endsWith(".tsx"));
+    for (const f of clientLibFiles) {
+      await pushFile("clawtrustmolts", `client/src/lib/${f}`, `client/src/lib/${f}`, `chore: sync client lib ${f}`);
+    }
+  }
+
+  const clientContextDir = path.join(ROOT, "client/src/context");
+  if (fs.existsSync(clientContextDir)) {
+    const ctxFiles = fs.readdirSync(clientContextDir).filter(f => f.endsWith(".tsx") || f.endsWith(".ts"));
+    for (const f of ctxFiles) {
+      await pushFile("clawtrustmolts", `client/src/context/${f}`, `client/src/context/${f}`, `chore: sync context ${f}`);
+    }
+  }
+
+  const clientHooksDir = path.join(ROOT, "client/src/hooks");
+  if (fs.existsSync(clientHooksDir)) {
+    const hookFiles = fs.readdirSync(clientHooksDir).filter(f => f.endsWith(".ts") || f.endsWith(".tsx"));
+    for (const f of hookFiles) {
+      await pushFile("clawtrustmolts", `client/src/hooks/${f}`, `client/src/hooks/${f}`, `chore: sync hook ${f}`);
+    }
+  }
+
+  await pushFile("clawtrustmolts", "client/src/App.tsx", "client/src/App.tsx", "chore: sync App.tsx");
+  await pushFile("clawtrustmolts", "client/src/main.tsx", "client/src/main.tsx", "chore: sync main.tsx");
+  await pushFile("clawtrustmolts", "client/src/index.css", "client/src/index.css", "chore: sync index.css");
+
+  const serverFiles = fs.readdirSync(path.join(ROOT, "server")).filter(f => f.endsWith(".ts"));
+  for (const f of serverFiles) {
+    await pushFile("clawtrustmolts", `server/${f}`, `server/${f}`, `chore: sync server ${f}`);
+  }
+
+  const sharedFiles = fs.readdirSync(path.join(ROOT, "shared")).filter(f => f.endsWith(".ts"));
+  for (const f of sharedFiles) {
+    await pushFile("clawtrustmolts", `shared/${f}`, `shared/${f}`, `chore: sync shared ${f}`);
+  }
+
+  const sdkFiles = ["index.ts", "types.ts", "README_SDK.md"];
+  for (const f of sdkFiles) {
+    await pushFile("clawtrustmolts", `shared/clawtrust-sdk/${f}`, `shared/clawtrust-sdk/${f}`, `chore: sync SDK ${f}`);
+  }
+
+  await pushFile("clawtrustmolts", "skills/clawtrust-integration.md", "skills/clawtrust-integration.md", "chore: sync skill file");
+  await pushFile("clawtrustmolts", "drizzle.config.ts", "drizzle.config.ts", "chore: sync drizzle config");
+  await pushFile("clawtrustmolts", "vite.config.ts", "vite.config.ts", "chore: sync vite config");
+  await pushFile("clawtrustmolts", "tsconfig.json", "tsconfig.json", "chore: sync tsconfig");
+  await pushFile("clawtrustmolts", "tailwind.config.ts", "tailwind.config.ts", "chore: sync tailwind config");
+}
+
 async function main() {
   console.log("ClawTrust File Sync");
   console.log("===================");
@@ -134,6 +197,7 @@ async function main() {
   await syncSdkRepo();
   await syncSkillRepo();
   await syncDocsRepo();
+  await syncMainRepo();
 
   console.log("\nFile sync complete.");
 }
