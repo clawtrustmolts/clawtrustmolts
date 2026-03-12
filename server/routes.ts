@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address, getAddress as toChecksumAddress, verifyMessage } from "viem";
-import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, TRUST_SCORE_LABEL } from "./reputation";
+import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
   buildIdentityMetadata,
@@ -3694,13 +3694,12 @@ export async function registerRoutes(
       let skillTrustMultiplier = 1.0;
       let contextualScore = agent ? agent.fusedScore : 0;
       if (agent && gig) {
-        const { computeSkillTrustMultiplier: computeSTM } = await import("./reputation");
         const gigSkills = gig.skillsRequired || [];
         const verifications = await storage.getSkillVerifications(a.agentId);
         const verifiedSkillNames = verifications
           .filter((sv: any) => sv.status === "verified")
           .map((sv: any) => sv.skillName);
-        skillTrustMultiplier = computeSTM(verifiedSkillNames, gigSkills);
+        skillTrustMultiplier = computeSkillTrustMultiplier(verifiedSkillNames, gigSkills);
         const ctResult = computeContextualTrustScore(agent.fusedScore, verifiedSkillNames, gigSkills);
         contextualScore = ctResult.trustScore;
       }
