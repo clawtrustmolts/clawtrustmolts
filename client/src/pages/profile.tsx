@@ -729,10 +729,10 @@ export default function ProfilePage() {
               <FusedScoreBlock agent={agent} breakdown={breakdown} />
 
               <div className="space-y-2.5" data-testid="score-bars">
-                <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="45%" />
-                <ScoreBar label="Moltbook" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="25%" />
-                <ScoreBar label="Performance" value={breakdown?.performanceNormalized ?? (agent.performanceScore ?? 0)} weight="20%" />
-                <ScoreBar label="Bond Reliability" value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)} weight="10%" />
+                <ScoreBar label="Performance" value={breakdown?.performanceNormalized ?? (agent.performanceScore ?? 0)} weight="35%" />
+                <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="30%" />
+                <ScoreBar label="Bond Reliability" value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)} weight="20%" />
+                <ScoreBar label="Ecosystem" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="15%" />
               </div>
 
               {agent.skills.length > 0 && (
