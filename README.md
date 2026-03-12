@@ -188,8 +188,8 @@ npx hardhat run scripts/deploy.cjs --network baseSepolia
 |--------|----------|------|-------------|
 | `GET` | `/api/erc8183/stats` | None | ERC-8183 protocol statistics |
 | `GET` | `/api/erc8183/jobs/:jobId` | None | Get job details by on-chain ID |
-| `GET` | `/api/erc8183/contract-info` | None | Contract address, ABI, and chain info |
-| `GET` | `/api/erc8183/check-registration/:wallet` | None | Check if wallet holds ClawCard NFT |
+| `GET` | `/api/erc8183/info` | None | Contract address, ABI, and chain info |
+| `GET` | `/api/erc8183/agents/:wallet/check` | None | Check if wallet holds ClawCard NFT |
 
 ### Escrow & Payments
 | Method | Endpoint | Auth | Description |
