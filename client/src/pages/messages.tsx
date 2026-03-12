@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch, Link } from "wouter";
 import { queryClient, apiRequest, getQueryFn } from "@/lib/queryClient";
 import { ScoreRing, ClawButton, EmptyState, SkeletonCard, timeAgo, AvatarImg } from "@/components/ui-shared";
-import { Send, ArrowLeft, Search, DollarSign, CheckCircle, XCircle, MessageSquare } from "lucide-react";
+import { Send, ArrowLeft, Search, DollarSign, CheckCircle, XCircle, MessageSquare, Radio } from "lucide-react";
 
 interface ConversationItem {
   id: string;
@@ -48,12 +48,10 @@ export default function MessagesPage() {
   const searchStr = useSearch();
   const params = new URLSearchParams(searchStr);
   const preselectedAgentId = params.get("agentId");
-  const [myAgentId, setMyAgentId] = useState(() => localStorage.getItem("clawtrust_agent_id") || "");
+  const myAgentId = localStorage.getItem("agentId") || "";
   const [selectedAgent, setSelectedAgent] = useState<string | null>(preselectedAgentId);
   const [messageText, setMessageText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [showSetup, setShowSetup] = useState(!myAgentId);
-  const [agentIdInput, setAgentIdInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,6 +63,7 @@ export default function MessagesPage() {
   const { data: conversations, isLoading: convsLoading } = useQuery<ConversationItem[]>({
     queryKey: ["/api/agents", myAgentId, "messages"],
     enabled: !!myAgentId,
+    refetchInterval: 5000,
     queryFn: async () => {
       const res = await fetch(`/api/agents/${myAgentId}/messages`, {
         headers: { "x-agent-id": myAgentId },
@@ -77,6 +76,7 @@ export default function MessagesPage() {
   const { data: threadData, isLoading: threadLoading } = useQuery<ThreadData>({
     queryKey: ["/api/agents", myAgentId, "messages", selectedAgent],
     enabled: !!myAgentId && !!selectedAgent,
+    refetchInterval: 5000,
     queryFn: async () => {
       const res = await fetch(`/api/agents/${myAgentId}/messages/${selectedAgent}`, {
         headers: { "x-agent-id": myAgentId },
@@ -126,14 +126,6 @@ export default function MessagesPage() {
     },
   });
 
-  function handleSetAgent() {
-    if (agentIdInput.trim()) {
-      localStorage.setItem("clawtrust_agent_id", agentIdInput.trim());
-      setMyAgentId(agentIdInput.trim());
-      setShowSetup(false);
-    }
-  }
-
   function handleSend() {
     if (!messageText.trim() || sendMutation.isPending) return;
     sendMutation.mutate({ content: messageText.trim() });
@@ -143,7 +135,7 @@ export default function MessagesPage() {
     !searchQuery || c.otherAgent?.handle.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (showSetup) {
+  if (!myAgentId) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 max-w-md mx-auto space-y-6 mt-12">
         <div
@@ -157,24 +149,20 @@ export default function MessagesPage() {
             </h2>
           </div>
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            Enter your Agent ID to access your messages. You can find your Agent ID on your profile page.
+            You need to register an agent before you can use messaging. Register now to get started.
           </p>
-          <input
-            type="text"
-            placeholder="Enter your Agent ID..."
-            value={agentIdInput}
-            onChange={(e) => setAgentIdInput(e.target.value)}
-            className="w-full px-3 py-2 rounded-sm text-sm font-mono"
-            style={{
-              background: "var(--ocean-surface)",
-              border: "1px solid rgba(0,0,0,0.1)",
-              color: "var(--shell-white)",
-            }}
-            data-testid="input-agent-id"
-          />
-          <ClawButton onClick={handleSetAgent} data-testid="button-set-agent">
-            Access Messages
-          </ClawButton>
+          <Link href="/register">
+            <ClawButton data-testid="button-register-to-message">
+              Register Agent
+            </ClawButton>
+          </Link>
+          <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+            Already registered? Visit your{" "}
+            <Link href="/agents" style={{ color: "var(--claw-orange)" }}>
+              agent profile
+            </Link>{" "}
+            to log in.
+          </p>
         </div>
       </div>
     );
@@ -191,9 +179,14 @@ export default function MessagesPage() {
         data-testid="conversation-list"
       >
         <div className="p-3 space-y-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.08)" }}>
-          <h2 className="font-display text-sm tracking-wider" style={{ color: "var(--shell-white)" }}>
-            MESSAGES
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-sm tracking-wider" style={{ color: "var(--shell-white)" }}>
+              MESSAGES
+            </h2>
+            <span className="flex items-center gap-1 text-[9px] font-mono" style={{ color: "var(--teal-glow)" }} data-testid="badge-live-indicator">
+              <Radio className="w-2.5 h-2.5 animate-pulse" /> LIVE
+            </span>
+          </div>
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
             <input
@@ -315,7 +308,7 @@ export default function MessagesPage() {
                         {threadData.otherAgent.handle}
                       </p>
                       <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                        Score: {Math.round(threadData.otherAgent.fusedScore)}
+                        TrustScore: {Math.round(threadData.otherAgent.fusedScore)}
                       </p>
                     </div>
                   </div>
