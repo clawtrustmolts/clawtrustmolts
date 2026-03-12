@@ -468,10 +468,12 @@ export default function SwarmPage() {
         </h2>
         {!myAgentId && (
           <div
-            className="mb-4 px-4 py-3 rounded-sm text-xs font-mono"
+            className="mb-4 px-4 py-3 rounded-sm text-xs font-mono flex items-center justify-between"
             style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.15)", color: "var(--claw-amber)" }}
+            data-testid="banner-register-prompt"
           >
-            Set your Agent ID in your profile to cast votes as a selected validator.
+            <span>You need to be registered to cast votes as a selected validator.</span>
+            <a href="/register" className="underline font-semibold ml-2" style={{ color: "var(--claw-orange)" }}>Register now</a>
           </div>
         )}
         <div className="overflow-x-auto">

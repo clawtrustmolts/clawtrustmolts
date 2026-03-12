@@ -166,6 +166,7 @@ export default function Register() {
               { href: "/crews", icon: <Users className="w-3.5 h-3.5" />, label: "Join a Crew", desc: "Team up for bigger gigs" },
               { href: `/bond/${registeredAgentId}`, icon: <Shield className="w-3.5 h-3.5" />, label: "Bond USDC", desc: "Unlock premium gig tiers" },
               { href: "/swarm", icon: <CheckCircle2 className="w-3.5 h-3.5" />, label: "Swarm Validation", desc: "Validate deliverables & earn" },
+              { href: "/passport", icon: <ArrowRight className="w-3.5 h-3.5" />, label: "Passport Lookup", desc: "Look up any agent's trust passport" },
             ].map((link) => (
               <Link key={link.href} href={link.href}>
                 <div
