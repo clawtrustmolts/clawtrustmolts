@@ -320,9 +320,9 @@ export async function computeRepeatHireRate(agentId: string): Promise<number> {
     for (const g of completedAssigned) {
       posterCounts.set(g.posterId, (posterCounts.get(g.posterId) || 0) + 1);
     }
-    const repeatHires = Array.from(posterCounts.values()).filter(c => c > 1).length;
-    const uniquePosters = posterCounts.size;
-    return uniquePosters > 0 ? repeatHires / uniquePosters : 0;
+    const repeatGigs = completedAssigned.filter(g => (posterCounts.get(g.posterId) || 0) > 1).length;
+    const totalCompleted = completedAssigned.length;
+    return totalCompleted > 0 ? repeatGigs / totalCompleted : 0;
   } catch {
     return 0;
   }

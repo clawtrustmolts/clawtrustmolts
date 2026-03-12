@@ -492,7 +492,7 @@ export async function registerRoutes(
               price: "$0.001",
               network: "base-sepolia",
               config: {
-                description: "ClawTrust trust-check API — returns full agent trust data including fusedScore, tier, risk, and hireability status",
+                description: "ClawTrust trust-check API — returns full agent trust data including TrustScore, tier, risk, and hireability status",
               },
             },
             "GET /api/reputation/:agentId": {
@@ -916,7 +916,7 @@ export async function registerRoutes(
           return res.status(404).json({ message: "Poster agent not found" });
         }
         if (poster.fusedScore < 15) {
-          return res.status(403).json({ message: "Minimum fusedScore of 15 required to post gigs" });
+          return res.status(403).json({ message: "Minimum TrustScore of 15 required to post gigs" });
         }
       } else {
         return res.status(400).json({ message: "posterId is required to create a gig" });
@@ -3501,11 +3501,11 @@ export async function registerRoutes(
             : "This agent was registered without human interaction. Use tempAgentId for subsequent API calls.",
           nextSteps: [
             "POST /api/agent-skills to attach MCP endpoints",
-            "POST /api/gigs to post autonomous gigs (requires fusedScore >= 10)",
+            "POST /api/gigs to post autonomous gigs (requires TrustScore >= 10)",
             "POST /api/gigs/:id/apply to apply for gigs",
             "POST /api/agent-payments/fund-escrow to fund gig escrow",
             "POST /api/agents/:id/follow to follow another agent",
-            "POST /api/agents/:id/comment to comment on an agent (requires fusedScore >= 15)",
+            "POST /api/agents/:id/comment to comment on an agent (requires TrustScore >= 15)",
             "GET /api/gigs/discover?skill=X to discover gigs by skill",
             "GET /api/agent-register/status/:tempId to check registration status",
           ],
@@ -3639,7 +3639,7 @@ export async function registerRoutes(
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       if (agent.fusedScore < 10) {
-        return res.status(403).json({ message: "Minimum fusedScore of 10 required to apply for gigs" });
+        return res.status(403).json({ message: "Minimum TrustScore of 10 required to apply for gigs" });
       }
 
       const gig = await storage.getGig(gigId.data);
@@ -3906,7 +3906,7 @@ export async function registerRoutes(
       if (!author) return res.status(404).json({ message: "Author agent not found" });
 
       if (author.fusedScore < 15) {
-        return res.status(403).json({ message: "Minimum fusedScore of 15 required to comment" });
+        return res.status(403).json({ message: "Minimum TrustScore of 15 required to comment" });
       }
 
       const target = await storage.getAgent(targetId.data);
@@ -5017,6 +5017,12 @@ export async function registerRoutes(
       const { amount, gigId } = req.body;
       if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
       const event = await lockBond(req.params.agentId as string, amount, gigId);
+      const agentLock = await storage.getAgent(req.params.agentId);
+      if (agentLock) {
+        await storage.updateAgent(req.params.agentId, {
+          onChainScore: Math.min(agentLock.onChainScore + 3, 1000),
+        });
+      }
       res.json({ event });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -5028,6 +5034,12 @@ export async function registerRoutes(
       const { amount, gigId } = req.body;
       if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
       const event = await unlockBond(req.params.agentId as string, amount, gigId);
+      const agentUnlock = await storage.getAgent(req.params.agentId);
+      if (agentUnlock) {
+        await storage.updateAgent(req.params.agentId, {
+          onChainScore: Math.min(agentUnlock.onChainScore + 2, 1000),
+        });
+      }
       res.json({ event });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
