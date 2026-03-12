@@ -60,7 +60,7 @@ import {
 } from "@/components/ui/dialog";
 import type { Agent, Gig, ReputationEvent, SlashEvent, ReputationMigration } from "@shared/schema";
 
-type TabId = "overview" | "gigs" | "social" | "bond" | "reviews" | "slashes";
+type TabId = "overview" | "gigs" | "social" | "bond" | "reviews" | "slashes" | "commerce";
 
 interface RepData {
   fusedScore: number;
@@ -438,6 +438,43 @@ export default function ProfilePage() {
     enabled: !!agentId && activeTab === "overview",
   });
 
+  const { data: erc8183Stats } = useQuery<{
+    totalJobsCreated: number;
+    totalJobsCompleted: number;
+    totalVolumeUSDC: number;
+    completionRate: number;
+    activeJobCount: number;
+    contractAddress: string;
+    basescanUrl: string;
+  }>({
+    queryKey: ["/api/erc8183/stats"],
+    enabled: activeTab === "commerce",
+  });
+
+  const { data: erc8183Info } = useQuery<{
+    contractAddress: string;
+    standard: string;
+    chain: string;
+    chainId: number;
+    basescanUrl: string;
+    statusValues: string[];
+    platformFeeBps: number;
+  }>({
+    queryKey: ["/api/erc8183/info"],
+    enabled: activeTab === "commerce",
+  });
+
+  const { data: erc8183AgentCheck } = useQuery<{ wallet: string; isRegisteredAgent: boolean }>({
+    queryKey: ["/api/erc8183/agents", agent?.walletAddress, "check"],
+    queryFn: async () => {
+      if (!agent?.walletAddress) throw new Error("No wallet");
+      const res = await fetch(`/api/erc8183/agents/${agent.walletAddress}/check`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!agent?.walletAddress && activeTab === "commerce",
+  });
+
   if (isAgentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
@@ -494,6 +531,7 @@ export default function ProfilePage() {
   const tabs: { id: TabId; label: string }[] = [
     { id: "overview", label: "OVERVIEW" },
     { id: "gigs", label: "GIGS" },
+    { id: "commerce", label: "COMMERCE" },
     { id: "reviews", label: "REVIEWS" },
     { id: "slashes", label: "SLASH RECORD" },
     { id: "bond", label: "BOND & RISK" },
@@ -1188,6 +1226,16 @@ export default function ProfilePage() {
           )}
           {activeTab === "slashes" && (
             <SlashRecordTab slashes={slashEvents} />
+          )}
+          {activeTab === "commerce" && (
+            <CommerceTab
+              agent={agent}
+              stats={erc8183Stats}
+              info={erc8183Info}
+              agentCheck={erc8183AgentCheck}
+              postedGigs={postedGigs}
+              assignedGigs={assignedGigs}
+            />
           )}
           {activeTab === "social" && (
             <SocialTab
@@ -2791,6 +2839,295 @@ function SlashRecordTab({ slashes }: { slashes: SlashEvent[] }) {
           </div>
         )}
       </SectionCard>
+    </div>
+  );
+}
+
+function CommerceTab({
+  agent,
+  stats,
+  info,
+  agentCheck,
+  postedGigs,
+  assignedGigs,
+}: {
+  agent: Agent;
+  stats?: {
+    totalJobsCreated: number;
+    totalJobsCompleted: number;
+    totalVolumeUSDC: number;
+    completionRate: number;
+    activeJobCount: number;
+    contractAddress: string;
+    basescanUrl: string;
+  };
+  info?: {
+    contractAddress: string;
+    standard: string;
+    chain: string;
+    chainId: number;
+    basescanUrl: string;
+    statusValues: string[];
+    platformFeeBps: number;
+  };
+  agentCheck?: { wallet: string; isRegisteredAgent: boolean };
+  postedGigs: Gig[];
+  assignedGigs: Gig[];
+}) {
+  const [commerceSubTab, setCommerceSubTab] = useState<"posted" | "taken">("posted");
+  const contractAddress = info?.contractAddress || stats?.contractAddress || "0x1933D67CDB911653765e84758f47c60A1E868bC0";
+  const basescanUrl = info?.basescanUrl || stats?.basescanUrl || `https://sepolia.basescan.org/address/${contractAddress}`;
+  const isRegistered = agentCheck?.isRegisteredAgent ?? false;
+
+  const completedPosted = postedGigs.filter((g) => g.status === "completed").length;
+  const completedAssigned = assignedGigs.filter((g) => g.status === "completed").length;
+  const totalEarnedFromGigs = assignedGigs
+    .filter((g) => g.status === "completed")
+    .reduce((sum, g) => sum + (g.budget || 0), 0);
+  const totalSpentOnGigs = postedGigs
+    .filter((g) => g.status === "completed")
+    .reduce((sum, g) => sum + (g.budget || 0), 0);
+
+  return (
+    <div className="space-y-6" data-testid="tab-commerce-content">
+      <SectionCard testId="card-erc8183-overview">
+        <SectionTitle icon={<DollarSign className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
+          ERC-8183 AGENTIC COMMERCE
+        </SectionTitle>
+
+        <div className="flex items-center gap-2 mb-4">
+          <span
+            className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+            style={{
+              background: isRegistered ? "rgba(34, 197, 94, 0.1)" : "rgba(239, 68, 68, 0.08)",
+              color: isRegistered ? "#22c55e" : "#ef4444",
+              border: `1px solid ${isRegistered ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.15)"}`,
+            }}
+            data-testid="badge-erc8183-status"
+          >
+            {isRegistered ? <CheckCircle className="w-3 h-3" /> : <XIcon className="w-3 h-3" />}
+            {isRegistered ? "ERC-8183 Registered" : "Not Registered"}
+          </span>
+          <a
+            href={basescanUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm transition-opacity hover:opacity-80"
+            style={{
+              background: "rgba(0, 82, 255, 0.08)",
+              color: "#0052FF",
+              border: "1px solid rgba(0, 82, 255, 0.2)",
+            }}
+            data-testid="link-basescan-erc8183"
+          >
+            <ExternalLink className="w-3 h-3" />
+            ClawTrustAC on Basescan
+          </a>
+        </div>
+
+        <div
+          className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-sm"
+          style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.04)" }}
+          data-testid="erc8183-agent-stats"
+        >
+          <div className="text-center">
+            <p className="font-mono text-lg font-bold" style={{ color: "var(--teal-glow)" }} data-testid="stat-earned">
+              {totalEarnedFromGigs.toFixed(0)} USDC
+            </p>
+            <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Earned</p>
+          </div>
+          <div className="text-center">
+            <p className="font-mono text-lg font-bold" style={{ color: "var(--claw-orange)" }} data-testid="stat-spent">
+              {totalSpentOnGigs.toFixed(0)} USDC
+            </p>
+            <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Spent</p>
+          </div>
+          <div className="text-center">
+            <p className="font-mono text-lg font-bold" style={{ color: "var(--shell-white)" }} data-testid="stat-completed-posted">
+              {completedPosted}
+            </p>
+            <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Jobs Posted</p>
+          </div>
+          <div className="text-center">
+            <p className="font-mono text-lg font-bold" style={{ color: "var(--shell-white)" }} data-testid="stat-completed-taken">
+              {completedAssigned}
+            </p>
+            <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Jobs Taken</p>
+          </div>
+        </div>
+      </SectionCard>
+
+      {stats && (
+        <SectionCard testId="card-erc8183-network">
+          <SectionTitle icon={<Activity className="w-4 h-4" style={{ color: "var(--claw-amber)" }} />}>
+            NETWORK STATS (ON-CHAIN)
+          </SectionTitle>
+          <div
+            className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-sm"
+            style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.04)" }}
+            data-testid="erc8183-network-stats"
+          >
+            <div className="text-center">
+              <p className="font-mono text-lg font-bold" style={{ color: "var(--shell-white)" }}>
+                {stats.totalJobsCreated}
+              </p>
+              <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Total Jobs</p>
+            </div>
+            <div className="text-center">
+              <p className="font-mono text-lg font-bold" style={{ color: "#22c55e" }}>
+                {stats.totalJobsCompleted}
+              </p>
+              <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Completed</p>
+            </div>
+            <div className="text-center">
+              <p className="font-mono text-lg font-bold" style={{ color: "var(--teal-glow)" }}>
+                {stats.totalVolumeUSDC.toFixed(0)} USDC
+              </p>
+              <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Volume</p>
+            </div>
+            <div className="text-center">
+              <p className="font-mono text-lg font-bold" style={{ color: "var(--claw-orange)" }}>
+                {stats.completionRate}%
+              </p>
+              <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Rate</p>
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      <SectionCard testId="card-erc8183-jobs">
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setCommerceSubTab("posted")}
+            className="text-[11px] font-mono px-3 py-1.5 rounded-sm transition-all"
+            style={{
+              background: commerceSubTab === "posted" ? "rgba(232, 84, 10, 0.15)" : "transparent",
+              color: commerceSubTab === "posted" ? "var(--claw-orange)" : "var(--text-muted)",
+              border: commerceSubTab === "posted" ? "1px solid rgba(232, 84, 10, 0.4)" : "1px solid rgba(0,0,0,0.10)",
+            }}
+            data-testid="toggle-commerce-posted"
+          >
+            POSTED ({postedGigs.length})
+          </button>
+          <button
+            onClick={() => setCommerceSubTab("taken")}
+            className="text-[11px] font-mono px-3 py-1.5 rounded-sm transition-all"
+            style={{
+              background: commerceSubTab === "taken" ? "rgba(10, 236, 184, 0.15)" : "transparent",
+              color: commerceSubTab === "taken" ? "var(--teal-glow)" : "var(--text-muted)",
+              border: commerceSubTab === "taken" ? "1px solid rgba(10, 236, 184, 0.4)" : "1px solid rgba(0,0,0,0.10)",
+            }}
+            data-testid="toggle-commerce-taken"
+          >
+            TAKEN ({assignedGigs.length})
+          </button>
+        </div>
+
+        {(commerceSubTab === "posted" ? postedGigs : assignedGigs).length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3" data-testid="commerce-empty-state">
+            <span className="text-4xl">🦞</span>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              {commerceSubTab === "posted" ? "No jobs posted yet." : "No jobs taken yet."}
+            </p>
+            <ClawButton variant="ghost" size="sm" href="/gigs" data-testid="button-browse-gigs-commerce">
+              <Briefcase className="w-3.5 h-3.5" /> Browse Gig Board
+            </ClawButton>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {(commerceSubTab === "posted" ? postedGigs : assignedGigs).map((gig) => {
+              const statusStyle = gig.status === "completed"
+                ? { bg: "rgba(34, 197, 94, 0.12)", color: "#22c55e" }
+                : gig.status === "open"
+                ? { bg: "rgba(10, 236, 184, 0.12)", color: "var(--teal-glow)" }
+                : gig.status === "assigned"
+                ? { bg: "rgba(242, 130, 10, 0.12)", color: "var(--claw-amber)" }
+                : gig.status === "disputed"
+                ? { bg: "rgba(200, 57, 26, 0.12)", color: "var(--claw-red)" }
+                : { bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" };
+
+              return (
+                <Link key={gig.id} href={`/gig/${gig.id}`}>
+                  <div
+                    className="flex items-center justify-between p-3 rounded-sm cursor-pointer transition-all hover:brightness-110"
+                    style={{
+                      background: "var(--ocean-surface)",
+                      border: "1px solid rgba(0,0,0,0.06)",
+                    }}
+                    data-testid={`commerce-job-${gig.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-sm"
+                          style={{ background: "rgba(0, 82, 255, 0.08)", color: "#0052FF", border: "1px solid rgba(0, 82, 255, 0.2)" }}
+                        >
+                          ERC-8183
+                        </span>
+                        <span
+                          className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm"
+                          style={{ background: statusStyle.bg, color: statusStyle.color }}
+                          data-testid={`commerce-status-${gig.id}`}
+                        >
+                          {gig.status}
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold mt-1 truncate" style={{ color: "var(--shell-white)" }}>
+                        {gig.title}
+                      </p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
+                          {gig.budget} {gig.currency}
+                        </span>
+                        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          {timeAgo(gig.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 ml-2" style={{ color: "var(--text-muted)" }} />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
+
+      {info && (
+        <SectionCard testId="card-erc8183-contract">
+          <SectionTitle icon={<Shield className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>
+            CONTRACT DETAILS
+          </SectionTitle>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Standard</span>
+              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>ERC-8183</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Chain</span>
+              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>Base Sepolia (84532)</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Platform Fee</span>
+              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{(info.platformFeeBps / 100).toFixed(1)}%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Contract</span>
+              <a
+                href={basescanUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-mono flex items-center gap-1 transition-opacity hover:opacity-80"
+                style={{ color: "#0052FF" }}
+                data-testid="link-contract-address"
+              >
+                {contractAddress.slice(0, 6)}...{contractAddress.slice(-4)}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        </SectionCard>
+      )}
     </div>
   );
 }
