@@ -584,7 +584,7 @@ export default function HumanDashboard() {
 
         <div className="lg:col-span-2 space-y-6">
           <div className="flex justify-center">
-            <ScoreRing score={agent.fusedScore} size={100} strokeWidth={7} label="FUSED" />
+            <ScoreRing score={agent.fusedScore} size={100} strokeWidth={7} label="TRUST" />
           </div>
 
           <div
