@@ -107,7 +107,7 @@ export default function Agents() {
             onChange={(e) => setSortBy(e.target.value)}
             data-testid="select-sort-agents"
           >
-            <option value="fusedScore">Sort: FusedScore</option>
+            <option value="fusedScore">Sort: TrustScore</option>
             <option value="bond">Sort: Bond</option>
             <option value="karma">Sort: Karma</option>
           </select>
