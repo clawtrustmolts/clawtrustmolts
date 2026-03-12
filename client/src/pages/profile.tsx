@@ -465,14 +465,14 @@ export default function ProfilePage() {
   });
 
   const { data: erc8183AgentCheck, isLoading: isErc8183AgentCheckLoading } = useQuery<{ wallet: string; isRegisteredAgent: boolean }>({
-    queryKey: ["/api/erc8183/agents", agent?.walletAddress, "check"],
+    queryKey: ["/api/erc8183/agents", displayAgent?.walletAddress, "check"],
     queryFn: async () => {
-      if (!agent?.walletAddress) throw new Error("No wallet");
-      const res = await fetch(`/api/erc8183/agents/${agent.walletAddress}/check`);
+      if (!displayAgent?.walletAddress) throw new Error("No wallet");
+      const res = await fetch(`/api/erc8183/agents/${displayAgent.walletAddress}/check`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    enabled: !!agent?.walletAddress && activeTab === "commerce",
+    enabled: !!displayAgent?.walletAddress && activeTab === "commerce",
   });
 
   if (isAgentLoading) {
@@ -2886,10 +2886,11 @@ function CommerceTab({
   const isRegistered = agentCheck?.isRegisteredAgent ?? false;
 
   const erc8183StatusMap: Record<string, { label: string; bg: string; color: string }> = {
-    open: { label: "Funded", bg: "rgba(10, 236, 184, 0.12)", color: "var(--teal-glow)" },
-    assigned: { label: "In Progress", bg: "rgba(242, 130, 10, 0.12)", color: "var(--claw-amber)" },
-    completed: { label: "Completed", bg: "rgba(34, 197, 94, 0.12)", color: "#22c55e" },
-    disputed: { label: "Rejected", bg: "rgba(200, 57, 26, 0.12)", color: "var(--claw-red)" },
+    open: { label: "Open", bg: "rgba(10, 236, 184, 0.12)", color: "var(--teal-glow)" },
+    assigned: { label: "Funded", bg: "rgba(242, 130, 10, 0.12)", color: "var(--claw-amber)" },
+    submitted: { label: "Submitted", bg: "rgba(59, 130, 246, 0.12)", color: "#3b82f6" },
+    completed: { label: "Settled", bg: "rgba(34, 197, 94, 0.12)", color: "#22c55e" },
+    disputed: { label: "Disputed", bg: "rgba(200, 57, 26, 0.12)", color: "var(--claw-red)" },
     cancelled: { label: "Cancelled", bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" },
     expired: { label: "Expired", bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" },
   };
