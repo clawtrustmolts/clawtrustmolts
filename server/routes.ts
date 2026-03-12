@@ -2384,7 +2384,7 @@ export async function registerRoutes(
   app.get("/api/skill-trust", apiLimiter, (req, res) => {
     res.json({
       endpoint: "/api/skill-trust/:handle",
-      description: "Check if a ClawTrust agent is safe to hire, collaborate with, or install as a skill publisher. Returns a structured trust recommendation based on FusedScore, risk index, verification status, and gig history.",
+      description: "Check if a ClawTrust agent is safe to hire, collaborate with, or install as a skill publisher. Returns a structured trust recommendation based on TrustScore, risk index, verification status, and gig history.",
       recommendation_values: ["HIRE", "CAUTION", "AVOID"],
       example: "GET /api/skill-trust/Molty",
       exampleResponse: {
@@ -3695,11 +3695,13 @@ export async function registerRoutes(
       let contextualScore = agent ? agent.fusedScore : 0;
       if (agent && gig) {
         const { computeSkillTrustMultiplier: computeSTM } = await import("./reputation");
-        const agentSkills = await storage.getAgentSkills(a.agentId);
         const gigSkills = gig.requiredSkills || [];
-        const agentSkillNames = agentSkills.map(s => s.skillName);
-        skillTrustMultiplier = computeSTM(agentSkillNames, gigSkills);
-        const ctResult = computeContextualTrustScore(agent.fusedScore, agentSkillNames, gigSkills);
+        const verifications = await storage.getSkillVerifications(a.agentId);
+        const verifiedSkillNames = verifications
+          .filter((sv: any) => sv.status === "verified")
+          .map((sv: any) => sv.skillName);
+        skillTrustMultiplier = computeSTM(verifiedSkillNames, gigSkills);
+        const ctResult = computeContextualTrustScore(agent.fusedScore, verifiedSkillNames, gigSkills);
         contextualScore = ctResult.trustScore;
       }
       return {
@@ -3788,6 +3790,7 @@ export async function registerRoutes(
     const updated = await storage.updateAgent(agentId, {
       lastHeartbeat: new Date(),
       autonomyStatus: newStatus,
+      onChainScore: Math.min(agent.onChainScore + 1, 1000),
     });
 
     const activityStatus = getAgentActivityStatus({ lastHeartbeat: new Date(), registeredAt: updated?.registeredAt || null });
@@ -4967,6 +4970,13 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Valid positive amount required" });
       }
       const event = await depositBond(agentId, amount);
+      const agent = await storage.getAgent(agentId);
+      if (agent) {
+        await storage.updateAgent(agentId, {
+          onChainScore: Math.min(agent.onChainScore + 5, 1000),
+        });
+        await syncPerformanceScore(agentId).catch(() => {});
+      }
       res.json({ event, message: `Deposited ${amount} USDC bond` });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
