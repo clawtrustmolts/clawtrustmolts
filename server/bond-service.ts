@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 import { createEscrowWallet, getWalletBalance, transferUSDC, isCircleConfigured, getWalletAddress } from "./circle-wallet";
 import type { Agent, BondEvent } from "@shared/schema";
-import { ON_CHAIN_WEIGHT, MOLTBOOK_WEIGHT, PERFORMANCE_WEIGHT, BOND_RELIABILITY_WEIGHT, MAX_ON_CHAIN_SCORE, MAX_MOLTBOOK_KARMA } from "./reputation";
+import { ON_CHAIN_WEIGHT, ECOSYSTEM_WEIGHT, PERFORMANCE_WEIGHT, BOND_RELIABILITY_WEIGHT, MAX_ON_CHAIN_SCORE, MAX_MOLTBOOK_KARMA, INACTIVITY_DECAY_THRESHOLD_DAYS, INACTIVITY_DECAY_PENALTY } from "./reputation";
 
 const BOND_TIERS = {
   UNBONDED: { min: 0, max: 0 },
@@ -284,17 +284,48 @@ async function getSlashCount(agentId: string): Promise<number> {
 
 const MIN_PERFORMANCE_SCORE = 50;
 
-export function computePerformanceScore(agent: Agent): number {
-  const fusedComponent = Math.min(agent.fusedScore, 100);
-  const reliabilityComponent = agent.bondReliability;
+export function computePerformanceScore(
+  agent: Agent,
+  disputeRate: number = 0,
+  repeatHireRate: number = 0
+): number {
   const gigsComponent = Math.min(agent.totalGigsCompleted * 5, 100);
+  const reliabilityComponent = Math.min(agent.bondReliability ?? 0, 100);
+  const disputePenalty = Math.min(disputeRate * 100, 50);
+  const repeatHireBonus = Math.min(repeatHireRate * 30, 30);
 
   const score = Math.round(
-    fusedComponent * 0.5 +
-    reliabilityComponent * 0.3 +
-    gigsComponent * 0.2
+    gigsComponent * 0.40 +
+    reliabilityComponent * 0.30 +
+    repeatHireBonus * 0.30 -
+    disputePenalty * 0.20
   );
   return Math.max(0, Math.min(100, score));
+}
+
+export async function computeDisputeRate(agentId: string): Promise<number> {
+  const agent = await storage.getAgent(agentId);
+  if (!agent || agent.totalGigsCompleted === 0) return 0;
+  const slashEvents = await storage.getBondEvents(agentId, 1000);
+  const slashCount = slashEvents.filter(e => e.eventType === "SLASH").length;
+  return slashCount / Math.max(agent.totalGigsCompleted, 1);
+}
+
+export async function computeRepeatHireRate(agentId: string): Promise<number> {
+  try {
+    const allGigs = await storage.getGigs();
+    const completedAssigned = allGigs.filter(g => g.assigneeId === agentId && g.status === "completed");
+    if (completedAssigned.length <= 1) return 0;
+    const posterCounts = new Map<string, number>();
+    for (const g of completedAssigned) {
+      posterCounts.set(g.posterId, (posterCounts.get(g.posterId) || 0) + 1);
+    }
+    const repeatGigs = completedAssigned.filter(g => (posterCounts.get(g.posterId) || 0) > 1).length;
+    const totalCompleted = completedAssigned.length;
+    return totalCompleted > 0 ? repeatGigs / totalCompleted : 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function syncPerformanceScore(agentId: string): Promise<number> {
@@ -308,21 +339,37 @@ export async function syncPerformanceScore(agentId: string): Promise<number> {
     ? Math.round(Math.max(0, 1 - (slashCount / totalBondEvents)) * 100)
     : (agent.bondTier !== "UNBONDED" ? 100 : 0);
 
+  const [disputeRate, repeatHireRate] = await Promise.all([
+    computeDisputeRate(agentId),
+    computeRepeatHireRate(agentId),
+  ]);
+
   const updatedAgent = { ...agent, bondReliability };
-  const score = computePerformanceScore(updatedAgent);
+  const score = computePerformanceScore(updatedAgent, disputeRate, repeatHireRate);
 
   const onChainNorm = Math.min((agent.onChainScore / MAX_ON_CHAIN_SCORE) * 100, 100);
-  const moltbookNorm = Math.min((agent.moltbookKarma / MAX_MOLTBOOK_KARMA) * 100, 100);
-  const fusedScore = Math.round(
-    (ON_CHAIN_WEIGHT * onChainNorm) + (MOLTBOOK_WEIGHT * moltbookNorm) + (PERFORMANCE_WEIGHT * score) + (BOND_RELIABILITY_WEIGHT * bondReliability)
-  );
+  const ecosystemNorm = Math.min((agent.moltbookKarma / MAX_MOLTBOOK_KARMA) * 100, 100);
+  let fusedScore =
+    (PERFORMANCE_WEIGHT * score) +
+    (ON_CHAIN_WEIGHT * onChainNorm) +
+    (BOND_RELIABILITY_WEIGHT * bondReliability) +
+    (ECOSYSTEM_WEIGHT * ecosystemNorm);
+
+  if (agent.lastHeartbeat) {
+    const daysSinceHeartbeat = (Date.now() - agent.lastHeartbeat.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceHeartbeat >= INACTIVITY_DECAY_THRESHOLD_DAYS) {
+      fusedScore *= (1 - INACTIVITY_DECAY_PENALTY);
+    }
+  }
+
+  fusedScore = Math.round(fusedScore);
 
   await storage.updateAgent(agentId, {
     performanceScore: score,
     bondReliability,
     fusedScore: Math.max(0, Math.min(100, fusedScore)),
   });
-  console.log(`[Bond] Synced scores for ${agentId}: perf=${score}, bondRel=${bondReliability}, fused=${fusedScore}`);
+  console.log(`[Bond] Synced scores for ${agentId}: perf=${score}, bondRel=${bondReliability}, fused=${fusedScore}, disputeRate=${disputeRate.toFixed(2)}, repeatHireRate=${repeatHireRate.toFixed(2)}`);
   return score;
 }
 
