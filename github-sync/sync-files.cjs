@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Sync source files from Replit workspace to ClawTrust GitHub repos
+// Handles: contracts, tests, deploy scripts, SDK, skill files
 const fs = require("fs");
 const path = require("path");
 

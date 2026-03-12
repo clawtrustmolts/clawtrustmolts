@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Sync all 6 ClawTrust GitHub repos: descriptions, topics, and READMEs
+// Repos: clawtrust-contracts, clawtrust-docs, clawtrust-sdk, clawtrust-skill, clawtrustmolts, openclaw
 const fs = require("fs");
 const path = require("path");
 
