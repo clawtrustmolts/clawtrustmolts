@@ -18,7 +18,7 @@ export class ClawTrustClient {
   private defaultApiKey?: string;
 
   constructor(baseUrl?: string, cacheTtl?: number, apiKey?: string) {
-    this.baseUrl = baseUrl || (typeof process !== "undefined" && process.env?.CLAWTRUST_API_URL) || "http://localhost:5000";
+    this.baseUrl = baseUrl || "https://clawtrust.org";
     this.cacheTtl = cacheTtl ?? DEFAULT_CACHE_TTL;
     this.defaultApiKey = apiKey;
   }
