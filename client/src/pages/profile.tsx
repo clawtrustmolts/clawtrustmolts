@@ -60,7 +60,7 @@ import {
 } from "@/components/ui/dialog";
 import type { Agent, Gig, ReputationEvent, SlashEvent, ReputationMigration } from "@shared/schema";
 
-type TabId = "overview" | "gigs" | "social" | "bond" | "reviews" | "slashes";
+type TabId = "overview" | "gigs" | "social" | "bond" | "reviews" | "slashes" | "commerce";
 
 interface RepData {
   fusedScore: number;
@@ -438,6 +438,43 @@ export default function ProfilePage() {
     enabled: !!agentId && activeTab === "overview",
   });
 
+  const { data: erc8183Stats, isLoading: isErc8183StatsLoading } = useQuery<{
+    totalJobsCreated: number;
+    totalJobsCompleted: number;
+    totalVolumeUSDC: number;
+    completionRate: number;
+    activeJobCount: number;
+    contractAddress: string;
+    basescanUrl: string;
+  }>({
+    queryKey: ["/api/erc8183/stats"],
+    enabled: activeTab === "commerce",
+  });
+
+  const { data: erc8183Info, isLoading: isErc8183InfoLoading } = useQuery<{
+    contractAddress: string;
+    standard: string;
+    chain: string;
+    chainId: number;
+    basescanUrl: string;
+    statusValues: string[];
+    platformFeeBps: number;
+  }>({
+    queryKey: ["/api/erc8183/info"],
+    enabled: activeTab === "commerce",
+  });
+
+  const { data: erc8183AgentCheck, isLoading: isErc8183AgentCheckLoading } = useQuery<{ wallet: string; isRegisteredAgent: boolean }>({
+    queryKey: ["/api/erc8183/agents", displayAgent?.walletAddress, "check"],
+    queryFn: async () => {
+      if (!displayAgent?.walletAddress) throw new Error("No wallet");
+      const res = await fetch(`/api/erc8183/agents/${displayAgent.walletAddress}/check`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!displayAgent?.walletAddress && activeTab === "commerce",
+  });
+
   if (isAgentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
@@ -494,6 +531,7 @@ export default function ProfilePage() {
   const tabs: { id: TabId; label: string }[] = [
     { id: "overview", label: "OVERVIEW" },
     { id: "gigs", label: "GIGS" },
+    { id: "commerce", label: "COMMERCE" },
     { id: "reviews", label: "REVIEWS" },
     { id: "slashes", label: "SLASH RECORD" },
     { id: "bond", label: "BOND & RISK" },
@@ -667,12 +705,6 @@ export default function ProfilePage() {
                 <div className="mt-1">
                   <WalletAddress address={agent.walletAddress} />
                 </div>
-                {agent.solanaAddress && (
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>SOL</span>
-                    <WalletAddress address={agent.solanaAddress} />
-                  </div>
-                )}
               </div>
 
               {agent.bio && (
@@ -729,10 +761,10 @@ export default function ProfilePage() {
               <FusedScoreBlock agent={agent} breakdown={breakdown} />
 
               <div className="space-y-2.5" data-testid="score-bars">
-                <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="45%" />
-                <ScoreBar label="Moltbook" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="25%" />
-                <ScoreBar label="Performance" value={breakdown?.performanceNormalized ?? (agent.performanceScore ?? 0)} weight="20%" />
-                <ScoreBar label="Bond Reliability" value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)} weight="10%" />
+                <ScoreBar label="Performance" value={breakdown?.performanceNormalized ?? (agent.performanceScore ?? 0)} weight="35%" />
+                <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="30%" />
+                <ScoreBar label="Bond Reliability" value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)} weight="20%" />
+                <ScoreBar label="Ecosystem" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="15%" />
               </div>
 
               {agent.skills.length > 0 && (
@@ -1195,6 +1227,18 @@ export default function ProfilePage() {
           {activeTab === "slashes" && (
             <SlashRecordTab slashes={slashEvents} />
           )}
+          {activeTab === "commerce" && (
+            <CommerceTab
+              agent={agent}
+              stats={erc8183Stats}
+              info={erc8183Info}
+              agentCheck={erc8183AgentCheck}
+              postedGigs={postedGigs}
+              assignedGigs={assignedGigs}
+              isOwnProfile={myAgentId === agent.id}
+              isLoading={isErc8183StatsLoading || isErc8183InfoLoading || isErc8183AgentCheckLoading}
+            />
+          )}
           {activeTab === "social" && (
             <SocialTab
               followers={followersData?.followers || []}
@@ -1505,9 +1549,9 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
           style={{ color: "var(--text-muted)" }}
           onClick={() => setShowTooltip(!showTooltip)}
           data-testid="button-fused-score-info"
-          aria-label="How FusedScore is calculated"
+          aria-label="How TrustScore is calculated"
         >
-          FUSED SCORE
+          TRUSTSCORE
           <HelpCircle className="w-3 h-3" style={{ color: "var(--claw-orange)" }} />
         </button>
 
@@ -1517,16 +1561,16 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
             style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.3)" }}
             data-testid="tooltip-fused-score"
           >
-            <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--shell-white)" }}>How FusedScore works</p>
+            <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--shell-white)" }}>How TrustScore works</p>
             <p className="text-[10px] font-mono mb-2" style={{ color: "var(--claw-orange)" }}>
-              45% On-Chain + 25% Moltbook + 20% Performance + 10% Bond
+              35% Performance + 30% On-Chain + 20% Bond + 15% Ecosystem
             </p>
             <div className="space-y-1">
               {[
+                { label: "Performance", desc: "Gigs completed, dispute rate, repeat hires — swarm verified" },
                 { label: "On-Chain", desc: "Feedback scores recorded by ClawTrustRepAdapter on Base Sepolia" },
-                { label: "Moltbook", desc: "Social karma from the agent's Moltbook profile" },
-                { label: "Performance", desc: "Gigs completed on time and deliverable quality" },
                 { label: "Bond", desc: "USDC bond held vs. slashes applied" },
+                { label: "Ecosystem", desc: "Social karma from Moltbook profile + viral bonus" },
               ].map(item => (
                 <div key={item.label} className="flex gap-1.5">
                   <CheckCircle className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: "var(--teal-glow)" }} />
@@ -1542,7 +1586,7 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
         )}
       </div>
 
-      <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
+      <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="TRUST" />
     </div>
   );
 }
@@ -1613,11 +1657,11 @@ function OverviewTab({
 
   return (
     <div className="space-y-6">
-      {/* FUSED SCORE BREAKDOWN */}
+      {/* TRUSTSCORE BREAKDOWN */}
       <SectionCard testId="card-fused-breakdown">
         <div className="flex items-center justify-between mb-1">
           <h3 className="font-display tracking-wider text-sm" style={{ color: "var(--shell-white)" }}>
-            FUSED SCORE BREAKDOWN
+            TRUSTSCORE BREAKDOWN
           </h3>
           {isLive && (
             <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,200,100,0.1)", color: "#22c55e", border: "1px solid rgba(0,200,100,0.2)" }}>
@@ -1626,7 +1670,7 @@ function OverviewTab({
           )}
         </div>
         <p className="text-[10px] font-mono mb-5" style={{ color: "var(--text-muted)" }}>
-          fusedScore = (0.45 x onChain) + (0.25 x moltbook) + (0.20 x performance) + (0.10 x bond)
+          trustScore = (0.35 x performance) + (0.30 x onChain) + (0.20 x bond) + (0.15 x ecosystem)
         </p>
 
         <div className="flex items-center gap-4 mb-6">
@@ -1636,17 +1680,17 @@ function OverviewTab({
               {liveScore.toFixed(1)}
             </p>
             <p className="text-[10px] font-display tracking-wider" style={{ color: "var(--text-muted)" }}>
-              FUSED SCORE
+              TRUSTSCORE
             </p>
           </div>
         </div>
 
         <div className="space-y-3">
           {[
-            { label: "On-Chain", norm: onChainNorm, comp: isLive ? onChainNorm * 0.45 : (breakdown?.onChainComponent ?? 0), weight: "45%" },
-            { label: "Moltbook", norm: moltNorm, comp: isLive ? moltNorm * 0.25 : (breakdown?.moltbookComponent ?? 0), weight: "25%" },
-            { label: "Performance", norm: perfNorm, comp: isLive ? perfNorm * 0.20 : (breakdown?.performanceComponent ?? 0), weight: "20%" },
-            { label: "Bond Reliability", norm: bondNorm, comp: isLive ? bondNorm * 0.10 : (breakdown?.bondReliabilityComponent ?? 0), weight: "10%" },
+            { label: "Performance", norm: perfNorm, comp: isLive ? perfNorm * 0.35 : (breakdown?.performanceComponent ?? 0), weight: "35%" },
+            { label: "On-Chain", norm: onChainNorm, comp: isLive ? onChainNorm * 0.30 : (breakdown?.onChainComponent ?? 0), weight: "30%" },
+            { label: "Bond Reliability", norm: bondNorm, comp: isLive ? bondNorm * 0.20 : (breakdown?.bondReliabilityComponent ?? 0), weight: "20%" },
+            { label: "Ecosystem", norm: moltNorm, comp: isLive ? moltNorm * 0.15 : (breakdown?.moltbookComponent ?? 0), weight: "15%" },
           ].map((item) => (
             <div key={item.label}>
               <ScoreBar label={item.label} value={item.norm ?? 0} weight={item.weight} />
@@ -2797,6 +2841,364 @@ function SlashRecordTab({ slashes }: { slashes: SlashEvent[] }) {
           </div>
         )}
       </SectionCard>
+    </div>
+  );
+}
+
+function CommerceTab({
+  agent,
+  stats,
+  info,
+  agentCheck,
+  postedGigs,
+  assignedGigs,
+  isOwnProfile,
+  isLoading,
+}: {
+  agent: Agent;
+  stats?: {
+    totalJobsCreated: number;
+    totalJobsCompleted: number;
+    totalVolumeUSDC: number;
+    completionRate: number;
+    activeJobCount: number;
+    contractAddress: string;
+    basescanUrl: string;
+  };
+  info?: {
+    contractAddress: string;
+    standard: string;
+    chain: string;
+    chainId: number;
+    basescanUrl: string;
+    statusValues: string[];
+    platformFeeBps: number;
+  };
+  agentCheck?: { wallet: string; isRegisteredAgent: boolean };
+  postedGigs: Gig[];
+  assignedGigs: Gig[];
+  isOwnProfile: boolean;
+  isLoading: boolean;
+}) {
+  const [commerceSubTab, setCommerceSubTab] = useState<"posted" | "taken">("posted");
+  const contractAddress = info?.contractAddress || stats?.contractAddress || "0x1933D67CDB911653765e84758f47c60A1E868bC0";
+  const basescanUrl = info?.basescanUrl || stats?.basescanUrl || `https://sepolia.basescan.org/address/${contractAddress}`;
+  const isRegistered = agentCheck?.isRegisteredAgent ?? false;
+
+  const erc8183StatusMap: Record<string, { label: string; bg: string; color: string }> = {
+    open: { label: "Open", bg: "rgba(10, 236, 184, 0.12)", color: "var(--teal-glow)" },
+    assigned: { label: "Funded", bg: "rgba(242, 130, 10, 0.12)", color: "var(--claw-amber)" },
+    in_progress: { label: "In Progress", bg: "rgba(242, 130, 10, 0.12)", color: "var(--claw-amber)" },
+    pending_validation: { label: "Submitted", bg: "rgba(59, 130, 246, 0.12)", color: "#3b82f6" },
+    submitted: { label: "Submitted", bg: "rgba(59, 130, 246, 0.12)", color: "#3b82f6" },
+    completed: { label: "Settled", bg: "rgba(34, 197, 94, 0.12)", color: "#22c55e" },
+    disputed: { label: "Disputed", bg: "rgba(200, 57, 26, 0.12)", color: "var(--claw-red)" },
+    cancelled: { label: "Cancelled", bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" },
+    expired: { label: "Expired", bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" },
+  };
+
+  const totalJobsCompleted = postedGigs.filter((g) => g.status === "completed").length + assignedGigs.filter((g) => g.status === "completed").length;
+  const totalEarnedFromGigs = assignedGigs
+    .filter((g) => g.status === "completed")
+    .reduce((sum, g) => sum + (g.budget || 0), 0);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6" data-testid="tab-commerce-loading">
+        <SectionCard testId="card-erc8183-overview-skeleton">
+          <div className="animate-pulse space-y-4">
+            <div className="h-5 w-48 rounded-sm" style={{ background: "rgba(107,127,163,0.15)" }} />
+            <div className="flex gap-2">
+              <div className="h-5 w-28 rounded-sm" style={{ background: "rgba(107,127,163,0.1)" }} />
+              <div className="h-5 w-36 rounded-sm" style={{ background: "rgba(107,127,163,0.1)" }} />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 p-4 rounded-sm" style={{ background: "var(--ocean-surface)" }}>
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="text-center space-y-2">
+                  <div className="h-6 w-16 mx-auto rounded-sm" style={{ background: "rgba(107,127,163,0.15)" }} />
+                  <div className="h-3 w-12 mx-auto rounded-sm" style={{ background: "rgba(107,127,163,0.1)" }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+        <SectionCard testId="card-erc8183-network-skeleton">
+          <div className="animate-pulse space-y-4">
+            <div className="h-5 w-44 rounded-sm" style={{ background: "rgba(107,127,163,0.15)" }} />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-sm" style={{ background: "var(--ocean-surface)" }}>
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="text-center space-y-2">
+                  <div className="h-6 w-14 mx-auto rounded-sm" style={{ background: "rgba(107,127,163,0.15)" }} />
+                  <div className="h-3 w-10 mx-auto rounded-sm" style={{ background: "rgba(107,127,163,0.1)" }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6" data-testid="tab-commerce-content">
+      <SectionCard testId="card-erc8183-overview">
+        <SectionTitle icon={<DollarSign className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
+          ERC-8183 AGENTIC COMMERCE
+        </SectionTitle>
+
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          <span
+            className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+            style={{
+              background: isRegistered ? "rgba(34, 197, 94, 0.1)" : "rgba(239, 68, 68, 0.08)",
+              color: isRegistered ? "#22c55e" : "#ef4444",
+              border: `1px solid ${isRegistered ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.15)"}`,
+            }}
+            data-testid="badge-erc8183-status"
+          >
+            {isRegistered ? <CheckCircle className="w-3 h-3" /> : <XIcon className="w-3 h-3" />}
+            {isRegistered ? "ERC-8183 Registered" : "Not Registered"}
+          </span>
+          <a
+            href={basescanUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm transition-opacity hover:opacity-80"
+            style={{
+              background: "rgba(0, 82, 255, 0.08)",
+              color: "#0052FF",
+              border: "1px solid rgba(0, 82, 255, 0.2)",
+            }}
+            data-testid="link-basescan-erc8183"
+          >
+            <ExternalLink className="w-3 h-3" />
+            ClawTrustAC on Basescan
+          </a>
+        </div>
+
+        <div
+          className="grid grid-cols-2 sm:grid-cols-5 gap-4 p-4 rounded-sm"
+          style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.04)" }}
+          data-testid="erc8183-agent-stats"
+        >
+          <div className="text-center">
+            <p className="font-mono text-lg font-bold" style={{ color: "var(--teal-glow)" }} data-testid="stat-earned">
+              {totalEarnedFromGigs.toFixed(0)} USDC
+            </p>
+            <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Earned</p>
+          </div>
+          <div className="text-center">
+            <p className="font-mono text-lg font-bold" style={{ color: "#22c55e" }} data-testid="stat-jobs-completed">
+              {totalJobsCompleted}
+            </p>
+            <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Completed</p>
+          </div>
+          <div className="text-center">
+            <p className="font-mono text-lg font-bold" style={{ color: "var(--claw-orange)" }} data-testid="stat-posted-count">
+              {postedGigs.length}
+            </p>
+            <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Posted</p>
+          </div>
+          <div className="text-center">
+            <p className="font-mono text-lg font-bold" style={{ color: "var(--shell-white)" }} data-testid="stat-taken-count">
+              {assignedGigs.length}
+            </p>
+            <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Taken</p>
+          </div>
+          <div className="text-center col-span-2 sm:col-span-1">
+            <a
+              href={basescanUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[11px] flex items-center justify-center gap-1 transition-opacity hover:opacity-80"
+              style={{ color: "#0052FF" }}
+              data-testid="stat-contract-link"
+            >
+              {contractAddress.slice(0, 6)}...{contractAddress.slice(-4)}
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Contract</p>
+          </div>
+        </div>
+      </SectionCard>
+
+      {stats && (
+        <SectionCard testId="card-erc8183-network">
+          <SectionTitle icon={<Activity className="w-4 h-4" style={{ color: "var(--claw-amber)" }} />}>
+            NETWORK STATS (ON-CHAIN)
+          </SectionTitle>
+          <div
+            className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-sm"
+            style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.04)" }}
+            data-testid="erc8183-network-stats"
+          >
+            <div className="text-center">
+              <p className="font-mono text-lg font-bold" style={{ color: "var(--shell-white)" }}>
+                {stats.totalJobsCreated}
+              </p>
+              <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Total Jobs</p>
+            </div>
+            <div className="text-center">
+              <p className="font-mono text-lg font-bold" style={{ color: "#22c55e" }}>
+                {stats.totalJobsCompleted}
+              </p>
+              <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Completed</p>
+            </div>
+            <div className="text-center">
+              <p className="font-mono text-lg font-bold" style={{ color: "var(--teal-glow)" }}>
+                {stats.totalVolumeUSDC.toFixed(0)} USDC
+              </p>
+              <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Volume</p>
+            </div>
+            <div className="text-center">
+              <p className="font-mono text-lg font-bold" style={{ color: "var(--claw-orange)" }}>
+                {stats.completionRate}%
+              </p>
+              <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Rate</p>
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      <SectionCard testId="card-erc8183-jobs">
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setCommerceSubTab("posted")}
+            className="text-[11px] font-mono px-3 py-1.5 rounded-sm transition-all"
+            style={{
+              background: commerceSubTab === "posted" ? "rgba(232, 84, 10, 0.15)" : "transparent",
+              color: commerceSubTab === "posted" ? "var(--claw-orange)" : "var(--text-muted)",
+              border: commerceSubTab === "posted" ? "1px solid rgba(232, 84, 10, 0.4)" : "1px solid rgba(0,0,0,0.10)",
+            }}
+            data-testid="toggle-commerce-posted"
+          >
+            POSTED ({postedGigs.length})
+          </button>
+          <button
+            onClick={() => setCommerceSubTab("taken")}
+            className="text-[11px] font-mono px-3 py-1.5 rounded-sm transition-all"
+            style={{
+              background: commerceSubTab === "taken" ? "rgba(10, 236, 184, 0.15)" : "transparent",
+              color: commerceSubTab === "taken" ? "var(--teal-glow)" : "var(--text-muted)",
+              border: commerceSubTab === "taken" ? "1px solid rgba(10, 236, 184, 0.4)" : "1px solid rgba(0,0,0,0.10)",
+            }}
+            data-testid="toggle-commerce-taken"
+          >
+            TAKEN ({assignedGigs.length})
+          </button>
+        </div>
+
+        {(commerceSubTab === "posted" ? postedGigs : assignedGigs).length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3" data-testid="commerce-empty-state">
+            <span className="text-4xl">🦞</span>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              {commerceSubTab === "posted" ? "No jobs posted yet." : "No jobs taken yet."}
+            </p>
+            {isOwnProfile && commerceSubTab === "posted" ? (
+              <ClawButton variant="ghost" size="sm" href="/gigs?action=post" data-testid="button-post-job-commerce">
+                <Briefcase className="w-3.5 h-3.5" /> Post a Job
+              </ClawButton>
+            ) : (
+              <ClawButton variant="ghost" size="sm" href="/gigs" data-testid="button-browse-gigs-commerce">
+                <Briefcase className="w-3.5 h-3.5" /> Browse Gig Board
+              </ClawButton>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {(commerceSubTab === "posted" ? postedGigs : assignedGigs).map((gig) => {
+              const mapped = erc8183StatusMap[gig.status] || { label: gig.status, bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" };
+
+              return (
+                <div
+                  key={gig.id}
+                  className="flex items-center justify-between p-3 rounded-sm transition-all hover:brightness-110"
+                  style={{
+                    background: "var(--ocean-surface)",
+                    border: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                  data-testid={`commerce-job-${gig.id}`}
+                >
+                  <Link href={`/gig/${gig.id}`} className="flex-1 min-w-0 cursor-pointer">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-sm"
+                        style={{ background: "rgba(0, 82, 255, 0.08)", color: "#0052FF", border: "1px solid rgba(0, 82, 255, 0.2)" }}
+                      >
+                        ERC-8183
+                      </span>
+                      <span
+                        className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm"
+                        style={{ background: mapped.bg, color: mapped.color }}
+                        data-testid={`commerce-status-${gig.id}`}
+                      >
+                        {mapped.label}
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold mt-1 truncate" style={{ color: "var(--shell-white)" }}>
+                      {gig.title}
+                    </p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
+                        {gig.budget} {gig.currency}
+                      </span>
+                      <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        {timeAgo(gig.createdAt)}
+                      </span>
+                    </div>
+                  </Link>
+                  <a
+                    href={`https://sepolia.basescan.org/address/${contractAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-shrink-0 ml-2 p-1 rounded-sm transition-opacity hover:opacity-70"
+                    title="View on Basescan"
+                    data-testid={`commerce-basescan-${gig.id}`}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" style={{ color: "#0052FF" }} />
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
+
+      {info && (
+        <SectionCard testId="card-erc8183-contract">
+          <SectionTitle icon={<Shield className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>
+            CONTRACT DETAILS
+          </SectionTitle>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Standard</span>
+              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>ERC-8183</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Chain</span>
+              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>Base Sepolia (84532)</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Platform Fee</span>
+              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{(info.platformFeeBps / 100).toFixed(1)}%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Contract</span>
+              <a
+                href={basescanUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-mono flex items-center gap-1 transition-opacity hover:opacity-80"
+                style={{ color: "#0052FF" }}
+                data-testid="link-contract-address"
+              >
+                {contractAddress.slice(0, 6)}...{contractAddress.slice(-4)}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        </SectionCard>
+      )}
     </div>
   );
 }
