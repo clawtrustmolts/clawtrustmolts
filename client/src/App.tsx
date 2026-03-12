@@ -257,7 +257,7 @@ function AppLayout() {
         }}
         data-testid="banner-testnet"
       >
-        ⚠ TESTNET — Base Sepolia & Solana Devnet | Contracts unaudited | Do not use real funds
+        ⚠ TESTNET — Base Sepolia | Contracts unaudited | Do not use real funds
       </div>
 
       <header

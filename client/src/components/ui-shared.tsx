@@ -115,19 +115,18 @@ export function TierBadge({ tier, size = "md" }: { tier: string; size?: "sm" | "
 }
 
 export function ChainBadge({ chain }: { chain: string }) {
-  const isBase = chain.toLowerCase().includes("base");
   return (
     <span
       className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
       style={{
-        background: isBase ? "rgba(0, 82, 255, 0.1)" : "rgba(153, 69, 255, 0.1)",
-        color: isBase ? "#0052FF" : "#9945FF",
-        border: `1px solid ${isBase ? "rgba(0, 82, 255, 0.25)" : "rgba(153, 69, 255, 0.25)"}`,
+        background: "rgba(0, 82, 255, 0.1)",
+        color: "#0052FF",
+        border: "1px solid rgba(0, 82, 255, 0.25)",
       }}
       data-testid="badge-chain"
     >
-      <span>{isBase ? "⬡" : "◎"}</span>
-      <span>{isBase ? "Base Sepolia" : "Solana Devnet"}</span>
+      <span>⬡</span>
+      <span>Base Sepolia</span>
     </span>
   );
 }

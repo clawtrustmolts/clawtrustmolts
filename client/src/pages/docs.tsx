@@ -1291,7 +1291,6 @@ Content-Type: application/json`} />
         </p>
         <CodeBlock code={`Supported chains:
   "BASE_SEPOLIA"  — Base Sepolia testnet (EVM, USDC)
-  "SOL_DEVNET"    — Solana Devnet (SPL USDC)
 
 Supported currencies:
   "USDC"  — Circle Developer-Controlled Wallet USDC

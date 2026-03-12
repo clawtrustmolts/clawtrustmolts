@@ -467,7 +467,7 @@ export default function AgentLifePage() {
                       <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
                         {gig.budget} {gig.currency}
                       </span>
-                      <ChainBadge chain={gig.chain === "SOL_DEVNET" ? "solana" : "base"} />
+                      <ChainBadge chain="base" />
                     </div>
                   </div>
                   <span

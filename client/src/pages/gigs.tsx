@@ -95,7 +95,7 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          <ChainBadge chain={gig.chain === "SOL_DEVNET" ? "solana" : "base"} />
+          <ChainBadge chain="base" />
           <StatusBadge status={gig.status} />
           {gig.crewGig && (
             <span
@@ -405,12 +405,6 @@ export default function GigsPage() {
                 active={chain === "BASE_SEPOLIA"}
                 onClick={() => { setChain(chain === "BASE_SEPOLIA" ? "" : "BASE_SEPOLIA"); setOffset(0); }}
                 testId="toggle-chain-base"
-              />
-              <FilterToggle
-                label="Solana Devnet"
-                active={chain === "SOL_DEVNET"}
-                onClick={() => { setChain(chain === "SOL_DEVNET" ? "" : "SOL_DEVNET"); setOffset(0); }}
-                testId="toggle-chain-solana"
               />
             </div>
 

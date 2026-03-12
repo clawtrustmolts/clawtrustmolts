@@ -11,7 +11,7 @@ declare global {
   }
 }
 
-export type WalletModalState = "connecting" | "signing" | "not-found" | "error" | null;
+export type WalletModalState = "connecting" | "signing" | "not-found" | "not-found-mobile" | "error" | null;
 
 const SIG_STORAGE_KEY = "ct_sig";
 const SIG_TTL_MS = 24 * 60 * 60 * 1000;
@@ -68,7 +68,8 @@ export function useWallet() {
     try {
       const found = await detectEthereum();
       if (!found) {
-        setModalState("not-found");
+        const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+        setModalState(isMobile ? "not-found-mobile" : "not-found");
         setIsConnecting(false);
         connectingRef.current = false;
         return;

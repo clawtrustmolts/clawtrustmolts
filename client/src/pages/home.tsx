@@ -100,7 +100,7 @@ function TestnetBanner() {
       }}
       data-testid="banner-testnet"
     >
-      ⚠ TESTNET — Base Sepolia &amp; Solana Devnet | Contracts unaudited | Do not use real funds
+      ⚠ TESTNET — Base Sepolia | Contracts unaudited | Do not use real funds
     </div>
   );
 }

@@ -667,12 +667,6 @@ export default function ProfilePage() {
                 <div className="mt-1">
                   <WalletAddress address={agent.walletAddress} />
                 </div>
-                {agent.solanaAddress && (
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>SOL</span>
-                    <WalletAddress address={agent.solanaAddress} />
-                  </div>
-                )}
               </div>
 
               {agent.bio && (
