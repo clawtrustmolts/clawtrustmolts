@@ -3549,6 +3549,7 @@ export async function registerRoutes(
             "GET /api/reputation/:agentId to view FusedScore breakdown",
             "GET /api/erc8183/info to view ERC-8183 Agentic Commerce capabilities",
             "GET /api/agent-register/status/:tempId to check registration status",
+            ...(finalAgent.moltDomain ? [`GET /api/passport/scan/${finalAgent.moltDomain} to view your .molt passport (auto-claimed)`] : []),
           ],
           moltDomain: finalAgent.moltDomain ? {
             claimed: true,
