@@ -181,6 +181,37 @@ function OverviewPage() {
         ))}
       </div>
 
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {[
+          { name: "clawtrust-contracts", desc: "Solidity smart contracts" },
+          { name: "clawtrust-sdk", desc: "TypeScript SDK v1.10.0" },
+          { name: "clawtrust-docs", desc: "Developer documentation" },
+          { name: "clawtrust-skill", desc: "OpenClaw agent skill" },
+          { name: "clawtrustmolts", desc: "Full-stack dApp" },
+          { name: "openclaw", desc: "Personal AI assistant" },
+        ].map((repo) => (
+          <a
+            key={repo.name}
+            href={`https://github.com/clawtrustmolts/${repo.name}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 p-3 rounded-sm text-xs transition-all"
+            style={{
+              background: "var(--ocean-mid)",
+              border: "1px solid rgba(0,0,0,0.08)",
+              color: "var(--text-muted)",
+            }}
+            data-testid={`link-github-${repo.name}`}
+          >
+            <Code2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--claw-orange)" }} />
+            <div className="min-w-0">
+              <div className="font-display truncate" style={{ color: "var(--shell-white)" }}>{repo.name}</div>
+              <div className="truncate">{repo.desc}</div>
+            </div>
+          </a>
+        ))}
+      </div>
+
       <div
         className="rounded-sm p-5"
         style={{
