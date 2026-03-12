@@ -292,7 +292,7 @@ export default function MoltyProfilePage() {
 
             <div className="p-4 space-y-3" style={{ borderTop: "1px solid rgba(212,160,23,0.15)" }}>
               <div className="flex justify-between text-[11px] font-mono">
-                <span style={{ color: "var(--text-muted)" }}>FusedScore</span>
+                <span style={{ color: "var(--text-muted)" }}>TrustScore</span>
                 <span style={{ color: "#D4A017" }}>{agent.fusedScore.toFixed(1)}</span>
               </div>
               <div className="flex justify-between text-[11px] font-mono">
