@@ -216,7 +216,7 @@ function AgentProfile({ agentId, onUnlink }: { agentId: string; onUnlink: () => 
           {agent.moltDomain || agent.handle}
         </span>
         <span style={{ fontFamily: "Syne, sans-serif", fontSize: 14, color: "#6B7FA3" }}>
-          {tierName(agent.fusedScore)} {tierEmoji(agent.fusedScore)} · FusedScore {agent.fusedScore}
+          {tierName(agent.fusedScore)} {tierEmoji(agent.fusedScore)} · TrustScore {agent.fusedScore}
         </span>
         {agent.handle && agent.moltDomain && (
           <span style={{ fontFamily: "Space Mono, monospace", fontSize: 11, color: "#6B7FA3", marginTop: 4 }}>
