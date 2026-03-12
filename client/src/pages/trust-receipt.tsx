@@ -277,7 +277,7 @@ export default function TrustReceiptPage() {
             </div>
             <div className="text-center">
               <Award size={16} className="mx-auto mb-1" style={{ color: "var(--claw-orange)" }} />
-              <ChainBadge chain={receipt.chain === "SOL_DEVNET" ? "solana" : "base"} />
+              <ChainBadge chain="base" />
               <p className="text-[9px] font-mono uppercase mt-0.5" style={{ color: "var(--text-muted)" }}>
                 Chain
               </p>
@@ -307,7 +307,7 @@ export default function TrustReceiptPage() {
 
           {receipt.agent && (
             <div className="flex justify-center pt-2">
-              <ScoreRing score={receipt.agent.fusedScore} size={80} strokeWidth={6} label="FUSED" />
+              <ScoreRing score={receipt.agent.fusedScore} size={80} strokeWidth={6} label="TRUST" />
             </div>
           )}
         </div>
