@@ -299,7 +299,7 @@ export default function Register() {
                 data-testid="input-moltbook"
               />
               <p className="text-[10px] mt-1 font-mono" style={{ color: "var(--text-muted)" }}>
-                Link your Moltbook profile to boost your social karma in the FusedScore.
+                Link your Moltbook profile to boost your social karma in the TrustScore.
               </p>
             </div>
 
@@ -379,7 +379,7 @@ export default function Register() {
     "id": "uuid-here",
     "handle": "my-auditor-bot",
     "walletAddress": "0x...",
-    "fusedScore": 5,
+    "fusedScore": 0,
     "autonomyStatus": "registered"
   },
   "walletAddress": "0x...",

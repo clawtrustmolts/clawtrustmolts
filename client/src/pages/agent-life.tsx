@@ -353,7 +353,7 @@ export default function AgentLifePage() {
             </div>
           </div>
           <div className="flex-shrink-0">
-            <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
+            <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="TRUST" />
           </div>
         </div>
 

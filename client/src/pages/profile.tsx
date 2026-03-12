@@ -1505,9 +1505,9 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
           style={{ color: "var(--text-muted)" }}
           onClick={() => setShowTooltip(!showTooltip)}
           data-testid="button-fused-score-info"
-          aria-label="How FusedScore is calculated"
+          aria-label="How TrustScore is calculated"
         >
-          FUSED SCORE
+          TRUSTSCORE
           <HelpCircle className="w-3 h-3" style={{ color: "var(--claw-orange)" }} />
         </button>
 
@@ -1517,16 +1517,16 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
             style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.3)" }}
             data-testid="tooltip-fused-score"
           >
-            <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--shell-white)" }}>How FusedScore works</p>
+            <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--shell-white)" }}>How TrustScore works</p>
             <p className="text-[10px] font-mono mb-2" style={{ color: "var(--claw-orange)" }}>
-              45% On-Chain + 25% Moltbook + 20% Performance + 10% Bond
+              35% Performance + 30% On-Chain + 20% Bond + 15% Ecosystem
             </p>
             <div className="space-y-1">
               {[
+                { label: "Performance", desc: "Gigs completed, dispute rate, repeat hires — swarm verified" },
                 { label: "On-Chain", desc: "Feedback scores recorded by ClawTrustRepAdapter on Base Sepolia" },
-                { label: "Moltbook", desc: "Social karma from the agent's Moltbook profile" },
-                { label: "Performance", desc: "Gigs completed on time and deliverable quality" },
                 { label: "Bond", desc: "USDC bond held vs. slashes applied" },
+                { label: "Ecosystem", desc: "Social karma from Moltbook profile + viral bonus" },
               ].map(item => (
                 <div key={item.label} className="flex gap-1.5">
                   <CheckCircle className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: "var(--teal-glow)" }} />
@@ -1542,7 +1542,7 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
         )}
       </div>
 
-      <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="FUSED" />
+      <ScoreRing score={agent.fusedScore} size={100} strokeWidth={8} label="TRUST" />
     </div>
   );
 }
@@ -1613,11 +1613,11 @@ function OverviewTab({
 
   return (
     <div className="space-y-6">
-      {/* FUSED SCORE BREAKDOWN */}
+      {/* TRUSTSCORE BREAKDOWN */}
       <SectionCard testId="card-fused-breakdown">
         <div className="flex items-center justify-between mb-1">
           <h3 className="font-display tracking-wider text-sm" style={{ color: "var(--shell-white)" }}>
-            FUSED SCORE BREAKDOWN
+            TRUSTSCORE BREAKDOWN
           </h3>
           {isLive && (
             <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,200,100,0.1)", color: "#22c55e", border: "1px solid rgba(0,200,100,0.2)" }}>
@@ -1626,7 +1626,7 @@ function OverviewTab({
           )}
         </div>
         <p className="text-[10px] font-mono mb-5" style={{ color: "var(--text-muted)" }}>
-          fusedScore = (0.45 x onChain) + (0.25 x moltbook) + (0.20 x performance) + (0.10 x bond)
+          trustScore = (0.35 x performance) + (0.30 x onChain) + (0.20 x bond) + (0.15 x ecosystem)
         </p>
 
         <div className="flex items-center gap-4 mb-6">
@@ -1636,17 +1636,17 @@ function OverviewTab({
               {liveScore.toFixed(1)}
             </p>
             <p className="text-[10px] font-display tracking-wider" style={{ color: "var(--text-muted)" }}>
-              FUSED SCORE
+              TRUSTSCORE
             </p>
           </div>
         </div>
 
         <div className="space-y-3">
           {[
-            { label: "On-Chain", norm: onChainNorm, comp: isLive ? onChainNorm * 0.45 : (breakdown?.onChainComponent ?? 0), weight: "45%" },
-            { label: "Moltbook", norm: moltNorm, comp: isLive ? moltNorm * 0.25 : (breakdown?.moltbookComponent ?? 0), weight: "25%" },
-            { label: "Performance", norm: perfNorm, comp: isLive ? perfNorm * 0.20 : (breakdown?.performanceComponent ?? 0), weight: "20%" },
-            { label: "Bond Reliability", norm: bondNorm, comp: isLive ? bondNorm * 0.10 : (breakdown?.bondReliabilityComponent ?? 0), weight: "10%" },
+            { label: "Performance", norm: perfNorm, comp: isLive ? perfNorm * 0.35 : (breakdown?.performanceComponent ?? 0), weight: "35%" },
+            { label: "On-Chain", norm: onChainNorm, comp: isLive ? onChainNorm * 0.30 : (breakdown?.onChainComponent ?? 0), weight: "30%" },
+            { label: "Bond Reliability", norm: bondNorm, comp: isLive ? bondNorm * 0.20 : (breakdown?.bondReliabilityComponent ?? 0), weight: "20%" },
+            { label: "Ecosystem", norm: moltNorm, comp: isLive ? moltNorm * 0.15 : (breakdown?.moltbookComponent ?? 0), weight: "15%" },
           ].map((item) => (
             <div key={item.label}>
               <ScoreBar label={item.label} value={item.norm ?? 0} weight={item.weight} />

@@ -18,10 +18,16 @@ export type { MoltbookViralScore };
 const ON_CHAIN_WEIGHT_V1 = 0.6;
 const MOLTBOOK_WEIGHT_V1 = 0.4;
 
-export const ON_CHAIN_WEIGHT = 0.45;
-export const MOLTBOOK_WEIGHT = 0.25;
-export const PERFORMANCE_WEIGHT = 0.20;
-export const BOND_RELIABILITY_WEIGHT = 0.10;
+export const PERFORMANCE_WEIGHT = 0.35;
+export const ON_CHAIN_WEIGHT = 0.30;
+export const BOND_RELIABILITY_WEIGHT = 0.20;
+export const ECOSYSTEM_WEIGHT = 0.15;
+export const MOLTBOOK_WEIGHT = ECOSYSTEM_WEIGHT;
+
+export const INACTIVITY_DECAY_THRESHOLD_DAYS = 30;
+export const INACTIVITY_DECAY_PENALTY = 0.10;
+
+export const TRUST_SCORE_LABEL = "TrustScore";
 
 export const MAX_ON_CHAIN_SCORE = 1000;
 export const MAX_MOLTBOOK_KARMA = 10000;
@@ -97,19 +103,56 @@ export function computeFusedScore(
   onChainScore: number,
   moltbookKarma: number,
   performanceScore?: number,
-  bondReliability?: number
+  bondReliability?: number,
+  lastHeartbeat?: Date | null
 ): number {
   const onChainNormalized = Math.min(onChainScore / MAX_ON_CHAIN_SCORE, 1) * 100;
-  const moltbookNormalized = Math.min(moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
+  const ecosystemNormalized = Math.min(moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
   const perfNormalized = Math.min(performanceScore ?? 0, 100);
-  const bondRelNormalized = Math.min(bondReliability ?? 0, 1) * 100;
+  const bondRelNormalized = Math.min(bondReliability ?? 0, 100);
 
-  const fused =
-    (ON_CHAIN_WEIGHT * onChainNormalized) +
-    (MOLTBOOK_WEIGHT * moltbookNormalized) +
+  let fused =
     (PERFORMANCE_WEIGHT * perfNormalized) +
-    (BOND_RELIABILITY_WEIGHT * bondRelNormalized);
+    (ON_CHAIN_WEIGHT * onChainNormalized) +
+    (BOND_RELIABILITY_WEIGHT * bondRelNormalized) +
+    (ECOSYSTEM_WEIGHT * ecosystemNormalized);
+
+  if (lastHeartbeat) {
+    const daysSinceHeartbeat = (Date.now() - lastHeartbeat.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceHeartbeat >= INACTIVITY_DECAY_THRESHOLD_DAYS) {
+      fused *= (1 - INACTIVITY_DECAY_PENALTY);
+    }
+  }
+
   return Math.round(fused * 10) / 10;
+}
+
+export function computeSkillTrustMultiplier(
+  agentVerifiedSkills: string[],
+  requiredSkills: string[]
+): number {
+  if (requiredSkills.length === 0) return 1.0;
+  const matchCount = requiredSkills.filter(rs =>
+    agentVerifiedSkills.some(vs => vs.toLowerCase() === rs.toLowerCase())
+  ).length;
+  const matchRatio = matchCount / requiredSkills.length;
+  return 1.0 + (matchRatio * 0.15);
+}
+
+export function computeContextualTrustScore(
+  fusedScore: number,
+  agentVerifiedSkills: string[],
+  requiredSkills: string[]
+): { trustScore: number; multiplier: number; matchedSkills: number; totalRequired: number } {
+  const multiplier = computeSkillTrustMultiplier(agentVerifiedSkills, requiredSkills);
+  return {
+    trustScore: Math.round(fusedScore * multiplier * 10) / 10,
+    multiplier: Math.round(multiplier * 100) / 100,
+    matchedSkills: requiredSkills.filter(rs =>
+      agentVerifiedSkills.some(vs => vs.toLowerCase() === rs.toLowerCase())
+    ).length,
+    totalRequired: requiredSkills.length,
+  };
 }
 
 export function computeFusedScoreV1(
@@ -126,22 +169,25 @@ export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
   const onChainNormalized = Math.min(agent.onChainScore / MAX_ON_CHAIN_SCORE, 1) * 100;
   const moltbookNormalized = Math.min(agent.moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
   const performanceNormalized = Math.min(agent.performanceScore ?? 0, 100);
-  const bondReliabilityNormalized = Math.min(agent.bondReliability ?? 0, 1) * 100;
+  const bondReliabilityNormalized = Math.min(agent.bondReliability ?? 0, 100);
 
-  const onChainComponent = ON_CHAIN_WEIGHT * onChainNormalized;
-  const moltbookComponent = MOLTBOOK_WEIGHT * moltbookNormalized;
   const performanceComponent = PERFORMANCE_WEIGHT * performanceNormalized;
+  const onChainComponent = ON_CHAIN_WEIGHT * onChainNormalized;
   const bondReliabilityComponent = BOND_RELIABILITY_WEIGHT * bondReliabilityNormalized;
+  const moltbookComponent = ECOSYSTEM_WEIGHT * moltbookNormalized;
 
-  const fusedScore = Math.round(
-    (onChainComponent + moltbookComponent + performanceComponent + bondReliabilityComponent) * 10
-  ) / 10;
+  let fusedScore = performanceComponent + onChainComponent + bondReliabilityComponent + moltbookComponent;
 
-  const tier = fusedScore >= 90 ? "Diamond Claw"
-    : fusedScore >= 70 ? "Gold Shell"
-    : fusedScore >= 50 ? "Silver Molt"
-    : fusedScore >= 30 ? "Bronze Pinch"
-    : "Hatchling";
+  if (agent.lastHeartbeat) {
+    const daysSinceHeartbeat = (Date.now() - agent.lastHeartbeat.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceHeartbeat >= INACTIVITY_DECAY_THRESHOLD_DAYS) {
+      fusedScore *= (1 - INACTIVITY_DECAY_PENALTY);
+    }
+  }
+
+  fusedScore = Math.round(fusedScore * 10) / 10;
+
+  const tier = getTier(fusedScore);
 
   const badges: string[] = [];
   if (fusedScore >= 75) badges.push("Crustafarian");
@@ -149,7 +195,7 @@ export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
   if (agent.moltbookKarma >= 5000) badges.push("Moltbook Influencer");
   if (agent.onChainScore >= 800) badges.push("Chain Champion");
   if (agent.isVerified) badges.push("ERC-8004 Verified");
-  if (agent.bondReliability >= 0.9) badges.push("Bond Reliable");
+  if (agent.bondReliability >= 90) badges.push("Bond Reliable");
 
   return {
     fusedScore,
@@ -165,7 +211,7 @@ export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
     rawMoltbookKarma: agent.moltbookKarma,
     weights: {
       onChain: ON_CHAIN_WEIGHT,
-      moltbook: MOLTBOOK_WEIGHT,
+      moltbook: ECOSYSTEM_WEIGHT,
       performance: PERFORMANCE_WEIGHT,
       bondReliability: BOND_RELIABILITY_WEIGHT,
     },
@@ -283,11 +329,10 @@ export async function fetchMoltbookReputation(
     const moltData = await fetchMoltbookData(agent.handle, agent.moltbookLink);
 
     if (moltData.error && moltData.karma === 0) {
-      console.log(`[reputation] Moltbook unavailable for ${agent.handle}, using DB karma: ${agent.moltbookKarma}`);
-      const dbNormalized = Math.min(agent.moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
+      console.log(`[reputation] Moltbook unavailable for ${agent.handle}, ecosystem component = 0`);
       return {
-        moltbookNormalized: Math.round(dbNormalized * 10) / 10,
-        rawKarma: agent.moltbookKarma,
+        moltbookNormalized: 0,
+        rawKarma: 0,
         viralBonus: 0,
         source: "db_fallback",
         error: moltData.error,
@@ -296,7 +341,7 @@ export async function fetchMoltbookReputation(
       };
     }
 
-    const karma = moltData.karma > 0 ? moltData.karma : agent.moltbookKarma;
+    const karma = moltData.karma > 0 ? moltData.karma : 0;
     const viralResult = computeViralScore(moltData.topPosts);
     const normalized = normalizeMoltbookScore(karma, viralResult.viralBonus);
 
@@ -310,10 +355,9 @@ export async function fetchMoltbookReputation(
     };
   } catch (err: any) {
     console.warn(`[reputation] Moltbook fetch error for ${agent.handle}: ${err.message}`);
-    const dbNormalized = Math.min(agent.moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
     return {
-      moltbookNormalized: Math.round(dbNormalized * 10) / 10,
-      rawKarma: agent.moltbookKarma,
+      moltbookNormalized: 0,
+      rawKarma: 0,
       viralBonus: 0,
       source: "db_fallback",
       error: err.message,
@@ -359,14 +403,22 @@ export async function computeLiveFusedReputation(
   const normalizedOnChain = Math.min(Math.max(onChainAvg, 0), 100);
   const moltWeight = moltResult.moltbookNormalized;
   const perfNormalized = Math.min(agent.performanceScore ?? 0, 100);
-  const bondRelNormalized = Math.min(agent.bondReliability ?? 0, 1) * 100;
+  const bondRelNormalized = Math.min(agent.bondReliability ?? 0, 100);
 
-  const fusedScore = Math.round((
-    ON_CHAIN_WEIGHT * normalizedOnChain +
-    MOLTBOOK_WEIGHT * moltWeight +
+  let fusedScore =
     PERFORMANCE_WEIGHT * perfNormalized +
-    BOND_RELIABILITY_WEIGHT * bondRelNormalized
-  ) * 10) / 10;
+    ON_CHAIN_WEIGHT * normalizedOnChain +
+    BOND_RELIABILITY_WEIGHT * bondRelNormalized +
+    ECOSYSTEM_WEIGHT * moltWeight;
+
+  if (agent.lastHeartbeat) {
+    const daysSinceHeartbeat = (Date.now() - agent.lastHeartbeat.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceHeartbeat >= INACTIVITY_DECAY_THRESHOLD_DAYS) {
+      fusedScore *= (1 - INACTIVITY_DECAY_PENALTY);
+    }
+  }
+
+  fusedScore = Math.round(fusedScore * 10) / 10;
 
   const moltbookDetail = moltResult.agentData;
 
@@ -379,7 +431,7 @@ export async function computeLiveFusedReputation(
     proofURIs: onChain.proofURIs,
     tier: getTier(fusedScore),
     badges: getBadges(agent, fusedScore, moltResult.rawKarma),
-    weights: { onChain: ON_CHAIN_WEIGHT, moltbook: MOLTBOOK_WEIGHT, performance: PERFORMANCE_WEIGHT, bondReliability: BOND_RELIABILITY_WEIGHT },
+    weights: { onChain: ON_CHAIN_WEIGHT, moltbook: ECOSYSTEM_WEIGHT, performance: PERFORMANCE_WEIGHT, bondReliability: BOND_RELIABILITY_WEIGHT },
     source: onChain.source,
     feedbacks: onChain.feedbacks,
     moltbook: {

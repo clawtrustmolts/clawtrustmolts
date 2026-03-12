@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address, getAddress as toChecksumAddress, verifyMessage } from "viem";
-import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier } from "./reputation";
+import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, TRUST_SCORE_LABEL } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
   buildIdentityMetadata,
@@ -831,16 +831,16 @@ export async function registerRoutes(
       await storage.createReputationEvent({
         agentId: agent.id,
         eventType: "Identity Registered",
-        scoreChange: 5,
+        scoreChange: 0,
         source: "on_chain",
-        details: "ERC-8004 identity registered via ClawTrust",
+        details: "ERC-8004 identity registered via ClawTrust — TrustScore starts at 0, earned through activity",
         proofUri: null,
       });
 
       const updatedAgent = await storage.updateAgent(agent.id, {
-        onChainScore: 5,
-        bondReliability: 1.0,
-        fusedScore: computeFusedScore(5, 0, 0, 1.0),
+        onChainScore: 0,
+        bondReliability: 0,
+        fusedScore: 0,
       });
 
       mintPassportForAgent({
@@ -1889,8 +1889,8 @@ export async function registerRoutes(
                 totalGigsCompleted: assignee.totalGigsCompleted + 1,
                 totalEarned: assignee.totalEarned + gig.budget,
                 onChainScore: Math.min(assignee.onChainScore + 10, 1000),
-                fusedScore: computeFusedScore(Math.min(assignee.onChainScore + 10, 1000), assignee.moltbookKarma, assignee.performanceScore, assignee.bondReliability),
               });
+              await syncPerformanceScore(gig.assigneeId).catch(() => {});
             }
 
             if (gig.bondLocked && gig.bondRequired > 0) {
@@ -1929,8 +1929,8 @@ export async function registerRoutes(
                 await storage.updateAgent(v.voterId, {
                   totalEarned: voter.totalEarned + reward,
                   onChainScore: Math.min(voter.onChainScore + 2, 1000),
-                  fusedScore: computeFusedScore(Math.min(voter.onChainScore + 2, 1000), voter.moltbookKarma, voter.performanceScore, voter.bondReliability),
                 });
+                await syncPerformanceScore(v.voterId).catch(() => {});
               }
 
               rewardsDistributed.push({ validatorId: v.voterId, amount: reward });
@@ -2038,13 +2038,11 @@ export async function registerRoutes(
       const karmaBoost = data.karmaBoost || Math.max(Math.round(viralScore.viralBonus * 10), 50);
       const effectiveKarma = Math.max(moltbookKarma, agent.moltbookKarma + karmaBoost);
       const moltNormalized = normalizeMoltbookScore(effectiveKarma, viralScore.viralBonus);
-      const newFused = computeFusedScore(agent.onChainScore, effectiveKarma, agent.performanceScore, agent.bondReliability);
-
       await storage.updateAgent(agent.id, {
         moltbookKarma: effectiveKarma,
-        fusedScore: newFused,
         moltbookLink: data.postUrl || agent.moltbookLink,
       });
+      await syncPerformanceScore(agent.id).catch(() => {});
 
       await storage.createReputationEvent({
         agentId: agent.id,
@@ -3419,16 +3417,16 @@ export async function registerRoutes(
       await storage.createReputationEvent({
         agentId: agent.id,
         eventType: "Autonomous Registration",
-        scoreChange: 5,
+        scoreChange: 0,
         source: "on_chain",
-        details: "Agent registered autonomously via API",
+        details: "Agent registered autonomously via API — TrustScore starts at 0, earned through activity",
         proofUri: null,
       });
 
       const updatedAgent = await storage.updateAgent(agent.id, {
-        onChainScore: 5,
-        bondReliability: 1.0,
-        fusedScore: computeFusedScore(5, 0, 0, 1.0),
+        onChainScore: 0,
+        bondReliability: 0,
+        fusedScore: 0,
         lastHeartbeat: new Date(),
       });
 
@@ -3689,12 +3687,26 @@ export async function registerRoutes(
     const gigId = safeId.safeParse(req.params.id);
     if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
 
+    const gig = await storage.getGig(gigId.data);
     const applicants = await storage.getGigApplicants(gigId.data);
     const enriched = await Promise.all(applicants.map(async (a) => {
       const agent = await storage.getAgent(a.agentId);
+      let skillTrustMultiplier = 1.0;
+      let contextualScore = agent ? agent.fusedScore : 0;
+      if (agent && gig) {
+        const { computeSkillTrustMultiplier: computeSTM } = await import("./reputation");
+        const agentSkills = await storage.getAgentSkills(a.agentId);
+        const gigSkills = gig.requiredSkills || [];
+        const agentSkillNames = agentSkills.map(s => s.skillName);
+        skillTrustMultiplier = computeSTM(agentSkillNames, gigSkills);
+        const ctResult = computeContextualTrustScore(agent.fusedScore, agentSkillNames, gigSkills);
+        contextualScore = ctResult.trustScore;
+      }
       return {
         ...a,
         agent: agent ? { id: agent.id, handle: agent.handle, fusedScore: agent.fusedScore, skills: agent.skills } : null,
+        skillTrustMultiplier,
+        contextualScore,
       };
     }));
     res.json(enriched);
@@ -7136,10 +7148,29 @@ export async function registerRoutes(
 
   app.post("/api/admin/erc8183/complete", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
-      const { jobId, reason } = req.body;
+      const { jobId, reason, assigneeWallet, posterWallet } = req.body;
       if (!jobId) return res.status(400).json({ message: "jobId required" });
       const reasonHex = reason ?? "0x535741524d5f415050524f564544000000000000000000000000000000000000";
       const txHash = await oracleCompleteJob(jobId, reasonHex);
+
+      if (assigneeWallet) {
+        const assignee = await storage.getAgentByWallet(assigneeWallet);
+        if (assignee) {
+          await storage.updateAgent(assignee.id, {
+            totalGigsCompleted: assignee.totalGigsCompleted + 1,
+            onChainScore: Math.min(assignee.onChainScore + 10, 1000),
+          });
+          await syncPerformanceScore(assignee.id).catch(() => {});
+          console.log(`[ERC-8183] Settlement: synced assignee ${assignee.handle} score after job ${jobId}`);
+        }
+      }
+      if (posterWallet) {
+        const poster = await storage.getAgentByWallet(posterWallet);
+        if (poster) {
+          await syncPerformanceScore(poster.id).catch(() => {});
+        }
+      }
+
       return res.json({ success: true, txHash, jobId, basescanUrl: `https://sepolia.basescan.org/tx/${txHash}` });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to complete job", error: err.message });

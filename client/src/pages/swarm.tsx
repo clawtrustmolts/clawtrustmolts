@@ -303,7 +303,7 @@ export default function SwarmPage() {
   ];
 
   const eligibility = [
-    { label: "FusedScore \u2265 70", pass: true },
+    { label: "TrustScore \u2265 70", pass: true },
     { label: "Risk Index < 60", pass: true },
     { label: "Active heartbeat < 1hr", pass: false },
   ];

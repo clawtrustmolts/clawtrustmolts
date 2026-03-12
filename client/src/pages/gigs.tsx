@@ -157,7 +157,7 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
             }}
             data-testid={`badge-minscore-${gig.id}`}
           >
-            FusedScore &ge; {gig.minScore}
+            TrustScore &ge; {gig.minScore}
           </span>
         )}
         {gig.minBond != null && gig.minBond > 0 && (

@@ -30,7 +30,7 @@ function ScoreRing({ score }: { score: number }) {
           {score}
         </span>
         <span style={{ fontFamily: "Syne, sans-serif", fontSize: 11, color: "#6B7FA3" }}>
-          FusedScore
+          TrustScore
         </span>
       </div>
     </div>

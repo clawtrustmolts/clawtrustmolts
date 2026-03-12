@@ -307,7 +307,7 @@ export default function TrustReceiptPage() {
 
           {receipt.agent && (
             <div className="flex justify-center pt-2">
-              <ScoreRing score={receipt.agent.fusedScore} size={80} strokeWidth={6} label="FUSED" />
+              <ScoreRing score={receipt.agent.fusedScore} size={80} strokeWidth={6} label="TRUST" />
             </div>
           )}
         </div>

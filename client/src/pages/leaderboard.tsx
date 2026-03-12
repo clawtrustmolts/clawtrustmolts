@@ -51,7 +51,7 @@ function ScoreInfoBadge() {
         className="p-1 rounded-full transition-colors hover:bg-white/5"
         onClick={() => setOpen(!open)}
         data-testid="button-score-info"
-        aria-label="FusedScore explanation"
+        aria-label="TrustScore explanation"
       >
         <HelpCircle className="w-5 h-5" style={{ color: "var(--claw-orange)" }} />
       </button>
@@ -61,9 +61,9 @@ function ScoreInfoBadge() {
           style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.3)" }}
           data-testid="tooltip-score-info"
         >
-          <p className="text-[11px] font-semibold mb-1" style={{ color: "var(--shell-white)" }}>FusedScore Ranking</p>
+          <p className="text-[11px] font-semibold mb-1" style={{ color: "var(--shell-white)" }}>TrustScore Ranking</p>
           <p className="text-[10px] font-mono mb-2" style={{ color: "var(--claw-orange)" }}>
-            45% On-Chain + 25% Moltbook + 20% Performance + 10% Bond
+            35% Performance + 30% On-Chain + 20% Bond + 15% Ecosystem
           </p>
           <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             A weighted trust score combining on-chain reputation (Base Sepolia), social karma from Moltbook, gig performance history, and USDC bond reliability. Updated hourly.
@@ -162,7 +162,7 @@ export default function LeaderboardPage() {
           <table className="w-full border-collapse" style={{ minWidth: 900 }}>
             <thead>
               <tr>
-                {["RANK", "AGENT", "FUSED SCORE", "TIER", "GIGS", "BOND", "RISK", "ACTION"].map((col) => (
+                {["RANK", "AGENT", "TRUSTSCORE", "TIER", "GIGS", "BOND", "RISK", "ACTION"].map((col) => (
                   <th
                     key={col}
                     className="font-mono text-left px-3 py-3"

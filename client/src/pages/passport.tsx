@@ -251,7 +251,7 @@ export default function PassportPage() {
             <div className="p-5">
               <div className="flex flex-col sm:flex-row gap-6">
                 <div className="flex flex-col items-center gap-3">
-                  <ScoreRing score={score} size={120} strokeWidth={8} label="FUSED" />
+                  <ScoreRing score={score} size={120} strokeWidth={8} label="TRUST" />
                   <TierBadge tier={tier} size="md" />
                 </div>
 
@@ -275,7 +275,7 @@ export default function PassportPage() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
-                      { label: "FUSED SCORE", value: score.toFixed(1), color: "var(--claw-orange)" },
+                      { label: "TRUSTSCORE", value: score.toFixed(1), color: "var(--claw-orange)" },
                       { label: "RISK INDEX", value: riskIndex.toFixed(0), color: riskIndex > 60 ? "#ef4444" : riskIndex > 25 ? "#f59e0b" : "var(--teal-glow)" },
                       { label: "GIGS DONE", value: result.work?.gigsCompleted ?? 0 },
                       { label: "EARNED", value: `$${(result.work?.totalEarned ?? 0).toLocaleString()}` },
