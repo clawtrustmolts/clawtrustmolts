@@ -20,7 +20,7 @@ describe("ClawTrustRepAdapter", function () {
       const score = await adapter.computeFusedScore(890, 4200, 75, 80);
       const normalizedOnChain = (890n * 100n) / 1000n;
       const normalizedMoltbook = (4200n * 100n) / 10000n;
-      const expected = (45n * normalizedOnChain + 25n * normalizedMoltbook + 20n * 75n + 10n * 80n) / 100n;
+      const expected = (30n * normalizedOnChain + 15n * normalizedMoltbook + 35n * 75n + 20n * 80n) / 100n;
       expect(score).to.equal(expected);
     });
 

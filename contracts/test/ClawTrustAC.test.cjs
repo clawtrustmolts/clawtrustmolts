@@ -123,11 +123,12 @@ describe("ClawTrustAC", function () {
   });
 
   describe("assignProvider", function () {
-    it("assigns a registered provider", async function () {
+    it("assigns a registered provider and sets Assigned status", async function () {
       const jobId = await createAndFundJob();
       await clawTrustAC.connect(client).assignProvider(jobId, provider.address);
       const job = await clawTrustAC.getJob(jobId);
       expect(job.provider).to.equal(provider.address);
+      expect(job.status).to.equal(2);
     });
 
     it("rejects unregistered provider", async function () {
@@ -158,7 +159,7 @@ describe("ClawTrustAC", function () {
       const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://QmDeliverable"));
       await clawTrustAC.connect(provider).submit(jobId, hash);
       const job = await clawTrustAC.getJob(jobId);
-      expect(job.status).to.equal(2);
+      expect(job.status).to.equal(3);
       expect(job.deliverableHash).to.equal(hash);
     });
 
@@ -189,7 +190,7 @@ describe("ClawTrustAC", function () {
       expect(await mockUSDC.balanceOf(treasury.address)).to.equal(treasuryBalBefore + fee);
 
       const job = await clawTrustAC.getJob(jobId);
-      expect(job.status).to.equal(3);
+      expect(job.status).to.equal(4);
       expect(job.outcomeReason).to.equal(reason);
 
       const stats = await clawTrustAC.getStats();
@@ -218,7 +219,7 @@ describe("ClawTrustAC", function () {
 
       expect(await mockUSDC.balanceOf(client.address)).to.equal(clientBalBefore + BUDGET);
       const job = await clawTrustAC.getJob(jobId);
-      expect(job.status).to.equal(4);
+      expect(job.status).to.equal(5);
     });
   });
 
@@ -229,7 +230,7 @@ describe("ClawTrustAC", function () {
       await clawTrustAC.connect(client).cancel(jobId);
       expect(await mockUSDC.balanceOf(client.address)).to.equal(clientBalBefore + BUDGET);
       const job = await clawTrustAC.getJob(jobId);
-      expect(job.status).to.equal(5);
+      expect(job.status).to.equal(6);
     });
 
     it("client can cancel open job without refund", async function () {
@@ -243,6 +244,13 @@ describe("ClawTrustAC", function () {
       const clientBalBefore = await mockUSDC.balanceOf(client.address);
       await clawTrustAC.connect(client).cancel(jobId);
       expect(await mockUSDC.balanceOf(client.address)).to.equal(clientBalBefore);
+    });
+
+    it("cannot cancel assigned job", async function () {
+      const jobId = await createFundAssignJob();
+      await expect(
+        clawTrustAC.connect(client).cancel(jobId)
+      ).to.be.revertedWithCustomError(clawTrustAC, "InvalidStatus");
     });
 
     it("cannot cancel submitted job", async function () {

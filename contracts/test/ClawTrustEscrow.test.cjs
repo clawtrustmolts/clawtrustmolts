@@ -6,6 +6,7 @@ describe("ClawTrustEscrow", function () {
   const GIG_ID = ethers.id("gig-001");
   const GIG_ID_2 = ethers.id("gig-002");
   const FEE_RATE = 250;
+  const AMOUNT = ethers.parseUnits("100", 6);
 
   beforeEach(async function () {
     [owner, depositor, payee, other] = await ethers.getSigners();
@@ -30,62 +31,26 @@ describe("ClawTrustEscrow", function () {
     await mockUsdc.connect(depositor).approve(await escrow.getAddress(), ethers.parseUnits("10000", 6));
   });
 
-  describe("lockETH", function () {
-    it("should lock ETH escrow", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+  describe("lockUSDC", function () {
+    it("should lock USDC escrow", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       const e = await escrow.getEscrow(GIG_ID);
+      expect(e.amount).to.equal(AMOUNT);
+      expect(e.status).to.equal(1);
       expect(e.depositor).to.equal(depositor.address);
       expect(e.payee).to.equal(payee.address);
-      expect(e.amount).to.equal(ethers.parseEther("1"));
-      expect(e.status).to.equal(1);
     });
 
     it("should revert on duplicate gigId", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await expect(
-        escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") })
+        escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT)
       ).to.be.revertedWithCustomError(escrow, "EscrowAlreadyExists");
     });
 
-    it("should revert on zero value", async function () {
-      await expect(
-        escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: 0 })
-      ).to.be.revertedWithCustomError(escrow, "InvalidAmount");
-    });
-
     it("should revert on self-dealing", async function () {
       await expect(
-        escrow.connect(depositor).lockETH(GIG_ID, depositor.address, { value: ethers.parseEther("1") })
-      ).to.be.revertedWithCustomError(escrow, "SelfDealingNotAllowed");
-    });
-
-    it("should revert below minimum amount", async function () {
-      await expect(
-        escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: 100 })
-      ).to.be.revertedWithCustomError(escrow, "BelowMinimumAmount");
-    });
-
-    it("should revert on zero gigId", async function () {
-      await expect(
-        escrow.connect(depositor).lockETH(ethers.ZeroHash, payee.address, { value: ethers.parseEther("1") })
-      ).to.be.revertedWithCustomError(escrow, "InvalidGigId");
-    });
-  });
-
-  describe("lockUSDC", function () {
-    it("should lock USDC escrow", async function () {
-      const amount = ethers.parseUnits("100", 6);
-      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, amount);
-      const e = await escrow.getEscrow(GIG_ID);
-      expect(e.amount).to.equal(amount);
-      expect(e.isUsdc).to.equal(true);
-      expect(e.status).to.equal(1);
-    });
-
-    it("should revert on self-dealing", async function () {
-      const amount = ethers.parseUnits("100", 6);
-      await expect(
-        escrow.connect(depositor).lockUSDC(GIG_ID, depositor.address, amount)
+        escrow.connect(depositor).lockUSDC(GIG_ID, depositor.address, AMOUNT)
       ).to.be.revertedWithCustomError(escrow, "SelfDealingNotAllowed");
     });
 
@@ -97,25 +62,26 @@ describe("ClawTrustEscrow", function () {
   });
 
   describe("release", function () {
-    it("should release ETH to payee with fee", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
-      const payeeBefore = await ethers.provider.getBalance(payee.address);
+    it("should release USDC to payee with fee", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      const payeeBefore = await mockUsdc.balanceOf(payee.address);
       await escrow.connect(depositor).release(GIG_ID);
       const e = await escrow.getEscrow(GIG_ID);
       expect(e.status).to.equal(2);
-      const payeeAfter = await ethers.provider.getBalance(payee.address);
-      expect(payeeAfter).to.be.gt(payeeBefore);
+      const payeeAfter = await mockUsdc.balanceOf(payee.address);
+      const fee = (AMOUNT * BigInt(FEE_RATE)) / 10000n;
+      expect(payeeAfter - payeeBefore).to.equal(AMOUNT - fee);
     });
 
     it("should revert if not depositor or owner", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await expect(
         escrow.connect(other).release(GIG_ID)
       ).to.be.revertedWithCustomError(escrow, "Unauthorized");
     });
 
     it("should revert if already released", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await escrow.connect(depositor).release(GIG_ID);
       await expect(
         escrow.connect(depositor).release(GIG_ID)
@@ -124,29 +90,20 @@ describe("ClawTrustEscrow", function () {
   });
 
   describe("refund", function () {
-    it("should refund ETH to depositor", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
-      const before = await ethers.provider.getBalance(depositor.address);
-      await escrow.connect(depositor).refund(GIG_ID);
-      const after = await ethers.provider.getBalance(depositor.address);
-      expect(after).to.be.gt(before);
-      const e = await escrow.getEscrow(GIG_ID);
-      expect(e.status).to.equal(3);
-    });
-
     it("should refund USDC to depositor", async function () {
-      const amount = ethers.parseUnits("100", 6);
-      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, amount);
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       const before = await mockUsdc.balanceOf(depositor.address);
       await escrow.connect(depositor).refund(GIG_ID);
       const after = await mockUsdc.balanceOf(depositor.address);
-      expect(after - before).to.equal(amount);
+      expect(after - before).to.equal(AMOUNT);
+      const e = await escrow.getEscrow(GIG_ID);
+      expect(e.status).to.equal(3);
     });
   });
 
   describe("refundAfterTimeout", function () {
     it("should refund after timeout", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await ethers.provider.send("evm_increaseTime", [90 * 24 * 60 * 60 + 1]);
       await ethers.provider.send("evm_mine");
       await escrow.connect(other).refundAfterTimeout(GIG_ID);
@@ -155,7 +112,7 @@ describe("ClawTrustEscrow", function () {
     });
 
     it("should revert before timeout", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await expect(
         escrow.connect(other).refundAfterTimeout(GIG_ID)
       ).to.be.revertedWithCustomError(escrow, "EscrowNotTimedOut");
@@ -164,39 +121,39 @@ describe("ClawTrustEscrow", function () {
 
   describe("dispute + resolveDispute", function () {
     it("depositor can dispute", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await escrow.connect(depositor).dispute(GIG_ID);
       const e = await escrow.getEscrow(GIG_ID);
       expect(e.status).to.equal(4);
     });
 
     it("payee can dispute", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await escrow.connect(payee).dispute(GIG_ID);
       const e = await escrow.getEscrow(GIG_ID);
       expect(e.status).to.equal(4);
     });
 
     it("random user cannot dispute", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await expect(
         escrow.connect(other).dispute(GIG_ID)
       ).to.be.revertedWithCustomError(escrow, "Unauthorized");
     });
 
     it("owner can resolve dispute and release to payee", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await escrow.connect(depositor).dispute(GIG_ID);
-      const before = await ethers.provider.getBalance(payee.address);
+      const before = await mockUsdc.balanceOf(payee.address);
       await escrow.connect(owner).resolveDispute(GIG_ID, true);
-      const after = await ethers.provider.getBalance(payee.address);
+      const after = await mockUsdc.balanceOf(payee.address);
       expect(after).to.be.gt(before);
       const e = await escrow.getEscrow(GIG_ID);
       expect(e.status).to.equal(2);
     });
 
     it("owner can resolve dispute and refund to depositor", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await escrow.connect(depositor).dispute(GIG_ID);
       await escrow.connect(owner).resolveDispute(GIG_ID, false);
       const e = await escrow.getEscrow(GIG_ID);
@@ -204,7 +161,7 @@ describe("ClawTrustEscrow", function () {
     });
 
     it("non-owner cannot resolve dispute", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await escrow.connect(depositor).dispute(GIG_ID);
       await expect(
         escrow.connect(depositor).resolveDispute(GIG_ID, true)
@@ -212,7 +169,7 @@ describe("ClawTrustEscrow", function () {
     });
 
     it("cannot resolve non-disputed escrow", async function () {
-      await escrow.connect(depositor).lockETH(GIG_ID, payee.address, { value: ethers.parseEther("1") });
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       await expect(
         escrow.connect(owner).resolveDispute(GIG_ID, true)
       ).to.be.revertedWithCustomError(escrow, "InvalidStatus");

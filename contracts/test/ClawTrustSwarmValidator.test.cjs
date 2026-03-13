@@ -21,7 +21,7 @@ describe("ClawTrustSwarmValidator", function () {
   async function createBasicValidation(gigId) {
     gigId = gigId || GIG_ID;
     await validator.connect(escrow).createValidation(
-      gigId, owner.address, assignee.address, [v1.address, v2.address, v3.address, v4.address], 3, 0, ethers.ZeroAddress
+      gigId, owner.address, assignee.address, [v1.address, v2.address, v3.address, v4.address], 3, 0, await mockToken.getAddress()
     );
   }
 
@@ -38,7 +38,7 @@ describe("ClawTrustSwarmValidator", function () {
     it("should revert if not escrow", async function () {
       await expect(
         validator.connect(other).createValidation(
-          GIG_ID, owner.address, assignee.address, [v1.address], 1, 0, ethers.ZeroAddress
+          GIG_ID, owner.address, assignee.address, [v1.address], 1, 0, await mockToken.getAddress()
         )
       ).to.be.revertedWithCustomError(validator, "InvalidAddress");
     });
@@ -51,7 +51,7 @@ describe("ClawTrustSwarmValidator", function () {
     it("should revert if assignee is in candidates", async function () {
       await expect(
         validator.connect(escrow).createValidation(
-          GIG_ID, owner.address, assignee.address, [v1.address, assignee.address], 2, 0, ethers.ZeroAddress
+          GIG_ID, owner.address, assignee.address, [v1.address, assignee.address], 2, 0, await mockToken.getAddress()
         )
       ).to.be.revertedWithCustomError(validator, "AssigneeCannotValidate");
     });
@@ -59,7 +59,7 @@ describe("ClawTrustSwarmValidator", function () {
     it("should revert on duplicate candidate", async function () {
       await expect(
         validator.connect(escrow).createValidation(
-          GIG_ID, owner.address, assignee.address, [v1.address, v1.address], 2, 0, ethers.ZeroAddress
+          GIG_ID, owner.address, assignee.address, [v1.address, v1.address], 2, 0, await mockToken.getAddress()
         )
       ).to.be.revertedWithCustomError(validator, "DuplicateCandidate");
     });
@@ -67,7 +67,7 @@ describe("ClawTrustSwarmValidator", function () {
     it("should revert on zero threshold", async function () {
       await expect(
         validator.connect(escrow).createValidation(
-          GIG_ID, owner.address, assignee.address, [v1.address], 0, 0, ethers.ZeroAddress
+          GIG_ID, owner.address, assignee.address, [v1.address], 0, 0, await mockToken.getAddress()
         )
       ).to.be.revertedWithCustomError(validator, "InvalidThreshold");
     });
@@ -75,9 +75,17 @@ describe("ClawTrustSwarmValidator", function () {
     it("should revert if candidates < threshold", async function () {
       await expect(
         validator.connect(escrow).createValidation(
-          GIG_ID, owner.address, assignee.address, [v1.address], 5, 0, ethers.ZeroAddress
+          GIG_ID, owner.address, assignee.address, [v1.address], 5, 0, await mockToken.getAddress()
         )
       ).to.be.revertedWithCustomError(validator, "InsufficientCandidates");
+    });
+
+    it("should revert if rewardToken is zero address", async function () {
+      await expect(
+        validator.connect(escrow).createValidation(
+          GIG_ID, owner.address, assignee.address, [v1.address], 1, 0, ethers.ZeroAddress
+        )
+      ).to.be.revertedWithCustomError(validator, "InvalidAddress");
     });
   });
 
@@ -162,20 +170,21 @@ describe("ClawTrustSwarmValidator", function () {
     });
   });
 
-  describe("reward claiming", function () {
-    it("should claim ETH reward after approval", async function () {
+  describe("reward claiming (ERC20)", function () {
+    it("should claim ERC20 reward after approval", async function () {
       const rewardPool = ethers.parseEther("0.3");
+      await mockToken.mint(escrow.address, rewardPool);
+      await mockToken.connect(escrow).approve(await validator.getAddress(), rewardPool);
       await validator.connect(escrow).createValidation(
-        GIG_ID, owner.address, assignee.address, [v1.address, v2.address, v3.address], 3, rewardPool, ethers.ZeroAddress,
-        { value: rewardPool }
+        GIG_ID, owner.address, assignee.address, [v1.address, v2.address, v3.address], 3, rewardPool, await mockToken.getAddress()
       );
       await validator.connect(v1).vote(GIG_ID, 1);
       await validator.connect(v2).vote(GIG_ID, 1);
       await validator.connect(v3).vote(GIG_ID, 1);
 
-      const before = await ethers.provider.getBalance(v1.address);
+      const before = await mockToken.balanceOf(v1.address);
       await validator.connect(v1).claimReward(GIG_ID);
-      const after = await ethers.provider.getBalance(v1.address);
+      const after = await mockToken.balanceOf(v1.address);
       expect(after).to.be.gt(before);
     });
 
@@ -188,9 +197,10 @@ describe("ClawTrustSwarmValidator", function () {
 
     it("should revert if already claimed", async function () {
       const rewardPool = ethers.parseEther("0.3");
+      await mockToken.mint(escrow.address, rewardPool);
+      await mockToken.connect(escrow).approve(await validator.getAddress(), rewardPool);
       await validator.connect(escrow).createValidation(
-        GIG_ID, owner.address, assignee.address, [v1.address, v2.address, v3.address], 3, rewardPool, ethers.ZeroAddress,
-        { value: rewardPool }
+        GIG_ID, owner.address, assignee.address, [v1.address, v2.address, v3.address], 3, rewardPool, await mockToken.getAddress()
       );
       await validator.connect(v1).vote(GIG_ID, 1);
       await validator.connect(v2).vote(GIG_ID, 1);
