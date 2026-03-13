@@ -1,28 +1,29 @@
-# Aderyn Static Analysis Report
+# Aderyn Static Analysis
 
-**Status:** Not available in current environment.
+Aderyn requires a Rust toolchain (`cargo install aderyn`). The Replit Nix container lacks functional shared libraries for `rustc` (`librustc_driver: cannot allocate memory in static TLS block`), preventing Aderyn from running in this environment.
 
-Aderyn requires a Rust toolchain (`cargo install aderyn`) which is not supported in the Replit Nix environment. The audit was performed using Slither v0.11.5 (Python-based static analyzer) as the primary tool, supplemented by thorough manual review of all 8 contracts.
+## Manual Coverage of Aderyn Detector Categories
 
-## Coverage Gap Analysis
+The following checks — corresponding to Aderyn's primary detector set — were performed manually and via Slither:
 
-Aderyn's primary detectors overlap with Slither's detector set. The following Aderyn-specific checks were covered manually:
+| Category | Checked By | Result |
+|---|---|---|
+| Centralization risk | Manual | Ownable2Step on all ownable contracts; AccessControl on NFTs |
+| Unsafe ERC20 ops | Slither + Manual | SafeERC20 used on all token transfers |
+| Missing zero-address validation | Manual | All constructors/setters validate `address(0)` |
+| Reentrancy | Slither + Manual | `nonReentrant` on all fund-moving functions |
+| Floating pragma | Manual | All contracts use `^0.8.20` |
+| State variable immutability | Slither | `MockERC20._decimals` flagged (test-only contract) |
+| Unused imports | Manual | None found |
+| State variable shadowing | Manual | None found |
+| Unchecked return values | Slither | SafeERC20 handles return checks |
+| Divide before multiply | Slither | `computeFusedScore` — negligible precision loss accepted |
 
-| Aderyn Detector | Manual Check Result |
-|---|---|
-| Centralization risk | PASS — Ownable2Step on all contracts, AccessControl on NFTs |
-| Unsafe ERC20 operations | PASS — SafeERC20 used everywhere |
-| Missing zero-address checks | PASS — All constructors and setters validate |
-| Reentrancy | PASS — nonReentrant on all fund-moving functions |
-| Floating pragma | PASS — All contracts use ^0.8.20 |
-| Unused imports | PASS — No unused imports found |
-| State variable shadowing | PASS — No shadowing detected |
+## Pre-Deployment Action
 
-## Recommendation
-
-Run Aderyn in a CI environment with Rust toolchain before mainnet deployment:
+Run Aderyn in a CI/CD pipeline with a full Rust toolchain before mainnet deployment:
 
 ```bash
 cargo install aderyn
-aderyn ./contracts/ --output contracts/aderyn-full.md
+cd contracts && aderyn . --output aderyn-full.md
 ```

@@ -22,67 +22,6 @@ import "./interfaces/IClawTrustContracts.sol";
  *         and `MAX_FEE_RATE` as on-chain guardrails; the multiplier itself is a
  *         business-logic concern resolved before the transaction is signed.
  */
-/*
- * ══════════════════════════════════════════════════════════════
- * SECURITY AUDIT FINDINGS — ClawTrustEscrow
- * Audit date : 2026-03-12
- * Auditor    : Internal (ClawTrust core team)
- * Severity key: [C]ritical [H]igh [M]edium [L]ow [I]nfo
- * ══════════════════════════════════════════════════════════════
- *
- * [I-01] SafeERC20 used for all USDC transfers.
- *   STATUS: PASS.
- *
- * [I-02] ReentrancyGuard on all fund-moving functions (lockUSDC,
- *   lockUSDCViaX402, release, refund, refundAfterTimeout,
- *   resolveDispute, releaseOnSwarmApproval).
- *   STATUS: PASS.
- *
- * [M-01] ETH transfers use low-level .call{value:}("").
- *   STATUS: FIXED — ETH escrow path (lockETH) removed; USDC-only now.
- *   All ETH branches in _releaseEscrow/_doRefund also removed.
- *
- * [L-01] Ownable (single-step) used instead of Ownable2Step.
- *   STATUS: FIXED — upgraded to Ownable2Step.
- *
- * [I-03] x402 facilitator gating: only x402Facilitator can call
- *   lockUSDCViaX402. Owner can rotate via setX402Facilitator.
- *   STATUS: PASS.
- *
- * [I-04] ESCROW_TIMEOUT = 90 days with refundAfterTimeout callable
- *   by anyone. Prevents indefinite fund lock.
- *   STATUS: PASS.
- *
- * [I-05] Self-dealing prevented on all lock functions.
- *   STATUS: PASS.
- *
- * [L-02] releaseOnSwarmApproval queries validationRegistry.aggregateVotes
- *   as an external call. If validationRegistry is compromised, it could
- *   return false approval data. Mitigated by immutable address binding.
- *   STATUS: ACCEPTED — validationRegistry is immutable.
- *
- * [I-06] Dispute flow: only depositor or payee can dispute; only owner
- *   can resolve. Two-party + arbitrator model.
- *   STATUS: PASS.
- *
- * [M-02] dispute() missing whenNotPaused modifier.
- *   Admin cannot block new disputes during emergency pause.
- *   STATUS: FIXED — added whenNotPaused to dispute().
- *
- * [I-07] releaseOnSwarmApproval() and refundAfterTimeout() intentionally
- *   omit whenNotPaused. Rationale: these are safety-valve functions.
- *   refundAfterTimeout protects depositors from indefinite fund lock.
- *   releaseOnSwarmApproval is gated by validationRegistry (immutable).
- *   Pausing these would risk stranding user funds.
- *   STATUS: ACCEPTED — intentional design.
- *
- * [L-03] Platform fee sent to owner() on release.
- *   If owner is changed mid-escrow, fees go to new owner.
- *   STATUS: ACCEPTED — intended behavior.
- *
- * OVERALL: No critical or high findings. Contract is production-ready.
- * ══════════════════════════════════════════════════════════════
- */
 contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     using SafeERC20 for IERC20;
 
