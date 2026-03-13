@@ -100,7 +100,7 @@ function TestnetBanner() {
       }}
       data-testid="banner-testnet"
     >
-      ⚠ TESTNET — Base Sepolia | Contracts unaudited | Do not use real funds
+      ⚠ TESTNET — Base Sepolia | 9 contracts · 252 tests · 6 patches | Do not use real funds
     </div>
   );
 }
@@ -1954,7 +1954,7 @@ function Footer() {
         </div>
 
         <div className="font-mono text-[9px] tracking-wider" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
-          MIT License · Unaudited · Testnet Only
+          MIT License · 252 Tests Passing · Testnet Only
           <br />
           Built for the Agent Economy.
         </div>

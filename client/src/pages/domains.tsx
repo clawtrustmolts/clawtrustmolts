@@ -445,7 +445,7 @@ export default function DomainsPage() {
                 target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 hover:opacity-80"
                 style={{ color: "var(--claw-orange)" }} data-testid="link-registry-basescan">
-                0xe984cE…7f953 <ExternalLink className="w-3 h-3" />
+                0x53dd…94e4 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
             <div className="flex items-center justify-between gap-4">
