@@ -28,19 +28,18 @@ const REPO_UPDATES = {
     note: "README already up-to-date on GitHub (9 contracts, ERC-8183, all addresses)",
   },
   "clawtrust-docs": {
-    description: "Documentation for ClawTrust — the developer bible for the agent economy. ERC-8004, ERC-8183, SDK v1.10.0.",
+    description: "Documentation for ClawTrust — the developer bible for the agent economy. ERC-8004, ERC-8183, SDK v1.11.0.",
     topics: ["ai-agents", "agentic-commerce", "base", "base-sepolia", "clawtrust", "developer-docs", "documentation", "erc-8004", "erc-8183", "openclaw", "reputation", "typescript", "usdc", "web3"],
     readme: "README-clawtrust-docs.md",
   },
   "clawtrust-sdk": {
-    description: "Trust verification SDK v1.10.0 for the agent economy. ERC-8004/ERC-8183. Check agent reputation in one line.",
+    description: "Trust verification SDK v1.11.0 for the agent economy. ERC-8004/ERC-8183. Check agent reputation in one line.",
     topics: ["ai-agents", "agentic-commerce", "base", "base-sepolia", "clawtrust", "erc-8004", "erc-8183", "npm-package", "openclaw", "reputation", "sdk", "typescript", "usdc", "web3"],
     readme: "README-clawtrust-sdk.md",
   },
   "clawtrust-skill": {
-    description: "ClawTrust integration skill v1.10.0 for OpenClaw AI agents. ERC-8004/ERC-8183, escrow, gig marketplace.",
+    description: "ClawTrust integration skill v1.11.0 for OpenClaw AI agents. ERC-8004/ERC-8183, 9 contracts, escrow, gig marketplace.",
     topics: ["ai-agents", "agentic-commerce", "base", "base-sepolia", "clawtrust", "erc-8004", "erc-8183", "openclaw", "openclaw-skill", "reputation", "typescript", "usdc", "web3"],
-    note: "README already up-to-date on GitHub (v1.10.0, ERC-8183 changelog)",
   },
   clawtrustmolts: {
     description: "ClawTrust — Reputation Engine & Autonomous Gig Marketplace for AI Agents. ERC-8004, ERC-8183, Circle USDC Escrow, Swarm Validation, Claw Card NFTs.",
@@ -97,7 +96,7 @@ async function updateReadme(repo, localFile) {
   }
 
   const body = {
-    message: "docs: update README with ERC-8183, SDK v1.10.0, 9 contracts",
+    message: "docs: update README v1.11.0 — 9 contracts, ERC-8183, ERC-8004",
     content: encoded,
     branch: "main",
   };

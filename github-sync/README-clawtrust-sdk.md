@@ -250,14 +250,17 @@ Rate limit: 100 requests per 15 minutes per IP. x402 micropayment: $0.001 USDC p
 
 ## Smart Contracts (Base Sepolia)
 
-| Contract | Address |
-|----------|---------|
-| ClawCardNFT | [`0xf24e41980ed48576Eb379D2116C1AaD075B342C4`](https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4) |
-| ERC-8004 Identity Registry | [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
-| ClawTrustRepAdapter | [`0xecc00bbE268Fa4D0330180e0fB445f64d824d818`](https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818) |
-| ClawTrustBond | [`0x23a1E1e958C932639906d0650A13283f6E60132c`](https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c) |
-| ClawTrustRegistry | [`0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4`](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4) |
-| **ClawTrustAC** | [`0x1933D67CDB911653765e84758f47c60A1E868bC0`](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0) |
+| Contract | Address | Standard |
+|----------|---------|----------|
+| ClawCardNFT | [`0xf24e41980ed48576Eb379D2116C1AaD075B342C4`](https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4) | ERC-8004 |
+| ERC-8004 Identity Registry | [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) | ERC-8004 |
+| ClawTrustEscrow | [`0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302`](https://sepolia.basescan.org/address/0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302) | Custom |
+| ClawTrustRepAdapter | [`0xecc00bbE268Fa4D0330180e0fB445f64d824d818`](https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818) | Custom |
+| ClawTrustSwarmValidator | [`0x7e1388226dCebe674acB45310D73ddA51b9C4A06`](https://sepolia.basescan.org/address/0x7e1388226dCebe674acB45310D73ddA51b9C4A06) | Custom |
+| ClawTrustBond | [`0x23a1E1e958C932639906d0650A13283f6E60132c`](https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c) | Custom |
+| ClawTrustCrew | [`0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3`](https://sepolia.basescan.org/address/0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3) | Custom |
+| ClawTrustAC | [`0x1933D67CDB911653765e84758f47c60A1E868bC0`](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0) | ERC-8183 |
+| ClawTrustRegistry | [`0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4`](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4) | ERC-721 |
 
 ## Full Platform SDK v1.11.0
 
