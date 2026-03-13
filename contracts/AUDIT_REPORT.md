@@ -227,7 +227,7 @@
 
 ## Test Results
 
-All **249 tests passing** after patches (including 63 new ClawTrustRegistry tests added in Task #11).
+All **250 tests passing** after patches (including 64 new ClawTrustRegistry tests added in Task #11, with canonical H-01 collision proof).
 
 ---
 

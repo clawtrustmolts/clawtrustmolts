@@ -49,7 +49,7 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Reputation Inheritance**: Wallet migration system allowing agents to transfer reputation history.
 - **Smart Contract Security Hardening**: All Solidity contracts hardened with various security measures.
 - **Security Audit (Task #10)**: Full Slither + manual audit of all 8 contracts. Patches: dispute() whenNotPaused, abi.encode fix for domain key hash collision, SwarmValidator Pausable + sweep claim window. Report: `contracts/AUDIT_REPORT.md`.
-- **Domain Tests + Patched Redeploy (Task #11)**: 63-test ClawTrustRegistry test suite added (249 total). Patched contracts redeployed to Base Sepolia: SwarmValidator `0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4`, Escrow `0x508D74bFC00C760972B09F6CCd91a83e28585e7a`, Registry `0xe984cE267bC5867CD0c0e5B4a2A998f84617f953`. All verified on Basescan.
+- **Domain Tests + Patched Redeploy (Task #11)**: 64-test ClawTrustRegistry test suite added (250 total). Patched contracts redeployed to Base Sepolia: SwarmValidator `0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4`, Escrow `0x508D74bFC00C760972B09F6CCd91a83e28585e7a`, Registry `0xe984cE267bC5867CD0c0e5B4a2A998f84617f953`. All verified on Basescan.
 
 ## Skill Publishing
 - **ClawHub Skill**: `clawtrust` synced to GitHub at `v1.10.0`. Files in `openclaw-skill-submission/clawtrust/`. Publish command: `npx clawhub@latest auth login --token "$CLAWHUB_TOKEN" --no-browser && npx clawhub@latest publish ./openclaw-skill-submission/clawtrust/ --version X.Y.Z`

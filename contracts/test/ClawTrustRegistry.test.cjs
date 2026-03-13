@@ -395,6 +395,18 @@ describe("ClawTrustRegistry", function () {
       expect(r1).to.equal(user1.address);
       expect(r2).to.equal(user2.address);
     });
+
+    it("should prove abi.encode produces distinct keys where abi.encodePacked would collide", async function () {
+      const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+
+      const packed1 = ethers.solidityPackedKeccak256(["string", "string"], ["ab", ".claw"]);
+      const packed2 = ethers.solidityPackedKeccak256(["string", "string"], ["a", "b.claw"]);
+      expect(packed1).to.equal(packed2, "encodePacked should collide for this pair");
+
+      const encoded1 = ethers.keccak256(abiCoder.encode(["string", "string"], ["ab", ".claw"]));
+      const encoded2 = ethers.keccak256(abiCoder.encode(["string", "string"], ["a", "b.claw"]));
+      expect(encoded1).to.not.equal(encoded2, "abi.encode must NOT collide — H-01 fix");
+    });
   });
 
   describe("ERC-721 transfer syncs domain owner", function () {
