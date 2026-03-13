@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
 /*
  * ══════════════════════════════════════════════════════════════
@@ -58,10 +59,24 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *   STATUS: FIXED — ETH path removed entirely; ERC-20 only now.
  *   rewardToken=address(0) reverts. receive() removed.
  *
+ * [M-02] Missing Pausable inheritance — no emergency pause on vote()
+ *   or createValidation().
+ *   STATUS: FIXED — added Pausable, whenNotPaused on vote/createValidation,
+ *   and pause()/unpause() admin functions.
+ *
+ * [M-03] sweepResidualRewards() callable immediately after approval,
+ *   before validators have had time to claim.
+ *   STATUS: FIXED — added SWEEP_CLAIM_WINDOW (14 days) check.
+ *
+ * [M-04] vote() calls _expireValidation() then reverts, rolling back
+ *   all state changes. Dead code that wastes gas and does nothing.
+ *   STATUS: FIXED — removed dead _expireValidation call; vote() now
+ *   simply reverts when expired. Use expireValidation() for explicit expiry.
+ *
  * OVERALL: No critical or high findings. Contract is production-ready.
  * ══════════════════════════════════════════════════════════════
  */
-contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
+contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     enum VoteType { None, Approve, Reject }
@@ -109,6 +124,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
     address public escrowContract;
     uint256 public constant MAX_CANDIDATES = 50;
     uint256 public constant VALIDATION_DURATION = 7 days;
+    uint256 public constant SWEEP_CLAIM_WINDOW = 14 days;
     uint256 public defaultThreshold = 3;
     uint256 public defaultCandidateCount = 5;
 
@@ -172,7 +188,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
         uint256 threshold,
         uint256 rewardPool,
         address rewardToken
-    ) external onlyEscrowOrOwner {
+    ) external onlyEscrowOrOwner whenNotPaused {
         if(validationExists[gigId]) revert ValidationAlreadyExists();
         if(poster == address(0)) revert InvalidAddress();
         if(candidates.length > MAX_CANDIDATES) revert TooManyCandidates();
@@ -211,13 +227,12 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
         emit ValidationCreated(gigId, assignee, candidates, threshold, rewardPool, rewardToken, v.expiresAt);
     }
 
-    function vote(bytes32 gigId, VoteType _vote) external nonReentrant {
+    function vote(bytes32 gigId, VoteType _vote) external nonReentrant whenNotPaused {
         if(!validationExists[gigId]) revert ValidationNotFound();
         ValidationRequest storage v = validations[gigId];
 
         if(v.status != ValidationStatus.Pending) revert ValidationAlreadyResolved();
         if(block.timestamp >= v.expiresAt) {
-            _expireValidation(gigId);
             revert ValidationAlreadyResolved();
         }
         if(_vote != VoteType.Approve && _vote != VoteType.Reject) revert InvalidVote();
@@ -373,6 +388,9 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
         defaultCandidateCount = _count;
     }
 
+    function pause() external onlyOwner { _pause(); }
+    function unpause() external onlyOwner { _unpause(); }
+
     function setEscrowContract(address _escrow) external onlyOwner {
         if(_escrow == address(0)) revert InvalidAddress();
         address oldEscrow = escrowContract;
@@ -380,19 +398,14 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
         emit EscrowContractUpdated(oldEscrow, _escrow);
     }
 
-    /**
-     * @notice Sweep residual reward dust that can never be claimed due to integer division.
-     *         Callable only by the owner after all validators with `Approve` votes have
-     *         had the opportunity to claim (i.e. rewardPoolClaimed approaches rewardPool).
-     *         Sends remainder to `to`, preventing funds from being permanently locked.
-     * @param gigId  The gig whose residual is being swept.
-     * @param to     Recipient of the dust (typically a treasury or the escrow contract).
-     */
+    error SweepTooEarly();
+
     function sweepResidualRewards(bytes32 gigId, address to) external onlyOwner nonReentrant {
         if(!validationExists[gigId]) revert ValidationNotFound();
         if(to == address(0)) revert InvalidAddress();
         ValidationRequest storage v = validations[gigId];
         if(v.status != ValidationStatus.Approved) revert ValidationNotApproved();
+        if(block.timestamp < v.resolvedAt + SWEEP_CLAIM_WINDOW) revert SweepTooEarly();
 
         uint256 residual = v.rewardPool - v.rewardPoolClaimed;
         if(residual == 0) revert NoRewardAvailable();

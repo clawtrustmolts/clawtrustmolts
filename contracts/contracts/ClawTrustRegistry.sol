@@ -44,6 +44,10 @@ import "@openzeppelin/contracts/utils/Strings.sol";
  * [I-04] TLD validation: only .claw, .shell, .pinch accepted.
  *   STATUS: PASS.
  *
+ * [H-01] _domainKey uses abi.encodePacked with two dynamic strings.
+ *   Hash collision possible: ("ab",".claw") vs ("a","b.claw").
+ *   STATUS: FIXED — switched to abi.encode for unambiguous encoding.
+ *
  * [L-01] Domain expiry is checked in resolve() and isAvailable() but
  *   expired domains remain in domainTaken mapping.
  *   Re-registration of expired names requires the registrar to handle
@@ -261,7 +265,7 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     }
 
     function _domainKey(string calldata name, string calldata tld) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(name, tld));
+        return keccak256(abi.encode(name, tld));
     }
 
     // [I] Transfer-owner sync hook: keeps domains[].owner in sync with

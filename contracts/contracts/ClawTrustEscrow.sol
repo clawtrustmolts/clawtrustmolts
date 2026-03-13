@@ -65,6 +65,10 @@ import "./interfaces/IClawTrustContracts.sol";
  *   can resolve. Two-party + arbitrator model.
  *   STATUS: PASS.
  *
+ * [M-02] dispute() missing whenNotPaused modifier.
+ *   Admin cannot block new disputes during emergency pause.
+ *   STATUS: FIXED — added whenNotPaused to dispute().
+ *
  * [L-03] Platform fee sent to owner() on release.
  *   If owner is changed mid-escrow, fees go to new owner.
  *   STATUS: ACCEPTED — intended behavior.
@@ -202,7 +206,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         _doRefund(escrow, gigId);
     }
 
-    function dispute(bytes32 gigId) external {
+    function dispute(bytes32 gigId) external whenNotPaused {
         Escrow storage escrow = escrows[gigId];
         if(!escrowExists[gigId]) revert EscrowNotFound();
         if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();

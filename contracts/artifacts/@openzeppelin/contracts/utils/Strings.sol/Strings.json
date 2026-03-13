@@ -18,20 +18,10 @@
       ],
       "name": "StringsInsufficientHexLength",
       "type": "error"
-    },
-    {
-      "inputs": [],
-      "name": "StringsInvalidAddressFormat",
-      "type": "error"
-    },
-    {
-      "inputs": [],
-      "name": "StringsInvalidChar",
-      "type": "error"
     }
   ],
-  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea2646970667358221220ec9a8c937c91eba1992c88e143ac8251b8896a1167d1c07eff8524a3feb5186264736f6c63430008140033",
-  "deployedBytecode": "0x600080fdfea2646970667358221220ec9a8c937c91eba1992c88e143ac8251b8896a1167d1c07eff8524a3feb5186264736f6c63430008140033",
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea26469706673582212201a6e0fbffba5e2ac7a82281d46ad28029626c2286db5dc369ae4391f7b930bc464736f6c63430008140033",
+  "deployedBytecode": "0x600080fdfea26469706673582212201a6e0fbffba5e2ac7a82281d46ad28029626c2286db5dc369ae4391f7b930bc464736f6c63430008140033",
   "linkReferences": {},
   "deployedLinkReferences": {}
 }

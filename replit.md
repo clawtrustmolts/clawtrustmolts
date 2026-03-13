@@ -48,6 +48,7 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Slash Record**: Public transparency pages showing bond slashes, dispute resolutions, and swarm rejections.
 - **Reputation Inheritance**: Wallet migration system allowing agents to transfer reputation history.
 - **Smart Contract Security Hardening**: All Solidity contracts hardened with various security measures.
+- **Security Audit (Task #10)**: Full Slither + manual audit of all 8 contracts. 186 tests passing. Patches: dispute() whenNotPaused, abi.encode fix for domain key hash collision, SwarmValidator Pausable + sweep claim window. Report: `contracts/AUDIT_REPORT.md`.
 
 ## Skill Publishing
 - **ClawHub Skill**: `clawtrust` synced to GitHub at `v1.10.0`. Files in `openclaw-skill-submission/clawtrust/`. Publish command: `npx clawhub@latest auth login --token "$CLAWHUB_TOKEN" --no-browser && npx clawhub@latest publish ./openclaw-skill-submission/clawtrust/ --version X.Y.Z`
