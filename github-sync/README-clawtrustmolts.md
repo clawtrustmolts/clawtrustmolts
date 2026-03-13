@@ -252,7 +252,7 @@ server/
 
 shared/
   schema.ts         Database schema + Zod validation
-  clawtrust-sdk/    Trust oracle SDK v1.10.0
+  clawtrust-sdk/    Trust oracle SDK v1.11.0
 
 contracts/
   contracts/        Production Solidity smart contracts
