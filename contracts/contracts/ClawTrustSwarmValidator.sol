@@ -55,9 +55,8 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *   STATUS: ACCEPTED.
  *
  * [M-01] ETH overpayment could get stranded in contract.
- *   createValidation ETH path only required msg.value >= rewardPool.
- *   Surplus ETH would be permanently locked since no generic withdrawal.
- *   STATUS: FIXED — changed to require msg.value == rewardPool (exact).
+ *   STATUS: FIXED — ETH path removed entirely; ERC-20 only now.
+ *   rewardToken=address(0) reverts. receive() removed.
  *
  * OVERALL: No critical or high findings. Contract is production-ready.
  * ══════════════════════════════════════════════════════════════

@@ -34,7 +34,7 @@ import "./interfaces/IClawTrustContracts.sol";
  *   STATUS: PASS.
  *
  * [I-02] ReentrancyGuard on all fund-moving functions (lockUSDC,
- *   lockUSDCViaX402, lockETH, release, refund, refundAfterTimeout,
+ *   lockUSDCViaX402, release, refund, refundAfterTimeout,
  *   resolveDispute, releaseOnSwarmApproval).
  *   STATUS: PASS.
  *

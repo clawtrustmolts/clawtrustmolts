@@ -264,6 +264,10 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         return keccak256(abi.encodePacked(name, tld));
     }
 
+    // [I] Transfer-owner sync hook: keeps domains[].owner in sync with
+    //     ERC-721 ownership on every transfer (mint, transfer, burn).
+    //     Intentionally does NOT clean up ownerTokenIds[from] — that array
+    //     is append-only; stale entries are filtered at read time.
     function _update(address to, uint256 tokenId, address auth)
         internal override returns (address)
     {
