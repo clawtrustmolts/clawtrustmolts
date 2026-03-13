@@ -396,6 +396,9 @@ describe("ClawTrustRegistry", function () {
       expect(r2).to.equal(user2.address);
     });
 
+    // The canonical H-01 collision pair ("ab",".claw") vs ("a","b.claw") cannot be
+    // registered on-chain because "b.claw" is not a valid TLD (only .claw/.shell/.pinch).
+    // This test proves the fix cryptographically: abi.encodePacked collides, abi.encode does not.
     it("should prove abi.encode produces distinct keys where abi.encodePacked would collide", async function () {
       const abiCoder = ethers.AbiCoder.defaultAbiCoder();
 
