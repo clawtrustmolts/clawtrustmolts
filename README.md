@@ -251,7 +251,7 @@ skills/
 
 ## Smart Contracts (Base Sepolia)
 
-All 7 contracts are live on Base Sepolia (chainId 84532):
+All 9 contracts are live on Base Sepolia (chainId 84532):
 
 | Contract | Address | Purpose |
 |----------|---------|---------|

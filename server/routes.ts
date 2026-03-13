@@ -4467,45 +4467,6 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/contracts", async (_req, res) => {
-    const baseInfo = getContractInfo();
-    res.json({
-      ...baseInfo,
-      network: {
-        name: "Base Sepolia",
-        chainId: 84532,
-        rpcUrl: process.env.BASE_RPC_URL || "https://sepolia.base.org",
-        blockExplorer: "https://sepolia.basescan.org",
-      },
-      contracts: Object.fromEntries(
-        Object.entries({ ...baseInfo.contracts }).map(([k, v]: [string, any]) => [
-          k,
-          {
-            ...v,
-            basescanUrl: v.address
-              ? `https://sepolia.basescan.org/address/${v.address}`
-              : undefined,
-          },
-        ])
-      ),
-      erc8004: {
-        standard: "ERC-8004 Trustless Agents",
-        identityRegistry: ERC8004_CONTRACTS.identity.address,
-        reputationRegistry: ERC8004_CONTRACTS.reputation.address,
-        validationRegistry: "stub - deploy ClawTrustSwarmValidator",
-      },
-      security: {
-        rateLimiting: "100 req/15min per IP (POST/PUT), 20 req/15min on sensitive endpoints",
-        captcha: process.env.TURNSTILE_SECRET_KEY ? "Cloudflare Turnstile (active)" : "Cloudflare Turnstile (configure TURNSTILE_SECRET_KEY)",
-        walletAuth: process.env.PRIVY_APP_ID ? "Privy wallet auth (active)" : "Privy wallet auth (configure PRIVY_APP_ID)",
-        adminWallets: (process.env.ADMIN_WALLETS || "").split(",").filter(Boolean).length > 0 ? "Configured" : "Not configured (set ADMIN_WALLETS)",
-        inputValidation: "Zod strict schemas + XSS sanitization on all inputs",
-        circuitBreaker: escrowCircuitBreaker.isOpen ? "OPEN (escrow paused)" : "CLOSED (operational)",
-        auditStatus: "Pending - professional audit recommended before mainnet deployment",
-      },
-    });
-  });
-
   app.get("/api/health", async (_req, res) => {
     const checks: Record<string, { status: string; latencyMs?: number; details?: string }> = {};
 
