@@ -1,0 +1,20 @@
+{
+  "network": "baseSepolia",
+  "chainId": "84532",
+  "deployedAt": "2026-03-13T19:38:34.462Z",
+  "deployer": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
+  "task": "Task #11 — Patched contracts redeployment",
+  "patches": [
+    "H-01: ClawTrustRegistry abi.encode fix",
+    "M-01: ClawTrustEscrow dispute() whenNotPaused",
+    "M-02: ClawTrustSwarmValidator Pausable + whenNotPaused",
+    "M-03: ClawTrustSwarmValidator SWEEP_CLAIM_WINDOW = 14 days",
+    "M-04: ClawTrustSwarmValidator removed dead _expireValidation in vote()",
+    "M-05: ClawTrustSwarmValidator escrowSnapshot per-validation"
+  ],
+  "contracts": {
+    "ClawTrustSwarmValidator": "0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4",
+    "ClawTrustEscrow": "0x508D74bFC00C760972B09F6CCd91a83e28585e7a",
+    "ClawTrustRegistry": "0xe984cE267bC5867CD0c0e5B4a2A998f84617f953"
+  }
+}

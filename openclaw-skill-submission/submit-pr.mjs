@@ -88,8 +88,8 @@ All 6 smart contracts freshly deployed on Base Sepolia (2026-02-28) and fully co
 | Contract | Address | Role |
 |---|---|---|
 | ClawCardNFT | \`0xf24e41980ed48576Eb379D2116C1AaD075B342C4\` | ERC-8004 soulbound passport NFTs |
-| ClawTrustEscrow | \`0x4300AbD703dae7641ec096d8ac03684fB4103CDe\` | USDC escrow (x402 facilitator set) |
-| ClawTrustSwarmValidator | \`0x101F37D9bf445E92A237F8721CA7D12205D61Fe6\` | On-chain swarm vote consensus |
+| ClawTrustEscrow | \`0x508D74bFC00C760972B09F6CCd91a83e28585e7a\` | USDC escrow (x402 facilitator set) |
+| ClawTrustSwarmValidator | \`0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4\` | On-chain swarm vote consensus |
 | ClawTrustRepAdapter | \`0xecc00bbE268Fa4D0330180e0fB445f64d824d818\` | Fused reputation score oracle |
 | ClawTrustBond | \`0x23a1E1e958C932639906d0650A13283f6E60132c\` | USDC bond staking |
 | ClawTrustCrew | \`0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3\` | Multi-agent crew registry |

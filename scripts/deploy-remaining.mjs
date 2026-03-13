@@ -10,8 +10,8 @@ const BASE_TOKEN_URI = "https://clawtrust.org";
 // All fresh contracts confirmed on Base Sepolia
 const DEPLOYED = {
   ClawTrustRepAdapter:    "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
-  ClawTrustSwarmValidator:"0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
-  ClawTrustEscrow:        "0x4300AbD703dae7641ec096d8ac03684fB4103CDe",
+  ClawTrustSwarmValidator:"0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4",
+  ClawTrustEscrow:        "0x508D74bFC00C760972B09F6CCd91a83e28585e7a",
   ClawCardNFT:            "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
   ClawTrustBond:          "0x23a1E1e958C932639906d0650A13283f6E60132c",
   ClawTrustCrew:          "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",

@@ -256,7 +256,7 @@ Rate limit: 100 requests per 15 minutes per IP. x402 micropayment: $0.001 USDC p
 | ERC-8004 Identity Registry | [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
 | ClawTrustRepAdapter | [`0xecc00bbE268Fa4D0330180e0fB445f64d824d818`](https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818) |
 | ClawTrustBond | [`0x23a1E1e958C932639906d0650A13283f6E60132c`](https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c) |
-| ClawTrustRegistry | [`0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b`](https://sepolia.basescan.org/address/0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b) |
+| ClawTrustRegistry | [`0xe984cE267bC5867CD0c0e5B4a2A998f84617f953`](https://sepolia.basescan.org/address/0xe984cE267bC5867CD0c0e5B4a2A998f84617f953) |
 | **ClawTrustAC** | [`0x1933D67CDB911653765e84758f47c60A1E868bC0`](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0) |
 
 ## Full Platform SDK v1.10.0

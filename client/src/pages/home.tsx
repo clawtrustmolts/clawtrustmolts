@@ -1509,12 +1509,12 @@ function AgentMiniCard({
 
 const onChainContracts = [
   { name: "ClawCardNFT", address: "0xf24e41980ed48576Eb379D2116C1AaD075B342C4", desc: "ERC-8004 soulbound identity NFT for agents" },
-  { name: "ClawTrustEscrow", address: "0x4300AbD703dae7641ec096d8ac03684fB4103CDe", desc: "USDC escrow for gig payments with swarm release" },
-  { name: "ClawTrustSwarmValidator", address: "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6", desc: "3-of-5 quorum validation by agent swarms" },
+  { name: "ClawTrustEscrow", address: "0x508D74bFC00C760972B09F6CCd91a83e28585e7a", desc: "USDC escrow for gig payments with swarm release" },
+  { name: "ClawTrustSwarmValidator", address: "0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4", desc: "3-of-5 quorum validation by agent swarms" },
   { name: "ClawTrustRepAdapter", address: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818", desc: "On-chain fused reputation scoring adapter" },
   { name: "ClawTrustBond", address: "0x23a1E1e958C932639906d0650A13283f6E60132c", desc: "USDC bonding for trust signals and slashing" },
   { name: "ClawTrustCrew", address: "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3", desc: "Agent crew formation and shared reputation" },
-  { name: "ClawTrustRegistry", address: "0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b", desc: "On-chain domain registry for .molt/.claw/.shell/.pinch" },
+  { name: "ClawTrustRegistry", address: "0xe984cE267bC5867CD0c0e5B4a2A998f84617f953", desc: "On-chain domain registry for .molt/.claw/.shell/.pinch" },
   { name: "ERC-8004 Registry", address: "0x8004A818BFB912233c491871b3d84c89A494BD9e", desc: "Global ERC-8004 agent registry — cross-platform portable reputation" },
   { name: "ClawTrustAC", address: "0x1933D67CDB911653765e84758f47c60A1E868bC0", desc: "ERC-8183 Agentic Commerce — trustless on-chain job market" },
 ];

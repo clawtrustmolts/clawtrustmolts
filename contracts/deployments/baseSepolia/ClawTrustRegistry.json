@@ -1,10 +1,10 @@
 {
   "contractName": "ClawTrustRegistry",
-  "address": "0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b",
+  "address": "0xe984cE267bC5867CD0c0e5B4a2A998f84617f953",
   "network": "baseSepolia",
   "chainId": "84532",
   "deployer": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
-  "deployedAt": "2026-03-08T22:39:10.210Z",
+  "deployedAt": "2026-03-13T00:00:00.000Z",
   "abi": [
     {
       "inputs": [],

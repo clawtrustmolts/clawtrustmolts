@@ -2551,16 +2551,16 @@ export async function registerRoutes(
           basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`,
         },
         ClawTrustEscrow: {
-          address: process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe",
+          address: process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x508D74bFC00C760972B09F6CCd91a83e28585e7a",
           description: "USDC Escrow with x402 micropayment support",
-          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
-          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x508D74bFC00C760972B09F6CCd91a83e28585e7a"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x508D74bFC00C760972B09F6CCd91a83e28585e7a"}`,
         },
         ClawTrustSwarmValidator: {
-          address: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
+          address: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4",
           description: "On-chain swarm vote consensus validator",
-          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
-          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4"}`,
         },
         ClawTrustRepAdapter: {
           address: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
@@ -2585,7 +2585,7 @@ export async function registerRoutes(
         standard: "ERC-8004 Trustless Agents",
         identityRegistry: process.env.ERC8004_REGISTRY_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e",
         reputationRegistry: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
-        validationRegistry: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
+        validationRegistry: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4",
       },
       usdc: {
         address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -6963,9 +6963,9 @@ export async function registerRoutes(
   app.get("/api/health/contracts", async (_req, res) => {
     const results: Record<string, any> = {};
     const nftAddr = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
-    const escrowAddr = process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe";
+    const escrowAddr = process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x508D74bFC00C760972B09F6CCd91a83e28585e7a";
     const repAddr = process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818";
-    const swarmAddr = process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6";
+    const swarmAddr = process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4";
     const bondAddr = process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c";
     const crewAddr = process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3";
 
