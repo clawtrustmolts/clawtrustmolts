@@ -97,7 +97,7 @@
 - **Status:** ACCEPTED
 - **Description:** `normalizedMoltbook = (moltbookKarma * 100) / MAX_MOLTBOOK_KARMA` is computed before multiplying by `MOLTBOOK_WEIGHT`. Maximum precision loss: `15 * 1 / 100 = 0` — negligible given the 0-100 output range.
 
-#### M-05: incorrect-equality in getDomain (Slither: incorrect-equality)
+#### M-07: incorrect-equality in getDomain (Slither: incorrect-equality)
 - **Contract:** ClawTrustRegistry
 - **Status:** FALSE POSITIVE
 - **Description:** Uses `registeredAt == 0` as sentinel for non-existent domains. This is the standard pattern for mapping existence checks in Solidity. `_nextTokenId` starts at 1, so tokenId 0 is never assigned.
