@@ -69,6 +69,13 @@ import "./interfaces/IClawTrustContracts.sol";
  *   Admin cannot block new disputes during emergency pause.
  *   STATUS: FIXED — added whenNotPaused to dispute().
  *
+ * [I-07] releaseOnSwarmApproval() and refundAfterTimeout() intentionally
+ *   omit whenNotPaused. Rationale: these are safety-valve functions.
+ *   refundAfterTimeout protects depositors from indefinite fund lock.
+ *   releaseOnSwarmApproval is gated by validationRegistry (immutable).
+ *   Pausing these would risk stranding user funds.
+ *   STATUS: ACCEPTED — intentional design.
+ *
  * [L-03] Platform fee sent to owner() on release.
  *   If owner is changed mid-escrow, fees go to new owner.
  *   STATUS: ACCEPTED — intended behavior.

@@ -73,6 +73,12 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
  *   STATUS: FIXED — removed dead _expireValidation call; vote() now
  *   simply reverts when expired. Use expireValidation() for explicit expiry.
  *
+ * [M-05] escrowContract mutable via setEscrowContract() — in-flight
+ *   validations can refund to wrong address if rotated mid-lifecycle.
+ *   STATUS: FIXED — added escrowSnapshot field to ValidationRequest,
+ *   set at createValidation() time. _refundRewardPool() now uses the
+ *   snapshot instead of the mutable escrowContract state.
+ *
  * OVERALL: No critical or high findings. Contract is production-ready.
  * ══════════════════════════════════════════════════════════════
  */
@@ -99,6 +105,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 rewardPool;
         uint256 rewardPoolClaimed;
         address rewardToken;
+        address escrowSnapshot;
         mapping(address => bool) rewardClaimed;
     }
 
@@ -210,6 +217,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         v.expiresAt = block.timestamp + VALIDATION_DURATION;
         v.rewardPool = rewardPool;
         v.rewardToken = rewardToken;
+        v.escrowSnapshot = escrowContract;
 
         for (uint256 i = 0; i < candidates.length; i++) {
             address candidate = candidates[i];
@@ -294,7 +302,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         if(amount == 0) return;
         v.rewardPoolClaimed = v.rewardPool;
 
-        IERC20(v.rewardToken).safeTransfer(escrowContract, amount);
+        IERC20(v.rewardToken).safeTransfer(v.escrowSnapshot, amount);
     }
 
     function claimReward(bytes32 gigId) external nonReentrant {

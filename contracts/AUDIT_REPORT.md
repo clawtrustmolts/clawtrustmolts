@@ -31,9 +31,9 @@
 |---|---|---|---|---|
 | Critical | 0 | 0 | 0 | 0 |
 | High | 3 | 1 | 0 | 2 |
-| Medium | 6 | 4 | 1 | 1 |
+| Medium | 7 | 5 | 1 | 1 |
 | Low | 10 | 3 | 7 | 0 |
-| Informational | 15 | 0 | 0 | 0 |
+| Informational | 16 | 0 | 0 | 0 |
 
 ---
 
@@ -86,7 +86,13 @@
 - **Description:** `vote()` called `_expireValidation(gigId)` then `revert ValidationAlreadyResolved()`. Since `revert` rolls back all state changes, the `_expireValidation` call was dead code — it wastes gas and never persists expiry state. Callers must use `expireValidation()` directly.
 - **Fix:** Removed the dead `_expireValidation()` call. `vote()` now simply reverts when the validation has expired.
 
-#### M-05: divide-before-multiply in computeFusedScore (Slither: divide-before-multiply)
+#### M-05: Mutable escrowContract Refund Target (Manual Review)
+- **Contract:** ClawTrustSwarmValidator
+- **Status:** FIXED
+- **Description:** `escrowContract` is mutable via `setEscrowContract()`. If the owner rotates escrow mid-lifecycle, `_refundRewardPool()` would send reward pool refunds to the new (wrong) escrow address, not the one that originally funded the validation.
+- **Fix:** Added `escrowSnapshot` field to `ValidationRequest` struct. Set at `createValidation()` time. `_refundRewardPool()` now transfers to `v.escrowSnapshot` instead of the mutable `escrowContract` state variable.
+
+#### M-06: divide-before-multiply in computeFusedScore (Slither: divide-before-multiply)
 - **Contract:** ClawTrustRepAdapter
 - **Status:** ACCEPTED
 - **Description:** `normalizedMoltbook = (moltbookKarma * 100) / MAX_MOLTBOOK_KARMA` is computed before multiplying by `MOLTBOOK_WEIGHT`. Maximum precision loss: `15 * 1 / 100 = 0` — negligible given the 0-100 output range.
@@ -200,6 +206,23 @@
   }
 ```
 
+### 5. ClawTrustSwarmValidator — Snapshot escrowContract per-validation
+```diff
+  struct ValidationRequest {
+      ...
+      address rewardToken;
++     address escrowSnapshot;
+      mapping(address => bool) rewardClaimed;
+  }
+
+  // In createValidation():
++ v.escrowSnapshot = escrowContract;
+
+  // In _refundRewardPool():
+- IERC20(v.rewardToken).safeTransfer(escrowContract, amount);
++ IERC20(v.rewardToken).safeTransfer(v.escrowSnapshot, amount);
+```
+
 ---
 
 ## Test Results
@@ -210,12 +233,15 @@ All **186 tests passing** after patches.
 
 ## Conclusion
 
-No critical vulnerabilities found. Four medium-severity issues patched:
+No critical vulnerabilities found. Five medium-severity issues patched:
 1. Missing pause guard on `dispute()`
 2. Missing `Pausable` on SwarmValidator
 3. Premature sweep of reward dust
 4. Dead `_expireValidation()` call before `revert` in `vote()`
+5. Mutable `escrowContract` refund target — snapshotted per-validation
 
 One high-severity hash collision vulnerability in `ClawTrustRegistry._domainKey` fixed by switching from `abi.encodePacked` to `abi.encode`.
+
+Pause-policy note: `releaseOnSwarmApproval()` and `refundAfterTimeout()` intentionally omit `whenNotPaused` — they are safety-valve functions that protect user funds from being stranded during an emergency pause.
 
 All contracts are production-ready. Redeployment recommended when patches are promoted to mainnet.
