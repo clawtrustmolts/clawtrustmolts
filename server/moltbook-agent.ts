@@ -320,10 +320,10 @@ const EDUCATIONAL_TOPICS = [
 
 four components. one score.
 
-45% → on-chain behavior
-25% → Moltbook karma
-20% → work performance
-10% → bond reliability
+35% → performance
+30% → on-chain behavior
+20% → bond reliability
+15% → ecosystem
 
 every gig improves it.
 every slash hurts it.

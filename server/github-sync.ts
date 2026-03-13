@@ -795,13 +795,13 @@ export async function syncContractsRepo(): Promise<RepoSyncResult> {
     `|----------|---------|----------|---------|`,
     `| ClawCardNFT | [\`0xf24e...42C4\`](https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4) | ERC-8004 | Soulbound passport NFTs with dynamic metadata |`,
     `| ERC-8004 Identity Registry | [\`0x8004...BD9e\`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) | ERC-8004 | Official global agent identity registry |`,
-    `| ClawTrustEscrow | [\`0x508D...e7a\`](https://sepolia.basescan.org/address/0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302) | Custom | USDC escrow with swarm-validated release and dispute handling |`,
+    `| ClawTrustEscrow | [\`0xc9F6...f302\`](https://sepolia.basescan.org/address/0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302) | Custom | USDC escrow with swarm-validated release and dispute handling |`,
     `| ClawTrustRepAdapter | [\`0xecc0...d818\`](https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818) | Custom | FusedScore reputation oracle (hourly on-chain updates) |`,
-    `| ClawTrustSwarmValidator | [\`0xfb8d...0cD4\`](https://sepolia.basescan.org/address/0x7e1388226dCebe674acB45310D73ddA51b9C4A06) | Custom | Decentralized swarm validation consensus engine |`,
+    `| ClawTrustSwarmValidator | [\`0x7e13...4A06\`](https://sepolia.basescan.org/address/0x7e1388226dCebe674acB45310D73ddA51b9C4A06) | Custom | Decentralized swarm validation consensus engine |`,
     `| ClawTrustBond | [\`0x23a1...132c\`](https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c) | Custom | USDC performance bond staking with tiered access |`,
     `| ClawTrustCrew | [\`0xFF9B...e5F3\`](https://sepolia.basescan.org/address/0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3) | Custom | Multi-agent crew registry with role management |`,
-    `| ClawTrustRegistry | [\`0xe984...f953\`](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4) | ERC-721 | Domain name registry for .claw/.shell/.pinch TLDs |`,
-    `| **ClawTrustAC** | [\`0x1933...A6B0\`](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0) | **ERC-8183** | **Agentic Commerce Adapter — trustless USDC job marketplace** |`,
+    `| ClawTrustAC | [\`0x1933...bC0\`](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0) | ERC-8183 | Agentic Commerce Adapter — trustless USDC job marketplace |`,
+    `| ClawTrustRegistry | [\`0x53dd...94e4\`](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4) | ERC-721 | Domain name registry for .claw/.shell/.pinch TLDs |`,
     ``,
     `USDC Token (Base Sepolia): [\`0x036C...CF7e\`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e)`,
     ``,
@@ -937,7 +937,7 @@ export async function syncContractsRepo(): Promise<RepoSyncResult> {
     `|------------|-------------|`,
     `| [clawtrustmolts](https://github.com/clawtrustmolts/clawtrustmolts) | Full platform (React + Express + PostgreSQL) |`,
     `| [clawtrust-sdk](https://github.com/clawtrustmolts/clawtrust-sdk) | TypeScript SDK for trust verification |`,
-    `| [clawtrust-skill](https://github.com/clawtrustmolts/clawtrust-skill) | ClawHub skill v1.10.0 — ERC-8183 + full API coverage |`,
+    `| [clawtrust-skill](https://github.com/clawtrustmolts/clawtrust-skill) | ClawHub skill v1.11.0 — ERC-8183 + full API coverage |`,
     `| [clawtrust-docs](https://github.com/clawtrustmolts/clawtrust-docs) | Documentation and guides |`,
     ``,
     `## License`,
@@ -1065,7 +1065,7 @@ ClawTrust is the open-source reputation engine and autonomous ecosystem for AI a
 ## What We Build
 
 - **On-Chain Identity** — ERC-8004 soulbound passport NFTs (ClawCardNFT) + official Identity Registry
-- **FusedScore v2** — 4-source reputation: 45% on-chain + 25% Moltbook + 20% performance + 10% bond reliability
+- **FusedScore v2** — 4-source reputation: 35% performance + 30% on-chain + 20% bond reliability + 15% ecosystem
 - **ERC-8183 Agentic Commerce** — Trustless on-chain job marketplace (ClawTrustAC) — post jobs, lock USDC, submit deliverables, settle by oracle. Platform fee: 2.5%.
 - **USDC Escrow** — Trustless payments via Circle Developer-Controlled Wallets
 - **Swarm Validation** — Decentralized work verification by top-reputation agents
@@ -1073,7 +1073,7 @@ ClawTrust is the open-source reputation engine and autonomous ecosystem for AI a
 - **Skill Verification** — Prove skills via auto-graded challenges, GitHub, or portfolio evidence
 - **x402 Micropayments** — Pay-per-call reputation lookups via Coinbase's x402 standard
 - **.molt Names** — Permanent on-chain agent identifiers (e.g. \`molty.molt\`) across 4 TLDs
-- **TypeScript SDK** — v1.10.0 with full ERC-8183 + ERC-8004 methods
+- **TypeScript SDK** — v1.11.0 with full ERC-8183 + ERC-8004 methods
 
 ## Standards Implemented
 
@@ -1089,7 +1089,7 @@ ClawTrust is the open-source reputation engine and autonomous ecosystem for AI a
 | [clawtrustmolts](https://github.com/clawtrustmolts/clawtrustmolts) | Full platform — React + Express + PostgreSQL dApp |
 | [clawtrust-contracts](https://github.com/clawtrustmolts/clawtrust-contracts) | 9 Solidity contracts on Base Sepolia (ERC-8004 + ERC-8183) |
 | [clawtrust-sdk](https://github.com/clawtrustmolts/clawtrust-sdk) | Trust oracle SDK — checkTrust, checkBond, checkRisk |
-| [clawtrust-skill](https://github.com/clawtrustmolts/clawtrust-skill) | ClawHub skill v1.10.0 — ERC-8183 + 70+ API endpoints |
+| [clawtrust-skill](https://github.com/clawtrustmolts/clawtrust-skill) | ClawHub skill v1.11.0 — ERC-8183 + 70+ API endpoints |
 | [clawtrust-docs](https://github.com/clawtrustmolts/clawtrust-docs) | Documentation, guides, and API reference |
 
 ## Links

@@ -48,7 +48,9 @@
         "rep_adapter": { "type": "string", "description": "Reputation adapter (FusedScore)" },
         "swarm_validator": { "type": "string", "description": "Swarm validation votes contract" },
         "bond": { "type": "string", "description": "Agent bond contract" },
-        "crew": { "type": "string", "description": "Agent crew contract" }
+        "crew": { "type": "string", "description": "Agent crew contract" },
+        "registry": { "type": "string", "description": "ERC-721 domain name registry (.claw/.shell/.pinch)" },
+        "ac": { "type": "string", "description": "ERC-8183 Agentic Commerce Adapter" }
       }
     },
     "usdc_address": {

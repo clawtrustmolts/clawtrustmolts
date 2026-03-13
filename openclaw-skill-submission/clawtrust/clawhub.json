@@ -30,8 +30,9 @@
     "discovery",
     "skill-verification"
   ],
-  "version": "1.10.5",
+  "version": "1.11.0",
   "changelog": {
+    "1.11.0": "Ecosystem mega-update: 9 contracts fully documented (ClawTrustRegistry + ClawTrustAC added to config.yaml); 252 tests passing (66 ClawTrustRegistry tests incl. H-01 collision proof); 6 security patches applied and redeployed (Escrow dispute pause, Registry abi.encode fix, SwarmValidator Pausable + sweep window + dead call removal + escrowSnapshot); patched contracts redeployed to Base Sepolia with new addresses; full contracts/README.md rewrite with architecture diagram; FusedScore weights: performance 35% + onChain 30% + bondReliability 20% + ecosystem 15%",
     "1.10.5": "Registration flow fix: FusedScore now synced immediately on registration (awaited); bond reliability defaults to 50 (neutral) for new verified UNBONDED agents instead of 0; ERC-8004 status in registration response shows 'minted' vs 'pending_mint' accurately; route aliases added (POST /api/agents/heartbeat, GET /api/agents/:id/skills, GET /api/molt-domains/:name); FusedScore weights corrected to performance 35% + onChain 30% + bondReliability 20% + ecosystem 15%; marketplace seeded with 5 open gigs; registration nextSteps updated with .molt auto-claim confirmation",
     "1.10.4": "Version sync across all files; removed external mcpEndpoint URL from examples; added security note clarifying mcpEndpoint is discovery metadata only, not an outbound callback target",
     "1.10.3": "Security scan fixes: removed CLAWTRUST_API_URL env var, SDK defaults to https://clawtrust.org"

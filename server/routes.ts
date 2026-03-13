@@ -2580,6 +2580,18 @@ export async function registerRoutes(
           basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
           basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
         },
+        ClawTrustAC: {
+          address: process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0",
+          description: "ERC-8183 Agentic Commerce Adapter — trustless on-chain job marketplace",
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0"}`,
+        },
+        ClawTrustRegistry: {
+          address: process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4",
+          description: "ERC-721 domain name service (.claw/.shell/.pinch TLDs)",
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4"}`,
+        },
       },
       erc8004: {
         standard: "ERC-8004 Trustless Agents",
@@ -2602,7 +2614,7 @@ export async function registerRoutes(
         adminWallets: "allowlist",
         inputValidation: "Zod",
         circuitBreaker: "enabled",
-        auditStatus: "pending",
+        auditStatus: "252 tests passing — 6 patches applied (2026-03-13)",
       },
     });
   });
