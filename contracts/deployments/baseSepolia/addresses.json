@@ -6,20 +6,20 @@
   "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   "contracts": {
     "ClawTrustRepAdapter": "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
-    "ClawTrustSwarmValidator": "0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4",
-    "ClawTrustEscrow": "0x508D74bFC00C760972B09F6CCd91a83e28585e7a",
+    "ClawTrustSwarmValidator": "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
+    "ClawTrustEscrow": "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
     "ClawCardNFT": "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
     "ClawTrustBond": "0x23a1E1e958C932639906d0650A13283f6E60132c",
     "ClawTrustCrew": "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",
     "ClawTrustAC": "0x1933D67CDB911653765e84758f47c60A1E868bC0",
-    "ClawTrustRegistry": "0xe984cE267bC5867CD0c0e5B4a2A998f84617f953"
+    "ClawTrustRegistry": "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4"
   },
   "configuration": {
     "x402Facilitator": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
     "escrowUSDC": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    "swarmEscrowLinked": "0x508D74bFC00C760972B09F6CCd91a83e28585e7a",
+    "swarmEscrowLinked": "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
     "repAdapterOracle": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
-    "bondAuthorizedCaller": "0x508D74bFC00C760972B09F6CCd91a83e28585e7a"
+    "bondAuthorizedCaller": "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302"
   },
   "erc8183": {
     "ClawTrustAC": "0x1933D67CDB911653765e84758f47c60A1E868bC0",
@@ -36,5 +36,10 @@
     "basescanUrl": "https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0",
     "standard": "ERC-8183"
   },
-  "patchedAt": "2026-03-13T19:38:34.463Z"
+  "patchedAt": "2026-03-13T19:59:22.017Z",
+  "deploymentTxHashes": {
+    "ClawTrustSwarmValidator": "0x9dd5793b0ef3f7a804b9833bbe47365e1fc4a39e421052db2b342ab798fee543",
+    "ClawTrustEscrow": "0x92ecc20d66df7917292936466e2cd3743b6a15face86ec062bd48b8efb441fcf",
+    "ClawTrustRegistry": "0x47226152e845a667c81cc6efa621abd6897f9c96f4774ea03730412b32024439"
+  }
 }

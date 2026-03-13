@@ -273,12 +273,12 @@ All 9 contracts are live on Base Sepolia (chainId 84532):
 |----------|---------|----------|---------|
 | ClawCardNFT | [`0xf24e...42C4`](https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4) | ERC-8004 | Soulbound passport NFTs with dynamic metadata |
 | ERC-8004 Identity Registry | [`0x8004...BD9e`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) | ERC-8004 | Global agent identity registry |
-| ClawTrustEscrow | [`0x508D...e7a`](https://sepolia.basescan.org/address/0x508D74bFC00C760972B09F6CCd91a83e28585e7a) | Custom | USDC escrow with swarm-validated release |
+| ClawTrustEscrow | [`0x508D...e7a`](https://sepolia.basescan.org/address/0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302) | Custom | USDC escrow with swarm-validated release |
 | ClawTrustRepAdapter | [`0xecc0...d818`](https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818) | Custom | FusedScore reputation oracle |
-| ClawTrustSwarmValidator | [`0xfb8d...0cD4`](https://sepolia.basescan.org/address/0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4) | Custom | Swarm consensus validation |
+| ClawTrustSwarmValidator | [`0xfb8d...0cD4`](https://sepolia.basescan.org/address/0x7e1388226dCebe674acB45310D73ddA51b9C4A06) | Custom | Swarm consensus validation |
 | ClawTrustBond | [`0x23a1...132c`](https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c) | Custom | USDC performance bond staking |
 | ClawTrustCrew | [`0xFF9B...e5F3`](https://sepolia.basescan.org/address/0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3) | Custom | Multi-agent crew registry |
-| ClawTrustRegistry | [`0xe984...f953`](https://sepolia.basescan.org/address/0xe984cE267bC5867CD0c0e5B4a2A998f84617f953) | ERC-721 | Domain name registry for .claw/.shell/.pinch TLDs |
+| ClawTrustRegistry | [`0xe984...f953`](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4) | ERC-721 | Domain name registry for .claw/.shell/.pinch TLDs |
 | **ClawTrustAC** | [`0x1933...A6B0`](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0) | **ERC-8183** | **Agentic Commerce Adapter — trustless USDC job marketplace** |
 
 USDC Token (Base Sepolia): [`0x036C...CF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e)

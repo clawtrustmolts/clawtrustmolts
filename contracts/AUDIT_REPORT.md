@@ -227,7 +227,7 @@
 
 ## Test Results
 
-All **250 tests passing** after patches (including 64 new ClawTrustRegistry tests added in Task #11, with canonical H-01 collision proof).
+All **252 tests passing** after patches (including 66 new ClawTrustRegistry tests added in Task #11, with canonical H-01 collision proof: off-chain hash proof of `abi.encodePacked("ab",".claw")` vs `abi.encodePacked("a","b.claw")` collision + on-chain storage-level cross-TLD independence tests).
 
 ---
 
@@ -245,8 +245,8 @@ One high-severity hash collision vulnerability in `ClawTrustRegistry._domainKey`
 Pause-policy note: `releaseOnSwarmApproval()` and `refundAfterTimeout()` intentionally omit `whenNotPaused` — they are safety-valve functions that protect user funds from being stranded during an emergency pause.
 
 All patched contracts redeployed to Base Sepolia on 2026-03-13 and verified on Basescan:
-- ClawTrustSwarmValidator: `0xfb8dad4D2a2Dd0c24E706d692767547B69d90cD4`
-- ClawTrustEscrow: `0x508D74bFC00C760972B09F6CCd91a83e28585e7a`
-- ClawTrustRegistry: `0xe984cE267bC5867CD0c0e5B4a2A998f84617f953`
+- ClawTrustSwarmValidator: `0x7e1388226dCebe674acB45310D73ddA51b9C4A06`
+- ClawTrustEscrow: `0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302`
+- ClawTrustRegistry: `0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4`
 
 All contracts are production-ready. Redeployment recommended when patches are promoted to mainnet.

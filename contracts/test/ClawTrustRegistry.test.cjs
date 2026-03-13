@@ -407,6 +407,42 @@ describe("ClawTrustRegistry", function () {
       const encoded2 = ethers.keccak256(abiCoder.encode(["string", "string"], ["a", "b.claw"]));
       expect(encoded1).to.not.equal(encoded2, "abi.encode must NOT collide — H-01 fix");
     });
+
+    it("should store boundary-collision pair independently on-chain (cross-TLD)", async function () {
+      await registry.connect(registrar).register("lobster", ".claw", user1.address, 0);
+      await registry.connect(registrar).register("lobster", ".shell", user2.address, 0);
+
+      const r1 = await registry.resolve("lobster", ".claw");
+      const r2 = await registry.resolve("lobster", ".shell");
+      expect(r1).to.equal(user1.address);
+      expect(r2).to.equal(user2.address);
+
+      const d1 = await registry.getDomain(1);
+      const d2 = await registry.getDomain(2);
+      expect(d1.name).to.equal("lobster");
+      expect(d1.tld).to.equal(".claw");
+      expect(d2.name).to.equal("lobster");
+      expect(d2.tld).to.equal(".shell");
+
+      const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+      const key1 = ethers.keccak256(abiCoder.encode(["string", "string"], ["lobster", ".claw"]));
+      const key2 = ethers.keccak256(abiCoder.encode(["string", "string"], ["lobster", ".shell"]));
+      expect(key1).to.not.equal(key2, "abi.encode produces distinct keys for same name + different TLDs");
+    });
+
+    it("should keep names with shared prefixes distinct across all TLDs", async function () {
+      await registry.connect(registrar).register("clawbot", ".claw", user1.address, 0);
+      await registry.connect(registrar).register("clawbot", ".shell", user2.address, 0);
+      await registry.connect(registrar).register("clawbot", ".pinch", owner.address, 0);
+
+      expect(await registry.resolve("clawbot", ".claw")).to.equal(user1.address);
+      expect(await registry.resolve("clawbot", ".shell")).to.equal(user2.address);
+      expect(await registry.resolve("clawbot", ".pinch")).to.equal(owner.address);
+
+      expect(await registry.isAvailable("clawbot", ".claw")).to.be.false;
+      expect(await registry.isAvailable("clawbot", ".shell")).to.be.false;
+      expect(await registry.isAvailable("clawbot", ".pinch")).to.be.false;
+    });
   });
 
   describe("ERC-721 transfer syncs domain owner", function () {
