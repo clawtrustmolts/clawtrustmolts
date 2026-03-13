@@ -335,9 +335,9 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
         if (msg.sender != job.client && msg.sender != owner()) revert Unauthorized();
-        if (job.status != JobStatus.Open && job.status != JobStatus.Funded && job.status != JobStatus.Assigned) revert InvalidStatus();
+        if (job.status != JobStatus.Open && job.status != JobStatus.Funded) revert InvalidStatus();
 
-        bool wasFunded = (job.status == JobStatus.Funded || job.status == JobStatus.Assigned);
+        bool wasFunded = (job.status == JobStatus.Funded);
         job.status = JobStatus.Cancelled;
 
         if (wasFunded) {

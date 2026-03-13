@@ -35,9 +35,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *   STATUS: FIXED — upgraded to Ownable2Step.
  *
  * [L-02] ETH reward transfers use low-level .call{value:}("").
- *   If recipient is a contract without receive(), transfer reverts
- *   with TransferFailed. Validator reward goes unclaimed.
- *   STATUS: ACCEPTED — validators are expected to be EOAs.
+ *   STATUS: FIXED — ETH paths removed; ERC-20 only (SafeERC20).
  *
  * [L-03] Reward per validator computed as rewardPool / votesFor.
  *   Integer division may leave dust. sweepResidualRewards() allows
@@ -175,19 +173,16 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
         uint256 threshold,
         uint256 rewardPool,
         address rewardToken
-    ) external payable onlyEscrowOrOwner {
+    ) external onlyEscrowOrOwner {
         if(validationExists[gigId]) revert ValidationAlreadyExists();
         if(poster == address(0)) revert InvalidAddress();
         if(candidates.length > MAX_CANDIDATES) revert TooManyCandidates();
         if(candidates.length < threshold) revert InsufficientCandidates();
         if(threshold == 0) revert InvalidThreshold();
+        if(rewardToken == address(0)) revert InvalidAddress();
 
-        if(rewardToken == address(0)) {
-            if(msg.value != rewardPool) revert InsufficientRewardPool();
-        } else {
-            if(rewardPool > 0) {
-                IERC20(rewardToken).safeTransferFrom(msg.sender, address(this), rewardPool);
-            }
+        if(rewardPool > 0) {
+            IERC20(rewardToken).safeTransferFrom(msg.sender, address(this), rewardPool);
         }
 
         ValidationRequest storage v = validations[gigId];
@@ -285,12 +280,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
         if(amount == 0) return;
         v.rewardPoolClaimed = v.rewardPool;
 
-        if(v.rewardToken == address(0)) {
-            (bool success, ) = escrowContract.call{value: amount}("");
-            if(!success) revert TransferFailed();
-        } else {
-            IERC20(v.rewardToken).safeTransfer(escrowContract, amount);
-        }
+        IERC20(v.rewardToken).safeTransfer(escrowContract, amount);
     }
 
     function claimReward(bytes32 gigId) external nonReentrant {
@@ -314,12 +304,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
         v.rewardClaimed[msg.sender] = true;
         v.rewardPoolClaimed += rewardPerValidator;
 
-        if(v.rewardToken == address(0)) {
-            (bool success, ) = msg.sender.call{value: rewardPerValidator}("");
-            if(!success) revert TransferFailed();
-        } else {
-            IERC20(v.rewardToken).safeTransfer(msg.sender, rewardPerValidator);
-        }
+        IERC20(v.rewardToken).safeTransfer(msg.sender, rewardPerValidator);
 
         emit RewardClaimed(gigId, msg.sender, rewardPerValidator);
     }
@@ -415,12 +400,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
 
         v.rewardPoolClaimed += residual;
 
-        if(v.rewardToken == address(0)) {
-            (bool success, ) = to.call{value: residual}("");
-            if(!success) revert TransferFailed();
-        } else {
-            IERC20(v.rewardToken).safeTransfer(to, residual);
-        }
+        IERC20(v.rewardToken).safeTransfer(to, residual);
 
         emit ResidualRewardSwept(gigId, to, residual);
     }

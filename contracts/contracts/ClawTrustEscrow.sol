@@ -39,10 +39,8 @@ import "./interfaces/IClawTrustContracts.sol";
  *   STATUS: PASS.
  *
  * [M-01] ETH transfers use low-level .call{value:}("").
- *   If payee is a contract without a receive/fallback, transfer reverts
- *   cleanly via TransferFailed. No stuck-funds risk for EOA payees.
- *   STATUS: ACCEPTED — revert on failure is correct behavior. Payees
- *   are expected to be EOAs or contracts with receive().
+ *   STATUS: FIXED — ETH escrow path (lockETH) removed; USDC-only now.
+ *   All ETH branches in _releaseEscrow/_doRefund also removed.
  *
  * [L-01] Ownable (single-step) used instead of Ownable2Step.
  *   STATUS: FIXED — upgraded to Ownable2Step.
@@ -84,7 +82,6 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         address depositor;
         address payee;
         uint256 amount;
-        bool isUsdc;
         EscrowStatus status;
         uint256 createdAt;
         uint256 resolvedAt;
@@ -103,7 +100,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     uint256 public constant ESCROW_TIMEOUT = 90 days;
     uint256 public constant MIN_ESCROW_AMOUNT = 1000;
 
-    event EscrowCreated(bytes32 indexed gigId, address indexed depositor, uint256 amount, bool isUsdc);
+    event EscrowCreated(bytes32 indexed gigId, address indexed depositor, uint256 amount);
     event EscrowLocked(bytes32 indexed gigId);
     event EscrowReleased(bytes32 indexed gigId, address indexed payee, uint256 amount, uint256 fee);
     event EscrowRefunded(bytes32 indexed gigId, address indexed depositor, uint256 amount);
@@ -120,7 +117,6 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     error InvalidStatus();
     error Unauthorized();
     error EscrowNotTimedOut();
-    error TransferFailed();
     error SwarmNotApproved();
     error FeeTooHigh();
     error SelfDealingNotAllowed();
@@ -154,7 +150,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         _validateLockParams(gigId, payee, amount);
 
         usdc.safeTransferFrom(msg.sender, address(this), amount);
-        _createEscrow(gigId, msg.sender, payee, amount, true);
+        _createEscrow(gigId, msg.sender, payee, amount);
     }
 
     /**
@@ -174,7 +170,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         if(poster == payee) revert SelfDealingNotAllowed();
 
         usdc.safeTransferFrom(msg.sender, address(this), amount);
-        _createEscrow(gigId, poster, payee, amount, true);
+        _createEscrow(gigId, poster, payee, amount);
     }
 
     // ─── Release / Refund ──────────────────────────────────────────
@@ -265,22 +261,20 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         bytes32 gigId,
         address depositor,
         address payee,
-        uint256 amount,
-        bool isUsdc
+        uint256 amount
     ) internal {
         escrows[gigId] = Escrow({
             gigId: gigId,
             depositor: depositor,
             payee: payee,
             amount: amount,
-            isUsdc: isUsdc,
             status: EscrowStatus.Locked,
             createdAt: block.timestamp,
             resolvedAt: 0
         });
         escrowExists[gigId] = true;
 
-        emit EscrowCreated(gigId, depositor, amount, isUsdc);
+        emit EscrowCreated(gigId, depositor, amount);
         emit EscrowLocked(gigId);
     }
 
@@ -291,18 +285,9 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         uint256 fee = (escrow.amount * platformFeeRate) / FEE_DENOMINATOR;
         uint256 payout = escrow.amount - fee;
 
-        if (escrow.isUsdc) {
-            usdc.safeTransfer(escrow.payee, payout);
-            if (fee > 0) {
-                usdc.safeTransfer(owner(), fee);
-            }
-        } else {
-            (bool sent, ) = escrow.payee.call{value: payout}("");
-            if(!sent) revert TransferFailed();
-            if (fee > 0) {
-                (bool feeSent, ) = owner().call{value: fee}("");
-                if(!feeSent) revert TransferFailed();
-            }
+        usdc.safeTransfer(escrow.payee, payout);
+        if (fee > 0) {
+            usdc.safeTransfer(owner(), fee);
         }
 
         emit EscrowReleased(escrow.gigId, escrow.payee, payout, fee);
@@ -312,12 +297,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         escrow.status = EscrowStatus.Refunded;
         escrow.resolvedAt = block.timestamp;
 
-        if (escrow.isUsdc) {
-            usdc.safeTransfer(escrow.depositor, escrow.amount);
-        } else {
-            (bool sent, ) = escrow.depositor.call{value: escrow.amount}("");
-            if(!sent) revert TransferFailed();
-        }
+        usdc.safeTransfer(escrow.depositor, escrow.amount);
 
         emit EscrowRefunded(gigId, escrow.depositor, escrow.amount);
     }
