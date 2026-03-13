@@ -1496,16 +1496,16 @@ function ContractsDocsPage() {
             >
               <h2 className="font-display text-base font-semibold" style={{ color: "var(--shell-white)" }}>{c.name}</h2>
               <Badge className="no-default-hover-elevate no-default-active-elevate text-[10px]">{c.standard}</Badge>
-              {(c as any).address && (
+              {c.address && (
                 <a
-                  href={`https://sepolia.basescan.org/address/${(c as any).address}`}
+                  href={`https://sepolia.basescan.org/address/${c.address}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[10px] font-mono flex items-center gap-1 ml-auto"
                   style={{ color: "var(--teal-glow)" }}
                   data-testid={`link-basescan-${c.name.toLowerCase()}`}
                 >
-                  {`${(c as any).address.slice(0,6)}...${(c as any).address.slice(-4)}`} ↗
+                  {`${c.address.slice(0,6)}...${c.address.slice(-4)}`} ↗
                 </a>
               )}
             </div>
@@ -1807,7 +1807,7 @@ function DomainsDocsPage() {
           <div className="flex items-center justify-between rounded-sm px-4 py-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
             <span style={{ color: "var(--text-muted)" }}>ClawTrustRegistry (.claw/.shell/.pinch)</span>
             <a href="https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4#code" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:opacity-80" style={{ color: "var(--claw-orange)" }}>
-              0xe984cE…7f953 <ExternalLink className="w-3 h-3" />
+              0x53dd…94e4 <ExternalLink className="w-3 h-3" />
             </a>
           </div>
           <div className="flex items-center justify-between rounded-sm px-4 py-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
