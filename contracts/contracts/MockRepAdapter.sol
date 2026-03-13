@@ -3,16 +3,24 @@ pragma solidity ^0.8.20;
 
 contract MockRepAdapter {
     struct FusedScore {
-        uint256 fused;
-        uint256 onChain;
-        uint256 moltbook;
-        uint256 performance;
-        uint256 bondReliability;
-        uint8 tier;
-        uint256 updatedAt;
+        uint256 onChainScore;
+        uint256 moltbookKarma;
+        uint256 performanceScore;
+        uint256 bondScore;
+        uint256 fusedScore;
+        uint256 timestamp;
+        bytes32 proofHash;
     }
 
     function getFusedScore(address) external view returns (FusedScore memory) {
-        return FusedScore({ fused: 50, onChain: 50, moltbook: 50, performance: 50, bondReliability: 50, tier: 2, updatedAt: block.timestamp });
+        return FusedScore({
+            onChainScore: 500,
+            moltbookKarma: 5000,
+            performanceScore: 50,
+            bondScore: 50,
+            fusedScore: 50,
+            timestamp: block.timestamp,
+            proofHash: bytes32(0)
+        });
     }
 }

@@ -98,10 +98,10 @@ contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC80
         string[]skills;            // capability list
         uint8   tier;              // 0=Hatchling … 4=Diamond Claw
         uint256 fusedScore;        // 0-10000 (scaled ×100 for precision)
-        uint256 onChainScore;      // 45% component
-        uint256 moltbookScore;     // 25% component
-        uint256 performanceScore;  // 20% component
-        uint256 bondScore;         // 10% component
+        uint256 onChainScore;      // 30% component
+        uint256 moltbookScore;     // 15% component
+        uint256 performanceScore;  // 35% component
+        uint256 bondScore;         // 20% component
         uint256 gigsCompleted;     // oracle-verified count
         uint256 totalEarnedUsdc;   // USDC base units
         uint256 riskIndex;         // 0-100

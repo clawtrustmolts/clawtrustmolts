@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./interfaces/IERC8004Reputation.sol";
@@ -12,10 +12,10 @@ import "./interfaces/IERC8004Reputation.sol";
  *         Implements IERC8004Reputation and supports ERC-8004 feedback model.
  *
  *         FusedScore formula (sum = 100):
- *           onChain        45%
- *           moltbookKarma  25%
- *           performance    20%
- *           bondReliability 10%
+ *           performance    35%
+ *           onChain        30%
+ *           bondReliability 20%
+ *           moltbook/ecosystem 15%
  */
 /*
  * ══════════════════════════════════════════════════════════════
@@ -45,7 +45,7 @@ import "./interfaces/IERC8004Reputation.sol";
  *   STATUS: PASS.
  *
  * [L-01] Ownable (single-step) used instead of Ownable2Step.
- *   STATUS: ACCEPTED — owner is a known deployer wallet.
+ *   STATUS: FIXED — upgraded to Ownable2Step.
  *
  * [L-02] Batch update silently skips rate-limited agents (continue).
  *   Could lead to partial updates without notification to caller.
@@ -68,11 +68,11 @@ import "./interfaces/IERC8004Reputation.sol";
  * OVERALL: No critical or high findings. Contract is production-ready.
  * ══════════════════════════════════════════════════════════════
  */
-contract ClawTrustRepAdapter is Ownable, Pausable, ReentrancyGuard, IERC8004Reputation {
-    uint256 public constant ON_CHAIN_WEIGHT       = 45;
-    uint256 public constant MOLTBOOK_WEIGHT       = 25;
-    uint256 public constant PERFORMANCE_WEIGHT    = 20;
-    uint256 public constant BOND_WEIGHT           = 10;
+contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC8004Reputation {
+    uint256 public constant PERFORMANCE_WEIGHT    = 35;
+    uint256 public constant ON_CHAIN_WEIGHT       = 30;
+    uint256 public constant BOND_WEIGHT           = 20;
+    uint256 public constant MOLTBOOK_WEIGHT       = 15;
     uint256 public constant WEIGHT_DENOMINATOR    = 100;
 
     uint256 public constant MAX_ON_CHAIN_SCORE    = 1000;

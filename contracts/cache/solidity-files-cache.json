@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/home/runner/workspace/contracts/contracts/ClawCardNFT.sol": {
-      "lastModificationDate": 1773314992368,
-      "contentHash": "f5a43cdc5f6e4681f959b3a79a0a5355",
+      "lastModificationDate": 1773426525887,
+      "contentHash": "ed40430817f8da3805300266654faf9d",
       "sourceName": "contracts/ClawCardNFT.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1132,8 +1132,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustSwarmValidator.sol": {
-      "lastModificationDate": 1773315005252,
-      "contentHash": "5b51af8dd3b62ac07f0bd1e19d057e0b",
+      "lastModificationDate": 1773426631702,
+      "contentHash": "0fb649bb3ce6d89de3f4270c7e54ef60",
       "sourceName": "contracts/ClawTrustSwarmValidator.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1161,7 +1161,7 @@
         }
       },
       "imports": [
-        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/access/Ownable2Step.sol",
         "@openzeppelin/contracts/token/ERC20/IERC20.sol",
         "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
         "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
@@ -1214,8 +1214,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustEscrow.sol": {
-      "lastModificationDate": 1773314703909,
-      "contentHash": "79063bc6b3053309a7ff8e8cd5583666",
+      "lastModificationDate": 1773426632808,
+      "contentHash": "dce629b9d0183a9437eeee88d05fa95f",
       "sourceName": "contracts/ClawTrustEscrow.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1246,20 +1246,20 @@
         "@openzeppelin/contracts/token/ERC20/IERC20.sol",
         "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
         "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
-        "@openzeppelin/contracts/access/Ownable.sol",
-        "@openzeppelin/contracts/utils/Pausable.sol"
+        "@openzeppelin/contracts/access/Ownable2Step.sol",
+        "@openzeppelin/contracts/utils/Pausable.sol",
+        "./interfaces/IClawTrustContracts.sol"
       ],
       "versionPragmas": [
         "^0.8.20"
       ],
       "artifacts": [
-        "ClawTrustEscrow",
-        "ISwarmValidator"
+        "ClawTrustEscrow"
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustRepAdapter.sol": {
-      "lastModificationDate": 1773314737821,
-      "contentHash": "601935d8813e2fe58848a1c4887b07d0",
+      "lastModificationDate": 1773426619609,
+      "contentHash": "2e33a248e342e9b998a34c5c9e79b3dc",
       "sourceName": "contracts/ClawTrustRepAdapter.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1287,7 +1287,7 @@
         }
       },
       "imports": [
-        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/access/Ownable2Step.sol",
         "@openzeppelin/contracts/utils/Pausable.sol",
         "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
         "./interfaces/IERC8004Reputation.sol"
@@ -1337,8 +1337,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustCrew.sol": {
-      "lastModificationDate": 1773314685098,
-      "contentHash": "a2cbd0cd9344f00e9ac8a1cfec280cae",
+      "lastModificationDate": 1773426634085,
+      "contentHash": "241f544995060ba997d30b5d2a4ecc41",
       "sourceName": "contracts/ClawTrustCrew.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1366,7 +1366,7 @@
         }
       },
       "imports": [
-        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/access/Ownable2Step.sol",
         "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
       ],
       "versionPragmas": [
@@ -1377,8 +1377,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustBond.sol": {
-      "lastModificationDate": 1773314668952,
-      "contentHash": "a80f388b51444d159daffc7212dbcb92",
+      "lastModificationDate": 1773426627116,
+      "contentHash": "adfbe900b77d9bc6281f83cc5764ace1",
       "sourceName": "contracts/ClawTrustBond.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1409,7 +1409,7 @@
         "@openzeppelin/contracts/token/ERC20/IERC20.sol",
         "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
         "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
-        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/access/Ownable2Step.sol",
         "@openzeppelin/contracts/utils/Pausable.sol"
       ],
       "versionPragmas": [
@@ -1456,43 +1456,6 @@
       ],
       "artifacts": [
         "MockERC20"
-      ]
-    },
-    "/home/runner/workspace/contracts/contracts/interfaces/IERC8004Validation.sol": {
-      "lastModificationDate": 1771030474897,
-      "contentHash": "44e67e27a3e5db2693c6350a0706cdfe",
-      "sourceName": "contracts/interfaces/IERC8004Validation.sol",
-      "solcConfig": {
-        "version": "0.8.20",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "viaIR": true,
-          "evmVersion": "paris",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [],
-      "versionPragmas": [
-        "^0.8.20"
-      ],
-      "artifacts": [
-        "IERC8004Validation"
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustRegistry.sol": {
@@ -1616,8 +1579,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustAC.sol": {
-      "lastModificationDate": 1773314651886,
-      "contentHash": "7b5199bf7e1684be02379234035bef77",
+      "lastModificationDate": 1773426609087,
+      "contentHash": "bb8624474dcc130eb4129ddfd6f41612",
       "sourceName": "contracts/ClawTrustAC.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1661,8 +1624,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/interfaces/IClawTrustContracts.sol": {
-      "lastModificationDate": 1773172328950,
-      "contentHash": "692230062297351ce70d26a493d96d93",
+      "lastModificationDate": 1773426456568,
+      "contentHash": "b02b0ba0ccfec4bc9ff80f8aaeae92db",
       "sourceName": "contracts/interfaces/IClawTrustContracts.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1696,12 +1659,13 @@
       "artifacts": [
         "IClawCardNFT",
         "IClawTrustBond",
-        "IClawTrustRepAdapter"
+        "IClawTrustRepAdapter",
+        "ISwarmValidator"
       ]
     },
     "/home/runner/workspace/contracts/contracts/interfaces/IERC8183.sol": {
-      "lastModificationDate": 1773172325426,
-      "contentHash": "8358da1cf34a7ff80cd9e8e43b52e361",
+      "lastModificationDate": 1773426582523,
+      "contentHash": "14a176e5f71f8ffcb10e4b0d7b8544eb",
       "sourceName": "contracts/interfaces/IERC8183.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1737,8 +1701,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/MockBond.sol": {
-      "lastModificationDate": 1773172473731,
-      "contentHash": "06cf837cbeac9d1f03358aa2d949e1a3",
+      "lastModificationDate": 1773426667415,
+      "contentHash": "cd229bcc4e10b33ef2de800d0d2eeaa5",
       "sourceName": "contracts/MockBond.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1811,8 +1775,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/MockRepAdapter.sol": {
-      "lastModificationDate": 1773172485331,
-      "contentHash": "3039c2a39b4c89566c36b88968d7f3df",
+      "lastModificationDate": 1773426673324,
+      "contentHash": "0a913115e01df8c332669ccfe7b9437e",
       "sourceName": "contracts/MockRepAdapter.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1845,6 +1809,43 @@
       ],
       "artifacts": [
         "MockRepAdapter"
+      ]
+    },
+    "/home/runner/workspace/contracts/contracts/interfaces/IClawTrustSwarmValidator.sol": {
+      "lastModificationDate": 1773426467282,
+      "contentHash": "43a7e5170bc6f7ee7a917edd45b33a42",
+      "sourceName": "contracts/interfaces/IClawTrustSwarmValidator.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IClawTrustSwarmValidator"
       ]
     }
   }

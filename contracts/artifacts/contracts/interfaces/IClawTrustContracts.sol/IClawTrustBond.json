@@ -14,26 +14,29 @@
       "name": "getBond",
       "outputs": [
         {
-          "components": [
-            {
-              "internalType": "uint256",
-              "name": "deposited",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "locked",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "performanceScore",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct IClawTrustBond.Bond",
-          "name": "",
-          "type": "tuple"
+          "internalType": "uint256",
+          "name": "totalDeposited",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "available",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "locked",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "lastSlashTimestamp",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "performanceScore",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",

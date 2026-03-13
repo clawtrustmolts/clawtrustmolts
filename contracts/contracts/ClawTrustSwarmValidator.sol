@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -32,7 +32,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *   STATUS: PASS.
  *
  * [L-01] Ownable (single-step) used instead of Ownable2Step.
- *   STATUS: ACCEPTED — owner is a known deployer wallet.
+ *   STATUS: FIXED — upgraded to Ownable2Step.
  *
  * [L-02] ETH reward transfers use low-level .call{value:}("").
  *   If recipient is a contract without receive(), transfer reverts
@@ -64,7 +64,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * OVERALL: No critical or high findings. Contract is production-ready.
  * ══════════════════════════════════════════════════════════════
  */
-contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
+contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     enum VoteType { None, Approve, Reject }
@@ -428,6 +428,4 @@ contract ClawTrustSwarmValidator is Ownable, ReentrancyGuard {
     function computeRewardPool(uint256 gigBudget, uint256 rewardRate, uint256 denominator) external pure returns (uint256) {
         return (gigBudget * rewardRate) / denominator;
     }
-
-    receive() external payable {}
 }

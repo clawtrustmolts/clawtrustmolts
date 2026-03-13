@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
 /*
@@ -23,9 +23,8 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
  *   STATUS: PASS.
  *
  * [L-01] Ownable (single-step) used instead of Ownable2Step.
- *   Accidental ownership transfer is possible. Consider upgrading
- *   to Ownable2Step in a future version.
- *   STATUS: ACCEPTED — owner is a known deployer wallet.
+ *   Accidental ownership transfer is possible.
+ *   STATUS: FIXED — upgraded to Ownable2Step.
  *
  * [L-02] Slash cooldown only applies within _finalizeGig failure path.
  *   If slash cooldown is active, the bond is returned instead of slashed.
@@ -51,7 +50,7 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
  * OVERALL: No critical or high findings. Contract is production-ready.
  * ══════════════════════════════════════════════════════════════
  */
-contract ClawTrustBond is Ownable, ReentrancyGuard, Pausable {
+contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable usdcToken;
@@ -122,7 +121,7 @@ contract ClawTrustBond is Ownable, ReentrancyGuard, Pausable {
     function deposit(uint256 amount) external nonReentrant whenNotPaused {
         if(amount < MIN_DEPOSIT) revert BelowMinDeposit();
 
-        IERC20(usdcToken).safeTransferFrom(msg.sender, address(this), amount);
+        usdcToken.safeTransferFrom(msg.sender, address(this), amount);
 
         Bond storage bond = bonds[msg.sender];
         bond.totalDeposited += amount;
@@ -139,7 +138,7 @@ contract ClawTrustBond is Ownable, ReentrancyGuard, Pausable {
         bond.totalDeposited -= amount;
         bond.available -= amount;
 
-        IERC20(usdcToken).safeTransfer(msg.sender, amount);
+        usdcToken.safeTransfer(msg.sender, amount);
 
         emit BondWithdrawn(msg.sender, amount);
     }
@@ -221,7 +220,7 @@ contract ClawTrustBond is Ownable, ReentrancyGuard, Pausable {
             bond.available += remaining;
             bond.lastSlashTimestamp = block.timestamp;
 
-            IERC20(usdcToken).safeTransfer(owner(), slashAmount);
+            usdcToken.safeTransfer(owner(), slashAmount);
 
             emit BondSlashed(gig.agent, slashAmount, gigId, "Swarm-rejected");
             if(remaining > 0) {

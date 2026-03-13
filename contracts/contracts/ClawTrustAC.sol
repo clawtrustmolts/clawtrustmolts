@@ -252,6 +252,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         if (!clawCard.isRegistered(provider)) revert ProviderNotRegistered();
 
         job.provider = provider;
+        job.status = JobStatus.Assigned;
 
         emit JobProviderAssigned(jobId, provider);
     }
@@ -264,7 +265,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     function submit(bytes32 jobId, bytes32 deliverableHash) external override whenNotPaused {
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
-        if (job.status != JobStatus.Funded) revert InvalidStatus();
+        if (job.status != JobStatus.Assigned) revert InvalidStatus();
         if (msg.sender != job.provider) revert Unauthorized();
         if (block.timestamp >= job.expiredAt) revert JobAlreadyExpired();
 
@@ -334,9 +335,9 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
         if (msg.sender != job.client && msg.sender != owner()) revert Unauthorized();
-        if (job.status != JobStatus.Open && job.status != JobStatus.Funded) revert InvalidStatus();
+        if (job.status != JobStatus.Open && job.status != JobStatus.Funded && job.status != JobStatus.Assigned) revert InvalidStatus();
 
-        bool wasFunded = job.status == JobStatus.Funded;
+        bool wasFunded = (job.status == JobStatus.Funded || job.status == JobStatus.Assigned);
         job.status = JobStatus.Cancelled;
 
         if (wasFunded) {
@@ -355,10 +356,10 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
         if (block.timestamp < job.expiredAt) revert JobNotExpired();
-        if (job.status != JobStatus.Open && job.status != JobStatus.Funded && job.status != JobStatus.Submitted)
+        if (job.status != JobStatus.Open && job.status != JobStatus.Funded && job.status != JobStatus.Assigned && job.status != JobStatus.Submitted)
             revert InvalidStatus();
 
-        bool hadFunds = job.status == JobStatus.Funded || job.status == JobStatus.Submitted;
+        bool hadFunds = job.status == JobStatus.Funded || job.status == JobStatus.Assigned || job.status == JobStatus.Submitted;
         job.status = JobStatus.Expired;
 
         if (hadFunds) {

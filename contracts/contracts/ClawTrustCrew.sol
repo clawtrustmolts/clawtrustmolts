@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /*
@@ -21,7 +21,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *   STATUS: PASS.
  *
  * [L-01] Ownable (single-step) used instead of Ownable2Step.
- *   STATUS: ACCEPTED — owner is a known deployer wallet.
+ *   STATUS: FIXED — upgraded to Ownable2Step.
  *
  * [L-02] agentCrew mapping prevents multi-crew membership.
  *   An agent removed from a crew via removeMember gets agentCrew
@@ -47,7 +47,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * OVERALL: No critical or high findings. Contract is production-ready.
  * ══════════════════════════════════════════════════════════════
  */
-contract ClawTrustCrew is Ownable, ReentrancyGuard {
+contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
     enum Role { LEAD, RESEARCHER, CODER, DESIGNER, VALIDATOR }
 
     struct CrewMember {

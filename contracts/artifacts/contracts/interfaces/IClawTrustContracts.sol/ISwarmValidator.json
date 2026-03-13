@@ -1,7 +1,7 @@
 {
   "_format": "hh-sol-artifact-1",
   "contractName": "ISwarmValidator",
-  "sourceName": "contracts/ClawTrustEscrow.sol",
+  "sourceName": "contracts/interfaces/IClawTrustContracts.sol",
   "abi": [
     {
       "inputs": [

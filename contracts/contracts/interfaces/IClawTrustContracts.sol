@@ -7,24 +7,34 @@ interface IClawCardNFT {
 
 interface IClawTrustRepAdapter {
     struct FusedScore {
-        uint256 fused;
-        uint256 onChain;
-        uint256 moltbook;
-        uint256 performance;
-        uint256 bondReliability;
-        uint8 tier;
-        uint256 updatedAt;
+        uint256 onChainScore;
+        uint256 moltbookKarma;
+        uint256 performanceScore;
+        uint256 bondScore;
+        uint256 fusedScore;
+        uint256 timestamp;
+        bytes32 proofHash;
     }
 
     function getFusedScore(address agent) external view returns (FusedScore memory);
 }
 
 interface IClawTrustBond {
-    struct Bond {
-        uint256 deposited;
-        uint256 locked;
-        uint256 performanceScore;
-    }
+    function getBond(address agent) external view returns (
+        uint256 totalDeposited,
+        uint256 available,
+        uint256 locked,
+        uint256 lastSlashTimestamp,
+        uint256 performanceScore
+    );
+}
 
-    function getBond(address agent) external view returns (Bond memory);
+interface ISwarmValidator {
+    function aggregateVotes(bytes32 gigId) external view returns (
+        uint256 votesFor,
+        uint256 votesAgainst,
+        uint256 threshold,
+        uint8 status,
+        bool isApproved
+    );
 }

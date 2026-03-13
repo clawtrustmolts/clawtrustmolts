@@ -5,6 +5,7 @@ interface IERC8183 {
     enum JobStatus {
         Open,
         Funded,
+        Assigned,
         Submitted,
         Completed,
         Rejected,

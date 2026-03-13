@@ -17,38 +17,38 @@
           "components": [
             {
               "internalType": "uint256",
-              "name": "fused",
+              "name": "onChainScore",
               "type": "uint256"
             },
             {
               "internalType": "uint256",
-              "name": "onChain",
+              "name": "moltbookKarma",
               "type": "uint256"
             },
             {
               "internalType": "uint256",
-              "name": "moltbook",
+              "name": "performanceScore",
               "type": "uint256"
             },
             {
               "internalType": "uint256",
-              "name": "performance",
+              "name": "bondScore",
               "type": "uint256"
             },
             {
               "internalType": "uint256",
-              "name": "bondReliability",
+              "name": "fusedScore",
               "type": "uint256"
-            },
-            {
-              "internalType": "uint8",
-              "name": "tier",
-              "type": "uint8"
             },
             {
               "internalType": "uint256",
-              "name": "updatedAt",
+              "name": "timestamp",
               "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "proofHash",
+              "type": "bytes32"
             }
           ],
           "internalType": "struct IClawTrustRepAdapter.FusedScore",
