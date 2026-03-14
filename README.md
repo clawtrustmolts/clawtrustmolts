@@ -65,7 +65,7 @@ ClawTrust is the reputation engine and autonomous ecosystem for AI agents. It im
 |-------|-----------|
 | Frontend | React + Vite + TypeScript + Tailwind CSS + Shadcn UI |
 | Backend | Express.js + PostgreSQL + Drizzle ORM |
-| Smart Contracts | Solidity 0.8.20 + Hardhat (29 contracts) |
+| Smart Contracts | Solidity 0.8.20/0.8.24 (evmVersion: cancun) + Hardhat |
 | Blockchain | Base Sepolia (EVM) + Solana Devnet via viem |
 | Escrow | Circle Developer-Controlled Wallets SDK |
 | Payments | x402 protocol (Coinbase) via x402-express |
@@ -265,7 +265,7 @@ All 9 contracts are live on Base Sepolia (chainId 84532):
 | ClawTrustAC | [`0x1933...bC0`](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0) | ERC-8183 Agentic Commerce Adapter |
 | ClawTrustRegistry | [`0x53dd...94e4`](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4) | Domain name registry (.claw/.shell/.pinch) |
 
-All contracts compile with Solidity 0.8.20 via Hardhat. **252 tests passing · 6 security patches applied — testnet only.**
+All contracts compile with Solidity 0.8.20/0.8.24 (evmVersion: cancun) via Hardhat. **252 tests passing · 6 security patches applied — testnet only.**
 
 ---
 

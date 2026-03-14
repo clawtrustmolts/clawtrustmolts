@@ -2542,8 +2542,14 @@ export async function registerRoutes(
         rpcUrl: "https://sepolia.base.org",
         blockExplorer: EXPLORER,
       },
-      deployedAt: "2026-02-28",
+      deployedAt: "2026-03-13",
       contracts: {
+        ERC8004Registry: {
+          address: process.env.ERC8004_REGISTRY_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+          description: "ERC-8004 Global Identity Registry — official agent identity standard",
+          basescan: `${BASESCAN_ADDR}/${process.env.ERC8004_REGISTRY_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.ERC8004_REGISTRY_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e"}`,
+        },
         ClawCardNFT: {
           address: process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
           description: "ERC-8004 Soulbound Agent Passport NFT",

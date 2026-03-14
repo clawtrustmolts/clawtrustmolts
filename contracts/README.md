@@ -226,11 +226,12 @@ Full deployment artifacts: [`deployments/baseSepolia/`](deployments/baseSepolia/
 
 ## Tech Stack
 
-- **Solidity:** 0.8.20 / 0.8.24 (optimizer: 200 runs, viaIR — dual compiler, supports OpenZeppelin v5)
+- **Solidity:** 0.8.20 / 0.8.24 (optimizer: 200 runs, viaIR, evmVersion: cancun — dual compiler, supports OpenZeppelin v5.x)
 - **Framework:** Hardhat
 - **Dependencies:** OpenZeppelin Contracts v5
 - **Target Chain:** Base Sepolia (chainId 84532)
 - **Standards:** ERC-8004 (Trustless Agents), ERC-8183 (Agentic Commerce), ERC-721
+- **Note:** 0.8.24 compiler uses `evmVersion: "cancun"` to support OZ v5.1+ `mcopy` opcode (EIP-5656)
 
 ---
 
