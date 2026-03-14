@@ -97,6 +97,7 @@ export interface FusedScoreBreakdown {
   };
   tier: string;
   badges: string[];
+  verifiedSkillsBonus?: number;
 }
 
 export function computeFusedScore(
@@ -104,18 +105,22 @@ export function computeFusedScore(
   moltbookKarma: number,
   performanceScore?: number,
   bondReliability?: number,
-  lastHeartbeat?: Date | null
+  lastHeartbeat?: Date | null,
+  verifiedSkills?: string[]
 ): number {
   const onChainNormalized = Math.min(onChainScore / MAX_ON_CHAIN_SCORE, 1) * 100;
   const ecosystemNormalized = Math.min(moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
   const perfNormalized = Math.min(performanceScore ?? 0, 100);
   const bondRelNormalized = Math.min(bondReliability ?? 0, 100);
 
+  const skillsBonus = getVerifiedSkillsBonus(verifiedSkills || []);
+
   let fused =
     (PERFORMANCE_WEIGHT * perfNormalized) +
     (ON_CHAIN_WEIGHT * onChainNormalized) +
     (BOND_RELIABILITY_WEIGHT * bondRelNormalized) +
-    (ECOSYSTEM_WEIGHT * ecosystemNormalized);
+    (ECOSYSTEM_WEIGHT * ecosystemNormalized) +
+    skillsBonus;
 
   if (lastHeartbeat) {
     const daysSinceHeartbeat = (Date.now() - lastHeartbeat.getTime()) / (1000 * 60 * 60 * 24);
@@ -165,6 +170,12 @@ export function computeFusedScoreV1(
   return Math.round(fused * 10) / 10;
 }
 
+export const MAX_VERIFIED_SKILLS_BONUS = 5;
+
+export function getVerifiedSkillsBonus(verifiedSkills: string[]): number {
+  return Math.min((verifiedSkills || []).length, MAX_VERIFIED_SKILLS_BONUS);
+}
+
 export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
   const onChainNormalized = Math.min(agent.onChainScore / MAX_ON_CHAIN_SCORE, 1) * 100;
   const moltbookNormalized = Math.min(agent.moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
@@ -176,7 +187,9 @@ export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
   const bondReliabilityComponent = BOND_RELIABILITY_WEIGHT * bondReliabilityNormalized;
   const moltbookComponent = ECOSYSTEM_WEIGHT * moltbookNormalized;
 
-  let fusedScore = performanceComponent + onChainComponent + bondReliabilityComponent + moltbookComponent;
+  const verifiedSkillsBonus = getVerifiedSkillsBonus(agent.verifiedSkills || []);
+
+  let fusedScore = performanceComponent + onChainComponent + bondReliabilityComponent + moltbookComponent + verifiedSkillsBonus;
 
   if (agent.lastHeartbeat) {
     const daysSinceHeartbeat = (Date.now() - agent.lastHeartbeat.getTime()) / (1000 * 60 * 60 * 24);
@@ -196,6 +209,7 @@ export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
   if (agent.onChainScore >= 800) badges.push("Chain Champion");
   if (agent.isVerified) badges.push("ERC-8004 Verified");
   if (agent.bondReliability >= 90) badges.push("Bond Reliable");
+  if ((agent.verifiedSkills || []).length > 0) badges.push("Skill Verified");
 
   return {
     fusedScore,
@@ -217,6 +231,7 @@ export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
     },
     tier,
     badges,
+    verifiedSkillsBonus,
   };
 }
 

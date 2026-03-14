@@ -1805,6 +1805,23 @@ export async function registerRoutes(
         return res.status(403).json({ message: "You are not a selected validator for this gig" });
       }
 
+      const gig = await storage.getGig(validation.gigId);
+      if (gig && gig.skillsRequired && gig.skillsRequired.length > 0) {
+        const voter = await storage.getAgent(voterId);
+        if (voter) {
+          const voterVerified = (voter.verifiedSkills || []).map((s: string) => s.toLowerCase());
+          const gigSkills = gig.skillsRequired.map((s: string) => s.toLowerCase());
+          const hasRelevantSkill = gigSkills.some((gs: string) => voterVerified.includes(gs));
+          if (!hasRelevantSkill) {
+            return res.status(403).json({
+              message: "You must have at least one verified skill matching this gig to vote. Complete a Skill Proof challenge first.",
+              requiredSkills: gig.skillsRequired,
+              yourVerifiedSkills: voter.verifiedSkills || [],
+            });
+          }
+        }
+      }
+
       const existingVote = await storage.getVoteByVoterAndValidation(voterId, validationId);
       if (existingVote) {
         return res.status(409).json({ message: "You have already voted on this validation" });
@@ -1833,13 +1850,13 @@ export async function registerRoutes(
       let rewardsDistributed: { validatorId: string; amount: number }[] = [];
 
       if (newStatus === "approved") {
-        const gig = await storage.getGig(validation.gigId);
+        const gig2 = gig || await storage.getGig(validation.gigId);
 
         const escrow = await storage.getEscrowByGig(validation.gigId);
         if (escrow && escrow.status === "locked") {
           let circleTransferId = null;
-          if (escrow.circleWalletId && isCircleConfigured() && gig?.assigneeId) {
-            const assignee = await storage.getAgent(gig.assigneeId);
+          if (escrow.circleWalletId && isCircleConfigured() && gig2?.assigneeId) {
+            const assignee = await storage.getAgent(gig2.assigneeId);
             if (assignee) {
               const destAddress = escrow.chain === "SOL_DEVNET"
                 ? assignee.solanaAddress || assignee.walletAddress
@@ -1870,40 +1887,40 @@ export async function registerRoutes(
           };
         }
 
-        if (gig) {
-          await storage.updateGigStatus(gig.id, "completed");
+        if (gig2) {
+          await storage.updateGigStatus(gig2.id, "completed");
 
-          if (gig.assigneeId) {
+          if (gig2.assigneeId) {
             await storage.createReputationEvent({
-              agentId: gig.assigneeId,
+              agentId: gig2.assigneeId,
               eventType: "Swarm Validated",
               scoreChange: 10,
               source: "swarm",
-              details: `Gig "${gig.title}" validated by swarm consensus (${newFor}/${validation.threshold})`,
+              details: `Gig "${gig2.title}" validated by swarm consensus (${newFor}/${validation.threshold})`,
               proofUri: null,
             });
 
-            const assignee = await storage.getAgent(gig.assigneeId);
+            const assignee = await storage.getAgent(gig2.assigneeId);
             if (assignee) {
-              await storage.updateAgent(gig.assigneeId, {
+              await storage.updateAgent(gig2.assigneeId, {
                 totalGigsCompleted: assignee.totalGigsCompleted + 1,
-                totalEarned: assignee.totalEarned + gig.budget,
+                totalEarned: assignee.totalEarned + gig2.budget,
                 onChainScore: Math.min(assignee.onChainScore + 10, 1000),
               });
-              await syncPerformanceScore(gig.assigneeId).catch(() => {});
+              await syncPerformanceScore(gig2.assigneeId).catch(() => {});
             }
 
-            if (gig.bondLocked && gig.bondRequired > 0) {
-              await unlockBondForGig(gig.assigneeId, gig.id);
-              await storage.updateGig(gig.id, { bondLocked: false });
-              console.log(`[Swarm] Unlocked bond for approved gig ${gig.id}`);
+            if (gig2.bondLocked && gig2.bondRequired > 0) {
+              await unlockBondForGig(gig2.assigneeId, gig2.id);
+              await storage.updateGig(gig2.id, { bondLocked: false });
+              console.log(`[Swarm] Unlocked bond for approved gig ${gig2.id}`);
             }
 
-            await recordRiskEvent(gig.assigneeId, "DISPUTE_RESOLVED", -5, `Swarm approved gig "${gig.title}"`).catch(err =>
+            await recordRiskEvent(gig2.assigneeId, "DISPUTE_RESOLVED", -5, `Swarm approved gig "${gig2.title}"`).catch(err =>
               console.error(`[Risk] Failed to record swarm approval: ${err.message}`)
             );
 
-            await syncPerformanceScore(gig.assigneeId).catch(err =>
+            await syncPerformanceScore(gig2.assigneeId).catch(err =>
               console.error(`[Swarm] Performance sync failed: ${err.message}`)
             );
           }
@@ -1920,7 +1937,7 @@ export async function registerRoutes(
                 eventType: "Swarm Reward",
                 scoreChange: 2,
                 source: "swarm",
-                details: `Validator reward: ${reward} ${gig.currency} for approving "${gig.title}"`,
+                details: `Validator reward: ${reward} ${gig2.currency} for approving "${gig2.title}"`,
                 proofUri: null,
               });
 
@@ -2709,6 +2726,7 @@ export async function registerRoutes(
               moltDomain: dbAgentFallback.moltDomain,
               handle: dbAgentFallback.handle,
               skills: dbAgentFallback.skills || [],
+              verifiedSkills: dbAgentFallback.verifiedSkills || [],
               registeredAt: dbAgentFallback.registeredAt,
               profileUrl: dbAgentFallback.moltDomain
                 ? `clawtrust.org/profile/${dbAgentFallback.moltDomain}`
@@ -2786,6 +2804,7 @@ export async function registerRoutes(
           moltDomain,
           handle,
           skills,
+          verifiedSkills: dbAgent?.verifiedSkills || [],
           registeredAt,
           profileUrl: moltDomain
             ? `clawtrust.org/profile/${moltDomain}`
@@ -6600,6 +6619,25 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Skill '${skill}' not on your profile. Add it first.` });
       }
 
+      if ((agent.verifiedSkills || []).map((s: string) => s.toLowerCase()).includes(skill)) {
+        return res.status(400).json({ message: `Skill '${skill}' is already verified.` });
+      }
+
+      const previousAttempts = await storage.getChallengeAttemptsForAgent(agentId, skill);
+      if (previousAttempts.length > 0) {
+        const lastAttempt = previousAttempts[0];
+        if (lastAttempt.createdAt) {
+          const hoursSince = (Date.now() - new Date(lastAttempt.createdAt).getTime()) / (1000 * 60 * 60);
+          if (hoursSince < 24) {
+            const hoursLeft = Math.ceil(24 - hoursSince);
+            return res.status(429).json({
+              message: `Cooldown active. You can retry in ${hoursLeft} hour${hoursLeft !== 1 ? "s" : ""}.`,
+              cooldownEndsAt: new Date(new Date(lastAttempt.createdAt).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+            });
+          }
+        }
+      }
+
       const { challengeId, submission } = req.body;
       if (!challengeId || !submission || typeof submission !== "string") {
         return res.status(400).json({ message: "challengeId and submission required" });
@@ -6637,6 +6675,13 @@ export async function registerRoutes(
           verificationMethod: "challenge",
           trustScore: Math.min(100, (existing?.trustScore ?? 0) + newTrustScore),
         });
+
+        const currentVerified = agent.verifiedSkills || [];
+        if (!currentVerified.map((s: string) => s.toLowerCase()).includes(skill)) {
+          await storage.updateAgent(agentId, {
+            verifiedSkills: [...currentVerified, skill],
+          });
+        }
       }
 
       res.json({

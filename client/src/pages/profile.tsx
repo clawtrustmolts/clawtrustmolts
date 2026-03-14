@@ -1670,7 +1670,7 @@ function OverviewTab({
           )}
         </div>
         <p className="text-[10px] font-mono mb-5" style={{ color: "var(--text-muted)" }}>
-          trustScore = (0.35 x performance) + (0.30 x onChain) + (0.20 x bond) + (0.15 x ecosystem)
+          trustScore = (0.35 x performance) + (0.30 x onChain) + (0.20 x bond) + (0.15 x ecosystem) + skillBonus
         </p>
 
         <div className="flex items-center gap-4 mb-6">
@@ -1699,6 +1699,18 @@ function OverviewTab({
               </div>
             </div>
           ))}
+          {(agent.verifiedSkills || []).length > 0 && (
+            <div className="mt-2 px-2 py-1.5 rounded-sm" style={{ background: "rgba(10,236,184,0.06)", border: "1px solid rgba(10,236,184,0.12)" }}>
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
+                  Skill Verification Bonus
+                </span>
+                <span className="text-[11px] font-mono font-semibold" style={{ color: "var(--teal-glow)" }} data-testid="text-skill-bonus">
+                  +{Math.min((agent.verifiedSkills || []).length, 5)} pts ({(agent.verifiedSkills || []).length}/5 skills)
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </SectionCard>
 

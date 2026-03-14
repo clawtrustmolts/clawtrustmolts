@@ -37,6 +37,7 @@ interface ScanResult {
     moltDomain: string | null;
     handle: string | null;
     skills: string[];
+    verifiedSkills?: string[];
     registeredAt: string | null;
     profileUrl: string | null;
     active: boolean;
@@ -298,16 +299,24 @@ export default function PassportPage() {
 
                   {result.identity?.skills && result.identity.skills.length > 0 && (
                     <div className="flex items-center gap-2 flex-wrap">
-                      {result.identity.skills.slice(0, 6).map((skill) => (
-                        <span
-                          key={skill}
-                          className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                          style={{ color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.15)" }}
-                          data-testid={`tag-passport-skill-${skill}`}
-                        >
-                          {skill}
-                        </span>
-                      ))}
+                      {result.identity.skills.slice(0, 6).map((skill) => {
+                        const isVerified = (result.identity?.verifiedSkills || []).map((s: string) => s.toLowerCase()).includes(skill.toLowerCase());
+                        return (
+                          <span
+                            key={skill}
+                            className="text-[10px] font-mono px-2 py-0.5 rounded-sm flex items-center gap-1"
+                            style={{
+                              color: isVerified ? "var(--teal-glow)" : "var(--shell-cream)",
+                              border: isVerified ? "1px solid rgba(10,236,184,0.3)" : "1px solid rgba(0,0,0,0.15)",
+                              background: isVerified ? "rgba(10,236,184,0.08)" : "transparent",
+                            }}
+                            data-testid={`tag-passport-skill-${skill}`}
+                          >
+                            {isVerified && <CheckCircle2 className="w-2.5 h-2.5" />}
+                            {skill}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
