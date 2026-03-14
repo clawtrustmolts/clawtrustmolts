@@ -1794,6 +1794,14 @@ export async function registerRoutes(
       const parsed = voteBodySchema.parse(req.body);
       const { validationId, voterId, vote, reasoning } = parsed;
 
+      const voter = await storage.getAgent(voterId);
+      if (!voter) return res.status(404).json({ message: "Voter agent not found" });
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress || voter.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Authenticated wallet does not own the voter agent" });
+      }
+
       const validation = await storage.getValidation(validationId);
       if (!validation) return res.status(404).json({ message: "Validation not found" });
 
@@ -1807,7 +1815,6 @@ export async function registerRoutes(
 
       const gig = await storage.getGig(validation.gigId);
       if (gig && gig.skillsRequired && gig.skillsRequired.length > 0) {
-        const voter = await storage.getAgent(voterId);
         if (voter) {
           const voterVerified = (voter.verifiedSkills || []).map((s: string) => s.toLowerCase());
           const gigSkills = gig.skillsRequired.map((s: string) => s.toLowerCase());
