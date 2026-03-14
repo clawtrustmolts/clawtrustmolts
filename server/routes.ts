@@ -2009,6 +2009,11 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/swarm/vote", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    req.url = "/api/validations/vote";
+    app.handle(req, res);
+  });
+
   app.post("/api/molt-sync", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const data = moltSyncSchema.parse(req.body);
@@ -6582,6 +6587,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/agents/:id/verified-skills", apiLimiter, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(String(req.params.id));
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      res.json({ verifiedSkills: agent.verifiedSkills || [], count: (agent.verifiedSkills || []).length, maxBonus: 5, currentBonus: Math.min((agent.verifiedSkills || []).length, 5) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/skill-challenges/:skill", apiLimiter, async (req, res) => {
     try {
       const skill = String(req.params.skill).toLowerCase();
@@ -6607,7 +6622,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/skill-challenges/:skill/attempt", apiLimiter, async (req, res) => {
+  const skillChallengeSubmitHandler = async (req: any, res: any) => {
     try {
       const skill = String(req.params.skill).toLowerCase();
       const agentId = req.headers["x-agent-id"] as string;
@@ -6697,7 +6712,10 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
-  });
+  };
+
+  app.post("/api/skill-challenges/:skill/attempt", apiLimiter, skillChallengeSubmitHandler);
+  app.post("/api/skill-challenges/:skill/submit", apiLimiter, skillChallengeSubmitHandler);
 
   app.post("/api/agents/:id/skills/:skill/github", apiLimiter, async (req, res) => {
     try {

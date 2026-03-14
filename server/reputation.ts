@@ -420,11 +420,14 @@ export async function computeLiveFusedReputation(
   const perfNormalized = Math.min(agent.performanceScore ?? 0, 100);
   const bondRelNormalized = Math.min(agent.bondReliability ?? 0, 100);
 
+  const skillsBonus = getVerifiedSkillsBonus(agent.verifiedSkills || []);
+
   let fusedScore =
     PERFORMANCE_WEIGHT * perfNormalized +
     ON_CHAIN_WEIGHT * normalizedOnChain +
     BOND_RELIABILITY_WEIGHT * bondRelNormalized +
-    ECOSYSTEM_WEIGHT * moltWeight;
+    ECOSYSTEM_WEIGHT * moltWeight +
+    skillsBonus;
 
   if (agent.lastHeartbeat) {
     const daysSinceHeartbeat = (Date.now() - agent.lastHeartbeat.getTime()) / (1000 * 60 * 60 * 24);
@@ -443,6 +446,7 @@ export async function computeLiveFusedReputation(
     moltWeight: Math.round(moltWeight * 10) / 10,
     performanceNormalized: Math.round(perfNormalized * 10) / 10,
     bondReliabilityNormalized: Math.round(bondRelNormalized * 10) / 10,
+    verifiedSkillsBonus: skillsBonus,
     proofURIs: onChain.proofURIs,
     tier: getTier(fusedScore),
     badges: getBadges(agent, fusedScore, moltResult.rawKarma),
