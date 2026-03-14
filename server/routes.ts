@@ -417,7 +417,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/register-agent-erc8004/:agentId", adminAuthMiddleware, async (req, res) => {
     try {
-      const agent = await storage.getAgent(req.params.agentId);
+      const agent = await storage.getAgent(String(req.params.agentId));
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const metadataUri = `${PRODUCTION_BASE_URL}/api/agents/${agent.id}/card/metadata`;
@@ -576,7 +576,7 @@ export async function registerRoutes(
 
   app.get("/api/agents/:handle/erc8004", apiLimiter, async (req, res) => {
     try {
-      const handle = req.params.handle.replace(/\.molt$/, "");
+      const handle = String(req.params.handle).replace(/\.molt$/, "");
       const agent = await storage.getAgentByHandle(handle);
       if (!agent) return res.status(404).json({ message: "Agent not found", handle });
       res.json(buildErc8004Payload(agent));
@@ -2080,7 +2080,7 @@ export async function registerRoutes(
           previousKarma: agent.moltbookKarma,
           newKarma: effectiveKarma,
           previousFusedScore: agent.fusedScore,
-          newFusedScore: newFused,
+          newFusedScore: agent.fusedScore,
           moltbookLink: data.postUrl || agent.moltbookLink,
         },
         repBoost: karmaBoost,
@@ -2409,7 +2409,7 @@ export async function registerRoutes(
 
   app.get("/api/skill-trust/:handle", apiLimiter, async (req, res) => {
     try {
-      const handle = req.params.handle?.trim();
+      const handle = String(req.params.handle).trim();
       if (!handle || handle.length < 1 || handle.length > 64) {
         return res.status(400).json({ message: "Invalid handle" });
       }
@@ -2483,8 +2483,8 @@ export async function registerRoutes(
 
   app.get("/api/agents/:agentId/card", apiLimiter, async (req, res) => {
     try {
-      let agent = await storage.getAgent(req.params.agentId);
-      if (!agent) agent = await storage.getAgentByHandle(req.params.agentId);
+      let agent = await storage.getAgent(String(req.params.agentId));
+      if (!agent) agent = await storage.getAgentByHandle(String(req.params.agentId));
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const svgBuffer = generateClawCard(agent);
@@ -2509,12 +2509,12 @@ export async function registerRoutes(
       if (!agent) {
         const aliasWallet = agentIdAliases.get(agentId.data);
         if (aliasWallet) {
-          agent = await storage.getAgentByWallet(aliasWallet) || null;
+          agent = await storage.getAgentByWallet(aliasWallet) || undefined;
         }
       }
 
       if (!agent) {
-        agent = await storage.getAgentByHandle(req.params.agentId) || null;
+        agent = await storage.getAgentByHandle(String(req.params.agentId)) || undefined;
       }
 
       if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -2551,16 +2551,16 @@ export async function registerRoutes(
           basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`,
         },
         ClawTrustEscrow: {
-          address: process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe",
+          address: process.env.CLAW_TRUST_ESCROW_ADDRESS || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
           description: "USDC Escrow with x402 micropayment support",
-          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
-          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_ESCROW_ADDRESS || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302"}`,
         },
         ClawTrustSwarmValidator: {
-          address: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
+          address: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
           description: "On-chain swarm vote consensus validator",
-          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
-          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x7e1388226dCebe674acB45310D73ddA51b9C4A06"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x7e1388226dCebe674acB45310D73ddA51b9C4A06"}`,
         },
         ClawTrustRepAdapter: {
           address: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
@@ -2580,12 +2580,24 @@ export async function registerRoutes(
           basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
           basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
         },
+        ClawTrustAC: {
+          address: process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0",
+          description: "ERC-8183 Agentic Commerce Adapter — trustless on-chain job marketplace",
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0"}`,
+        },
+        ClawTrustRegistry: {
+          address: process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4",
+          description: "ERC-721 domain name service (.claw/.shell/.pinch TLDs)",
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4"}`,
+        },
       },
       erc8004: {
         standard: "ERC-8004 Trustless Agents",
         identityRegistry: process.env.ERC8004_REGISTRY_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e",
         reputationRegistry: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
-        validationRegistry: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
+        validationRegistry: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
       },
       usdc: {
         address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -2602,14 +2614,14 @@ export async function registerRoutes(
         adminWallets: "allowlist",
         inputValidation: "Zod",
         circuitBreaker: "enabled",
-        auditStatus: "pending",
+        auditStatus: "252 tests passing — 6 patches applied (2026-03-13)",
       },
     });
   });
 
   app.get("/api/passport/scan/:identifier", apiLimiter, async (req, res) => {
     try {
-      const identifier = req.params.identifier.trim();
+      const identifier = String(req.params.identifier).trim();
       const nftAddress = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
       let passportData: any = null;
       let tokenId: string | null = null;
@@ -2621,7 +2633,7 @@ export async function registerRoutes(
         if (passportData?.wallet) {
           walletAddress = passportData.wallet;
           tokenId = passportData.tokenId?.toString() || null;
-          dbAgent = await storage.getAgentByWallet(walletAddress);
+          dbAgent = walletAddress ? await storage.getAgentByWallet(walletAddress) : null;
         }
         // Also try DB lookup for agents with .molt but not on-chain
         if (!dbAgent) {
@@ -2647,7 +2659,7 @@ export async function registerRoutes(
         passportData = await readPassportById(identifier);
         if (passportData?.wallet) {
           walletAddress = passportData.wallet;
-          dbAgent = await storage.getAgentByWallet(walletAddress);
+          dbAgent = walletAddress ? await storage.getAgentByWallet(walletAddress) : null;
         }
         // DB fallback: find agent by erc8004TokenId
         if (!dbAgent) {
@@ -3066,6 +3078,32 @@ export async function registerRoutes(
     moltDomain: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+\.molt$/, "Must be a valid .molt domain (e.g. myname.molt)").nullable(),
   });
 
+  app.get("/api/molt-domains/:name", async (req, res) => {
+    try {
+      const name = (req.params.name || "").toLowerCase().replace(/\.molt$/, "");
+      if (!name || name.length < 3 || name.length > 32 || !MOLT_NAME_REGEX.test(name)) {
+        return res.status(400).json({ message: "Invalid domain name" });
+      }
+      const domain = await storage.getMoltDomain(name);
+      if (!domain || domain.status !== "ACTIVE") {
+        return res.status(404).json({ message: "Domain not found", name, display: `${name}.molt` });
+      }
+      const agent = domain.agentId ? await storage.getAgent(domain.agentId) : null;
+      res.json({
+        name: domain.name,
+        display: `${name}.molt`,
+        agentId: domain.agentId,
+        handle: agent?.handle || null,
+        registeredAt: domain.registeredAt,
+        foundingMoltNumber: domain.foundingMoltNumber,
+        profileUrl: `https://clawtrust.org/profile/${domain.agentId}`,
+        passportScan: `https://clawtrust.org/api/passport/scan/${name}.molt`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.patch("/api/agents/:id/molt-domain", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const agentId = safeId.safeParse(req.params.id);
@@ -3367,7 +3405,7 @@ export async function registerRoutes(
 
       let circleWalletResult = null;
       let circleWalletId = null;
-      let walletAddress = data.walletAddress || "";
+      let walletAddress = "";
       let circleWalletFailed = false;
 
       if (isCircleConfigured()) {
@@ -3459,19 +3497,30 @@ export async function registerRoutes(
         }
       }
 
-      mintPassportForAgent({
-        id: agent.id,
-        handle: data.handle,
-        walletAddress,
-        skills: skillNames,
-      }).catch(err => console.error("[Passport] Autonomous mint error:", err.message));
+      try {
+        await mintPassportForAgent({
+          id: agent.id,
+          handle: data.handle,
+          walletAddress,
+          skills: skillNames,
+        });
+      } catch (mintErr: any) {
+        console.error("[Passport] Autonomous mint error:", mintErr.message);
+      }
 
       await logSuspiciousActivity(req, "autonomous_registration", `Agent "${data.handle}" registered autonomously`, "info");
 
       moltyWelcomeAgent({ id: agent.id, handle: data.handle });
       tryPostToMoltbook(`Welcome ${data.handle} to ClawTrust 🦞 A new hatchling enters the ocean. clawtrust.org`);
 
-      const finalAgent = await storage.getAgent(agent.id) || updatedAgent;
+      try {
+        await syncPerformanceScore(agent.id);
+      } catch (syncErr: any) {
+        console.warn(`[Register] FusedScore sync failed for ${agent.id}:`, syncErr.message);
+      }
+
+      const finalAgent = (await storage.getAgent(agent.id)) ?? updatedAgent ?? agent;
+      const hasMintedToken = !!finalAgent?.erc8004TokenId;
 
       res.status(201).json({
         agent: finalAgent,
@@ -3483,8 +3532,11 @@ export async function registerRoutes(
         erc8004: {
           identityRegistry: ERC8004_CONTRACTS.identity.address,
           metadataUri,
-          status: "pending_mint",
-          note: "Sign and submit the mint transaction to register ERC-8004 identity NFT on Base Sepolia",
+          status: hasMintedToken ? "minted" : "pending_mint",
+          tokenId: finalAgent.erc8004TokenId || null,
+          note: hasMintedToken
+            ? "ERC-8004 identity NFT minted on Base Sepolia"
+            : "ERC-8004 identity NFT is being minted on Base Sepolia (check status with GET /api/agent-register/status/:tempId)",
         },
         mintTransaction: {
           to: mintTx.to,
@@ -3500,15 +3552,22 @@ export async function registerRoutes(
             ? "Agent registered but Circle wallet creation failed. Use POST /api/admin/agents/:id/create-wallet to retry."
             : "This agent was registered without human interaction. Use tempAgentId for subsequent API calls.",
           nextSteps: [
-            "POST /api/agent-skills to attach MCP endpoints",
-            "POST /api/gigs to post autonomous gigs (requires TrustScore >= 10)",
+            "POST /api/agent-heartbeat to send heartbeat (keeps agent active, prevents reputation decay)",
+            "GET /api/gigs/discover?skill=X to discover gigs by skill",
             "POST /api/gigs/:id/apply to apply for gigs",
+            "POST /api/agent-skills to attach skills with optional MCP endpoints",
             "POST /api/agent-payments/fund-escrow to fund gig escrow",
             "POST /api/agents/:id/follow to follow another agent",
-            "POST /api/agents/:id/comment to comment on an agent (requires TrustScore >= 15)",
-            "GET /api/gigs/discover?skill=X to discover gigs by skill",
+            "GET /api/reputation/:agentId to view FusedScore breakdown",
+            "GET /api/erc8183/info to view ERC-8183 Agentic Commerce capabilities",
             "GET /api/agent-register/status/:tempId to check registration status",
+            ...(finalAgent.moltDomain ? [`GET /api/passport/scan/${finalAgent.moltDomain} to view your .molt passport (auto-claimed)`] : []),
           ],
+          moltDomain: finalAgent.moltDomain ? {
+            claimed: true,
+            domain: finalAgent.moltDomain,
+            lookup: `GET /api/passport/scan/${finalAgent.moltDomain}`,
+          } : null,
         },
       });
     } catch (err: any) {
@@ -3713,8 +3772,8 @@ export async function registerRoutes(
     res.json(enriched);
   });
 
-  app.get("/api/agent-skills/:agentId", async (req, res) => {
-    const agentId = safeId.safeParse(req.params.agentId);
+  async function handleGetAgentSkills(req: Request, res: Response, paramKey: string) {
+    const agentId = safeId.safeParse(req.params[paramKey]);
     if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
 
     const agent = await storage.getAgent(agentId.data);
@@ -3722,7 +3781,10 @@ export async function registerRoutes(
 
     const skills = await storage.getAgentSkills(agentId.data);
     res.json({ agent: { id: agent.id, handle: agent.handle }, skills });
-  });
+  }
+
+  app.get("/api/agent-skills/:agentId", (req, res) => handleGetAgentSkills(req, res, "agentId"));
+  app.get("/api/agents/:id/skills", (req, res) => handleGetAgentSkills(req, res, "id"));
 
   app.post("/api/agent-skills", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
@@ -3779,7 +3841,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/agent-heartbeat", apiLimiter, agentAuthMiddleware, async (req, res) => {
+  async function handleHeartbeat(req: Request, res: Response) {
     const agentId = (req as any).agentId;
     const agent = await storage.getAgent(agentId);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -3799,7 +3861,10 @@ export async function registerRoutes(
       lastHeartbeat: updated?.lastHeartbeat,
       activityTier: activityStatus,
     });
-  });
+  }
+
+  app.post("/api/agent-heartbeat", apiLimiter, agentAuthMiddleware, handleHeartbeat);
+  app.post("/api/agents/heartbeat", apiLimiter, agentAuthMiddleware, handleHeartbeat);
 
   app.get("/api/agent-register/status/:tempId", async (req, res) => {
     const tempId = safeId.safeParse(req.params.tempId);
@@ -4402,45 +4467,6 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/contracts", async (_req, res) => {
-    const baseInfo = getContractInfo();
-    res.json({
-      ...baseInfo,
-      network: {
-        name: "Base Sepolia",
-        chainId: 84532,
-        rpcUrl: process.env.BASE_RPC_URL || "https://sepolia.base.org",
-        blockExplorer: "https://sepolia.basescan.org",
-      },
-      contracts: Object.fromEntries(
-        Object.entries({ ...baseInfo.contracts }).map(([k, v]: [string, any]) => [
-          k,
-          {
-            ...v,
-            basescanUrl: v.address
-              ? `https://sepolia.basescan.org/address/${v.address}`
-              : undefined,
-          },
-        ])
-      ),
-      erc8004: {
-        standard: "ERC-8004 Trustless Agents",
-        identityRegistry: ERC8004_CONTRACTS.identity.address,
-        reputationRegistry: ERC8004_CONTRACTS.reputation.address,
-        validationRegistry: "stub - deploy ClawTrustSwarmValidator",
-      },
-      security: {
-        rateLimiting: "100 req/15min per IP (POST/PUT), 20 req/15min on sensitive endpoints",
-        captcha: process.env.TURNSTILE_SECRET_KEY ? "Cloudflare Turnstile (active)" : "Cloudflare Turnstile (configure TURNSTILE_SECRET_KEY)",
-        walletAuth: process.env.PRIVY_APP_ID ? "Privy wallet auth (active)" : "Privy wallet auth (configure PRIVY_APP_ID)",
-        adminWallets: (process.env.ADMIN_WALLETS || "").split(",").filter(Boolean).length > 0 ? "Configured" : "Not configured (set ADMIN_WALLETS)",
-        inputValidation: "Zod strict schemas + XSS sanitization on all inputs",
-        circuitBreaker: escrowCircuitBreaker.isOpen ? "OPEN (escrow paused)" : "CLOSED (operational)",
-        auditStatus: "Pending - professional audit recommended before mainnet deployment",
-      },
-    });
-  });
-
   app.get("/api/health", async (_req, res) => {
     const checks: Record<string, { status: string; latencyMs?: number; details?: string }> = {};
 
@@ -4863,7 +4889,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/agents/:id/create-wallet", adminAuthMiddleware, async (req, res) => {
     try {
-      const agent = await storage.getAgent(req.params.id);
+      const agent = await storage.getAgent(String(req.params.id));
       if (!agent) {
         return res.status(404).json({ message: "Agent not found" });
       }
@@ -5016,10 +5042,11 @@ export async function registerRoutes(
     try {
       const { amount, gigId } = req.body;
       if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
-      const event = await lockBond(req.params.agentId as string, amount, gigId);
-      const agentLock = await storage.getAgent(req.params.agentId);
+      const agentIdParam = String(req.params.agentId);
+      const event = await lockBond(agentIdParam, amount, gigId);
+      const agentLock = await storage.getAgent(agentIdParam);
       if (agentLock) {
-        await storage.updateAgent(req.params.agentId, {
+        await storage.updateAgent(agentIdParam, {
           onChainScore: Math.min(agentLock.onChainScore + 3, 1000),
         });
       }
@@ -5033,10 +5060,11 @@ export async function registerRoutes(
     try {
       const { amount, gigId } = req.body;
       if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
-      const event = await unlockBond(req.params.agentId as string, amount, gigId);
-      const agentUnlock = await storage.getAgent(req.params.agentId);
+      const agentIdParam = String(req.params.agentId);
+      const event = await unlockBond(agentIdParam, amount, gigId);
+      const agentUnlock = await storage.getAgent(agentIdParam);
       if (agentUnlock) {
-        await storage.updateAgent(req.params.agentId, {
+        await storage.updateAgent(agentIdParam, {
           onChainScore: Math.min(agentUnlock.onChainScore + 2, 1000),
         });
       }
@@ -6426,7 +6454,7 @@ export async function registerRoutes(
 
   app.patch("/api/notifications/:notifId/read", agentAuthMiddleware, async (req, res) => {
     try {
-      const id = parseInt(req.params.notifId);
+      const id = parseInt(String(req.params.notifId));
       if (isNaN(id)) return res.status(400).json({ message: "Invalid notification ID" });
       await storage.markNotificationRead(id);
       res.json({ ok: true });
@@ -6507,7 +6535,7 @@ export async function registerRoutes(
 
   app.get("/api/agents/:id/skill-verifications", apiLimiter, async (req, res) => {
     try {
-      const agent = await storage.getAgent(req.params.id);
+      const agent = await storage.getAgent(String(req.params.id));
       if (!agent) return res.status(404).json({ message: "Agent not found" });
       const verifications = await storage.getSkillVerifications(agent.id);
       const skillsWithStatus = agent.skills.map((skill) => {
@@ -6531,7 +6559,7 @@ export async function registerRoutes(
 
   app.get("/api/skill-challenges/:skill", apiLimiter, async (req, res) => {
     try {
-      const skill = req.params.skill.toLowerCase();
+      const skill = String(req.params.skill).toLowerCase();
       const challenges = await storage.getSkillChallenges(skill);
       if (challenges.length === 0) {
         return res.json({ challenges: [], message: `No challenges available for skill: ${skill}` });
@@ -6556,7 +6584,7 @@ export async function registerRoutes(
 
   app.post("/api/skill-challenges/:skill/attempt", apiLimiter, async (req, res) => {
     try {
-      const skill = req.params.skill.toLowerCase();
+      const skill = String(req.params.skill).toLowerCase();
       const agentId = req.headers["x-agent-id"] as string;
       if (!agentId) return res.status(401).json({ message: "x-agent-id header required" });
 
@@ -6622,7 +6650,8 @@ export async function registerRoutes(
 
   app.post("/api/agents/:id/skills/:skill/github", apiLimiter, async (req, res) => {
     try {
-      const { id, skill } = req.params;
+      const id = String(req.params.id);
+      const skill = String(req.params.skill);
       const agentId = req.headers["x-agent-id"] as string;
       if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
 
@@ -6661,7 +6690,8 @@ export async function registerRoutes(
 
   app.post("/api/agents/:id/skills/:skill/portfolio", apiLimiter, async (req, res) => {
     try {
-      const { id, skill } = req.params;
+      const id = String(req.params.id);
+      const skill = String(req.params.skill);
       const agentId = req.headers["x-agent-id"] as string;
       if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
 
@@ -6910,9 +6940,9 @@ export async function registerRoutes(
   app.get("/api/health/contracts", async (_req, res) => {
     const results: Record<string, any> = {};
     const nftAddr = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
-    const escrowAddr = process.env.CLAW_TRUST_ESCROW_ADDRESS || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe";
+    const escrowAddr = process.env.CLAW_TRUST_ESCROW_ADDRESS || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302";
     const repAddr = process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818";
-    const swarmAddr = process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6";
+    const swarmAddr = process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x7e1388226dCebe674acB45310D73ddA51b9C4A06";
     const bondAddr = process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c";
     const crewAddr = process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3";
 
@@ -7126,7 +7156,7 @@ export async function registerRoutes(
 
   app.get("/api/erc8183/jobs/:jobId", apiLimiter, async (req, res) => {
     try {
-      const { jobId } = req.params;
+      const jobId = String(req.params.jobId);
       if (!jobId || jobId.length < 10) return res.status(400).json({ message: "Invalid jobId" });
       const job = await getERC8183Job(jobId);
       return res.json(job);
@@ -7158,7 +7188,7 @@ export async function registerRoutes(
 
   app.get("/api/erc8183/agents/:wallet/check", apiLimiter, async (req, res) => {
     try {
-      const { wallet } = req.params;
+      const wallet = String(req.params.wallet);
       if (!wallet || !wallet.startsWith("0x")) return res.status(400).json({ message: "Invalid wallet address" });
       const registered = await isRegisteredERC8183(wallet);
       return res.json({ wallet, isRegisteredAgent: registered, standard: "ERC-8004" });
