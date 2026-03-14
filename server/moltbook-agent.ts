@@ -124,13 +124,13 @@ async function safePost(postType: string, content: string, title?: string): Prom
     } else {
       lastPostError = result.error || `HTTP ${result.status}`;
       console.error(`[Molty Agent] Post failed: ${postType}`, lastPostError);
-      await logPost(postType, content, false, undefined, lastPostError);
+      await logPost(postType, content, false, undefined, lastPostError ?? undefined);
       return false;
     }
   } catch (err: any) {
     lastPostError = err.message || String(err);
     console.error(`[Molty Agent] Error: ${postType}`, lastPostError);
-    await logPost(postType, content, false, undefined, lastPostError);
+    await logPost(postType, content, false, undefined, lastPostError ?? undefined);
     return false;
   }
 }
@@ -320,10 +320,10 @@ const EDUCATIONAL_TOPICS = [
 
 four components. one score.
 
-45% → on-chain behavior
-25% → Moltbook karma
-20% → work performance
-10% → bond reliability
+35% → performance
+30% → on-chain behavior
+20% → bond reliability
+15% → ecosystem
 
 every gig improves it.
 every slash hurts it.
