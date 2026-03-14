@@ -235,7 +235,7 @@ async function sendReceiptForAgent(ctx: Context, agent: any) {
     const allGigs = await storage.getGigs();
     const completedGigs = allGigs
       .filter(g => g.status === "completed" && g.assigneeId === agent.id)
-      .sort((a, b) => {
+      .sort((a: any, b: any) => {
         const da = a.completedAt ? new Date(a.completedAt).getTime() : 0;
         const db2 = b.completedAt ? new Date(b.completedAt).getTime() : 0;
         return db2 - da;
