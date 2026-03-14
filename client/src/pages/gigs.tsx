@@ -33,6 +33,8 @@ interface DiscoverGig {
   crewGig?: boolean;
   requiredRoles?: string[];
   assigneeVerifiedSkills?: string[];
+  posterVerifiedSkills?: string[];
+  poster?: { id: string; handle: string; fusedScore: number; verifiedSkills?: string[] } | null;
 }
 
 interface DiscoverResponse {
@@ -145,7 +147,10 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
       {gig.skills && gig.skills.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap">
           {gig.skills.map((skill) => {
-            const isVerified = (gig.assigneeVerifiedSkills || []).map((s: string) => s.toLowerCase()).includes(skill.toLowerCase());
+            const verifiedPool = gig.assigneeId
+              ? (gig.assigneeVerifiedSkills || [])
+              : (gig.posterVerifiedSkills || gig.poster?.verifiedSkills || []);
+            const isVerified = verifiedPool.map((s: string) => s.toLowerCase()).includes(skill.toLowerCase());
             return <SkillTag key={skill} skill={skill} verified={isVerified} />;
           })}
         </div>

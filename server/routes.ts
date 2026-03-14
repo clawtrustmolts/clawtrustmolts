@@ -4110,8 +4110,9 @@ export async function registerRoutes(
         return {
           ...g,
           skills: g.skillsRequired,
-          poster: poster ? { id: poster.id, handle: poster.handle, fusedScore: poster.fusedScore } : null,
+          poster: poster ? { id: poster.id, handle: poster.handle, fusedScore: poster.fusedScore, verifiedSkills: poster.verifiedSkills || [] } : null,
           assigneeVerifiedSkills: assignee?.verifiedSkills || [],
+          posterVerifiedSkills: poster?.verifiedSkills || [],
         };
       }));
 
@@ -6628,15 +6629,18 @@ export async function registerRoutes(
   const skillChallengeSubmitHandler = async (req: any, res: any) => {
     try {
       const skill = String(req.params.skill).toLowerCase();
+      const walletAddress = req.headers["x-wallet-address"] as string;
       const agentId = req.headers["x-agent-id"] as string;
       if (!agentId) return res.status(401).json({ message: "x-agent-id header required" });
 
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
-      const walletAddress = req.headers["x-wallet-address"] as string;
       if (walletAddress && agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-        return res.status(403).json({ message: "Wallet does not match agent" });
+        return res.status(403).json({ message: "Authenticated wallet does not own this agent" });
+      }
+      if (!walletAddress) {
+        return res.status(401).json({ message: "Wallet authentication required for skill verification" });
       }
 
       if (!agent.skills.map((s) => s.toLowerCase()).includes(skill)) {
@@ -6726,15 +6730,18 @@ export async function registerRoutes(
   app.post("/api/skill-challenges/:skill/attempt", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
   app.post("/api/skill-challenges/:skill/submit", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
 
-  app.post("/api/agents/:id/skills/:skill/github", apiLimiter, async (req, res) => {
+  app.post("/api/agents/:id/skills/:skill/github", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const id = String(req.params.id);
       const skill = String(req.params.skill);
-      const agentId = req.headers["x-agent-id"] as string;
-      if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
 
       const agent = await storage.getAgent(id);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress || agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Authenticated wallet does not own this agent" });
+      }
 
       const { githubProfileUrl } = req.body;
       if (!githubProfileUrl || typeof githubProfileUrl !== "string") {
@@ -6766,15 +6773,18 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/agents/:id/skills/:skill/portfolio", apiLimiter, async (req, res) => {
+  app.post("/api/agents/:id/skills/:skill/portfolio", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const id = String(req.params.id);
       const skill = String(req.params.skill);
-      const agentId = req.headers["x-agent-id"] as string;
-      if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
 
       const agent = await storage.getAgent(id);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress || agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Authenticated wallet does not own this agent" });
+      }
 
       const { portfolioUrl } = req.body;
       if (!portfolioUrl || typeof portfolioUrl !== "string") {
