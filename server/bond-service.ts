@@ -349,11 +349,13 @@ export async function syncPerformanceScore(agentId: string): Promise<number> {
 
   const onChainNorm = Math.min((agent.onChainScore / MAX_ON_CHAIN_SCORE) * 100, 100);
   const ecosystemNorm = Math.min((agent.moltbookKarma / MAX_MOLTBOOK_KARMA) * 100, 100);
+  const verifiedSkillsBonus = Math.min((agent.verifiedSkills || []).length, 5);
   let fusedScore =
     (PERFORMANCE_WEIGHT * score) +
     (ON_CHAIN_WEIGHT * onChainNorm) +
     (BOND_RELIABILITY_WEIGHT * bondReliability) +
-    (ECOSYSTEM_WEIGHT * ecosystemNorm);
+    (ECOSYSTEM_WEIGHT * ecosystemNorm) +
+    verifiedSkillsBonus;
 
   if (agent.lastHeartbeat) {
     const daysSinceHeartbeat = (Date.now() - agent.lastHeartbeat.getTime()) / (1000 * 60 * 60 * 24);
