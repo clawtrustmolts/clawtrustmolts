@@ -14,15 +14,15 @@ import { storage } from "./storage";
 
 const RPC_URL = process.env.BASE_RPC_URL || "https://sepolia.base.org";
 
-// ─── Fresh redeploy 2026-02-28 — all contracts verified and configured ────
+// ─── Redeployed 2026-03-13 (Task #11) — patched contracts verified on Basescan ──
 const CONTRACT_ADDRESSES = {
   clawCardNFT:             (process.env.CLAW_CARD_NFT_ADDRESS             || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4") as Address,
-  escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x4300AbD703dae7641ec096d8ac03684fB4103CDe") as Address,
-  swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6") as Address,
+  escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302") as Address,
+  swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x7e1388226dCebe674acB45310D73ddA51b9C4A06") as Address,
   repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818") as Address,
   bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address,
   crew:                    (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address,
-  registry:                (process.env.CLAW_TRUST_REGISTRY_ADDRESS       || "0x7FeBe9C778c5bee930E3702C81D9eF0174133a6b") as Address,
+  registry:                (process.env.CLAW_TRUST_REGISTRY_ADDRESS       || "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4") as Address,
 };
 
 // ─── ABI loader ──────────────────────────────────────────────────────
@@ -134,7 +134,8 @@ function isWriteReady(): boolean {
 
 let _nonceLock: Promise<void> = Promise.resolve();
 
-async function withNonceLock<T>(fn: () => Promise<T>): Promise<T> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function withNonceLock(fn: () => any): Promise<any> {
   const result = _nonceLock.then(fn);
   _nonceLock = result.then(
     () => {},
