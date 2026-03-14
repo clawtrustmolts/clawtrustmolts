@@ -3143,7 +3143,7 @@ function CommerceTab({
                         {gig.budget} {gig.currency}
                       </span>
                       <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                        {timeAgo(gig.createdAt)}
+                        {timeAgo(gig.createdAt ?? new Date())}
                       </span>
                     </div>
                   </Link>
