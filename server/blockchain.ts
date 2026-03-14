@@ -134,7 +134,8 @@ function isWriteReady(): boolean {
 
 let _nonceLock: Promise<void> = Promise.resolve();
 
-async function withNonceLock<T>(fn: () => Promise<T>): Promise<T> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function withNonceLock(fn: () => any): Promise<any> {
   const result = _nonceLock.then(fn);
   _nonceLock = result.then(
     () => {},

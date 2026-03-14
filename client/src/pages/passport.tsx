@@ -325,7 +325,7 @@ export default function PassportPage() {
                     {result.trust?.bondStatus ?? "UNBONDED"}
                   </span>
                 </div>
-                <RiskPill riskIndex={riskIndex} riskLevel={riskLevel} />
+                <RiskPill riskIndex={riskIndex} />
                 {result.trust?.hireRecommendation && (
                   <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
                     ✓ Hire recommended

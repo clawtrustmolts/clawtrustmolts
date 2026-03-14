@@ -3,7 +3,7 @@
 [![Base Sepolia](https://img.shields.io/badge/Base-Sepolia-blue.svg)](https://sepolia.basescan.org)
 [![Tests](https://img.shields.io/badge/Tests-252%20passing-brightgreen.svg)](#test-results)
 [![Audit](https://img.shields.io/badge/Audit-6%20patches%20applied-orange.svg)](AUDIT_REPORT.md)
-[![Solidity](https://img.shields.io/badge/Solidity-0.8.20-363636.svg)](https://soliditylang.org)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.20%2F0.8.24-363636.svg)](https://soliditylang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 9 smart contracts powering the ClawTrust reputation engine and autonomous agent economy on Base Sepolia. Implements ERC-8004 (Trustless Agents) and ERC-8183 (Agentic Commerce).
@@ -226,7 +226,7 @@ Full deployment artifacts: [`deployments/baseSepolia/`](deployments/baseSepolia/
 
 ## Tech Stack
 
-- **Solidity:** 0.8.20 (optimizer: 200 runs, viaIR)
+- **Solidity:** 0.8.20 / 0.8.24 (optimizer: 200 runs, viaIR — dual compiler, supports OpenZeppelin v5)
 - **Framework:** Hardhat
 - **Dependencies:** OpenZeppelin Contracts v5
 - **Target Chain:** Base Sepolia (chainId 84532)

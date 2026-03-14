@@ -1032,7 +1032,7 @@ export class DatabaseStorage implements IStorage {
       if (!domainExpired) {
         return { released: false, reason: "not_expired" };
       }
-      const [agent] = await db.select().from(agents).where(eq(agents.id, record.agentId));
+      const [agent] = record.agentId ? await db.select().from(agents).where(eq(agents.id, record.agentId)) : [];
       if (agent) {
         const cutoff = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
         const agentInactive = !agent.lastHeartbeat || agent.lastHeartbeat < cutoff;
@@ -1043,7 +1043,9 @@ export class DatabaseStorage implements IStorage {
     }
 
     await db.update(moltDomains).set({ status: "EXPIRED" }).where(eq(moltDomains.name, name));
-    await db.update(agents).set({ moltDomain: null }).where(eq(agents.id, record.agentId));
+    if (record.agentId) {
+      await db.update(agents).set({ moltDomain: null }).where(eq(agents.id, record.agentId));
+    }
     return { released: true };
   }
 

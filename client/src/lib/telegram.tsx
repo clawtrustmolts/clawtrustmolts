@@ -28,12 +28,12 @@ declare global {
           textColor: string;
           isVisible: boolean;
           isActive: boolean;
-          setText: (text: string) => typeof Window.prototype.Telegram.WebApp.MainButton;
-          onClick: (callback: () => void) => typeof Window.prototype.Telegram.WebApp.MainButton;
-          offClick: (callback: () => void) => typeof Window.prototype.Telegram.WebApp.MainButton;
-          show: () => typeof Window.prototype.Telegram.WebApp.MainButton;
-          hide: () => typeof Window.prototype.Telegram.WebApp.MainButton;
-          setParams: (params: { color?: string; text_color?: string; is_active?: boolean }) => typeof Window.prototype.Telegram.WebApp.MainButton;
+          setText: (text: string) => void;
+          onClick: (callback: () => void) => void;
+          offClick: (callback: () => void) => void;
+          show: () => void;
+          hide: () => void;
+          setParams: (params: { color?: string; text_color?: string; is_active?: boolean }) => void;
         };
         ready: () => void;
         platform: string;
@@ -126,10 +126,10 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
       if (!mb) return;
       mb.offClick(mainButtonCallbackRef.current);
       mainButtonCallbackRef.current = onClick;
-      mb.setText(text)
-        .setParams({ color: "#C8391A", text_color: "#EEE8DC" })
-        .onClick(onClick)
-        .show();
+      mb.setText(text);
+      mb.setParams({ color: "#C8391A", text_color: "#EEE8DC" });
+      mb.onClick(onClick);
+      mb.show();
     } catch {}
   };
 

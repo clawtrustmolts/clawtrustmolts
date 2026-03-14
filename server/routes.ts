@@ -417,7 +417,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/register-agent-erc8004/:agentId", adminAuthMiddleware, async (req, res) => {
     try {
-      const agent = await storage.getAgent(req.params.agentId);
+      const agent = await storage.getAgent(String(req.params.agentId));
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const metadataUri = `${PRODUCTION_BASE_URL}/api/agents/${agent.id}/card/metadata`;
@@ -576,7 +576,7 @@ export async function registerRoutes(
 
   app.get("/api/agents/:handle/erc8004", apiLimiter, async (req, res) => {
     try {
-      const handle = req.params.handle.replace(/\.molt$/, "");
+      const handle = String(req.params.handle).replace(/\.molt$/, "");
       const agent = await storage.getAgentByHandle(handle);
       if (!agent) return res.status(404).json({ message: "Agent not found", handle });
       res.json(buildErc8004Payload(agent));
@@ -2080,7 +2080,7 @@ export async function registerRoutes(
           previousKarma: agent.moltbookKarma,
           newKarma: effectiveKarma,
           previousFusedScore: agent.fusedScore,
-          newFusedScore: newFused,
+          newFusedScore: agent.fusedScore,
           moltbookLink: data.postUrl || agent.moltbookLink,
         },
         repBoost: karmaBoost,
@@ -2409,7 +2409,7 @@ export async function registerRoutes(
 
   app.get("/api/skill-trust/:handle", apiLimiter, async (req, res) => {
     try {
-      const handle = req.params.handle?.trim();
+      const handle = String(req.params.handle).trim();
       if (!handle || handle.length < 1 || handle.length > 64) {
         return res.status(400).json({ message: "Invalid handle" });
       }
@@ -2483,8 +2483,8 @@ export async function registerRoutes(
 
   app.get("/api/agents/:agentId/card", apiLimiter, async (req, res) => {
     try {
-      let agent = await storage.getAgent(req.params.agentId);
-      if (!agent) agent = await storage.getAgentByHandle(req.params.agentId);
+      let agent = await storage.getAgent(String(req.params.agentId));
+      if (!agent) agent = await storage.getAgentByHandle(String(req.params.agentId));
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const svgBuffer = generateClawCard(agent);
@@ -2509,12 +2509,12 @@ export async function registerRoutes(
       if (!agent) {
         const aliasWallet = agentIdAliases.get(agentId.data);
         if (aliasWallet) {
-          agent = await storage.getAgentByWallet(aliasWallet) || null;
+          agent = await storage.getAgentByWallet(aliasWallet) || undefined;
         }
       }
 
       if (!agent) {
-        agent = await storage.getAgentByHandle(req.params.agentId) || null;
+        agent = await storage.getAgentByHandle(String(req.params.agentId)) || undefined;
       }
 
       if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -2621,7 +2621,7 @@ export async function registerRoutes(
 
   app.get("/api/passport/scan/:identifier", apiLimiter, async (req, res) => {
     try {
-      const identifier = req.params.identifier.trim();
+      const identifier = String(req.params.identifier).trim();
       const nftAddress = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
       let passportData: any = null;
       let tokenId: string | null = null;
@@ -2633,7 +2633,7 @@ export async function registerRoutes(
         if (passportData?.wallet) {
           walletAddress = passportData.wallet;
           tokenId = passportData.tokenId?.toString() || null;
-          dbAgent = await storage.getAgentByWallet(walletAddress);
+          dbAgent = walletAddress ? await storage.getAgentByWallet(walletAddress) : null;
         }
         // Also try DB lookup for agents with .molt but not on-chain
         if (!dbAgent) {
@@ -2659,7 +2659,7 @@ export async function registerRoutes(
         passportData = await readPassportById(identifier);
         if (passportData?.wallet) {
           walletAddress = passportData.wallet;
-          dbAgent = await storage.getAgentByWallet(walletAddress);
+          dbAgent = walletAddress ? await storage.getAgentByWallet(walletAddress) : null;
         }
         // DB fallback: find agent by erc8004TokenId
         if (!dbAgent) {
@@ -3088,7 +3088,7 @@ export async function registerRoutes(
       if (!domain || domain.status !== "ACTIVE") {
         return res.status(404).json({ message: "Domain not found", name, display: `${name}.molt` });
       }
-      const agent = await storage.getAgent(domain.agentId);
+      const agent = domain.agentId ? await storage.getAgent(domain.agentId) : null;
       res.json({
         name: domain.name,
         display: `${name}.molt`,
@@ -3405,7 +3405,7 @@ export async function registerRoutes(
 
       let circleWalletResult = null;
       let circleWalletId = null;
-      let walletAddress = data.walletAddress || "";
+      let walletAddress = "";
       let circleWalletFailed = false;
 
       if (isCircleConfigured()) {
@@ -3519,8 +3519,8 @@ export async function registerRoutes(
         console.warn(`[Register] FusedScore sync failed for ${agent.id}:`, syncErr.message);
       }
 
-      const finalAgent = await storage.getAgent(agent.id) || updatedAgent;
-      const hasMintedToken = !!finalAgent.erc8004TokenId;
+      const finalAgent = (await storage.getAgent(agent.id)) ?? updatedAgent ?? agent;
+      const hasMintedToken = !!finalAgent?.erc8004TokenId;
 
       res.status(201).json({
         agent: finalAgent,
@@ -4889,7 +4889,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/agents/:id/create-wallet", adminAuthMiddleware, async (req, res) => {
     try {
-      const agent = await storage.getAgent(req.params.id);
+      const agent = await storage.getAgent(String(req.params.id));
       if (!agent) {
         return res.status(404).json({ message: "Agent not found" });
       }
@@ -5042,10 +5042,11 @@ export async function registerRoutes(
     try {
       const { amount, gigId } = req.body;
       if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
-      const event = await lockBond(req.params.agentId as string, amount, gigId);
-      const agentLock = await storage.getAgent(req.params.agentId);
+      const agentIdParam = String(req.params.agentId);
+      const event = await lockBond(agentIdParam, amount, gigId);
+      const agentLock = await storage.getAgent(agentIdParam);
       if (agentLock) {
-        await storage.updateAgent(req.params.agentId, {
+        await storage.updateAgent(agentIdParam, {
           onChainScore: Math.min(agentLock.onChainScore + 3, 1000),
         });
       }
@@ -5059,10 +5060,11 @@ export async function registerRoutes(
     try {
       const { amount, gigId } = req.body;
       if (!amount || !gigId) return res.status(400).json({ message: "amount and gigId required" });
-      const event = await unlockBond(req.params.agentId as string, amount, gigId);
-      const agentUnlock = await storage.getAgent(req.params.agentId);
+      const agentIdParam = String(req.params.agentId);
+      const event = await unlockBond(agentIdParam, amount, gigId);
+      const agentUnlock = await storage.getAgent(agentIdParam);
       if (agentUnlock) {
-        await storage.updateAgent(req.params.agentId, {
+        await storage.updateAgent(agentIdParam, {
           onChainScore: Math.min(agentUnlock.onChainScore + 2, 1000),
         });
       }
@@ -6452,7 +6454,7 @@ export async function registerRoutes(
 
   app.patch("/api/notifications/:notifId/read", agentAuthMiddleware, async (req, res) => {
     try {
-      const id = parseInt(req.params.notifId);
+      const id = parseInt(String(req.params.notifId));
       if (isNaN(id)) return res.status(400).json({ message: "Invalid notification ID" });
       await storage.markNotificationRead(id);
       res.json({ ok: true });
@@ -6533,7 +6535,7 @@ export async function registerRoutes(
 
   app.get("/api/agents/:id/skill-verifications", apiLimiter, async (req, res) => {
     try {
-      const agent = await storage.getAgent(req.params.id);
+      const agent = await storage.getAgent(String(req.params.id));
       if (!agent) return res.status(404).json({ message: "Agent not found" });
       const verifications = await storage.getSkillVerifications(agent.id);
       const skillsWithStatus = agent.skills.map((skill) => {
@@ -6557,7 +6559,7 @@ export async function registerRoutes(
 
   app.get("/api/skill-challenges/:skill", apiLimiter, async (req, res) => {
     try {
-      const skill = req.params.skill.toLowerCase();
+      const skill = String(req.params.skill).toLowerCase();
       const challenges = await storage.getSkillChallenges(skill);
       if (challenges.length === 0) {
         return res.json({ challenges: [], message: `No challenges available for skill: ${skill}` });
@@ -6582,7 +6584,7 @@ export async function registerRoutes(
 
   app.post("/api/skill-challenges/:skill/attempt", apiLimiter, async (req, res) => {
     try {
-      const skill = req.params.skill.toLowerCase();
+      const skill = String(req.params.skill).toLowerCase();
       const agentId = req.headers["x-agent-id"] as string;
       if (!agentId) return res.status(401).json({ message: "x-agent-id header required" });
 
@@ -6648,7 +6650,8 @@ export async function registerRoutes(
 
   app.post("/api/agents/:id/skills/:skill/github", apiLimiter, async (req, res) => {
     try {
-      const { id, skill } = req.params;
+      const id = String(req.params.id);
+      const skill = String(req.params.skill);
       const agentId = req.headers["x-agent-id"] as string;
       if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
 
@@ -6687,7 +6690,8 @@ export async function registerRoutes(
 
   app.post("/api/agents/:id/skills/:skill/portfolio", apiLimiter, async (req, res) => {
     try {
-      const { id, skill } = req.params;
+      const id = String(req.params.id);
+      const skill = String(req.params.skill);
       const agentId = req.headers["x-agent-id"] as string;
       if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
 
@@ -7152,7 +7156,7 @@ export async function registerRoutes(
 
   app.get("/api/erc8183/jobs/:jobId", apiLimiter, async (req, res) => {
     try {
-      const { jobId } = req.params;
+      const jobId = String(req.params.jobId);
       if (!jobId || jobId.length < 10) return res.status(400).json({ message: "Invalid jobId" });
       const job = await getERC8183Job(jobId);
       return res.json(job);
@@ -7184,7 +7188,7 @@ export async function registerRoutes(
 
   app.get("/api/erc8183/agents/:wallet/check", apiLimiter, async (req, res) => {
     try {
-      const { wallet } = req.params;
+      const wallet = String(req.params.wallet);
       if (!wallet || !wallet.startsWith("0x")) return res.status(400).json({ message: "Invalid wallet address" });
       const registered = await isRegisteredERC8183(wallet);
       return res.json({ wallet, isRegisteredAgent: registered, standard: "ERC-8004" });
