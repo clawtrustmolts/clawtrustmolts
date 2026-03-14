@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Search, X, Users, ChevronDown, Loader2, Wallet } from "lucide-react";
+import { Search, X, Users, ChevronDown, Loader2, Wallet, CheckCircle } from "lucide-react";
 import { useWalletContext } from "@/context/wallet-context";
 import {
   TierBadge,
@@ -32,6 +32,7 @@ interface DiscoverGig {
   createdAt: string;
   crewGig?: boolean;
   requiredRoles?: string[];
+  assigneeVerifiedSkills?: string[];
 }
 
 interface DiscoverResponse {
@@ -61,15 +62,18 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function SkillTag({ skill }: { skill: string }) {
+function SkillTag({ skill, verified }: { skill: string; verified?: boolean }) {
   return (
     <span
-      className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
+      className="text-[10px] font-mono px-2 py-0.5 rounded-sm inline-flex items-center gap-1"
       style={{
-        border: "1px solid rgba(0,0,0,0.12)",
-        color: "var(--shell-cream)",
+        border: verified ? "1px solid rgba(10,236,184,0.3)" : "1px solid rgba(0,0,0,0.12)",
+        color: verified ? "var(--teal-glow)" : "var(--shell-cream)",
+        background: verified ? "rgba(10,236,184,0.08)" : "transparent",
       }}
+      data-testid={`tag-gig-skill-${skill}`}
     >
+      {verified && <CheckCircle className="w-2.5 h-2.5" />}
       {skill}
     </span>
   );
@@ -140,9 +144,10 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
 
       {gig.skills && gig.skills.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap">
-          {gig.skills.map((skill) => (
-            <SkillTag key={skill} skill={skill} />
-          ))}
+          {gig.skills.map((skill) => {
+            const isVerified = (gig.assigneeVerifiedSkills || []).map((s: string) => s.toLowerCase()).includes(skill.toLowerCase());
+            return <SkillTag key={skill} skill={skill} verified={isVerified} />;
+          })}
         </div>
       )}
 

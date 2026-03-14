@@ -4106,9 +4106,12 @@ export async function registerRoutes(
 
       const enriched = await Promise.all(paged.map(async (g) => {
         const poster = await storage.getAgent(g.posterId);
+        const assignee = g.assigneeId ? await storage.getAgent(g.assigneeId) : null;
         return {
           ...g,
+          skills: g.skillsRequired,
           poster: poster ? { id: poster.id, handle: poster.handle, fusedScore: poster.fusedScore } : null,
+          assigneeVerifiedSkills: assignee?.verifiedSkills || [],
         };
       }));
 
@@ -6630,6 +6633,12 @@ export async function registerRoutes(
 
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (walletAddress && agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Wallet does not match agent" });
+      }
+
       if (!agent.skills.map((s) => s.toLowerCase()).includes(skill)) {
         return res.status(400).json({ message: `Skill '${skill}' not on your profile. Add it first.` });
       }
@@ -6714,8 +6723,8 @@ export async function registerRoutes(
     }
   };
 
-  app.post("/api/skill-challenges/:skill/attempt", apiLimiter, skillChallengeSubmitHandler);
-  app.post("/api/skill-challenges/:skill/submit", apiLimiter, skillChallengeSubmitHandler);
+  app.post("/api/skill-challenges/:skill/attempt", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
+  app.post("/api/skill-challenges/:skill/submit", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
 
   app.post("/api/agents/:id/skills/:skill/github", apiLimiter, async (req, res) => {
     try {
