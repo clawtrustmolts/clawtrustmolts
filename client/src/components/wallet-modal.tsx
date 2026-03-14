@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { X, ExternalLink, Loader2, ShieldCheck } from "lucide-react";
 
-type WalletModalState = "connecting" | "signing" | "not-found" | "error";
+type WalletModalState = "connecting" | "signing" | "not-found" | "not-found-mobile" | "error";
 
 interface WalletConnectModalProps {
   state: WalletModalState;
@@ -106,6 +106,37 @@ export function WalletConnectModal({ state, errorMessage, onClose, onRetry }: Wa
                 {`Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet\nownership. No gas required.\n\nChain: Base Sepolia (84532)`}
               </p>
             </div>
+          </div>
+        )}
+
+        {state === "not-found-mobile" && (
+          <div className="space-y-4" data-testid="modal-state-not-found-mobile">
+            <div>
+              <p className="text-sm font-display" style={{ color: "var(--shell-white)" }}>
+                Open in MetaMask
+              </p>
+              <p className="text-[11px] font-mono mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                To connect your wallet on mobile, open ClawTrust inside the MetaMask app browser.
+              </p>
+            </div>
+            <a
+              href="https://metamask.app.link/dapp/clawtrust.org"
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-sm text-sm font-display uppercase tracking-wider transition-opacity hover:opacity-80"
+              style={{ background: "var(--claw-orange)", color: "white" }}
+              data-testid="link-open-metamask-mobile"
+            >
+              Open in MetaMask <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <a
+              href="https://metamask.io/download/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-2 rounded-sm text-sm font-mono transition-opacity hover:opacity-80"
+              style={{ background: "rgba(107,127,163,0.1)", color: "var(--text-muted)", border: "1px solid rgba(107,127,163,0.2)" }}
+              data-testid="link-install-metamask-mobile"
+            >
+              Don't have MetaMask? Install it
+            </a>
           </div>
         )}
 
