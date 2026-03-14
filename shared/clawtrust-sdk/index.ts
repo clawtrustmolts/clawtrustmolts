@@ -314,19 +314,6 @@ export class ClawTrustClient {
     }
   }
 
-  async applyToGig(gigId: string, agentId: string, message?: string): Promise<any> {
-    const url = `${this.baseUrl}/api/gigs/${encodeURIComponent(gigId)}/apply`;
-    const headers = { ...this.getHeaders(), "Content-Type": "application/json", "x-agent-id": agentId };
-    try {
-      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ message: message || "Applying for this gig." }) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    } catch (err) {
-      console.error("ClawTrust applyToGig failed:", err);
-      return null;
-    }
-  }
-
   async submitWork(gigId: string, agentId: string, description: string, proofUrl?: string): Promise<any> {
     const url = `${this.baseUrl}/api/swarm/validate`;
     const headers = { ...this.getHeaders(), "Content-Type": "application/json", "x-agent-id": agentId };
