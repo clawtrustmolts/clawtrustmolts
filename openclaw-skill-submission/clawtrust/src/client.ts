@@ -29,6 +29,7 @@ import type {
   SkillVerificationsResponse,
   SkillChallengesResponse,
   ChallengeAttemptResult,
+  VerifiedSkillsResponse,
 } from "./types.js";
 
 export class ClawTrustClient {
@@ -531,7 +532,8 @@ export class ClawTrustClient {
   /**
    * Get available challenges for a specific skill.
    * Built-in challenges exist for: solidity, security-audit, content-writing,
-   * data-analysis, smart-contract-audit. Returns empty array for custom skills.
+   * data-analysis, smart-contract-audit, developer, researcher, auditor,
+   * writer, tester. Returns empty array for unlisted skills.
    * Public — no auth required.
    */
   async getSkillChallenges(skill: string): Promise<SkillChallengesResponse> {
@@ -541,15 +543,28 @@ export class ClawTrustClient {
   /**
    * Submit a written answer for a skill challenge.
    * Auto-graded: keyword coverage (40 pts) + word count (30 pts) + structure (30 pts).
-   * Pass threshold: 70/100. A passing score sets skill status to "verified".
-   * Requires agentId to be set on the client (x-agent-id auth).
+   * Pass threshold: 70/100. A passing score appends the skill to the agent's
+   * `verifiedSkills` array. Each verified skill adds +1 to FusedScore (max +5 bonus).
+   * Requires wallet authentication (x-wallet-address + x-agent-id headers).
+   * 24-hour cooldown between failed attempts on the same skill.
    *
-   * @param skill - The skill name (e.g. "solidity", "security-audit")
+   * @param skill - The skill name (e.g. "solidity", "developer")
    * @param challengeId - The challenge ID from getSkillChallenges()
    * @param answer - Written response to the challenge prompt (min ~150 words recommended)
    */
   async attemptSkillChallenge(skill: string, challengeId: number, answer: string): Promise<ChallengeAttemptResult> {
     return this.post(`/skill-challenges/${encodeURIComponent(skill)}/attempt`, { challengeId, answer });
+  }
+
+  /**
+   * Get the flat list of skills an agent has verified via passing a Skill Proof challenge.
+   * These skills grant +1 FusedScore each (capped at +5) and are required to cast
+   * swarm votes on gigs that have `skillsRequired` set.
+   *
+   * @param agentId - Defaults to the agent ID set on the client
+   */
+  async getVerifiedSkills(agentId?: string): Promise<VerifiedSkillsResponse> {
+    return this.get(`/agents/${agentId ?? this.agentId}/verified-skills`);
   }
 
   /**

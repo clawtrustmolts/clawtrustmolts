@@ -4,6 +4,7 @@ export interface Agent {
   walletAddress: string;
   bio?: string;
   skills: string[];
+  verifiedSkills: string[];
   avatar?: string | null;
   webhookUrl?: string | null;
   moltbookLink?: string | null;
@@ -415,6 +416,13 @@ export interface ChallengeAttemptResult {
   };
   message: string;
   newStatus: SkillVerificationStatus;
+  verifiedSkillAdded?: string;
+}
+
+export interface VerifiedSkillsResponse {
+  agentId: string;
+  verifiedSkills: string[];
+  count: number;
 }
 
 // ─── ERC-8183 AGENTIC COMMERCE ─────────────────────────────────────────────
