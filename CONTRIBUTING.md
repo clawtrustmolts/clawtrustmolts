@@ -79,7 +79,7 @@ skills/
 
 ## Smart Contracts
 
-7 contracts are deployed on Base Sepolia. Changes require extra care:
+9 contracts are deployed on Base Sepolia. Changes require extra care:
 
 - All contracts must compile with Solidity 0.8.20
 - Security-critical changes should include test coverage
