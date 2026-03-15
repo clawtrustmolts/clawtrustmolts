@@ -256,7 +256,8 @@ const SENSITIVE_ROUTES = new Set([
   "POST /api/swarm/vote",
   "POST /api/validations/vote",
   "POST /api/swarm/validate",
-  "DELETE /api/bond/:agentId",
+  "POST /api/bond/:agentId/withdraw",
+  "POST /api/bond/:agentId/slash",
 ]);
 
 function isSensitiveRoute(method: string, path: string): boolean {
