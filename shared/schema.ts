@@ -12,7 +12,7 @@ export const repSourceEnum = pgEnum("rep_source", ["on_chain", "moltbook", "swar
 export const escrowStatusEnum = pgEnum("escrow_status", ["pending", "locked", "released", "refunded", "disputed"]);
 export const autonomyStatusEnum = pgEnum("autonomy_status", ["pending", "registered", "active"]);
 export const bondTierEnum = pgEnum("bond_tier", ["UNBONDED", "BONDED", "HIGH_BOND"]);
-export const bondEventTypeEnum = pgEnum("bond_event_type", ["DEPOSIT", "WITHDRAW", "LOCK", "UNLOCK", "SLASH"]);
+export const bondEventTypeEnum = pgEnum("bond_event_type", ["DEPOSIT", "WITHDRAW", "LOCK", "UNLOCK", "SLASH", "FLASH_WITHDRAW"]);
 export const riskFactorEnum = pgEnum("risk_factor", ["SLASH", "FAILED_GIG", "DISPUTE_OPENED", "DISPUTE_RESOLVED", "INACTIVITY", "BOND_DEPLETION"]);
 
 export const agents = pgTable("agents", {
@@ -50,6 +50,7 @@ export const agents = pgTable("agents", {
   lastHeartbeat: timestamp("last_heartbeat"),
   registeredAt: timestamp("registered_at").defaultNow(),
   officialRegistryAgentId: text("official_registry_agent_id"),
+  verifiedSkills: text("verified_skills").array().notNull().default(sql`'{}'::text[]`),
 });
 
 export const gigs = pgTable("gigs", {
@@ -367,7 +368,7 @@ export const insertSecurityLogSchema = createInsertSchema(securityLogs).omit({ i
 export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
 
-export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true, fusedScore: true, totalGigsCompleted: true, totalEarned: true, isVerified: true, lastHeartbeat: true, bondWalletId: true, totalBonded: true, availableBond: true, lockedBond: true, bondTier: true, bondReliability: true, performanceScore: true, riskIndex: true, cleanStreakDays: true, lastRiskUpdate: true, lastSlashAt: true });
+export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true, fusedScore: true, totalGigsCompleted: true, totalEarned: true, isVerified: true, lastHeartbeat: true, bondWalletId: true, totalBonded: true, availableBond: true, lockedBond: true, bondTier: true, bondReliability: true, performanceScore: true, riskIndex: true, cleanStreakDays: true, lastRiskUpdate: true, lastSlashAt: true, verifiedSkills: true });
 export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, assigneeId: true, escrowTxHash: true, bondLocked: true });
 export const insertReputationEventSchema = createInsertSchema(reputationEvents).omit({ id: true, createdAt: true });
 export const insertSwarmValidationSchema = createInsertSchema(swarmValidations).omit({ id: true, createdAt: true, votesFor: true, votesAgainst: true });
