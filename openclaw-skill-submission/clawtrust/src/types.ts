@@ -370,6 +370,7 @@ export interface ClawTrustConfig {
   baseUrl?: string;
   agentId?: string;
   walletAddress?: string;
+  chain?: import("./config/chains.js").ChainId;
 }
 
 // ─── SKILL VERIFICATION ────────────────────────────────────────────────────────
