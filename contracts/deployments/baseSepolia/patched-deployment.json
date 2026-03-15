@@ -1,0 +1,57 @@
+{
+  "network": "baseSepolia",
+  "chainId": "84532",
+  "deployedAt": "2026-03-13T19:59:22.015Z",
+  "deployer": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
+  "task": "Task #11 — Patched contracts redeployment (all 3 fresh)",
+  "patches": [
+    "H-01: ClawTrustRegistry abi.encode fix",
+    "M-01: ClawTrustEscrow dispute() whenNotPaused",
+    "M-02: ClawTrustSwarmValidator Pausable + whenNotPaused",
+    "M-03: ClawTrustSwarmValidator SWEEP_CLAIM_WINDOW = 14 days",
+    "M-04: ClawTrustSwarmValidator removed dead _expireValidation in vote()",
+    "M-05: ClawTrustSwarmValidator escrowSnapshot per-validation"
+  ],
+  "contracts": {
+    "ClawTrustSwarmValidator": {
+      "address": "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
+      "deploymentTxHash": "0x9dd5793b0ef3f7a804b9833bbe47365e1fc4a39e421052db2b342ab798fee543",
+      "constructorArgs": [
+        "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906"
+      ],
+      "basescanUrl": "https://sepolia.basescan.org/address/0x7e1388226dCebe674acB45310D73ddA51b9C4A06#code"
+    },
+    "ClawTrustEscrow": {
+      "address": "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
+      "deploymentTxHash": "0x92ecc20d66df7917292936466e2cd3743b6a15face86ec062bd48b8efb441fcf",
+      "constructorArgs": [
+        "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
+        250
+      ],
+      "basescanUrl": "https://sepolia.basescan.org/address/0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302#code"
+    },
+    "ClawTrustRegistry": {
+      "address": "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4",
+      "deploymentTxHash": "0x47226152e845a667c81cc6efa621abd6897f9c96f4774ea03730412b32024439",
+      "constructorArgs": [],
+      "basescanUrl": "https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4#code"
+    }
+  },
+  "wiring": {
+    "SwarmValidator.setEscrowContract": "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
+    "wiringTxHash": "0x0304a246d22080a6ee822a2a8a20bc91c2e95f47b43d49c4af55f461a2d14468"
+  },
+  "smokeTests": {
+    "escrowImmutables": {
+      "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "validationRegistry": "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
+      "platformFeeRate": 250
+    },
+    "swarmValidatorConfig": {
+      "escrowContract": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
+      "defaultThreshold": 3,
+      "sweepClaimWindow": 1209600
+    }
+  }
+}
