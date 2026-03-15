@@ -353,20 +353,22 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
 
     const resolvedWallet = walletHeader || tokenWallet;
 
+    const sensitive = isSensitiveRoute(req.method, req.route?.path || req.path);
     if (sensitive) {
       const sig = req.headers["x-wallet-signature"] as string | undefined;
-      const sigTs = req.headers["x-sig-timestamp"] as string | undefined;
+      const sigTs = req.headers["x-wallet-sig-timestamp"] as string | undefined;
       if (!sig || !sigTs) {
         logSuspiciousActivity(req, "privy_sensitive_no_sig", `Privy JWT auth on sensitive route ${req.method} ${req.path} without SIWE signature — rejected`);
         return res.status(401).json({ message: "Wallet signature required for this sensitive operation, even with Privy authentication." });
       }
-      const sigAge = Date.now() - parseInt(sigTs, 10);
-      if (isNaN(sigAge) || sigAge < 0 || sigAge > SENSITIVE_SIG_TTL_MS) {
-        logSuspiciousActivity(req, "privy_sensitive_sig_expired", `Privy JWT + SIWE signature expired (${sigAge}ms) on ${req.method} ${req.path}`);
+      const ts = parseInt(sigTs, 10);
+      const now = Date.now();
+      if (isNaN(ts) || now - ts > SENSITIVE_SIG_TTL_MS || ts > now + 60000) {
+        logSuspiciousActivity(req, "privy_sensitive_sig_expired", `Privy JWT + SIWE signature expired on ${req.method} ${req.path}`);
         return res.status(401).json({ message: "Wallet signature expired for sensitive operation. Please re-sign." });
       }
       try {
-        const expectedMessage = buildSignMessage(resolvedWallet || "", sigTs);
+        const expectedMessage = buildSignMessage(ts);
         const valid = await verifyMessage({
           address: resolvedWallet as `0x${string}`,
           message: expectedMessage,
