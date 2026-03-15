@@ -175,12 +175,7 @@ async function main() {
   await authBondTx.wait();
   console.log("[Bond] Escrow authorized as caller");
 
-  console.log("[Escrow] Approving USDC token...");
-  const escrowAbi = loadArtifact("ClawTrustEscrow").abi;
-  const escrowContract = new ethers.Contract(deployed.ClawTrustEscrow, escrowAbi, wallet);
-  const approveTx = await escrowContract.setTokenApproval(usdcTokenAddress, true);
-  await approveTx.wait();
-  console.log("[Escrow] USDC approved");
+  console.log("[Escrow] USDC token set in constructor — no further approval needed.");
 
   console.log("\n=== Phase 3: Save Deployment Artifacts ===\n");
 

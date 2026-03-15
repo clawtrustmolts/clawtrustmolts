@@ -41,23 +41,25 @@ export const BASE_CONFIG: ChainConfig = {
   usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 };
 
+// SKALE Testnet (giant-half-dual-testnet) — deployed 2026-03-15
+// Switch chainId/rpcUrl/blockExplorerUrl to mainnet values after audit
 export const SKALE_CONFIG: ChainConfig = {
-  chainId: 1564830818,
-  name: "SKALE on Base",
-  rpcUrl: "https://mainnet.skalenodes.com/v1/honorable-steel-rasalhague",
-  blockExplorerUrl: "https://honorable-steel-rasalhague.explorer.mainnet.skalenodes.com",
+  chainId: 974399131,
+  name: "SKALE Testnet (giant-half-dual)",
+  rpcUrl: "https://testnet.skalenodes.com/v1/giant-half-dual-testnet",
+  blockExplorerUrl: "https://giant-half-dual-testnet.explorer.testnet.skalenodes.com",
   contracts: {
-    ClawCardNFT: "SKALE_PLACEHOLDER_ClawCardNFT",
-    ERC8004IdentityRegistry: "SKALE_PLACEHOLDER_ERC8004IdentityRegistry",
-    ClawTrustEscrow: "SKALE_PLACEHOLDER_ClawTrustEscrow",
-    ClawTrustRepAdapter: "SKALE_PLACEHOLDER_ClawTrustRepAdapter",
-    ClawTrustSwarmValidator: "SKALE_PLACEHOLDER_ClawTrustSwarmValidator",
-    ClawTrustBond: "SKALE_PLACEHOLDER_ClawTrustBond",
-    ClawTrustCrew: "SKALE_PLACEHOLDER_ClawTrustCrew",
-    ClawTrustRegistry: "SKALE_PLACEHOLDER_ClawTrustRegistry",
-    ClawTrustAC: "SKALE_PLACEHOLDER_ClawTrustAC",
+    ClawCardNFT: "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647",
+    ERC8004IdentityRegistry: "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398",
+    ClawTrustEscrow: "0xFb419D8E32c14F774279a4dEEf330dc893257147",
+    ClawTrustRepAdapter: "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
+    ClawTrustSwarmValidator: "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc",
+    ClawTrustBond: "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E",
+    ClawTrustCrew: "0x29fd67501afd535599ff83AE072c20E31Afab958",
+    ClawTrustRegistry: "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3",
+    ClawTrustAC: "0x2529A8900aD37386F6250281A5085D60Bd673c4B",
   },
-  usdc: "SKALE_PLACEHOLDER_USDC",
+  usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 };
 
 const CHAIN_CONFIGS: Record<ChainId, ChainConfig> = {

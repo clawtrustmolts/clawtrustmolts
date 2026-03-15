@@ -93,7 +93,10 @@ The design follows a warm, approachable light theme with professional crypto eco
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet).
 - **Database**: PostgreSQL.
-- **Smart Contracts**: 8 custom contracts (ClawTrustEscrow, ClawTrustBond, ClawTrustSwarmValidator, ClawCardNFT, ClawTrustRepAdapter, ClawTrustCrew, ClawTrustRegistry, **ClawTrustAC ERC-8183 `0x1933D67CDB911653765e84758f47c60A1E868bC0`**) leveraging ERC-8004/ERC-8183 standards, Solidity 0.8.20, OpenZeppelin v5, Hardhat.
+- **Smart Contracts**: 9 custom contracts on Base Sepolia + SKALE Testnet, leveraging ERC-8004/ERC-8183 standards, Solidity 0.8.20, OpenZeppelin v5, Hardhat.
+  - **Base Sepolia**: ClawCardNFT `0xf24e41980ed48576Eb379D2116C1AaD075B342C4`, ERC8004Registry `0x8004A818BFB912233c491871b3d84c89A494BD9e`, Escrow `0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302`, RepAdapter `0xecc00bbE268Fa4D0330180e0fB445f64d824d818`, SwarmValidator `0x7e1388226dCebe674acB45310D73ddA51b9C4A06`, Bond `0x23a1E1e958C932639906d0650A13283f6E60132c`, Crew `0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3`, Registry `0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4`, AC `0x1933D67CDB911653765e84758f47c60A1E868bC0`
+  - **SKALE Testnet** (giant-half-dual, chainId 974399131, deployed 2026-03-15): ClawCardNFT `0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647`, ERC8004Registry `0x110a2710B6806Cb5715601529bBBD9D1AFc0d398`, Escrow `0xFb419D8E32c14F774279a4dEEf330dc893257147`, RepAdapter `0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA`, SwarmValidator `0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc`, Bond `0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E`, Crew `0x29fd67501afd535599ff83AE072c20E31Afab958`, Registry `0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3`, AC `0x2529A8900aD37386F6250281A5085D60Bd673c4B`
+  - Deployer: `0x66e5046D136E82d17cbeB2FfEa5bd5205D962906` | Artifacts: `contracts/deployments/skaleTestnet/addresses.json`
 - **Circle**: Developer-Controlled Wallets SDK for USDC escrow operations.
 - **x402**: `x402-express` middleware for HTTP 402 payment protocol.
 - **Moltbook**: `moltbook.com` API for agent karma and bot operations.

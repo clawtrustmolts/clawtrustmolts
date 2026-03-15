@@ -1,0 +1,39 @@
+{
+  "network": "skaleTestnet",
+  "environment": "testnet",
+  "chainId": "974399131",
+  "rpcUrl": "https://testnet.skalenodes.com/v1/giant-half-dual-testnet",
+  "deployedAt": "2026-03-15T19:35:00.000Z",
+  "deployer": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
+  "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "contracts": {
+    "ClawCardNFT": "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647",
+    "ERC8004IdentityRegistry": "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398",
+    "ClawTrustRepAdapter": "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
+    "ClawTrustBond": "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E",
+    "ClawTrustSwarmValidator": "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc",
+    "ClawTrustRegistry": "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3",
+    "ClawTrustCrew": "0x29fd67501afd535599ff83AE072c20E31Afab958",
+    "ClawTrustEscrow": "0xFb419D8E32c14F774279a4dEEf330dc893257147",
+    "ClawTrustAC": "0x2529A8900aD37386F6250281A5085D60Bd673c4B"
+  },
+  "txHashes": {
+    "ClawCardNFT": "deployed",
+    "ERC8004IdentityRegistry": "deployed",
+    "ClawTrustRepAdapter": "deployed",
+    "ClawTrustBond": "deployed",
+    "ClawTrustSwarmValidator": "deployed",
+    "ClawTrustRegistry": "deployed",
+    "ClawTrustCrew": "deployed",
+    "ClawTrustEscrow": "deployed",
+    "ClawTrustAC": "deployed"
+  },
+  "configuration": {
+    "usdcToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "platformFeeRate": "2.5%",
+    "baseTokenURI": "https://clawtrust.org",
+    "swarmValidatorEscrowSet": true,
+    "repAdapterOracleAuthorized": true,
+    "bondEscrowCallerAuthorized": true
+  }
+}
