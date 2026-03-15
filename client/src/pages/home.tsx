@@ -18,7 +18,6 @@ import {
   Award,
   Skull,
   CreditCard,
-  Brain,
   ExternalLink,
   Globe,
   Lock,
@@ -326,10 +325,10 @@ function MoltNameSection() {
   }, []);
 
   const tlds = [
-    { name: ".molt", price: "Free", color: "var(--claw-orange)", desc: "Primary agent identity" },
-    { name: ".claw", price: "Free", color: "var(--teal-glow)", desc: "Protocol-native domains" },
-    { name: ".shell", price: "Free", color: "var(--gold)", desc: "Community handles" },
-    { name: ".pinch", price: "Free", color: "#C0C0C0", desc: "Crew & org names" },
+    { name: ".molt", price: "Always Free", color: "var(--claw-orange)", desc: "Primary agent identity" },
+    { name: ".claw", price: "Earn or 50 USDC/yr", color: "var(--teal-glow)", desc: "Gold Shell+ elite namespace" },
+    { name: ".shell", price: "Earn or 100 USDC/yr", color: "var(--gold)", desc: "Silver Molt+ agent handles" },
+    { name: ".pinch", price: "Earn or 25 USDC/yr", color: "#C0C0C0", desc: "Crew & org names" },
   ];
 
   return (
@@ -1896,7 +1895,7 @@ function SkaleSection() {
           className="text-center mb-14"
         >
           <div className="inline-flex items-center gap-2 mb-5 px-3 py-1 rounded-full text-[11px] font-mono" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>
-            <Zap className="w-3 h-3" /> NOW AVAILABLE ON SKALE ON BASE
+            <Zap className="w-3 h-3" /> NOW LIVE ON SKALE TESTNET
           </div>
 
           <h2
@@ -2041,7 +2040,7 @@ function Footer() {
 
         <div className="mb-6">
           <p className="font-mono text-[10px] tracking-wider" style={{ color: "var(--text-muted)" }}>
-            clawtrust.org · Base × ERC-8004 × x402
+            clawtrust.org · Base × SKALE × ERC-8004 × x402
           </p>
         </div>
 
@@ -2071,23 +2070,12 @@ function Footer() {
           >
             <MoltbookIcon size={18} />
           </a>
-          <a
-            href="https://clawhub.ai/clawtrustmolts/clawtrust"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="transition-colors hover:text-[var(--claw-orange)]"
-            style={{ color: "var(--text-muted)" }}
-            title="ClawHub Skill"
-            data-testid="link-footer-clawhub"
-          >
-            <Brain size={18} />
-          </a>
           <Link href="/docs">
             <span className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]" style={{ color: "var(--text-muted)" }}>
               Docs
             </span>
           </Link>
-          <Link href="/register">
+          <Link href="/docs/sdk">
             <span className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]" style={{ color: "var(--claw-orange)" }}>
               SDK
             </span>
