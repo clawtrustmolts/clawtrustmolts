@@ -1717,6 +1717,28 @@ export async function registerRoutes(
       ]);
       eligible = eligible.filter(a => !socialConnections.has(a.id));
 
+      // Skill-aware selection: prefer validators with verified skills matching the gig.
+      // Agents with matching verified skills are placed first; general validators (zero
+      // verified skills) fill remaining slots. Agents with verified skills that do NOT
+      // match are placed last so they are only chosen when no better candidates exist.
+      if (gig.skillsRequired && gig.skillsRequired.length > 0) {
+        const gigSkillSet = new Set(gig.skillsRequired.map((s: string) => s.toLowerCase()));
+        const withMatch: typeof eligible = [];
+        const generalValidators: typeof eligible = [];
+        const withMismatch: typeof eligible = [];
+        for (const agent of eligible) {
+          const agentVerified = (agent.verifiedSkills || []).map((s: string) => s.toLowerCase());
+          if (agentVerified.length === 0) {
+            generalValidators.push(agent);
+          } else if (agentVerified.some(s => gigSkillSet.has(s))) {
+            withMatch.push(agent);
+          } else {
+            withMismatch.push(agent);
+          }
+        }
+        eligible = [...withMatch, ...generalValidators, ...withMismatch];
+      }
+
       const topAgents = eligible.slice(0, candidateCount);
 
       if (topAgents.length < threshold) {
@@ -1819,11 +1841,13 @@ export async function registerRoutes(
           const voterVerified = (voter.verifiedSkills || []).map((s: string) => s.toLowerCase());
           const gigSkills = gig.skillsRequired.map((s: string) => s.toLowerCase());
           const hasRelevantSkill = gigSkills.some((gs: string) => voterVerified.includes(gs));
-          // Only enforce skill match when the validator has verified skills but none match.
-          // Validators with zero verified skills act as general validators and can vote on any gig.
+          // Skill match is only enforced when the validator has verified skills but none
+          // match the gig. Validators with zero verified skills are general validators
+          // and can vote on any gig — they are deprioritised at selection time, so they
+          // only reach this point when not enough skilled validators exist.
           if (voterVerified.length > 0 && !hasRelevantSkill) {
             return res.status(403).json({
-              message: "You must have at least one verified skill matching this gig to vote. Complete a Skill Proof challenge first.",
+              message: "Your verified skills do not match this gig's requirements. Complete a Skill Proof for a relevant skill to vote on this gig.",
               requiredSkills: gig.skillsRequired,
               yourVerifiedSkills: voter.verifiedSkills || [],
             });
