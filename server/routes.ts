@@ -180,6 +180,32 @@ async function verifyTurnstileToken(token: string): Promise<boolean> {
   }
 }
 
+const registrationWalletTracker = new Map<string, number>();
+const REGISTRATION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+if (!process.env.TURNSTILE_SECRET_KEY) {
+  console.warn("[Security] WARNING: TURNSTILE_SECRET_KEY is not set. CAPTCHA verification is disabled. Stricter IP+wallet rate limiting applied as fallback.");
+}
+
+function registrationRateLimit(req: Request, res: Response, next: NextFunction) {
+  const wallet = (req.headers["x-wallet-address"] as string || "").toLowerCase();
+  if (!wallet) return next();
+
+  const now = Date.now();
+  for (const [k, ts] of registrationWalletTracker) {
+    if (now - ts > REGISTRATION_COOLDOWN_MS) registrationWalletTracker.delete(k);
+  }
+
+  const lastRegistration = registrationWalletTracker.get(wallet);
+  if (lastRegistration && now - lastRegistration < REGISTRATION_COOLDOWN_MS) {
+    logSuspiciousActivity(req, "registration_rate_limit", `Wallet ${wallet} attempted multiple registrations within 24h`);
+    return res.status(429).json({ message: "Only one agent registration per wallet address per 24 hours." });
+  }
+
+  registrationWalletTracker.set(wallet, now);
+  next();
+}
+
 function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
   if (!process.env.TURNSTILE_SECRET_KEY) return next();
 
@@ -912,7 +938,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/register-agent", strictLimiter, captchaMiddleware, walletAuthMiddleware, async (req, res) => {
+  app.post("/api/register-agent", strictLimiter, registrationRateLimit, captchaMiddleware, walletAuthMiddleware, async (req, res) => {
     try {
       if (req.body?.captchaToken) delete req.body.captchaToken;
       const data = registerAgentSchema.parse(req.body);
@@ -1866,8 +1892,16 @@ export async function registerRoutes(
         gig.posterId,
         ...(gig.assigneeId ? [gig.assigneeId] : []),
       ];
+      const VALIDATOR_MIN_AGE_DAYS = 7;
+      const VALIDATOR_MIN_FUSED_SCORE = 5;
       const topAgentCandidates = await storage.getTopAgentsByFusedScore(candidateCount * 3, excludeIds);
-      let eligible = topAgentCandidates.filter(a => a.riskIndex <= 60);
+      const ageThreshold = Date.now() - VALIDATOR_MIN_AGE_DAYS * 24 * 60 * 60 * 1000;
+      let eligible = topAgentCandidates.filter(a => {
+        if (a.riskIndex > 60) return false;
+        if (a.fusedScore < VALIDATOR_MIN_FUSED_SCORE) return false;
+        if (a.createdAt && new Date(a.createdAt).getTime() > ageThreshold) return false;
+        return true;
+      });
 
       const seenWallets = new Set<string>();
       eligible = eligible.filter(a => {
@@ -5792,11 +5826,16 @@ export async function registerRoutes(
   // TRUST RECEIPTS
   // ═══════════════════════════════════════════════════════════════
 
+  const TRUST_RECEIPT_MIN_AMOUNT = 1;
+
   app.post("/api/trust-receipts", apiLimiter, async (req, res) => {
     try {
       const { gigId, agentId, posterId, gigTitle, amount, currency, chain, swarmVerdict, scoreChange, tierBefore, tierAfter } = req.body;
       if (!gigId || !agentId || !posterId || !gigTitle) {
         return res.status(400).json({ message: "Missing required fields" });
+      }
+      if (typeof amount !== "number" || amount < TRUST_RECEIPT_MIN_AMOUNT) {
+        return res.status(400).json({ message: `Trust receipt amount must be at least ${TRUST_RECEIPT_MIN_AMOUNT} USDC.` });
       }
       const existing = await storage.getTrustReceiptByGig(gigId, agentId);
       if (existing) {
@@ -5888,7 +5927,7 @@ export async function registerRoutes(
         receipt = allForPoster.find(r => r.gigId === gig.id) || null;
       }
 
-      if (!receipt && gig.assigneeId) {
+      if (!receipt && gig.assigneeId && gig.budget >= TRUST_RECEIPT_MIN_AMOUNT) {
         const swarmVerdict = validation?.status === "approved" ? "PASS" : validation?.status === "rejected" ? "FAIL" : null;
         receipt = await storage.createTrustReceipt({
           gigId: gig.id,

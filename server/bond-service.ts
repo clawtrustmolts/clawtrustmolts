@@ -136,6 +136,23 @@ export async function withdrawBond(agentId: string, amount: number): Promise<Bon
     reason: `Withdrew ${amount} USDC bond`,
   });
 
+  const recentDeposits = await storage.getBondEvents(agentId, 100);
+  const lastDeposit = recentDeposits.find(e => e.eventType === "DEPOSIT" && e.createdAt);
+  if (lastDeposit) {
+    const depositAge = Date.now() - new Date(lastDeposit.createdAt!).getTime();
+    if (depositAge < FLASH_WITHDRAW_THRESHOLD_MS) {
+      console.warn(`[Bond] FLASH_WITHDRAW detected for agent ${agentId} — deposit was ${Math.round(depositAge / 3600000)}h ago`);
+      await storage.createReputationEvent({
+        agentId,
+        eventType: "Flash Withdraw Penalty",
+        scoreChange: -5,
+        source: "bond",
+        details: `Bond withdrawn within ${Math.round(depositAge / 3600000)}h of deposit (${amount} USDC). Flash-deposit pattern detected.`,
+        proofUri: null,
+      });
+    }
+  }
+
   console.log(`[Bond] Agent ${agentId} withdrew ${amount} USDC. Total: ${newTotal}, Tier: ${newTier}`);
   return event;
 }
@@ -328,16 +345,34 @@ export async function computeRepeatHireRate(agentId: string): Promise<number> {
   }
 }
 
+const BOND_MATURITY_DAYS = 7;
+const FLASH_WITHDRAW_THRESHOLD_MS = 48 * 60 * 60 * 1000;
+
 export async function syncPerformanceScore(agentId: string): Promise<number> {
   const agent = await storage.getAgent(agentId);
   if (!agent) throw new Error("Agent not found");
 
   const bondEvents = await storage.getBondEvents(agentId, 1000);
   const slashCount = bondEvents.filter(e => e.eventType === "SLASH").length;
-  const totalBondEvents = bondEvents.filter(e => ["DEPOSIT", "LOCK", "UNLOCK", "SLASH"].includes(e.eventType)).length;
-  const bondReliability = totalBondEvents > 0
-    ? Math.round(Math.max(0, 1 - (slashCount / totalBondEvents)) * 100)
-    : (agent.bondTier !== "UNBONDED" ? 100 : (agent.isVerified ? 50 : 0));
+  const now = Date.now();
+  const deposits = bondEvents.filter(e => e.eventType === "DEPOSIT" && e.createdAt);
+  let totalBondDays = 0;
+  for (const dep of deposits) {
+    const depositTime = new Date(dep.createdAt!).getTime();
+    const heldDays = (now - depositTime) / (1000 * 60 * 60 * 24);
+    if (heldDays >= BOND_MATURITY_DAYS) {
+      totalBondDays += heldDays;
+    }
+  }
+  const maxBondDays = deposits.length * 365;
+  let bondReliability: number;
+  if (deposits.length > 0 && maxBondDays > 0) {
+    const holdRatio = Math.min(totalBondDays / maxBondDays, 1);
+    const slashPenalty = deposits.length > 0 ? slashCount / deposits.length : 0;
+    bondReliability = Math.round(Math.max(0, (holdRatio - slashPenalty)) * 100);
+  } else {
+    bondReliability = agent.bondTier !== "UNBONDED" ? 0 : (agent.isVerified ? 50 : 0);
+  }
 
   const [disputeRate, repeatHireRate] = await Promise.all([
     computeDisputeRate(agentId),
