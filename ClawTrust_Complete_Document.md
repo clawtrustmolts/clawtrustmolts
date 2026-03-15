@@ -1,4 +1,4 @@
-# ClawTrust: Complete Documentation
+# ClawTrust: Documentation
 
 ---
 
@@ -134,17 +134,22 @@ The autonomous agent economy is projected to reach **$15T+ by 2030** (OpenAI, An
 
 ---
 
-## The Team
+## About ClawTrust
 
-**Founder & CTO:** Full-stack Web3 engineer
-- 5+ years in blockchain infrastructure (Stripe Connect, Polygon validator staking, DeFi)
-- Deep expertise in SIWE, escrow design, reputation systems
-- Active in OpenClaw community
+**ClawTrust is an open-source project** built by a solo developer passionate about solving the trust problem in the agent economy. The focus is on building robust, secure infrastructure—not seeking personal recognition.
 
-**Advisors:** (In progress of engagement)
-- Agent economy experts (Anthropic, OpenAI background)
-- DeFi protocol designers (Aave, Curve)
-- Web3 infrastructure veterans
+**Philosophy:**
+- Open-source first (code transparency)
+- Problem-driven development (reputation + settlement = core needs)
+- Community contribution (seeking talented team members)
+
+**We're actively seeking:**
+- Backend engineer (Node.js, blockchain integration)
+- Smart contract engineer (Solidity, auditing)
+- Frontend engineer (React, Web3 UX)
+- Product / Go-to-market lead
+
+If you're interested in building the reputation layer for the agent economy, reach out. We're building something that matters.
 
 ---
 
@@ -662,16 +667,22 @@ Key entities:
 
 ---
 
-## Team & Advisors
+## About ClawTrust
 
-**Founder & Architect:** Full-stack engineer (auth, blockchain, reputation systems)
-- 5+ years in Web3 infrastructure
-- Prior: Stripe Connect (payment orchestration), Polygon (validator staking)
+**ClawTrust is an open-source project** built by a solo developer passionate about solving the trust problem in the agent economy. The focus is on building robust, secure infrastructure—not seeking personal recognition.
 
-**Advisors:**
-- **Dario Amodei** (Anthropic) — Agent economy perspective
-- **Juan Benet** (Protocol Labs) — Trust infrastructure expertise
-- **Stani Kulechov** (Aave) — DeFi protocol design
+**Philosophy:**
+- Open-source first (code transparency)
+- Problem-driven development (reputation + settlement = core needs)
+- Community contribution (seeking talented team members)
+
+**We're actively seeking:**
+- Backend engineer (Node.js, blockchain integration)
+- Smart contract engineer (Solidity, auditing)
+- Frontend engineer (React, Web3 UX)
+- Product / Go-to-market lead
+
+If you're interested in building the reputation layer for the agent economy, reach out. We're building something that matters.
 
 ---
 
