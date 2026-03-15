@@ -9,8 +9,15 @@ const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY;
 
 if (!PRIVATE_KEY) {
   console.error("ERROR: DEPLOYER_PRIVATE_KEY environment variable is required.");
+  console.error("Usage: DEPLOYER_PRIVATE_KEY=<key> npx hardhat run contracts/scripts/deploy-skale.cjs --network skaleBase");
   process.exit(1);
 }
+
+hre.config.networks.skaleBase = {
+  url: SKALE_RPC_URL,
+  chainId: SKALE_CHAIN_ID,
+  accounts: [PRIVATE_KEY],
+};
 
 function loadArtifact(contractName) {
   const artifactPath = path.join(__dirname, "..", "artifacts", "contracts", `${contractName}.sol`, `${contractName}.json`);
@@ -35,6 +42,10 @@ async function main() {
   console.log("RPC URL:", SKALE_RPC_URL);
   console.log("Expected Chain ID:", SKALE_CHAIN_ID);
 
+  console.log("Compiling contracts via Hardhat...");
+  await hre.run("compile");
+  console.log("Compilation complete.\n");
+
   const provider = new ethers.JsonRpcProvider(SKALE_RPC_URL, SKALE_CHAIN_ID);
   const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 
@@ -45,13 +56,9 @@ async function main() {
   const balance = await provider.getBalance(wallet.address);
   console.log("Balance:", ethers.formatEther(balance), "ETH/sFUEL\n");
   if (balance === 0n) {
-    console.error("ERROR: Deployer has no ETH/sFUEL. Fund the account first.");
+    console.error("FATAL: Deployer has no ETH/sFUEL. Fund the account first.");
     process.exit(1);
   }
-
-  console.log("Compiling contracts via Hardhat...");
-  await hre.run("compile");
-  console.log("Compilation complete.\n");
 
   const reputationRegistryAddress = process.env.SKALE_REPUTATION_REGISTRY_ADDRESS || process.env.REPUTATION_REGISTRY_ADDRESS || "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63";
   const usdcTokenAddress = process.env.SKALE_USDC_TOKEN_ADDRESS || process.env.USDC_TOKEN_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -62,135 +69,102 @@ async function main() {
   const txHashes = {};
   const timestamps = {};
 
-  console.log("=== Phase 1: Deploy Contracts (Dependency Order) ===\n");
+  console.log("=== Phase 1: Deploy 8 Contracts (Dependency Order) ===\n");
+  console.log("Note: ERC8004IdentityRegistry is an external protocol contract");
+  console.log("      referenced at:", reputationRegistryAddress, "\n");
 
-  console.log("1/9 Deploying ClawCardNFT...");
+  console.log("1/8 Deploying ClawCardNFT...");
   const clawCard = await deployContract(wallet, "ClawCardNFT", [baseTokenURI]);
   deployed.ClawCardNFT = clawCard.address;
   txHashes.ClawCardNFT = clawCard.txHash;
   timestamps.ClawCardNFT = new Date().toISOString();
   console.log("   ClawCardNFT:", deployed.ClawCardNFT);
 
-  console.log("2/9 ERC8004IdentityRegistry (external dependency)...");
-  console.log("   ERC8004IdentityRegistry is an external contract (same as Base deployment).");
-  console.log("   Using registry address:", reputationRegistryAddress);
-  deployed.ERC8004IdentityRegistry = reputationRegistryAddress;
-  txHashes.ERC8004IdentityRegistry = "external-dependency";
-  timestamps.ERC8004IdentityRegistry = new Date().toISOString();
-
-  console.log("3/9 Deploying ClawTrustRepAdapter...");
+  console.log("2/8 Deploying ClawTrustRepAdapter...");
   const repAdapter = await deployContract(wallet, "ClawTrustRepAdapter", [reputationRegistryAddress]);
   deployed.ClawTrustRepAdapter = repAdapter.address;
   txHashes.ClawTrustRepAdapter = repAdapter.txHash;
   timestamps.ClawTrustRepAdapter = new Date().toISOString();
   console.log("   ClawTrustRepAdapter:", deployed.ClawTrustRepAdapter);
 
-  console.log("4/9 Deploying ClawTrustBond...");
+  console.log("3/8 Deploying ClawTrustBond...");
   const bond = await deployContract(wallet, "ClawTrustBond", [usdcTokenAddress]);
   deployed.ClawTrustBond = bond.address;
   txHashes.ClawTrustBond = bond.txHash;
   timestamps.ClawTrustBond = new Date().toISOString();
   console.log("   ClawTrustBond:", deployed.ClawTrustBond);
 
-  console.log("5/9 Deploying ClawTrustSwarmValidator...");
+  console.log("4/8 Deploying ClawTrustSwarmValidator...");
   const swarmValidator = await deployContract(wallet, "ClawTrustSwarmValidator", [wallet.address]);
   deployed.ClawTrustSwarmValidator = swarmValidator.address;
   txHashes.ClawTrustSwarmValidator = swarmValidator.txHash;
   timestamps.ClawTrustSwarmValidator = new Date().toISOString();
   console.log("   ClawTrustSwarmValidator:", deployed.ClawTrustSwarmValidator);
 
-  console.log("6/9 Deploying ClawTrustRegistry...");
-  try {
-    const registry = await deployContract(wallet, "ClawTrustRegistry", []);
-    deployed.ClawTrustRegistry = registry.address;
-    txHashes.ClawTrustRegistry = registry.txHash;
-  } catch (err) {
-    console.log("   ClawTrustRegistry deployment error:", err.message?.substring(0, 80));
-    deployed.ClawTrustRegistry = "0x0000000000000000000000000000000000000000";
-    txHashes.ClawTrustRegistry = "failed";
-  }
+  console.log("5/8 Deploying ClawTrustRegistry...");
+  const registry = await deployContract(wallet, "ClawTrustRegistry", []);
+  deployed.ClawTrustRegistry = registry.address;
+  txHashes.ClawTrustRegistry = registry.txHash;
   timestamps.ClawTrustRegistry = new Date().toISOString();
   console.log("   ClawTrustRegistry:", deployed.ClawTrustRegistry);
 
-  console.log("7/9 Deploying ClawTrustCrew...");
+  console.log("6/8 Deploying ClawTrustCrew...");
   const crew = await deployContract(wallet, "ClawTrustCrew", []);
   deployed.ClawTrustCrew = crew.address;
   txHashes.ClawTrustCrew = crew.txHash;
   timestamps.ClawTrustCrew = new Date().toISOString();
   console.log("   ClawTrustCrew:", deployed.ClawTrustCrew);
 
-  console.log("8/9 Deploying ClawTrustEscrow...");
+  console.log("7/8 Deploying ClawTrustEscrow...");
   const escrow = await deployContract(wallet, "ClawTrustEscrow", [usdcTokenAddress, deployed.ClawTrustSwarmValidator, platformFeeRate]);
   deployed.ClawTrustEscrow = escrow.address;
   txHashes.ClawTrustEscrow = escrow.txHash;
   timestamps.ClawTrustEscrow = new Date().toISOString();
   console.log("   ClawTrustEscrow:", deployed.ClawTrustEscrow);
 
-  console.log("9/9 Deploying ClawTrustAC (ERC-8183)...");
-  try {
-    const ac = await deployContract(wallet, "ClawTrustAC", [
-      deployed.ClawCardNFT,
-      deployed.ClawTrustRepAdapter,
-      deployed.ClawTrustBond,
-      usdcTokenAddress,
-      wallet.address,
-      wallet.address,
-    ]);
-    deployed.ClawTrustAC = ac.address;
-    txHashes.ClawTrustAC = ac.txHash;
-  } catch (err) {
-    console.log("   ClawTrustAC deployment error:", err.message?.substring(0, 80));
-    deployed.ClawTrustAC = "0x0000000000000000000000000000000000000000";
-    txHashes.ClawTrustAC = "failed";
-  }
+  console.log("8/8 Deploying ClawTrustAC (ERC-8183)...");
+  const ac = await deployContract(wallet, "ClawTrustAC", [
+    deployed.ClawCardNFT,
+    deployed.ClawTrustRepAdapter,
+    deployed.ClawTrustBond,
+    usdcTokenAddress,
+    wallet.address,
+    wallet.address,
+  ]);
+  deployed.ClawTrustAC = ac.address;
+  txHashes.ClawTrustAC = ac.txHash;
   timestamps.ClawTrustAC = new Date().toISOString();
   console.log("   ClawTrustAC:", deployed.ClawTrustAC);
 
   console.log("\n=== Phase 2: Configuration ===\n");
 
   console.log("[SwarmValidator] Setting escrow contract...");
-  try {
-    const svAbi = loadArtifact("ClawTrustSwarmValidator").abi;
-    const svContract = new ethers.Contract(deployed.ClawTrustSwarmValidator, svAbi, wallet);
-    const setEscrowTx = await svContract.setEscrowContract(deployed.ClawTrustEscrow);
-    await setEscrowTx.wait();
-    console.log("[SwarmValidator] Escrow set to:", deployed.ClawTrustEscrow);
-  } catch (err) {
-    console.log("[SwarmValidator] setEscrowContract failed:", err.message?.substring(0, 80));
-  }
+  const svAbi = loadArtifact("ClawTrustSwarmValidator").abi;
+  const svContract = new ethers.Contract(deployed.ClawTrustSwarmValidator, svAbi, wallet);
+  const setEscrowTx = await svContract.setEscrowContract(deployed.ClawTrustEscrow);
+  await setEscrowTx.wait();
+  console.log("[SwarmValidator] Escrow set to:", deployed.ClawTrustEscrow);
 
   console.log("[RepAdapter] Authorizing deployer as oracle...");
-  try {
-    const raAbi = loadArtifact("ClawTrustRepAdapter").abi;
-    const raContract = new ethers.Contract(deployed.ClawTrustRepAdapter, raAbi, wallet);
-    const authTx = await raContract.authorizeOracle(wallet.address);
-    await authTx.wait();
-    console.log("[RepAdapter] Deployer authorized as oracle");
-  } catch (err) {
-    console.log("[RepAdapter] authorizeOracle failed:", err.message?.substring(0, 80));
-  }
+  const raAbi = loadArtifact("ClawTrustRepAdapter").abi;
+  const raContract = new ethers.Contract(deployed.ClawTrustRepAdapter, raAbi, wallet);
+  const authTx = await raContract.authorizeOracle(wallet.address);
+  await authTx.wait();
+  console.log("[RepAdapter] Deployer authorized as oracle");
 
   console.log("[Bond] Authorizing escrow as caller...");
-  try {
-    const bondAbi = loadArtifact("ClawTrustBond").abi;
-    const bondContract = new ethers.Contract(deployed.ClawTrustBond, bondAbi, wallet);
-    const authBondTx = await bondContract.authorizeCaller(deployed.ClawTrustEscrow);
-    await authBondTx.wait();
-    console.log("[Bond] Escrow authorized as caller");
-  } catch (err) {
-    console.log("[Bond] authorizeCaller failed:", err.message?.substring(0, 80));
-  }
+  const bondAbi = loadArtifact("ClawTrustBond").abi;
+  const bondContract = new ethers.Contract(deployed.ClawTrustBond, bondAbi, wallet);
+  const authBondTx = await bondContract.authorizeCaller(deployed.ClawTrustEscrow);
+  await authBondTx.wait();
+  console.log("[Bond] Escrow authorized as caller");
 
   console.log("[Escrow] Approving USDC token...");
-  try {
-    const escrowAbi = loadArtifact("ClawTrustEscrow").abi;
-    const escrowContract = new ethers.Contract(deployed.ClawTrustEscrow, escrowAbi, wallet);
-    const approveTx = await escrowContract.setTokenApproval(usdcTokenAddress, true);
-    await approveTx.wait();
-    console.log("[Escrow] USDC approved");
-  } catch (err) {
-    console.log("[Escrow] setTokenApproval failed:", err.message?.substring(0, 80));
-  }
+  const escrowAbi = loadArtifact("ClawTrustEscrow").abi;
+  const escrowContract = new ethers.Contract(deployed.ClawTrustEscrow, escrowAbi, wallet);
+  const approveTx = await escrowContract.setTokenApproval(usdcTokenAddress, true);
+  await approveTx.wait();
+  console.log("[Escrow] USDC approved");
 
   console.log("\n=== Phase 3: Save Deployment Artifacts ===\n");
 
@@ -201,6 +175,9 @@ async function main() {
     deployer: wallet.address,
     rpcUrl: SKALE_RPC_URL,
     usdc: usdcTokenAddress,
+    externalDependencies: {
+      ERC8004IdentityRegistry: reputationRegistryAddress,
+    },
     contracts: deployed,
     txHashes: txHashes,
     timestamps: timestamps,
@@ -229,6 +206,9 @@ async function main() {
     deployedAt: deploymentLog.deployedAt,
     deployer: wallet.address,
     usdc: usdcTokenAddress,
+    externalDependencies: {
+      ERC8004IdentityRegistry: reputationRegistryAddress,
+    },
     contracts: deployed,
   }, null, 2));
   console.log("Addresses saved to:", addressesPath);
@@ -260,11 +240,11 @@ async function main() {
   const contractNames = Object.keys(deployed);
   for (const name of contractNames) {
     const addr = deployed[name];
-    const status = txHashes[name] === "failed" ? "FAILED" : "OK";
-    const line = ` ${name.padEnd(28)} ${addr.substring(0, 42)} ${status}`;
+    const line = ` ${name.padEnd(28)} ${addr.substring(0, 42)} OK`;
     console.log("║" + line.padEnd(62) + "║");
   }
 
+  console.log("║" + ` ${"ERC8004IdentityRegistry".padEnd(28)} ${reputationRegistryAddress.substring(0, 42)} EXT`.padEnd(62) + "║");
   console.log("╠══════════════════════════════════════════════════════════════╣");
   console.log("║ Deployment log: deployments/skale-deployment.json          ║");
   console.log("╚══════════════════════════════════════════════════════════════╝");
@@ -274,14 +254,13 @@ async function main() {
   console.log("2. Authorize backend oracle wallet: repAdapter.authorizeOracle(<backend_wallet>)");
   console.log("3. Test contract interactions on SKALE");
   console.log("4. Update server chain-client.ts if needed for SKALE support");
-  console.log("\nUsage: DEPLOYER_PRIVATE_KEY=<key> node contracts/scripts/deploy-skale.cjs");
-  console.log("Note: Uses ethers.js directly with SKALE RPC (no --network flag needed).");
-  console.log("      Hardhat is only used for contract compilation.");
+  console.log("\nUsage: DEPLOYER_PRIVATE_KEY=<key> npx hardhat run contracts/scripts/deploy-skale.cjs --network skaleBase");
 }
 
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error(error);
+    console.error("\nFATAL DEPLOYMENT ERROR:", error.message || error);
+    console.error("\nDeployment aborted. No partial artifacts saved.");
     process.exit(1);
   });

@@ -39,12 +39,16 @@ export interface CrossChainReputation {
   error?: string;
 }
 
+function word(hex: string): string {
+  return hex.padStart(64, "0");
+}
+
 function encodeAddress(address: string): string {
-  return address.toLowerCase().replace("0x", "").padStart(64, "0");
+  return word(address.toLowerCase().replace("0x", ""));
 }
 
 function encodeUint256(value: number): string {
-  return value.toString(16).padStart(64, "0");
+  return word(value.toString(16));
 }
 
 function decodeUint256FromHex(hex: string, wordIndex: number): number {
@@ -52,6 +56,78 @@ function decodeUint256FromHex(hex: string, wordIndex: number): number {
   const slice = hex.substring(start, start + 64);
   if (!slice || slice.length === 0) return 0;
   return parseInt(slice, 16) || 0;
+}
+
+function stringToHexBytes(str: string): string {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(str);
+  let hex = "";
+  for (const b of bytes) {
+    hex += b.toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+function encodeStringABI(str: string): string[] {
+  const hexBytes = stringToHexBytes(str);
+  const byteLength = hexBytes.length / 2;
+  const words: string[] = [];
+  words.push(encodeUint256(byteLength));
+  const paddedHex = hexBytes.padEnd(Math.ceil(hexBytes.length / 64) * 64 || 64, "0");
+  for (let i = 0; i < paddedHex.length; i += 64) {
+    words.push(paddedHex.substring(i, i + 64).padEnd(64, "0"));
+  }
+  return words;
+}
+
+function encodeSubmitFusedFeedback(
+  agentAddress: string,
+  onChainScore: number,
+  moltbookKarma: number,
+  performanceScore: number,
+  bondScore: number,
+  tags: string[],
+  proof: string
+): string {
+  const headWords: string[] = [];
+  headWords.push(encodeAddress(agentAddress));
+  headWords.push(encodeUint256(onChainScore));
+  headWords.push(encodeUint256(moltbookKarma));
+  headWords.push(encodeUint256(performanceScore));
+  headWords.push(encodeUint256(bondScore));
+
+  const headSize = 7;
+
+  const tagsEncoding: string[] = [];
+  tagsEncoding.push(encodeUint256(tags.length));
+  const tagStringEncodings: string[][] = [];
+  for (const tag of tags) {
+    tagStringEncodings.push(encodeStringABI(tag));
+  }
+
+  const tagOffsets: number[] = [];
+  let currentTagOffset = tags.length * 32;
+  for (const enc of tagStringEncodings) {
+    tagOffsets.push(currentTagOffset);
+    currentTagOffset += enc.length * 32;
+  }
+  for (const offset of tagOffsets) {
+    tagsEncoding.push(encodeUint256(offset));
+  }
+  for (const enc of tagStringEncodings) {
+    tagsEncoding.push(...enc);
+  }
+
+  const proofEncoding = encodeStringABI(proof);
+
+  const tagsOffset = headSize * 32;
+  const proofOffset = tagsOffset + tagsEncoding.length * 32;
+
+  headWords.push(encodeUint256(tagsOffset));
+  headWords.push(encodeUint256(proofOffset));
+
+  const allWords = [...headWords, ...tagsEncoding, ...proofEncoding];
+  return SUBMIT_FUSED_FEEDBACK_SELECTOR + allWords.join("");
 }
 
 async function ethCall(
@@ -150,19 +226,6 @@ async function getPassportData(
   }
 }
 
-function encodeStringForABI(str: string): string {
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(str);
-  const length = encodeUint256(bytes.length);
-  let hexData = "";
-  for (const b of bytes) {
-    hexData += b.toString(16).padStart(2, "0");
-  }
-  const paddedLength = Math.ceil(hexData.length / 64) * 64 || 64;
-  hexData = hexData.padEnd(paddedLength, "0");
-  return length + hexData;
-}
-
 export async function syncReputation(
   agentAddress: string,
   fromChain: ChainId,
@@ -211,25 +274,20 @@ export async function syncReputation(
     };
 
     if (walletProvider) {
-      const tagsEncoded = encodeStringForABI("cross-chain-sync");
-      const proofEncoded = encodeStringForABI(`sync:${fromChain}:${syncTimestamp}`);
-
-      const calldataBody =
-        encodeAddress(agentAddress) +
-        encodeUint256(fusedScore.onChainScore) +
-        encodeUint256(fusedScore.moltbookKarma) +
-        encodeUint256(fusedScore.performanceScore) +
-        encodeUint256(fusedScore.bondScore) +
-        encodeUint256(192) +
-        encodeUint256(0) +
-        encodeUint256(1) +
-        tagsEncoded +
-        proofEncoded;
+      const calldata = encodeSubmitFusedFeedback(
+        agentAddress,
+        fusedScore.onChainScore,
+        fusedScore.moltbookKarma,
+        fusedScore.performanceScore,
+        fusedScore.bondScore,
+        ["cross-chain-sync"],
+        `sync:${fromChain}:${syncTimestamp}`
+      );
 
       const txHash = await sendTransaction(
         walletProvider,
         toConfig.contracts.ClawTrustRepAdapter,
-        SUBMIT_FUSED_FEEDBACK_SELECTOR + calldataBody
+        calldata
       );
 
       return {
@@ -318,7 +376,7 @@ export async function hasReputationOnChain(
       getFusedScoreFromChain(config, agentAddress),
     ]);
 
-    return passport.hasPassport && (fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0);
+    return passport.hasPassport || fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0;
   } catch {
     return false;
   }
