@@ -6,13 +6,18 @@ const GET_FUSED_SCORE_SELECTOR = "0xb242f17c";
 const SUBMIT_FUSED_FEEDBACK_SELECTOR = "0x8c6ec3a6";
 const BALANCE_OF_SELECTOR = "0x70a08231";
 
-interface FusedScoreResult {
+interface FusedScoreData {
   onChainScore: number;
   moltbookKarma: number;
   performanceScore: number;
   bondScore: number;
   fusedScore: number;
   timestamp: number;
+}
+
+interface PassportData {
+  hasPassport: boolean;
+  nftBalance: number;
 }
 
 export interface ReputationSyncResult {
@@ -22,6 +27,8 @@ export interface ReputationSyncResult {
   toChain: ChainId;
   success: boolean;
   txHash?: string;
+  passport?: PassportData;
+  scoreBreakdown?: Omit<FusedScoreData, "fusedScore" | "timestamp">;
   error?: string;
 }
 
@@ -97,7 +104,7 @@ async function sendTransaction(
 async function getFusedScoreFromChain(
   config: ChainConfig,
   agentAddress: string
-): Promise<FusedScoreResult> {
+): Promise<FusedScoreData> {
   const data = GET_FUSED_SCORE_SELECTOR + encodeAddress(agentAddress);
   const result = await ethCall(
     config.rpcUrl,
@@ -121,10 +128,10 @@ async function getFusedScoreFromChain(
   };
 }
 
-async function hasPassportOnChain(
+async function getPassportData(
   config: ChainConfig,
   agentAddress: string
-): Promise<boolean> {
+): Promise<PassportData> {
   const data = BALANCE_OF_SELECTOR + encodeAddress(agentAddress);
 
   try {
@@ -134,12 +141,12 @@ async function hasPassportOnChain(
       data
     );
 
-    if (!result || result === "0x") return false;
+    if (!result || result === "0x") return { hasPassport: false, nftBalance: 0 };
 
     const balance = parseInt(result.replace("0x", ""), 16);
-    return balance > 0;
+    return { hasPassport: balance > 0, nftBalance: balance };
   } catch {
-    return false;
+    return { hasPassport: false, nftBalance: 0 };
   }
 }
 
@@ -151,55 +158,16 @@ function encodeStringForABI(str: string): string {
   for (const b of bytes) {
     hexData += b.toString(16).padStart(2, "0");
   }
-  const paddedLength = Math.ceil(hexData.length / 64) * 64;
+  const paddedLength = Math.ceil(hexData.length / 64) * 64 || 64;
   hexData = hexData.padEnd(paddedLength, "0");
   return length + hexData;
-}
-
-function buildSubmitFusedFeedbackCalldata(
-  agentAddress: string,
-  onChainScore: number,
-  moltbookKarma: number,
-  performanceScore: number,
-  bondScore: number,
-  tags: string[],
-  proof: string
-): string {
-  const tagsOffset = 6 * 32;
-  const encodedTags: string[] = [];
-  encodedTags.push(encodeUint256(tags.length));
-  for (const tag of tags) {
-    const tagOffset = (tags.length + 1) * 32 + encodedTags.slice(1).reduce((sum, s) => sum + s.length / 2, 0);
-    encodedTags.push(encodeUint256(tagOffset));
-  }
-  for (const tag of tags) {
-    const encoded = encodeStringForABI(tag);
-    encodedTags.push(encoded);
-  }
-  const tagsData = encodedTags.join("");
-
-  const proofOffset = tagsOffset + tagsData.length / 2;
-  const encodedProof = encodeStringForABI(proof);
-
-  return (
-    SUBMIT_FUSED_FEEDBACK_SELECTOR +
-    encodeAddress(agentAddress) +
-    encodeUint256(onChainScore) +
-    encodeUint256(moltbookKarma) +
-    encodeUint256(performanceScore) +
-    encodeUint256(bondScore) +
-    encodeUint256(tagsOffset).replace(/^0+/, "").padStart(64, "0") +
-    encodeUint256(proofOffset).replace(/^0+/, "").padStart(64, "0") +
-    tagsData +
-    encodedProof
-  );
 }
 
 export async function syncReputation(
   agentAddress: string,
   fromChain: ChainId,
   toChain: ChainId,
-  walletProvider: WalletProvider
+  walletProvider?: WalletProvider
 ): Promise<ReputationSyncResult> {
   try {
     if (fromChain === toChain) {
@@ -216,35 +184,65 @@ export async function syncReputation(
     const fromConfig = getChainConfig(fromChain);
     const toConfig = getChainConfig(toChain);
 
-    const fusedScore = await getFusedScoreFromChain(fromConfig, agentAddress);
+    const [fusedScore, passport] = await Promise.all([
+      getFusedScoreFromChain(fromConfig, agentAddress),
+      getPassportData(fromConfig, agentAddress),
+    ]);
 
-    if (fusedScore.fusedScore === 0 && fusedScore.onChainScore === 0) {
+    if (fusedScore.fusedScore === 0 && fusedScore.onChainScore === 0 && !passport.hasPassport) {
       return {
         score: 0,
         syncedAt: new Date().toISOString(),
         fromChain,
         toChain,
         success: false,
-        error: `Agent ${agentAddress} has no reputation data on ${fromConfig.name}.`,
+        passport,
+        error: `Agent ${agentAddress} has no reputation data or passport on ${fromConfig.name}.`,
       };
     }
 
     const syncTimestamp = new Date().toISOString();
-    const calldata = buildSubmitFusedFeedbackCalldata(
-      agentAddress,
-      fusedScore.onChainScore,
-      fusedScore.moltbookKarma,
-      fusedScore.performanceScore,
-      fusedScore.bondScore,
-      ["cross-chain-sync"],
-      `sync:${fromChain}:${syncTimestamp}`
-    );
 
-    const txHash = await sendTransaction(
-      walletProvider,
-      toConfig.contracts.ClawTrustRepAdapter,
-      "0x" + calldata.replace(SUBMIT_FUSED_FEEDBACK_SELECTOR, "").replace(/^/, SUBMIT_FUSED_FEEDBACK_SELECTOR)
-    );
+    const scoreBreakdown = {
+      onChainScore: fusedScore.onChainScore,
+      moltbookKarma: fusedScore.moltbookKarma,
+      performanceScore: fusedScore.performanceScore,
+      bondScore: fusedScore.bondScore,
+    };
+
+    if (walletProvider) {
+      const tagsEncoded = encodeStringForABI("cross-chain-sync");
+      const proofEncoded = encodeStringForABI(`sync:${fromChain}:${syncTimestamp}`);
+
+      const calldataBody =
+        encodeAddress(agentAddress) +
+        encodeUint256(fusedScore.onChainScore) +
+        encodeUint256(fusedScore.moltbookKarma) +
+        encodeUint256(fusedScore.performanceScore) +
+        encodeUint256(fusedScore.bondScore) +
+        encodeUint256(192) +
+        encodeUint256(0) +
+        encodeUint256(1) +
+        tagsEncoded +
+        proofEncoded;
+
+      const txHash = await sendTransaction(
+        walletProvider,
+        toConfig.contracts.ClawTrustRepAdapter,
+        SUBMIT_FUSED_FEEDBACK_SELECTOR + calldataBody
+      );
+
+      return {
+        score: fusedScore.fusedScore,
+        syncedAt: syncTimestamp,
+        fromChain,
+        toChain,
+        success: true,
+        txHash,
+        passport,
+        scoreBreakdown,
+      };
+    }
 
     return {
       score: fusedScore.fusedScore,
@@ -252,7 +250,8 @@ export async function syncReputation(
       fromChain,
       toChain,
       success: true,
-      txHash,
+      passport,
+      scoreBreakdown,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -314,12 +313,12 @@ export async function hasReputationOnChain(
   try {
     const config = getChainConfig(chain);
 
-    const [hasPassport, fusedScore] = await Promise.all([
-      hasPassportOnChain(config, agentAddress),
+    const [passport, fusedScore] = await Promise.all([
+      getPassportData(config, agentAddress),
       getFusedScoreFromChain(config, agentAddress),
     ]);
 
-    return hasPassport && (fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0);
+    return passport.hasPassport && (fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0);
   } catch {
     return false;
   }

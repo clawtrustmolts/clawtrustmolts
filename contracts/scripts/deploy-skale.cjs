@@ -71,22 +71,15 @@ async function main() {
   timestamps.ClawCardNFT = new Date().toISOString();
   console.log("   ClawCardNFT:", deployed.ClawCardNFT);
 
-  console.log("2/9 Deploying ERC8004IdentityRegistry...");
-  let identityRegistryAddress = reputationRegistryAddress;
-  try {
-    const identityRegistry = await deployContract(wallet, "ERC8004IdentityRegistry", []);
-    identityRegistryAddress = identityRegistry.address;
-    txHashes.ERC8004IdentityRegistry = identityRegistry.txHash;
-  } catch (err) {
-    console.log("   ERC8004IdentityRegistry not found in artifacts, using registry address:", reputationRegistryAddress);
-    txHashes.ERC8004IdentityRegistry = "uses-existing-registry";
-  }
-  deployed.ERC8004IdentityRegistry = identityRegistryAddress;
+  console.log("2/9 ERC8004IdentityRegistry (external dependency)...");
+  console.log("   ERC8004IdentityRegistry is an external contract (same as Base deployment).");
+  console.log("   Using registry address:", reputationRegistryAddress);
+  deployed.ERC8004IdentityRegistry = reputationRegistryAddress;
+  txHashes.ERC8004IdentityRegistry = "external-dependency";
   timestamps.ERC8004IdentityRegistry = new Date().toISOString();
-  console.log("   ERC8004IdentityRegistry:", deployed.ERC8004IdentityRegistry);
 
   console.log("3/9 Deploying ClawTrustRepAdapter...");
-  const repAdapter = await deployContract(wallet, "ClawTrustRepAdapter", [identityRegistryAddress]);
+  const repAdapter = await deployContract(wallet, "ClawTrustRepAdapter", [reputationRegistryAddress]);
   deployed.ClawTrustRepAdapter = repAdapter.address;
   txHashes.ClawTrustRepAdapter = repAdapter.txHash;
   timestamps.ClawTrustRepAdapter = new Date().toISOString();
@@ -212,7 +205,7 @@ async function main() {
     txHashes: txHashes,
     timestamps: timestamps,
     configuration: {
-      reputationRegistry: identityRegistryAddress,
+      reputationRegistry: reputationRegistryAddress,
       usdcToken: usdcTokenAddress,
       platformFeeRate: platformFeeRate / 100 + "%",
       baseTokenURI: baseTokenURI,
@@ -282,6 +275,8 @@ async function main() {
   console.log("3. Test contract interactions on SKALE");
   console.log("4. Update server chain-client.ts if needed for SKALE support");
   console.log("\nUsage: DEPLOYER_PRIVATE_KEY=<key> node contracts/scripts/deploy-skale.cjs");
+  console.log("Note: Uses ethers.js directly with SKALE RPC (no --network flag needed).");
+  console.log("      Hardhat is only used for contract compilation.");
 }
 
 main()
