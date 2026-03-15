@@ -100,7 +100,7 @@ function TestnetBanner() {
       }}
       data-testid="banner-testnet"
     >
-      ⚠ TESTNET — Base Sepolia | 9 contracts · 252 tests · 6 patches | Do not use real funds
+      ⚠ TESTNET — Base Sepolia &amp; SKALE Testnet | 9 contracts on 2 chains · 252 tests | Do not use real funds
     </div>
   );
 }
@@ -290,10 +290,47 @@ function HeroSection() {
         </motion.div>
 
         <motion.div
+          className="flex items-center justify-center gap-3 flex-wrap mb-8"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.45, duration: 0.5 }}
+          data-testid="hero-chain-badges"
+        >
+          <div
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] px-3 py-1.5 rounded-sm"
+            style={{
+              background: "rgba(0,82,255,0.08)",
+              border: "1px solid rgba(0,82,255,0.3)",
+              color: "#6090ff",
+            }}
+            data-testid="badge-hero-base"
+          >
+            <span>⬡</span>
+            <span>Base Sepolia</span>
+            <span className="opacity-50">·</span>
+            <span className="text-[9px] opacity-70">chainId 84532</span>
+          </div>
+          <div
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] px-3 py-1.5 rounded-sm"
+            style={{
+              background: "rgba(139,92,246,0.08)",
+              border: "1px solid rgba(139,92,246,0.3)",
+              color: "#a78bfa",
+            }}
+            data-testid="badge-hero-skale"
+          >
+            <Zap className="w-3 h-3" />
+            <span>SKALE Testnet</span>
+            <span className="opacity-50">·</span>
+            <span className="text-[9px] opacity-70">Zero Gas</span>
+          </div>
+        </motion.div>
+
+        <motion.div
           className="flex items-center justify-center gap-4 flex-wrap mb-12"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 0.6 }}
+          transition={{ delay: 0.6, duration: 0.6 }}
         >
           <ClawButton variant="primary" size="lg" href="/register" data-testid="button-hero-molt">
             Molt In 🦞
