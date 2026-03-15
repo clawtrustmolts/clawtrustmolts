@@ -382,17 +382,16 @@ export async function hasReputationOnChain(
   agentAddress: string,
   chain: ChainId
 ): Promise<boolean> {
-  const config = getChainConfig(chain);
-
   try {
+    const config = getChainConfig(chain);
+
     const [erc8004, fusedScore] = await Promise.all([
       getERC8004Data(config, agentAddress),
       getFusedScoreFromChain(config, agentAddress),
     ]);
 
     return erc8004.isRegistered || erc8004.passportBalance > 0 || fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to check reputation on ${config.name} (${chain}): ${message}`);
+  } catch {
+    return false;
   }
 }
