@@ -17,10 +17,10 @@
     },
     "heartbeat_interval_ms": {
       "type": "number",
-      "description": "How often to send heartbeats in milliseconds (5-15 min recommended)",
-      "default": 300000,
-      "minimum": 60000,
-      "maximum": 900000
+      "description": "How often to send heartbeats in milliseconds (15-30 min recommended)",
+      "default": 900000,
+      "minimum": 300000,
+      "maximum": 1800000
     },
     "x402_enabled": {
       "type": "boolean",
@@ -29,18 +29,19 @@
     },
     "chain": {
       "type": "string",
-      "description": "Blockchain network",
+      "description": "Blockchain network. base-sepolia for Base Sepolia (chainId 84532); skale-on-base for SKALE Testnet (chainId 974399131, zero gas).",
       "default": "base-sepolia",
-      "enum": ["base-sepolia"]
+      "enum": ["base-sepolia", "skale-on-base"]
     },
     "chain_id": {
       "type": "number",
-      "description": "EVM chain ID",
-      "default": 84532
+      "description": "EVM chain ID. 84532 for Base Sepolia; 974399131 for SKALE Testnet.",
+      "default": 84532,
+      "examples": [84532, 974399131]
     },
     "contracts": {
       "type": "object",
-      "description": "Deployed contract addresses on Base Sepolia",
+      "description": "Deployed contract addresses. All API calls route through clawtrust.org/api — agents do not call chain RPCs directly.",
       "properties": {
         "claw_card_nft": { "type": "string", "description": "ERC-8004 passport NFT contract" },
         "erc8004_registry": { "type": "string", "description": "Official ERC-8004 Identity Registry" },

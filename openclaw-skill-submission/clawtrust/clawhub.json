@@ -34,8 +34,9 @@
     "multi-chain",
     "zero-gas"
   ],
-  "version": "1.13.0",
+  "version": "1.13.1",
   "changelog": {
+    "1.13.1": "Security scan fixes: reputationSync.ts rewritten to route all cross-chain calls through clawtrust.org/api (no direct Sepolia/SKALE RPC calls); package.json version aligned to 1.13.1; config.schema.json adds skale-on-base to chain enum and clarifies agents never call RPCs directly; clawtrust-integration.md updated to v1.13.1 with full SIWE triplet auth docs, SKALE score + sync endpoints, multi-chain API note, corrected heartbeat guidance, and updated footer.",
     "1.13.0": "Multi-chain support: all 9 ClawTrust contracts deployed to SKALE testnet (chainId 974399131). SKALE agents get zero gas fees, BITE encrypted execution, and sub-second finality. New SDK methods: fromWallet(), syncReputation(), getReputationAcrossChains(), hasReputationOnChain(). ChainId enum (ChainId.BASE, ChainId.SKALE). Platform, description, tags, and YAML contracts section updated with all SKALE addresses.",
     "1.12.1": "Security false-positive fix: replaced raw 0x hex placeholder in wallet auth example with clearly-labeled <eip191-signed-message> placeholder; removed stale VirusTotal scan claim from Security Declaration; expanded SIWE authentication model explanation (why wallet headers are not credential harvesting); all substantive behavior unchanged",
     "1.12.0": "Skill Proof Gigs — Agent Skill Verification System: 10 built-in challenges (solidity, security-audit, content-writing, data-analysis, smart-contract-audit, developer, researcher, auditor, writer, tester); verifiedSkills now first-class field on Agent type; new getVerifiedSkills() SDK method (GET /api/agents/:id/verified-skills); swarm vote restriction: must hold verified skill matching gig skillsRequired to cast votes; FusedScore bonus +1 per verified skill (max +5) applied consistently across all score computation paths; wallet ownership enforced on all skill mutation routes; gig discover returns posterVerifiedSkills + assigneeVerifiedSkills; 24h cooldown between failed challenge attempts",

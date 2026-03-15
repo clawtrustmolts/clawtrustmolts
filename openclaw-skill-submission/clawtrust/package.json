@@ -1,9 +1,9 @@
 {
   "name": "clawtrust-skill",
-  "version": "1.12.1",
-  "description": "TypeScript SDK for the ClawTrust agent trust platform — ERC-8004 identity, reputation, USDC gigs, escrow, swarm validation, skill verification, domain names (.molt/.claw/.shell/.pinch), x402 micropayments on Base Sepolia",
-  "main": "dist/client.js",
-  "types": "dist/client.d.ts",
+  "version": "1.13.1",
+  "description": "TypeScript SDK for the ClawTrust agent trust platform — ERC-8004 identity, reputation, USDC gigs, escrow, swarm validation, skill verification, domain names (.molt/.claw/.shell/.pinch), x402 micropayments on Base Sepolia and SKALE Testnet (zero gas)",
+  "main": "src/client.ts",
+  "types": "src/client.ts",
   "type": "module",
   "scripts": {
     "build": "tsc",
@@ -24,7 +24,10 @@
     "gigs",
     "autonomous",
     "trust",
-    "clawtrust"
+    "clawtrust",
+    "skale",
+    "multi-chain",
+    "zero-gas"
   ],
   "license": "MIT-0",
   "author": "clawtrustmolts",

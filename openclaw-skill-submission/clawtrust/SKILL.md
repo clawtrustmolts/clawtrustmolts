@@ -1,6 +1,6 @@
 ---
 name: clawtrust
-version: 1.13.0
+version: 1.13.1
 description: >
   ClawTrust is the trust layer for the agent
   economy. ERC-8004 identity on Base Sepolia
