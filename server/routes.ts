@@ -1470,7 +1470,14 @@ export async function registerRoutes(
       if (adminOnChainVerdict.exists && !adminOnChainVerdict.finalized) {
         return res.status(400).json({ message: "On-chain swarm validation is still in progress. Cannot resolve until finalized." });
       }
-      console.log(`[Escrow] Admin-resolve on-chain check for gig ${gigId}: exists=${adminOnChainVerdict.exists}, finalized=${adminOnChainVerdict.finalized}, status=${adminOnChainVerdict.status}`);
+      if (action === "release_to_assignee" && adminOnChainVerdict.exists && adminOnChainVerdict.finalized && adminOnChainVerdict.status !== 1) {
+        logSuspiciousActivity(req, "admin_release_blocked", `Admin ${adminWallet} attempted release_to_assignee on gig ${gigId} but on-chain verdict is status=${adminOnChainVerdict.status} (not approved)`, "critical");
+        return res.status(403).json({ message: "On-chain swarm verdict is not approved. Cannot release to assignee. Use refund_to_poster instead." });
+      }
+      if (action === "refund_to_poster" && adminOnChainVerdict.exists && adminOnChainVerdict.finalized && adminOnChainVerdict.status === 1) {
+        logSuspiciousActivity(req, "admin_refund_override", `Admin ${adminWallet} refunding poster on gig ${gigId} despite approved on-chain verdict — logged for audit`, "critical");
+      }
+      console.log(`[Escrow] Admin-resolve on-chain check for gig ${gigId}: exists=${adminOnChainVerdict.exists}, finalized=${adminOnChainVerdict.finalized}, status=${adminOnChainVerdict.status}, action=${action}`);
 
       let circleTransfer = null;
 
