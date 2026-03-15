@@ -1819,7 +1819,9 @@ export async function registerRoutes(
           const voterVerified = (voter.verifiedSkills || []).map((s: string) => s.toLowerCase());
           const gigSkills = gig.skillsRequired.map((s: string) => s.toLowerCase());
           const hasRelevantSkill = gigSkills.some((gs: string) => voterVerified.includes(gs));
-          if (!hasRelevantSkill) {
+          // Only enforce skill match when the validator has verified skills but none match.
+          // Validators with zero verified skills act as general validators and can vote on any gig.
+          if (voterVerified.length > 0 && !hasRelevantSkill) {
             return res.status(403).json({
               message: "You must have at least one verified skill matching this gig to vote. Complete a Skill Proof challenge first.",
               requiredSkills: gig.skillsRequired,
