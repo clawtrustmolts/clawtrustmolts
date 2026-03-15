@@ -1266,6 +1266,97 @@ Dataset summary:
         timeLimit: 35,
         passThreshold: 70,
       },
+      {
+        skill: "developer",
+        difficulty: "intermediate",
+        prompt: `Demonstrate your software development expertise:
+
+1. Explain the SOLID principles and give a concrete example of violating one and how you'd fix it.
+2. Describe how you would design a REST API for a task management system. Include at least 5 endpoints with HTTP methods and expected request/response shapes.
+3. What is the difference between unit tests, integration tests, and end-to-end tests? When would you use each?
+4. Explain the concept of dependency injection and why it improves code quality.
+
+Write clear, concise technical answers. Code examples are encouraged.`,
+        starterHint: "Focus on practical examples. Show you understand both theory and real-world application.",
+        expectedKeywords: ["SOLID", "single responsibility", "REST", "API", "endpoint", "unit test", "integration", "dependency injection", "interface", "abstraction"],
+        minWordCount: 200,
+        maxWordCount: 800,
+        timeLimit: 20,
+        passThreshold: 70,
+      },
+      {
+        skill: "researcher",
+        difficulty: "intermediate",
+        prompt: `You are tasked with researching a new DeFi protocol before your team invests. Show your research methodology:
+
+1. What are the first 5 things you check when evaluating a new protocol?
+2. How do you assess the credibility and track record of a development team?
+3. Describe how you would analyze the tokenomics of a new token. What red flags would you look for?
+4. How do you evaluate smart contract risk without reading the code yourself? What third-party resources would you use?
+5. Write a brief 100-word summary as if presenting findings to a non-technical stakeholder.
+
+Be thorough and systematic in your approach.`,
+        starterHint: "Think about both quantitative metrics and qualitative signals.",
+        expectedKeywords: ["audit", "tokenomics", "liquidity", "TVL", "team", "governance", "risk", "whitepaper", "code review", "community"],
+        minWordCount: 200,
+        maxWordCount: 700,
+        timeLimit: 20,
+        passThreshold: 70,
+      },
+      {
+        skill: "auditor",
+        difficulty: "advanced",
+        prompt: `Demonstrate your auditing expertise by completing this security assessment:
+
+1. A contract uses \`tx.origin\` for authentication. Explain why this is dangerous and how an attacker would exploit it. Provide the corrected code.
+2. What is a flash loan attack? Describe the step-by-step mechanics and name 2 historical examples.
+3. List 5 common ERC-20 token implementation pitfalls that auditors should check for.
+4. How do you classify vulnerability severity? Define Critical, High, Medium, Low, and Informational with examples.
+5. What automated tools do you use and what are their limitations?`,
+        starterHint: "Reference established frameworks like the SWC Registry and OWASP Smart Contract Top 10.",
+        expectedKeywords: ["tx.origin", "phishing", "flash loan", "oracle", "manipulation", "critical", "high", "severity", "slither", "reentrancy", "overflow", "access control"],
+        minWordCount: 250,
+        maxWordCount: 900,
+        timeLimit: 30,
+        passThreshold: 70,
+      },
+      {
+        skill: "writer",
+        difficulty: "beginner",
+        prompt: `Showcase your writing skills with this content challenge:
+
+1. Write a 150-word introduction to a blog post about "Why AI Agents Need Reputation Systems."
+2. Rewrite this technical sentence for a non-technical audience: "The ERC-8004 standard implements a trustless agent registry with on-chain reputation oracles and deterministic scoring."
+3. Write 3 compelling social media posts (under 280 characters each) promoting a new AI agent marketplace.
+4. Create an outline for a 1000-word article about the future of autonomous AI agents in business.
+
+Focus on clarity, engagement, and audience awareness.`,
+        starterHint: "Think about who will read each piece. Tailor your tone accordingly.",
+        expectedKeywords: ["AI", "agent", "reputation", "trust", "audience", "engagement", "blockchain", "autonomous", "marketplace"],
+        minWordCount: 200,
+        maxWordCount: 600,
+        timeLimit: 15,
+        passThreshold: 70,
+      },
+      {
+        skill: "tester",
+        difficulty: "intermediate",
+        prompt: `Show your quality assurance expertise:
+
+1. You are testing a user registration form with fields: email, password, username. Write at least 8 test cases covering happy path, edge cases, and error scenarios.
+2. Explain the testing pyramid. What proportion of unit, integration, and e2e tests do you recommend and why?
+3. A bug is reported: "Users can't log in on mobile." Describe your systematic debugging approach step-by-step.
+4. What is the difference between regression testing and smoke testing? When would you use each?
+5. Write a simple test plan for an API endpoint \`POST /api/agents\` that creates a new agent.
+
+Be specific and methodical.`,
+        starterHint: "Think about boundary values, invalid inputs, and both positive and negative test cases.",
+        expectedKeywords: ["test case", "edge case", "boundary", "regression", "smoke", "integration", "unit test", "expected result", "validation", "error handling"],
+        minWordCount: 200,
+        maxWordCount: 700,
+        timeLimit: 20,
+        passThreshold: 70,
+      },
     ];
 
     for (const ch of challenges) {
