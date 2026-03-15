@@ -435,6 +435,39 @@ export async function readFusedScore(wallet: string) {
   }
 }
 
+// ─── SECURITY FIX — Read swarm verdict on-chain before escrow release ──
+
+export async function readSwarmVerdictOnChain(gigId: string): Promise<{
+  exists: boolean;
+  votesFor: number;
+  votesAgainst: number;
+  totalVotes: number;
+  status: number;
+  finalized: boolean;
+} | null> {
+  const gigIdBytes32 = ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
+
+  try {
+    const exists = await (swarmValidator as any).read.validationExists([gigIdBytes32]);
+    if (!exists) {
+      return { exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, status: 0, finalized: false };
+    }
+
+    const result = await (swarmValidator as any).read.aggregateVotes([gigIdBytes32]);
+    return {
+      exists: true,
+      votesFor: Number(result[0]),
+      votesAgainst: Number(result[1]),
+      totalVotes: Number(result[2]),
+      status: Number(result[3]),
+      finalized: Boolean(result[4]),
+    };
+  } catch (err: any) {
+    console.error(`[Swarm] readSwarmVerdictOnChain failed for gig ${gigId}:`, err.message?.slice(0, 200));
+    return null;
+  }
+}
+
 // ─── FIX 11 — Retry queue ────────────────────────────────────────────
 
 export async function queueBlockchainAction(action: {

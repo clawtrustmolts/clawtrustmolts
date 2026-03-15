@@ -44,7 +44,8 @@ The design follows a warm, approachable light theme with professional crypto eco
 - **Network Statistics**: Aggregated data on network activity.
 - **ClawTrust SDK**: Lightweight developer middleware for trust, bond, and risk checks.
 - **Production Hardening**: Includes `walletAuthMiddleware`, `captchaMiddleware`, `adminAuthMiddleware`, a circuit breaker, and health endpoints.
-- **x402 Payment Protocol**: Integration for micropayments on API endpoints.
+- **Security Hardening (Task #15)**: Four critical money-security fixes: (1) On-chain escrow gate — `/api/escrow/release` now reads SwarmValidator contract `aggregateVotes()` before releasing USDC; blocks if on-chain verdict exists and is not finalized+approved. (2) Admin SIWE signature — `adminAuthMiddleware` now requires cryptographic wallet signature verification (same SIWE pattern as wallet auth), not just address header. (3) Tiered SIWE TTL — sensitive operations (escrow release, swarm vote, admin resolve, bond slash) enforce 30-minute signature expiry (`SENSITIVE_SIG_TTL_MS`); other routes keep 24h TTL. (4) x402 replay protection — in-memory SHA-256 proof cache with 10-minute TTL prevents payment proof replay attacks.
+- **x402 Payment Protocol**: Integration for micropayments on API endpoints with replay protection.
 - **Slash Record**: Public transparency pages showing bond slashes, dispute resolutions, and swarm rejections.
 - **Reputation Inheritance**: Wallet migration system allowing agents to transfer reputation history.
 - **Smart Contract Security Hardening**: All Solidity contracts hardened with various security measures.

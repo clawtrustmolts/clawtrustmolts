@@ -47,6 +47,7 @@ import {
   readPassportById,
   readRepScore,
   readFusedScore,
+  readSwarmVerdictOnChain,
   queueBlockchainAction,
   getDeployerAddress,
   cleanupStuckQueueEntries,
@@ -246,6 +247,27 @@ async function verifyPrivyJWT(token: string): Promise<{ verified: boolean; paylo
 }
 
 const SIG_TTL_MS = 24 * 60 * 60 * 1000;
+const SENSITIVE_SIG_TTL_MS = 30 * 60 * 1000;
+
+const SENSITIVE_ROUTES = new Set([
+  "POST /api/escrow/release",
+  "POST /api/escrow/admin-resolve",
+  "POST /api/escrow/dispute",
+  "POST /api/swarm/vote",
+  "POST /api/validations/vote",
+  "POST /api/swarm/validate",
+  "DELETE /api/bond/:agentId",
+]);
+
+function isSensitiveRoute(method: string, path: string): boolean {
+  const key = `${method.toUpperCase()} ${path}`;
+  if (SENSITIVE_ROUTES.has(key)) return true;
+  for (const pattern of SENSITIVE_ROUTES) {
+    const regex = new RegExp("^" + pattern.replace(/:[^/]+/g, "[^/]+") + "$");
+    if (regex.test(key)) return true;
+  }
+  return false;
+}
 
 function buildSignMessage(nonce: number): string {
   return `Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet ownership.\nNo gas required. No transaction is sent.\n\nNonce: ${nonce}\nChain: Base Sepolia (84532)`;
@@ -261,11 +283,14 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
     const signature = req.headers["x-wallet-signature"] as string | undefined;
     const sigTimestamp = req.headers["x-wallet-sig-timestamp"] as string | undefined;
 
+    const sensitive = isSensitiveRoute(req.method, req.route?.path || req.path);
+    const ttl = sensitive ? SENSITIVE_SIG_TTL_MS : SIG_TTL_MS;
+
     if (signature && sigTimestamp) {
       const ts = parseInt(sigTimestamp, 10);
       const now = Date.now();
-      if (isNaN(ts) || now - ts > SIG_TTL_MS || ts > now + 60000) {
-        return res.status(401).json({ message: "Wallet signature expired or invalid. Please reconnect your wallet." });
+      if (isNaN(ts) || now - ts > ttl || ts > now + 60000) {
+        return res.status(401).json({ message: sensitive ? "Signature expired. Sensitive operations require re-signing within 30 minutes." : "Wallet signature expired or invalid. Please reconnect your wallet." });
       }
       try {
         const message = buildSignMessage(ts);
@@ -336,7 +361,7 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
   });
 }
 
-function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+async function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
   const adminWallet = req.headers["x-admin-wallet"] as string | undefined;
   const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
 
@@ -358,6 +383,37 @@ function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
   if (!ADMIN_WALLETS.includes(adminWallet.toLowerCase())) {
     logSuspiciousActivity(req, "unauthorized_admin_action", `Non-admin wallet ${adminWallet} attempted admin access`, "critical");
     return res.status(403).json({ message: "Wallet not authorized for admin actions" });
+  }
+
+  const adminSig = req.headers["x-admin-signature"] as string | undefined;
+  const adminSigTs = req.headers["x-admin-sig-timestamp"] as string | undefined;
+
+  if (!adminSig || !adminSigTs) {
+    logSuspiciousActivity(req, "admin_no_signature", `Admin ${adminWallet} sent request without SIWE signature — rejected`);
+    return res.status(401).json({ message: "Admin signature required. Sign with your admin wallet to authenticate." });
+  }
+
+  const ts = parseInt(adminSigTs, 10);
+  const now = Date.now();
+  if (isNaN(ts) || now - ts > SENSITIVE_SIG_TTL_MS || ts > now + 60000) {
+    logSuspiciousActivity(req, "admin_sig_expired", `Admin ${adminWallet} sent expired signature`);
+    return res.status(401).json({ message: "Admin signature expired. Re-sign within 30 minutes." });
+  }
+
+  try {
+    const message = buildSignMessage(ts);
+    const valid = await verifyMessage({
+      address: adminWallet as Address,
+      message,
+      signature: adminSig as `0x${string}`,
+    });
+    if (!valid) {
+      logSuspiciousActivity(req, "admin_sig_invalid", `Admin signature verification failed for ${adminWallet}`, "critical");
+      return res.status(401).json({ message: "Invalid admin signature." });
+    }
+  } catch (err: any) {
+    logSuspiciousActivity(req, "admin_sig_error", `Admin signature verification error: ${err?.message}`);
+    return res.status(401).json({ message: "Admin signature verification failed." });
   }
 
   (req as any).adminWallet = adminWallet;
@@ -482,6 +538,32 @@ export async function registerRoutes(
   const x402PayToAddress = process.env.X402_PAY_TO_ADDRESS || "0x0000000000000000000000000000000000000000";
   const x402Enabled = x402PayToAddress !== "0x0000000000000000000000000000000000000000";
 
+  const x402UsedProofs = new Map<string, number>();
+  const X402_PROOF_TTL_MS = 10 * 60 * 1000;
+
+  function x402ReplayGuard(req: Request, res: Response, next: NextFunction) {
+    const paymentHeader = (req.headers["x-payment"] || req.headers["x-payment-response"]) as string | undefined;
+    if (!paymentHeader) return next();
+
+    const proofHash = crypto.createHash("sha256").update(paymentHeader).digest("hex");
+    const now = Date.now();
+
+    if (x402UsedProofs.has(proofHash)) {
+      logSuspiciousActivity(req, "x402_replay", `Replayed x402 payment proof on ${req.path}`);
+      return res.status(402).json({ message: "Payment proof already used. Submit a new payment." });
+    }
+
+    x402UsedProofs.set(proofHash, now);
+
+    if (x402UsedProofs.size > 100) {
+      for (const [key, ts] of x402UsedProofs) {
+        if (now - ts > X402_PROOF_TTL_MS) x402UsedProofs.delete(key);
+      }
+    }
+
+    next();
+  }
+
   if (x402Enabled) {
     try {
       app.use(
@@ -512,7 +594,8 @@ export async function registerRoutes(
           },
         ),
       );
-      console.log("[x402] Payment middleware enabled — trust-check: $0.001, reputation: $0.002 USDC on Base Sepolia");
+      app.use(x402ReplayGuard);
+      console.log("[x402] Payment middleware enabled with replay protection — trust-check: $0.001, reputation: $0.002 USDC on Base Sepolia");
     } catch (err: any) {
       console.warn("[x402] Failed to initialize payment middleware:", err.message);
     }
@@ -1529,6 +1612,24 @@ export async function registerRoutes(
       if (!escrow) return res.status(404).json({ message: "No escrow found" });
       if (escrow.status !== "locked" && escrow.status !== "pending") {
         return res.status(400).json({ message: `Escrow is ${escrow.status}, cannot release` });
+      }
+
+      const onChainVerdict = await readSwarmVerdictOnChain(gigId);
+      if (onChainVerdict === null) {
+        console.warn(`[Escrow] On-chain verdict check failed for gig ${gigId} — blocking release as precaution`);
+        return res.status(503).json({ message: "Unable to verify on-chain swarm verdict. Please try again." });
+      }
+      if (onChainVerdict.exists) {
+        if (!onChainVerdict.finalized) {
+          return res.status(400).json({ message: "Swarm validation is not yet finalized on-chain. Cannot release escrow." });
+        }
+        if (onChainVerdict.status !== 1) {
+          logSuspiciousActivity(req, "escrow_release_blocked", `Escrow release blocked for gig ${gigId} — on-chain verdict status=${onChainVerdict.status} (not approved)`, "critical");
+          return res.status(403).json({ message: "On-chain swarm verdict is not approved. Escrow release denied." });
+        }
+        console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
+      } else {
+        console.log(`[Escrow] No on-chain swarm validation for gig ${gigId} — poster-initiated release allowed`);
       }
 
       let circleTransfer = null;
