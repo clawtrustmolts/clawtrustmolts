@@ -3,13 +3,25 @@ const fs = require("fs");
 const path = require("path");
 const { ethers } = require("ethers");
 
-const SKALE_RPC_URL = process.env.SKALE_RPC_URL || "https://mainnet.skalenodes.com/v1/honorable-steel-rasalhague";
-const SKALE_CHAIN_ID = parseInt(process.env.SKALE_CHAIN_ID || "1564830818");
+// ─── SKALE Network Config ──────────────────────────────────────────────────
+// TESTNET (active — use until audit is complete and mainnet sFUEL received)
+const SKALE_NETWORK_NAME = "skaleTestnet";
+const SKALE_RPC_URL = process.env.SKALE_RPC_URL || "https://testnet.skalenodes.com/v1/giant-half-dual-testnet";
+const SKALE_CHAIN_ID = parseInt(process.env.SKALE_CHAIN_ID || "974399131");
+const SKALE_IS_TESTNET = true;
+
+// MAINNET — uncomment after audit and comment out the testnet block above
+// const SKALE_NETWORK_NAME = "skaleBase";
+// const SKALE_RPC_URL = process.env.SKALE_RPC_URL || "https://mainnet.skalenodes.com/v1/honorable-steel-rasalhague";
+// const SKALE_CHAIN_ID = parseInt(process.env.SKALE_CHAIN_ID || "1564830818");
+// const SKALE_IS_TESTNET = false;
+// ──────────────────────────────────────────────────────────────────────────
+
 const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY;
 
 if (!PRIVATE_KEY) {
   console.error("ERROR: DEPLOYER_PRIVATE_KEY environment variable is required.");
-  console.error("Usage: DEPLOYER_PRIVATE_KEY=<key> npx hardhat run contracts/scripts/deploy-skale.cjs --network skaleBase");
+  console.error(`Usage: DEPLOYER_PRIVATE_KEY=<key> npx hardhat run contracts/scripts/deploy-skale.cjs --network ${SKALE_NETWORK_NAME}`);
   process.exit(1);
 }
 
@@ -32,8 +44,10 @@ async function deployContract(wallet, contractName, constructorArgs = []) {
 }
 
 async function main() {
-  console.log("=== ClawTrust SKALE on Base Deployment ===\n");
-  console.log("RPC URL:", SKALE_RPC_URL);
+  const envLabel = SKALE_IS_TESTNET ? "TESTNET" : "MAINNET";
+  console.log(`=== ClawTrust SKALE Deployment [${envLabel}] ===\n`);
+  console.log("Network:          ", SKALE_NETWORK_NAME);
+  console.log("RPC URL:          ", SKALE_RPC_URL);
   console.log("Expected Chain ID:", SKALE_CHAIN_ID);
 
   console.log("Compiling contracts via Hardhat...");
@@ -48,9 +62,13 @@ async function main() {
   console.log("Deployer:", wallet.address);
 
   const balance = await provider.getBalance(wallet.address);
-  console.log("Balance:", ethers.formatEther(balance), "ETH/sFUEL\n");
+  console.log("sFUEL Balance:", ethers.formatEther(balance), "\n");
   if (balance === 0n) {
-    console.error("FATAL: Deployer has no ETH/sFUEL. Fund the account first.");
+    console.error("─────────────────────────────────────────────────────────────");
+    console.error("Deployer wallet has no sFUEL. Get free sFUEL at:");
+    console.error("  https://www.sfuelstation.com — then run this script again.");
+    console.error(`Deployer address: ${wallet.address}`);
+    console.error("─────────────────────────────────────────────────────────────");
     process.exit(1);
   }
 
@@ -167,11 +185,12 @@ async function main() {
   console.log("\n=== Phase 3: Save Deployment Artifacts ===\n");
 
   const deploymentLog = {
-    network: "skaleBase",
+    network: SKALE_NETWORK_NAME,
+    environment: SKALE_IS_TESTNET ? "testnet" : "mainnet",
     chainId: network.chainId.toString(),
+    rpcUrl: SKALE_RPC_URL,
     deployedAt: new Date().toISOString(),
     deployer: wallet.address,
-    rpcUrl: SKALE_RPC_URL,
     usdc: usdcTokenAddress,
     contracts: deployed,
     txHashes: txHashes,
@@ -190,13 +209,15 @@ async function main() {
   fs.writeFileSync(deploymentPath, JSON.stringify(deploymentLog, null, 2));
   console.log("Deployment log saved to:", deploymentPath);
 
-  const networkDir = path.join(deploymentsDir, "skaleBase");
+  const networkDir = path.join(deploymentsDir, SKALE_NETWORK_NAME);
   if (!fs.existsSync(networkDir)) fs.mkdirSync(networkDir, { recursive: true });
 
   const addressesPath = path.join(networkDir, "addresses.json");
   fs.writeFileSync(addressesPath, JSON.stringify({
-    network: "skaleBase",
+    network: SKALE_NETWORK_NAME,
+    environment: deploymentLog.environment,
     chainId: network.chainId.toString(),
+    rpcUrl: SKALE_RPC_URL,
     deployedAt: deploymentLog.deployedAt,
     deployer: wallet.address,
     usdc: usdcTokenAddress,
@@ -222,8 +243,9 @@ async function main() {
   }
 
   console.log("\n╔══════════════════════════════════════════════════════════════╗");
-  console.log("║              SKALE on Base — Deployment Summary             ║");
+  console.log(`║          SKALE Deployment Summary [${envLabel.padEnd(7)}]              ║`);
   console.log("╠══════════════════════════════════════════════════════════════╣");
+  console.log("║ Network:      " + SKALE_NETWORK_NAME.padEnd(46) + "║");
   console.log("║ Chain ID:     " + network.chainId.toString().padEnd(46) + "║");
   console.log("║ Deployer:     " + wallet.address.substring(0, 42).padEnd(46) + "║");
   console.log("╠══════════════════════════════════════════════════════════════╣");
@@ -244,7 +266,7 @@ async function main() {
   console.log("2. Authorize backend oracle wallet: repAdapter.authorizeOracle(<backend_wallet>)");
   console.log("3. Test contract interactions on SKALE");
   console.log("4. Update server chain-client.ts if needed for SKALE support");
-  console.log("\nUsage: DEPLOYER_PRIVATE_KEY=<key> npx hardhat run contracts/scripts/deploy-skale.cjs --network skaleBase");
+  console.log(`\nUsage: DEPLOYER_PRIVATE_KEY=<key> npx hardhat run contracts/scripts/deploy-skale.cjs --network ${SKALE_NETWORK_NAME}`);
 }
 
 main()

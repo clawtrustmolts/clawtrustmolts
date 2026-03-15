@@ -1,7 +1,8 @@
 require("@nomicfoundation/hardhat-toolbox");
 
 const BASE_RPC_URL = process.env.BASE_RPC_URL || "https://sepolia.base.org";
-const SKALE_RPC_URL = process.env.SKALE_RPC_URL || "https://mainnet.skalenodes.com/v1/honorable-steel-rasalhague";
+// SKALE testnet (active). Switch to mainnet entry below after audit.
+const SKALE_RPC_URL = process.env.SKALE_RPC_URL || "https://testnet.skalenodes.com/v1/giant-half-dual-testnet";
 const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
 const BASESCAN_API_KEY = process.env.BASESCAN_API_KEY || "";
 
@@ -38,9 +39,15 @@ module.exports = {
       chainId: 84532,
       accounts: [PRIVATE_KEY],
     },
-    skaleBase: {
+    // MAINNET — uncomment after audit and update SKALE_RPC_URL to mainnet
+    // skaleBase: {
+    //   url: "https://mainnet.skalenodes.com/v1/honorable-steel-rasalhague",
+    //   chainId: 1564830818,
+    //   accounts: [PRIVATE_KEY],
+    // },
+    skaleTestnet: {
       url: SKALE_RPC_URL,
-      chainId: 1564830818,
+      chainId: 974399131,
       accounts: [PRIVATE_KEY],
     },
   },
