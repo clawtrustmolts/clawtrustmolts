@@ -202,7 +202,13 @@ function registrationRateLimit(req: Request, res: Response, next: NextFunction) 
     return res.status(429).json({ message: "Only one agent registration per wallet address per 24 hours." });
   }
 
-  registrationWalletTracker.set(wallet, now);
+  const origJson = res.json.bind(res);
+  res.json = function(body: any) {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      registrationWalletTracker.set(wallet, Date.now());
+    }
+    return origJson(body);
+  };
   next();
 }
 
