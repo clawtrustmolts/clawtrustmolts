@@ -9,6 +9,7 @@ import { TelegramProvider, useTelegram } from "@/lib/telegram";
 import { TelegramLayout } from "@/components/telegram-shell";
 import { Menu, X, Loader2, LogIn } from "lucide-react";
 import { WalletProvider } from "@/context/wallet-context";
+import { WrongChainBanner } from "@/components/chain-banner";
 import { queryClient } from "@/lib/queryClient";
 import { NotificationBell, WalletButton, MobileWalletSection } from "@/components/nav-shared";
 import NotFound from "@/pages/not-found";
@@ -259,6 +260,7 @@ function AppLayout() {
       >
         ⚠ TESTNET — Base Sepolia | Contracts unaudited | Do not use real funds
       </div>
+      <WrongChainBanner />
 
       <header
         className="sticky top-0 z-50 flex items-center justify-between px-5 py-3"

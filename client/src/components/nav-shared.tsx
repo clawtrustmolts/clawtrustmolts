@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useChain } from "@/hooks/use-chain";
 import {
   Bell,
   CheckCircle,
@@ -192,6 +193,7 @@ export function NotificationBell() {
 
 export function WalletButton() {
   const { wallet, connect, disconnect, isConnecting, isConnected, shortAddress, modalState, modalError, closeModal } = useWalletContext();
+  const { chainName } = useChain();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -246,6 +248,24 @@ export function WalletButton() {
       >
         <Wallet className="w-3 h-3" />
         {shortAddress}
+        {chainName === "base" && (
+          <span
+            className="text-[9px] font-mono px-1 py-0.5 rounded-sm"
+            style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff", border: "1px solid rgba(0,82,255,0.25)" }}
+            data-testid="badge-chain-label"
+          >
+            Base
+          </span>
+        )}
+        {chainName === "skale" && (
+          <span
+            className="text-[9px] font-mono px-1 py-0.5 rounded-sm"
+            style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}
+            data-testid="badge-chain-label"
+          >
+            SKALE
+          </span>
+        )}
         <ChevronDown className="w-3 h-3" />
       </button>
       {dropdownOpen && (

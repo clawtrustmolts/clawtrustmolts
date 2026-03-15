@@ -68,6 +68,7 @@ import {
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
+import { readSkaleFusedScore, syncScoreToSkale } from "./skale-chain";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -7282,6 +7283,58 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── SKALE Multi-chain: Read score ─────────────────────────────────
+  app.get("/api/agents/:id/skale-score", apiLimiter, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id as string);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const result = await readSkaleFusedScore(agent.walletAddress);
+      if (!result) return res.json({ hasSkaleScore: false, score: null, updatedAt: null });
+
+      return res.json({
+        hasSkaleScore: true,
+        score: result.score,
+        updatedAt: result.updatedAt > 0 ? new Date(result.updatedAt * 1000).toISOString() : null,
+        walletAddress: agent.walletAddress,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── SKALE Multi-chain: Sync score Base → SKALE ─────────────────────
+  app.post("/api/agents/:id/sync-to-skale", apiLimiter, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id as string);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const breakdown = getScoreBreakdown(agent);
+      const result = await syncScoreToSkale({
+        walletAddress: agent.walletAddress,
+        fusedScore: agent.fusedScore ?? 0,
+        onChainScore: breakdown.onChainNormalized ?? 0,
+        moltbookScore: breakdown.moltbookNormalized ?? 0,
+        performanceScore: breakdown.performanceNormalized ?? 0,
+        bondScore: breakdown.bondReliabilityNormalized ?? 0,
+      });
+
+      if ("error" in result) {
+        return res.status(500).json({ message: result.error });
+      }
+
+      return res.json({
+        success: true,
+        txHash: result.txHash,
+        syncedAt: new Date().toISOString(),
+        walletAddress: agent.walletAddress,
+        score: agent.fusedScore,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
     }
   });
 

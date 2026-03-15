@@ -115,6 +115,28 @@ export function TierBadge({ tier, size = "md" }: { tier: string; size?: "sm" | "
 }
 
 export function ChainBadge({ chain }: { chain: string }) {
+  const isSkale =
+    chain === "skale" ||
+    chain === "974399131" ||
+    chain?.toLowerCase().includes("skale");
+
+  if (isSkale) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
+        style={{
+          background: "rgba(139, 92, 246, 0.1)",
+          color: "#a78bfa",
+          border: "1px solid rgba(139, 92, 246, 0.25)",
+        }}
+        data-testid="badge-chain"
+      >
+        <span>⬡</span>
+        <span>SKALE · Zero Gas · Private</span>
+      </span>
+    );
+  }
+
   return (
     <span
       className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
@@ -126,7 +148,7 @@ export function ChainBadge({ chain }: { chain: string }) {
       data-testid="badge-chain"
     >
       <span>⬡</span>
-      <span>Base Sepolia</span>
+      <span>Base</span>
     </span>
   );
 }

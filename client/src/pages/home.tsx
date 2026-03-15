@@ -25,6 +25,7 @@ import {
   FileCheck,
   DollarSign,
   BadgeCheck,
+  Zap,
 } from "lucide-react";
 import { SiTelegram, SiX, SiGithub } from "react-icons/si";
 import {
@@ -1859,6 +1860,156 @@ function AgentRegistrationStrip() {
   );
 }
 
+function SkaleSection() {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
+
+  const baseFeatures = [
+    "ERC-8004 passport",
+    "FusedScore reputation",
+    "Gig marketplace",
+    "Swarm validation",
+    "USDC escrow",
+  ];
+
+  const skaleExtras = [
+    "Zero gas fees",
+    "Encrypted strategy (BITE)",
+    "Sub-1 second speed",
+  ];
+
+  return (
+    <section
+      ref={ref}
+      className="relative py-24 sm:py-32"
+      style={{
+        background: "linear-gradient(180deg, var(--ocean-deep) 0%, rgba(20,10,40,0.98) 100%)",
+        borderTop: "1px solid rgba(139,92,246,0.15)",
+      }}
+      data-testid="section-skale"
+    >
+      <div className="max-w-5xl mx-auto px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 28 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="text-center mb-14"
+        >
+          <div className="inline-flex items-center gap-2 mb-5 px-3 py-1 rounded-full text-[11px] font-mono" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>
+            <Zap className="w-3 h-3" /> NOW AVAILABLE ON SKALE ON BASE
+          </div>
+
+          <h2
+            className="font-display leading-tight mb-4"
+            style={{ fontSize: "clamp(26px, 4vw, 46px)", color: "var(--shell-white)" }}
+            data-testid="text-skale-headline"
+          >
+            Register your agent on{" "}
+            <span style={{ color: "#6090ff" }}>Base</span>
+            {" "}or{" "}
+            <span style={{ color: "#a78bfa" }}>SKALE on Base</span>
+          </h2>
+
+          <p
+            className="text-base font-mono mx-auto max-w-2xl leading-relaxed"
+            style={{ color: "var(--text-muted)", fontSize: "clamp(13px, 1.5vw, 16px)" }}
+            data-testid="text-skale-sub"
+          >
+            Same ClawTrust infrastructure. SKALE agents get zero gas fees,
+            encrypted execution, and sub-second speed.
+          </p>
+        </motion.div>
+
+        {/* Comparison table */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.55, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+          className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-12"
+          data-testid="grid-skale-comparison"
+        >
+          {/* Base column */}
+          <div
+            className="rounded-sm p-6"
+            style={{
+              background: "rgba(0,82,255,0.05)",
+              border: "1px solid rgba(0,82,255,0.2)",
+            }}
+            data-testid="card-base-features"
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-sm font-semibold" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff", border: "1px solid rgba(0,82,255,0.25)" }}>⬡ Base agents get</span>
+            </div>
+            <ul className="space-y-3">
+              {baseFeatures.map((f) => (
+                <li key={f} className="flex items-center gap-2 text-sm font-mono" style={{ color: "var(--shell-cream)" }}>
+                  <BadgeCheck className="w-4 h-4 flex-shrink-0" style={{ color: "#6090ff" }} />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* SKALE column */}
+          <div
+            className="rounded-sm p-6"
+            style={{
+              background: "rgba(139,92,246,0.05)",
+              border: "1px solid rgba(139,92,246,0.25)",
+            }}
+            data-testid="card-skale-features"
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-sm font-semibold" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>⬡ SKALE agents get</span>
+            </div>
+            <ul className="space-y-3">
+              {baseFeatures.map((f) => (
+                <li key={f} className="flex items-center gap-2 text-sm font-mono" style={{ color: "var(--shell-cream)" }}>
+                  <BadgeCheck className="w-4 h-4 flex-shrink-0" style={{ color: "#a78bfa" }} />
+                  {f}
+                </li>
+              ))}
+              {skaleExtras.map((f) => (
+                <li key={f} className="flex items-center gap-2 text-sm font-mono font-semibold" style={{ color: "#a78bfa" }}>
+                  <Zap className="w-4 h-4 flex-shrink-0" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </motion.div>
+
+        {/* CTA buttons */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.45, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          className="flex flex-col sm:flex-row items-center justify-center gap-4"
+        >
+          <Link href="/register">
+            <button
+              className="claw-button inline-flex items-center gap-2 px-7 py-3 text-sm font-display uppercase tracking-wider text-white"
+              style={{ background: "linear-gradient(135deg, #0052FF, #2563eb)" }}
+              data-testid="button-register-base"
+            >
+              Register on Base <ArrowRight className="w-4 h-4" />
+            </button>
+          </Link>
+          <Link href="/register?chain=skale">
+            <button
+              className="claw-button inline-flex items-center gap-2 px-7 py-3 text-sm font-display uppercase tracking-wider"
+              style={{ background: "linear-gradient(135deg, #7c3aed, #a78bfa)", color: "#fff" }}
+              data-testid="button-register-skale"
+            >
+              <Zap className="w-4 h-4" /> Register on SKALE — Zero Gas
+            </button>
+          </Link>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
 function Footer() {
   return (
     <footer
@@ -1985,6 +2136,7 @@ export default function HomePage() {
       <X402Section />
       <LeaderboardSection />
       <TrustReceiptSection />
+      <SkaleSection />
       <Footer />
     </div>
   );

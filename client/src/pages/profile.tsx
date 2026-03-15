@@ -1633,6 +1633,120 @@ function SectionTitle({ children, icon, color }: { children: ReactNode; icon?: R
   );
 }
 
+function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: number }) {
+  const SYNC_KEY = `clawtrust_skale_sync_${agent.id}`;
+
+  const { data: skaleData, isLoading: skaleLoading } = useQuery<{
+    hasSkaleScore: boolean;
+    score: number | null;
+    updatedAt: string | null;
+  }>({
+    queryKey: ["/api/agents", agent.id, "skale-score"],
+    queryFn: async () => {
+      const res = await fetch(`/api/agents/${agent.id}/skale-score`);
+      if (!res.ok) return { hasSkaleScore: false, score: null, updatedAt: null };
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const [lastSync, setLastSync] = useState<string | null>(() => {
+    try { return localStorage.getItem(SYNC_KEY); } catch { return null; }
+  });
+
+  const { toast } = useToast();
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/agents/${agent.id}/sync-to-skale`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Sync failed" }));
+        throw new Error(err.message);
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const ts = data.syncedAt || new Date().toISOString();
+      setLastSync(ts);
+      try { localStorage.setItem(SYNC_KEY, ts); } catch {}
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agent.id, "skale-score"] });
+      toast({ title: "Synced to SKALE", description: `TrustScore ${baseScore.toFixed(1)} synced. Tx: ${data.txHash?.slice(0, 10)}…` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const hasSkale = skaleData?.hasSkaleScore;
+  const skaleScore = skaleData?.score;
+
+  return (
+    <SectionCard testId="card-cross-chain-rep">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-display tracking-wider text-sm" style={{ color: "var(--shell-white)" }}>
+          MULTI-CHAIN REPUTATION
+        </h3>
+        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.2)" }}>
+          Base + SKALE
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        {/* Base score */}
+        <div className="rounded-sm p-3" style={{ background: "rgba(0,82,255,0.06)", border: "1px solid rgba(0,82,255,0.2)" }} data-testid="card-base-score">
+          <div className="flex items-center gap-1 mb-2">
+            <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff", border: "1px solid rgba(0,82,255,0.25)" }}>⬡ Base</span>
+          </div>
+          <p className="text-xl font-mono font-bold" style={{ color: "var(--shell-white)" }}>{baseScore.toFixed(1)}</p>
+          <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>ACTIVE CHAIN</p>
+        </div>
+
+        {/* SKALE score */}
+        <div className="rounded-sm p-3" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)" }} data-testid="card-skale-score">
+          <div className="flex items-center gap-1 mb-2">
+            <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>⬡ SKALE</span>
+          </div>
+          {skaleLoading ? (
+            <p className="text-sm font-mono animate-pulse" style={{ color: "var(--text-muted)" }}>…</p>
+          ) : hasSkale && skaleScore !== null ? (
+            <>
+              <p className="text-xl font-mono font-bold" style={{ color: "#a78bfa" }}>{skaleScore.toFixed(1)}</p>
+              <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                {skaleData?.updatedAt ? `Updated ${new Date(skaleData.updatedAt).toLocaleDateString()}` : "SYNCED"}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xl font-mono font-bold" style={{ color: "var(--text-muted)" }}>—</p>
+              <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>NOT SYNCED</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      <button
+        onClick={() => syncMutation.mutate()}
+        disabled={syncMutation.isPending}
+        className="w-full py-2 rounded-sm text-[11px] font-display uppercase tracking-wider flex items-center justify-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50"
+        style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}
+        data-testid="button-sync-to-skale"
+      >
+        {syncMutation.isPending ? (
+          <><Loader2 className="w-3 h-3 animate-spin" /> Syncing…</>
+        ) : (
+          <><Zap className="w-3 h-3" /> Sync reputation to SKALE</>
+        )}
+      </button>
+
+      {lastSync && (
+        <p className="text-[9px] font-mono mt-2 text-center" style={{ color: "var(--text-muted)" }} data-testid="text-last-sync">
+          Last synced {new Date(lastSync).toLocaleString()}
+        </p>
+      )}
+    </SectionCard>
+  );
+}
+
 function OverviewTab({
   agent,
   breakdown,
@@ -1713,6 +1827,9 @@ function OverviewTab({
           )}
         </div>
       </SectionCard>
+
+      {/* MULTI-CHAIN REPUTATION */}
+      <CrossChainRepPanel agent={agent} baseScore={liveScore} />
 
       {/* MCP SKILLS */}
       {mcpSkills.length > 0 && (
