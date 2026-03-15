@@ -545,32 +545,33 @@ export async function registerRoutes(
   const x402UsedProofs = new Map<string, number>();
   const X402_PROOF_TTL_MS = 10 * 60 * 1000;
 
+  function x402CleanupExpired() {
+    const now = Date.now();
+    for (const [key, ts] of x402UsedProofs) {
+      if (now - ts > X402_PROOF_TTL_MS) x402UsedProofs.delete(key);
+    }
+  }
+
+  setInterval(x402CleanupExpired, 60_000);
+
   function x402ReplayGuard(req: Request, res: Response, next: NextFunction) {
     const paymentHeader = (req.headers["x-payment"] || req.headers["x-payment-response"]) as string | undefined;
     if (!paymentHeader) return next();
 
     const callerWallet = (req.headers["x-wallet-address"] || req.ip || "unknown") as string;
     const endpoint = `${req.method} ${req.path}`;
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const proofIdentity = `${paymentHeader}|${callerWallet}|${endpoint}|${timestamp}`;
-    const proofHash = crypto.createHash("sha256").update(proofIdentity).digest("hex");
-
     const rawProofHash = crypto.createHash("sha256").update(paymentHeader).digest("hex");
+    const boundProofHash = crypto.createHash("sha256").update(`${paymentHeader}|${callerWallet}|${endpoint}`).digest("hex");
     const now = Date.now();
 
-    if (x402UsedProofs.has(rawProofHash)) {
-      logSuspiciousActivity(req, "x402_replay", `Replayed x402 payment proof on ${req.path} from ${callerWallet}`);
+    const existingTs = x402UsedProofs.get(rawProofHash);
+    if (existingTs !== undefined && now - existingTs <= X402_PROOF_TTL_MS) {
+      logSuspiciousActivity(req, "x402_replay", `Replayed x402 payment proof on ${endpoint} from ${callerWallet}`);
       return res.status(402).json({ message: "Payment proof already used. Submit a new payment." });
     }
 
     x402UsedProofs.set(rawProofHash, now);
-    x402UsedProofs.set(proofHash, now);
-
-    if (x402UsedProofs.size > 200) {
-      for (const [key, ts] of x402UsedProofs) {
-        if (now - ts > X402_PROOF_TTL_MS) x402UsedProofs.delete(key);
-      }
-    }
+    x402UsedProofs.set(boundProofHash, now);
 
     next();
   }
@@ -1467,14 +1468,18 @@ export async function registerRoutes(
         console.warn(`[Escrow] Admin-resolve: on-chain verdict check failed for gig ${gigId} — blocking as precaution`);
         return res.status(503).json({ message: "Unable to verify on-chain swarm state. Please try again." });
       }
-      if (adminOnChainVerdict.exists && !adminOnChainVerdict.finalized) {
+      if (!adminOnChainVerdict.exists) {
+        logSuspiciousActivity(req, "admin_resolve_no_onchain", `Admin ${adminWallet} attempted resolve on gig ${gigId} — no on-chain swarm validation`);
+        return res.status(403).json({ message: "No on-chain swarm validation found. Cannot resolve dispute without on-chain record." });
+      }
+      if (!adminOnChainVerdict.finalized) {
         return res.status(400).json({ message: "On-chain swarm validation is still in progress. Cannot resolve until finalized." });
       }
-      if (action === "release_to_assignee" && adminOnChainVerdict.exists && adminOnChainVerdict.finalized && adminOnChainVerdict.status !== 1) {
+      if (action === "release_to_assignee" && adminOnChainVerdict.status !== 1) {
         logSuspiciousActivity(req, "admin_release_blocked", `Admin ${adminWallet} attempted release_to_assignee on gig ${gigId} but on-chain verdict is status=${adminOnChainVerdict.status} (not approved)`, "critical");
         return res.status(403).json({ message: "On-chain swarm verdict is not approved. Cannot release to assignee. Use refund_to_poster instead." });
       }
-      if (action === "refund_to_poster" && adminOnChainVerdict.exists && adminOnChainVerdict.finalized && adminOnChainVerdict.status === 1) {
+      if (action === "refund_to_poster" && adminOnChainVerdict.status === 1) {
         logSuspiciousActivity(req, "admin_refund_override", `Admin ${adminWallet} refunding poster on gig ${gigId} despite approved on-chain verdict — logged for audit`, "critical");
       }
       console.log(`[Escrow] Admin-resolve on-chain check for gig ${gigId}: exists=${adminOnChainVerdict.exists}, finalized=${adminOnChainVerdict.finalized}, status=${adminOnChainVerdict.status}, action=${action}`);
@@ -1642,28 +1647,23 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Escrow is ${escrow.status}, cannot release` });
       }
 
-      const dbValidation = await storage.getValidationByGig(gigId);
       const onChainVerdict = await readSwarmVerdictOnChain(gigId);
       if (onChainVerdict === null) {
         console.warn(`[Escrow] On-chain verdict check failed for gig ${gigId} — blocking release as precaution`);
         return res.status(503).json({ message: "Unable to verify on-chain swarm verdict. Please try again." });
       }
-      if (dbValidation || onChainVerdict.exists) {
-        if (!onChainVerdict.exists) {
-          logSuspiciousActivity(req, "escrow_release_db_only", `Escrow release blocked for gig ${gigId} — DB validation exists but no on-chain record`, "critical");
-          return res.status(403).json({ message: "Swarm validation exists in database but not on-chain. Release denied for safety." });
-        }
-        if (!onChainVerdict.finalized) {
-          return res.status(400).json({ message: "Swarm validation is not yet finalized on-chain. Cannot release escrow." });
-        }
-        if (onChainVerdict.status !== 1) {
-          logSuspiciousActivity(req, "escrow_release_blocked", `Escrow release blocked for gig ${gigId} — on-chain verdict status=${onChainVerdict.status} (not approved)`, "critical");
-          return res.status(403).json({ message: "On-chain swarm verdict is not approved. Escrow release denied." });
-        }
-        console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
-      } else {
-        console.log(`[Escrow] No swarm validation (DB or on-chain) for gig ${gigId} — poster-initiated direct release`);
+      if (!onChainVerdict.exists) {
+        logSuspiciousActivity(req, "escrow_release_no_onchain", `Escrow release blocked for gig ${gigId} — no on-chain swarm validation exists`);
+        return res.status(403).json({ message: "No on-chain swarm validation found. Escrow release requires finalized on-chain approval." });
       }
+      if (!onChainVerdict.finalized) {
+        return res.status(400).json({ message: "Swarm validation is not yet finalized on-chain. Cannot release escrow." });
+      }
+      if (onChainVerdict.status !== 1) {
+        logSuspiciousActivity(req, "escrow_release_blocked", `Escrow release blocked for gig ${gigId} — on-chain verdict status=${onChainVerdict.status} (not approved)`, "critical");
+        return res.status(403).json({ message: "On-chain swarm verdict is not approved. Escrow release denied." });
+      }
+      console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
 
       let circleTransfer = null;
       if (escrow.circleWalletId && isCircleConfigured()) {
