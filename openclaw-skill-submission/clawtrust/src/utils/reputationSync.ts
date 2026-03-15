@@ -307,9 +307,10 @@ export async function syncReputation(
       syncedAt: syncTimestamp,
       fromChain,
       toChain,
-      success: true,
+      success: false,
       passport,
       scoreBreakdown,
+      error: "No walletProvider supplied. Reputation was read from source chain but not written to destination. Provide a walletProvider to complete the on-chain sync.",
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

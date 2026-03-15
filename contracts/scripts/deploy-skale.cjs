@@ -13,12 +13,6 @@ if (!PRIVATE_KEY) {
   process.exit(1);
 }
 
-hre.config.networks.skaleBase = {
-  url: SKALE_RPC_URL,
-  chainId: SKALE_CHAIN_ID,
-  accounts: [PRIVATE_KEY],
-};
-
 function loadArtifact(contractName) {
   const artifactPath = path.join(__dirname, "..", "artifacts", "contracts", `${contractName}.sol`, `${contractName}.json`);
   if (!fs.existsSync(artifactPath)) {
@@ -60,7 +54,6 @@ async function main() {
     process.exit(1);
   }
 
-  const reputationRegistryAddress = process.env.SKALE_REPUTATION_REGISTRY_ADDRESS || process.env.REPUTATION_REGISTRY_ADDRESS || "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63";
   const usdcTokenAddress = process.env.SKALE_USDC_TOKEN_ADDRESS || process.env.USDC_TOKEN_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
   const baseTokenURI = process.env.BASE_TOKEN_URI || "https://clawtrust.org";
   const platformFeeRate = parseInt(process.env.PLATFORM_FEE_RATE || "250");
@@ -69,60 +62,65 @@ async function main() {
   const txHashes = {};
   const timestamps = {};
 
-  console.log("=== Phase 1: Deploy 8 Contracts (Dependency Order) ===\n");
-  console.log("Note: ERC8004IdentityRegistry is an external protocol contract");
-  console.log("      referenced at:", reputationRegistryAddress, "\n");
+  console.log("=== Phase 1: Deploy All 9 Contracts (Dependency Order) ===\n");
 
-  console.log("1/8 Deploying ClawCardNFT...");
+  console.log("1/9 Deploying ClawCardNFT...");
   const clawCard = await deployContract(wallet, "ClawCardNFT", [baseTokenURI]);
   deployed.ClawCardNFT = clawCard.address;
   txHashes.ClawCardNFT = clawCard.txHash;
   timestamps.ClawCardNFT = new Date().toISOString();
   console.log("   ClawCardNFT:", deployed.ClawCardNFT);
 
-  console.log("2/8 Deploying ClawTrustRepAdapter...");
-  const repAdapter = await deployContract(wallet, "ClawTrustRepAdapter", [reputationRegistryAddress]);
+  console.log("2/9 Deploying ERC8004IdentityRegistry...");
+  const identityRegistry = await deployContract(wallet, "ERC8004IdentityRegistry", []);
+  deployed.ERC8004IdentityRegistry = identityRegistry.address;
+  txHashes.ERC8004IdentityRegistry = identityRegistry.txHash;
+  timestamps.ERC8004IdentityRegistry = new Date().toISOString();
+  console.log("   ERC8004IdentityRegistry:", deployed.ERC8004IdentityRegistry);
+
+  console.log("3/9 Deploying ClawTrustRepAdapter...");
+  const repAdapter = await deployContract(wallet, "ClawTrustRepAdapter", [deployed.ERC8004IdentityRegistry]);
   deployed.ClawTrustRepAdapter = repAdapter.address;
   txHashes.ClawTrustRepAdapter = repAdapter.txHash;
   timestamps.ClawTrustRepAdapter = new Date().toISOString();
   console.log("   ClawTrustRepAdapter:", deployed.ClawTrustRepAdapter);
 
-  console.log("3/8 Deploying ClawTrustBond...");
+  console.log("4/9 Deploying ClawTrustBond...");
   const bond = await deployContract(wallet, "ClawTrustBond", [usdcTokenAddress]);
   deployed.ClawTrustBond = bond.address;
   txHashes.ClawTrustBond = bond.txHash;
   timestamps.ClawTrustBond = new Date().toISOString();
   console.log("   ClawTrustBond:", deployed.ClawTrustBond);
 
-  console.log("4/8 Deploying ClawTrustSwarmValidator...");
+  console.log("5/9 Deploying ClawTrustSwarmValidator...");
   const swarmValidator = await deployContract(wallet, "ClawTrustSwarmValidator", [wallet.address]);
   deployed.ClawTrustSwarmValidator = swarmValidator.address;
   txHashes.ClawTrustSwarmValidator = swarmValidator.txHash;
   timestamps.ClawTrustSwarmValidator = new Date().toISOString();
   console.log("   ClawTrustSwarmValidator:", deployed.ClawTrustSwarmValidator);
 
-  console.log("5/8 Deploying ClawTrustRegistry...");
+  console.log("6/9 Deploying ClawTrustRegistry...");
   const registry = await deployContract(wallet, "ClawTrustRegistry", []);
   deployed.ClawTrustRegistry = registry.address;
   txHashes.ClawTrustRegistry = registry.txHash;
   timestamps.ClawTrustRegistry = new Date().toISOString();
   console.log("   ClawTrustRegistry:", deployed.ClawTrustRegistry);
 
-  console.log("6/8 Deploying ClawTrustCrew...");
+  console.log("7/9 Deploying ClawTrustCrew...");
   const crew = await deployContract(wallet, "ClawTrustCrew", []);
   deployed.ClawTrustCrew = crew.address;
   txHashes.ClawTrustCrew = crew.txHash;
   timestamps.ClawTrustCrew = new Date().toISOString();
   console.log("   ClawTrustCrew:", deployed.ClawTrustCrew);
 
-  console.log("7/8 Deploying ClawTrustEscrow...");
+  console.log("8/9 Deploying ClawTrustEscrow...");
   const escrow = await deployContract(wallet, "ClawTrustEscrow", [usdcTokenAddress, deployed.ClawTrustSwarmValidator, platformFeeRate]);
   deployed.ClawTrustEscrow = escrow.address;
   txHashes.ClawTrustEscrow = escrow.txHash;
   timestamps.ClawTrustEscrow = new Date().toISOString();
   console.log("   ClawTrustEscrow:", deployed.ClawTrustEscrow);
 
-  console.log("8/8 Deploying ClawTrustAC (ERC-8183)...");
+  console.log("9/9 Deploying ClawTrustAC (ERC-8183)...");
   const ac = await deployContract(wallet, "ClawTrustAC", [
     deployed.ClawCardNFT,
     deployed.ClawTrustRepAdapter,
@@ -175,14 +173,10 @@ async function main() {
     deployer: wallet.address,
     rpcUrl: SKALE_RPC_URL,
     usdc: usdcTokenAddress,
-    externalDependencies: {
-      ERC8004IdentityRegistry: reputationRegistryAddress,
-    },
     contracts: deployed,
     txHashes: txHashes,
     timestamps: timestamps,
     configuration: {
-      reputationRegistry: reputationRegistryAddress,
       usdcToken: usdcTokenAddress,
       platformFeeRate: platformFeeRate / 100 + "%",
       baseTokenURI: baseTokenURI,
@@ -206,9 +200,6 @@ async function main() {
     deployedAt: deploymentLog.deployedAt,
     deployer: wallet.address,
     usdc: usdcTokenAddress,
-    externalDependencies: {
-      ERC8004IdentityRegistry: reputationRegistryAddress,
-    },
     contracts: deployed,
   }, null, 2));
   console.log("Addresses saved to:", addressesPath);
@@ -237,15 +228,14 @@ async function main() {
   console.log("║ Deployer:     " + wallet.address.substring(0, 42).padEnd(46) + "║");
   console.log("╠══════════════════════════════════════════════════════════════╣");
 
-  const contractNames = Object.keys(deployed);
-  for (const name of contractNames) {
+  for (const name of Object.keys(deployed)) {
     const addr = deployed[name];
     const line = ` ${name.padEnd(28)} ${addr.substring(0, 42)} OK`;
     console.log("║" + line.padEnd(62) + "║");
   }
 
-  console.log("║" + ` ${"ERC8004IdentityRegistry".padEnd(28)} ${reputationRegistryAddress.substring(0, 42)} EXT`.padEnd(62) + "║");
   console.log("╠══════════════════════════════════════════════════════════════╣");
+  console.log("║ All 9 contracts deployed successfully.                     ║");
   console.log("║ Deployment log: deployments/skale-deployment.json          ║");
   console.log("╚══════════════════════════════════════════════════════════════╝");
 
