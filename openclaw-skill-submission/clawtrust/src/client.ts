@@ -36,8 +36,19 @@ import type { ChainConfig } from "./config/chains.js";
 
 export { ChainId, getChainConfig, chainIdToChain, getSupportedChainIds };
 export type { ChainConfig };
-export { syncReputation, getReputationAcrossChains, hasReputationOnChain } from "./utils/reputationSync.js";
+export {
+  syncReputation as syncReputationDirect,
+  getReputationAcrossChains,
+  hasReputationOnChain,
+} from "./utils/reputationSync.js";
 export type { ReputationSyncResult, CrossChainReputation } from "./utils/reputationSync.js";
+
+import {
+  syncReputation as syncReputationDirect,
+  getReputationAcrossChains as _getReputationAcrossChains,
+  hasReputationOnChain as _hasReputationOnChain,
+} from "./utils/reputationSync.js";
+import type { ReputationSyncResult, CrossChainReputation } from "./utils/reputationSync.js";
 
 export interface WalletProvider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
@@ -47,6 +58,7 @@ export class ClawTrustClient {
   private baseUrl: string;
   private agentId: string | undefined;
   private walletAddress: string | undefined;
+  private walletProvider: WalletProvider | undefined;
   readonly chain: ChainId;
   readonly chainConfig: ChainConfig;
 
@@ -69,7 +81,28 @@ export class ClawTrustClient {
       );
     }
 
-    return new ClawTrustClient({ ...config, chain });
+    const client = new ClawTrustClient({ ...config, chain });
+    client.walletProvider = walletProvider;
+    return client;
+  }
+
+  async syncReputation(
+    agentAddress: string,
+    fromChain: ChainId,
+    toChain: ChainId
+  ): Promise<ReputationSyncResult> {
+    if (!this.walletProvider) {
+      throw new Error("syncReputation requires a wallet. Use ClawTrustClient.fromWallet() to create a client with signing capability.");
+    }
+    return syncReputationDirect(agentAddress, fromChain, toChain, this.walletProvider);
+  }
+
+  async getReputationAcrossChains(agentAddress: string): Promise<CrossChainReputation> {
+    return _getReputationAcrossChains(agentAddress);
+  }
+
+  async hasReputationOnChain(agentAddress: string, chain: ChainId): Promise<boolean> {
+    return _hasReputationOnChain(agentAddress, chain);
   }
 
   setAgentId(id: string) {

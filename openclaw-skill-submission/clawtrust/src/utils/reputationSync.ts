@@ -39,6 +39,7 @@ export interface CrossChainReputation {
   base: number | null;
   skale: number | null;
   mostActive: ChainId | null;
+  errors: string[];
 }
 
 function word(hex: string): string {
@@ -344,6 +345,7 @@ export async function getReputationAcrossChains(
     base: null,
     skale: null,
     mostActive: null,
+    errors: [],
   };
 
   let baseTimestamp = 0;
@@ -356,7 +358,7 @@ export async function getReputationAcrossChains(
     baseTimestamp = baseScore.timestamp;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to read reputation from Base Sepolia: ${message}`);
+    result.errors.push(`Base Sepolia: ${message}`);
   }
 
   try {
@@ -366,7 +368,7 @@ export async function getReputationAcrossChains(
     skaleTimestamp = skaleScore.timestamp;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to read reputation from SKALE on Base: ${message}`);
+    result.errors.push(`SKALE on Base: ${message}`);
   }
 
   if (baseTimestamp > 0 || skaleTimestamp > 0) {
@@ -382,10 +384,15 @@ export async function hasReputationOnChain(
 ): Promise<boolean> {
   const config = getChainConfig(chain);
 
-  const [erc8004, fusedScore] = await Promise.all([
-    getERC8004Data(config, agentAddress),
-    getFusedScoreFromChain(config, agentAddress),
-  ]);
+  try {
+    const [erc8004, fusedScore] = await Promise.all([
+      getERC8004Data(config, agentAddress),
+      getFusedScoreFromChain(config, agentAddress),
+    ]);
 
-  return erc8004.isRegistered || erc8004.passportBalance > 0 || fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0;
+    return erc8004.isRegistered || erc8004.passportBalance > 0 || fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to check reputation on ${config.name} (${chain}): ${message}`);
+  }
 }
