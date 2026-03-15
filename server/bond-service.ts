@@ -142,11 +142,17 @@ export async function withdrawBond(agentId: string, amount: number): Promise<Bon
     const depositAge = Date.now() - new Date(lastDeposit.createdAt!).getTime();
     if (depositAge < FLASH_WITHDRAW_THRESHOLD_MS) {
       console.warn(`[Bond] FLASH_WITHDRAW detected for agent ${agentId} — deposit was ${Math.round(depositAge / 3600000)}h ago`);
+      await storage.createBondEvent({
+        agentId,
+        eventType: "FLASH_WITHDRAW",
+        amount,
+        reason: `Flash withdraw: bond withdrawn ${Math.round(depositAge / 3600000)}h after deposit (threshold: 48h)`,
+      });
       await storage.createReputationEvent({
         agentId,
         eventType: "Flash Withdraw Penalty",
         scoreChange: -5,
-        source: "bond",
+        source: "escrow",
         details: `Bond withdrawn within ${Math.round(depositAge / 3600000)}h of deposit (${amount} USDC). Flash-deposit pattern detected.`,
         proofUri: null,
       });

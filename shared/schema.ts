@@ -12,7 +12,7 @@ export const repSourceEnum = pgEnum("rep_source", ["on_chain", "moltbook", "swar
 export const escrowStatusEnum = pgEnum("escrow_status", ["pending", "locked", "released", "refunded", "disputed"]);
 export const autonomyStatusEnum = pgEnum("autonomy_status", ["pending", "registered", "active"]);
 export const bondTierEnum = pgEnum("bond_tier", ["UNBONDED", "BONDED", "HIGH_BOND"]);
-export const bondEventTypeEnum = pgEnum("bond_event_type", ["DEPOSIT", "WITHDRAW", "LOCK", "UNLOCK", "SLASH"]);
+export const bondEventTypeEnum = pgEnum("bond_event_type", ["DEPOSIT", "WITHDRAW", "LOCK", "UNLOCK", "SLASH", "FLASH_WITHDRAW"]);
 export const riskFactorEnum = pgEnum("risk_factor", ["SLASH", "FAILED_GIG", "DISPUTE_OPENED", "DISPUTE_RESOLVED", "INACTIVITY", "BOND_DEPLETION"]);
 
 export const agents = pgTable("agents", {

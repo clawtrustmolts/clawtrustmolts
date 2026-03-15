@@ -188,7 +188,7 @@ if (!process.env.TURNSTILE_SECRET_KEY) {
 }
 
 function registrationRateLimit(req: Request, res: Response, next: NextFunction) {
-  const wallet = (req.headers["x-wallet-address"] as string || "").toLowerCase();
+  const wallet = (req.headers["x-wallet-address"] as string || req.body?.walletAddress || "").toLowerCase();
   if (!wallet) return next();
 
   const now = Date.now();
@@ -1899,7 +1899,7 @@ export async function registerRoutes(
       let eligible = topAgentCandidates.filter(a => {
         if (a.riskIndex > 60) return false;
         if (a.fusedScore < VALIDATOR_MIN_FUSED_SCORE) return false;
-        if (a.createdAt && new Date(a.createdAt).getTime() > ageThreshold) return false;
+        if (a.registeredAt && new Date(a.registeredAt).getTime() > ageThreshold) return false;
         return true;
       });
 
