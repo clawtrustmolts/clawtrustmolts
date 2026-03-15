@@ -5,6 +5,9 @@ import type { WalletProvider } from "../client.js";
 const GET_FUSED_SCORE_SELECTOR = "0xb242f17c";
 const SUBMIT_FUSED_FEEDBACK_SELECTOR = "0x8c6ec3a6";
 const BALANCE_OF_SELECTOR = "0x70a08231";
+const IS_REGISTERED_SELECTOR = "0xc3c5a547";
+const GET_SCORE_SELECTOR = "0xd47875d0";
+const GET_FEEDBACK_COUNT_SELECTOR = "0x01ff73e7";
 
 interface FusedScoreData {
   onChainScore: number;
@@ -13,6 +16,13 @@ interface FusedScoreData {
   bondScore: number;
   fusedScore: number;
   timestamp: number;
+}
+
+interface ERC8004Data {
+  isRegistered: boolean;
+  registryScore: number;
+  feedbackCount: number;
+  passportBalance: number;
 }
 
 export interface ReputationSyncResult {
@@ -48,6 +58,23 @@ function decodeUint256FromHex(hex: string, wordIndex: number): number {
   const slice = hex.substring(start, start + 64);
   if (!slice || slice.length === 0) return 0;
   return parseInt(slice, 16) || 0;
+}
+
+function decodeBoolFromHex(hex: string): boolean {
+  if (!hex || hex === "0x") return false;
+  const cleaned = hex.replace("0x", "");
+  return parseInt(cleaned, 16) !== 0;
+}
+
+function decodeInt256FromHex(hex: string): number {
+  if (!hex || hex === "0x") return 0;
+  const cleaned = hex.replace("0x", "").padStart(64, "0");
+  const val = BigInt("0x" + cleaned);
+  const maxPositive = BigInt("0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+  if (val > maxPositive) {
+    return Number(val - BigInt("0x10000000000000000000000000000000000000000000000000000000000000000"));
+  }
+  return Number(val);
 }
 
 function stringToHexBytes(str: string): string {
@@ -196,26 +223,32 @@ async function getFusedScoreFromChain(
   };
 }
 
-async function getPassportBalance(
+async function getERC8004Data(
   config: ChainConfig,
   agentAddress: string
-): Promise<number> {
-  const data = BALANCE_OF_SELECTOR + encodeAddress(agentAddress);
-  const result = await ethCall(
-    config.rpcUrl,
-    config.contracts.ClawCardNFT,
-    data
-  );
+): Promise<ERC8004Data> {
+  const addrEncoded = encodeAddress(agentAddress);
 
-  if (!result || result === "0x") return 0;
-  return parseInt(result.replace("0x", ""), 16) || 0;
+  const [registeredResult, scoreResult, countResult, balanceResult] = await Promise.all([
+    ethCall(config.rpcUrl, config.contracts.ERC8004IdentityRegistry, IS_REGISTERED_SELECTOR + addrEncoded),
+    ethCall(config.rpcUrl, config.contracts.ERC8004IdentityRegistry, GET_SCORE_SELECTOR + addrEncoded),
+    ethCall(config.rpcUrl, config.contracts.ERC8004IdentityRegistry, GET_FEEDBACK_COUNT_SELECTOR + addrEncoded),
+    ethCall(config.rpcUrl, config.contracts.ClawCardNFT, BALANCE_OF_SELECTOR + addrEncoded),
+  ]);
+
+  return {
+    isRegistered: decodeBoolFromHex(registeredResult),
+    registryScore: decodeInt256FromHex(scoreResult),
+    feedbackCount: decodeUint256FromHex(countResult.replace("0x", ""), 0),
+    passportBalance: decodeUint256FromHex(balanceResult.replace("0x", ""), 0),
+  };
 }
 
 export async function syncReputation(
   agentAddress: string,
   fromChain: ChainId,
   toChain: ChainId,
-  walletProvider: WalletProvider
+  walletProvider?: WalletProvider
 ): Promise<ReputationSyncResult> {
   try {
     if (fromChain === toChain) {
@@ -232,19 +265,36 @@ export async function syncReputation(
     const fromConfig = getChainConfig(fromChain);
     const toConfig = getChainConfig(toChain);
 
-    const [fusedScore, passportBalance] = await Promise.all([
+    const [fusedScore, erc8004] = await Promise.all([
       getFusedScoreFromChain(fromConfig, agentAddress),
-      getPassportBalance(fromConfig, agentAddress),
+      getERC8004Data(fromConfig, agentAddress),
     ]);
 
-    if (fusedScore.fusedScore === 0 && fusedScore.onChainScore === 0 && passportBalance === 0) {
+    const hasReputation =
+      fusedScore.fusedScore > 0 ||
+      fusedScore.onChainScore > 0 ||
+      erc8004.isRegistered ||
+      erc8004.passportBalance > 0;
+
+    if (!hasReputation) {
       return {
         score: 0,
         syncedAt: new Date().toISOString(),
         fromChain,
         toChain,
         success: false,
-        error: `Agent ${agentAddress} has no reputation data or passport on ${fromConfig.name}.`,
+        error: `Agent ${agentAddress} has no reputation data, ERC-8004 identity, or passport on ${fromConfig.name}.`,
+      };
+    }
+
+    if (!walletProvider) {
+      return {
+        score: fusedScore.fusedScore,
+        syncedAt: new Date().toISOString(),
+        fromChain,
+        toChain,
+        success: false,
+        error: "A walletProvider with oracle permissions on the destination chain is required to write the reputation snapshot. Pass a WalletProvider as the 4th argument to complete the cross-chain sync.",
       };
     }
 
@@ -257,7 +307,7 @@ export async function syncReputation(
       fusedScore.performanceScore,
       fusedScore.bondScore,
       ["cross-chain-sync"],
-      `sync:${fromChain}:${syncTimestamp}`
+      `sync:${fromChain}:${syncTimestamp}:registered=${erc8004.isRegistered}:feedbacks=${erc8004.feedbackCount}:registryScore=${erc8004.registryScore}`
     );
 
     const txHash = await sendTransaction(
@@ -304,8 +354,9 @@ export async function getReputationAcrossChains(
     const baseScore = await getFusedScoreFromChain(baseConfig, agentAddress);
     result.base = baseScore.fusedScore;
     baseTimestamp = baseScore.timestamp;
-  } catch {
-    result.base = null;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to read reputation from Base Sepolia: ${message}`);
   }
 
   try {
@@ -313,8 +364,9 @@ export async function getReputationAcrossChains(
     const skaleScore = await getFusedScoreFromChain(skaleConfig, agentAddress);
     result.skale = skaleScore.fusedScore;
     skaleTimestamp = skaleScore.timestamp;
-  } catch {
-    result.skale = null;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to read reputation from SKALE on Base: ${message}`);
   }
 
   if (baseTimestamp > 0 || skaleTimestamp > 0) {
@@ -328,16 +380,12 @@ export async function hasReputationOnChain(
   agentAddress: string,
   chain: ChainId
 ): Promise<boolean> {
-  try {
-    const config = getChainConfig(chain);
+  const config = getChainConfig(chain);
 
-    const [passportBalance, fusedScore] = await Promise.all([
-      getPassportBalance(config, agentAddress),
-      getFusedScoreFromChain(config, agentAddress),
-    ]);
+  const [erc8004, fusedScore] = await Promise.all([
+    getERC8004Data(config, agentAddress),
+    getFusedScoreFromChain(config, agentAddress),
+  ]);
 
-    return passportBalance > 0 || fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0;
-  } catch {
-    return false;
-  }
+  return erc8004.isRegistered || erc8004.passportBalance > 0 || fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0;
 }
