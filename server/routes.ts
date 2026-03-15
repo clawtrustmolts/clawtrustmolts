@@ -68,7 +68,7 @@ import {
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
-import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale } from "./skale-chain";
+import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered } from "./skale-chain";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -698,6 +698,26 @@ export async function registerRoutes(
       res.json(agents);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Search agents by handle/bio/skills ──────────────────────────
+  app.get("/api/agents/search", async (req, res) => {
+    try {
+      const q = ((req.query.q as string) || "").toLowerCase().trim();
+      const limit = Math.min(parseInt((req.query.limit as string) || "20", 10), 100);
+      if (!q) return res.json({ agents: [], total: 0 });
+      const all = await storage.getAgents();
+      const matched = all.filter((a: any) =>
+        a.handle?.toLowerCase().includes(q) ||
+        a.bio?.toLowerCase().includes(q) ||
+        (Array.isArray(a.skills) && a.skills.some((s: any) =>
+          (typeof s === "string" ? s : s?.name ?? "").toLowerCase().includes(q)
+        ))
+      ).slice(0, limit);
+      return res.json({ agents: matched, total: matched.length, query: q });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
     }
   });
 
@@ -5454,6 +5474,56 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Convenience alias: GET /api/bonds → all bonded agents ────────────
+  app.get("/api/bonds", async (_req, res) => {
+    try {
+      const allAgents = await storage.getAgents();
+      const bonded = allAgents
+        .filter((a: any) => (a.availableBond ?? 0) > 0 || (a.bondTier && a.bondTier !== "NO_BOND"))
+        .map((a: any) => ({
+          agentId: a.id,
+          handle: a.handle,
+          walletAddress: a.walletAddress,
+          bondTier: a.bondTier,
+          availableBond: a.availableBond,
+          lockedBond: a.lockedBond,
+          totalBonded: (a.availableBond ?? 0) + (a.lockedBond ?? 0),
+        }));
+      res.json({ bonds: bonded, count: bonded.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Convenience alias: GET /api/chain-status → contract health ────────
+  app.get("/api/chain-status", async (_req, res) => {
+    try {
+      const contracts = {
+        BASE_SEPOLIA: {
+          chainId: 84532,
+          rpc: "https://sepolia.base.org",
+          erc8004Registry: process.env.CLAW_TRUST_ERC8004_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+          repAdapter: process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+          bond: process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c",
+          escrow: process.env.CLAW_TRUST_ESCROW_ADDRESS || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
+          swarmValidator: process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
+          clawCardNFT: process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
+        },
+        SKALE_TESTNET: {
+          chainId: 974399131,
+          rpc: "https://testnet.skalenodes.com/v1/giant-half-dual-testnet",
+          erc8004Registry: "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398",
+          repAdapter: "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
+          clawCardNFT: "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647",
+          agenticCommerce: "0x2529A8900aD37386F6250281A5085D60Bd673c4B",
+        },
+      };
+      res.json({ status: "ok", chains: 2, contracts });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/bond/network/stats", async (_req, res) => {
     try {
       const stats = await getNetworkBondStats();
@@ -5905,6 +5975,16 @@ export async function registerRoutes(
   // ═══════════════════════════════════════════════════════════════
 
   const TRUST_RECEIPT_MIN_AMOUNT = 1;
+
+  // ─── Trust Receipts: List all ─────────────────────────────────────────
+  app.get("/api/trust-receipts", apiLimiter, async (_req, res) => {
+    try {
+      const receipts = await storage.getTrustReceipts();
+      res.json({ receipts, count: receipts.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   app.post("/api/trust-receipts", apiLimiter, async (req, res) => {
     try {
@@ -7476,8 +7556,9 @@ export async function registerRoutes(
       const agent = await storage.getAgent(req.params.id as string);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
       const breakdown = getScoreBreakdown(agent);
-      const [skaleScore] = await Promise.all([
+      const [skaleScore, skaleRegistered] = await Promise.all([
         readSkaleFusedScore(agent.walletAddress).catch(() => null),
+        readSkaleIsRegistered(agent.walletAddress).catch(() => false),
       ]);
       return res.json({
         agentId: agent.id,
@@ -7486,15 +7567,36 @@ export async function registerRoutes(
         chains: {
           BASE_SEPOLIA: {
             chainId: 84532,
+            rpc: "https://sepolia.base.org",
             registered: !!agent.erc8004TokenId,
             tokenId: agent.erc8004TokenId,
             fusedScore: agent.fusedScore,
             breakdown,
+            features: {
+              erc8004Identity: true,
+              reputationOracle: true,
+              bondEscrow: true,
+              gigMarket: true,
+              swarmValidation: true,
+              usdcPayments: true,
+              x402MicroPayments: true,
+              gas: "ETH (Sepolia)",
+              nativeCurrency: "ETH",
+              paymentCurrency: "USDC",
+            },
+            contracts: {
+              erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+              repAdapter: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+              bond: "0x23a1E1e958C932639906d0650A13283f6E60132c",
+              escrow: "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
+              swarmValidator: "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
+              clawCardNFT: "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
+            },
           },
           SKALE_TESTNET: {
             chainId: 974399131,
             rpc: "https://testnet.skalenodes.com/v1/giant-half-dual-testnet",
-            contract: "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
+            registered: skaleRegistered,
             hasScore: !!skaleScore,
             fusedScore: skaleScore?.score ?? null,
             breakdown: skaleScore ? {
@@ -7506,7 +7608,32 @@ export async function registerRoutes(
             updatedAt: skaleScore?.updatedAt && skaleScore.updatedAt > 0
               ? new Date(skaleScore.updatedAt * 1000).toISOString() : null,
             syncEndpoint: `POST /api/agents/${agent.id}/sync-to-skale`,
+            features: {
+              erc8004Identity: true,
+              reputationOracle: true,
+              bondEscrow: false,
+              gigMarket: false,
+              swarmValidation: false,
+              usdcPayments: false,
+              x402MicroPayments: false,
+              gas: "sFUEL (gasless)",
+              nativeCurrency: "sFUEL",
+              paymentCurrency: null,
+              note: "SKALE stores reputation scores only. Payments and bonds are on Base Sepolia USDC.",
+            },
+            contracts: {
+              erc8004Registry: "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398",
+              repAdapter: "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
+              clawCardNFT: "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647",
+              agenticCommerce: "0x2529A8900aD37386F6250281A5085D60Bd673c4B",
+            },
           },
+        },
+        budget: {
+          note: "All USDC payments, bonds, and escrow are on Base Sepolia. SKALE is gasless (sFUEL) and stores reputation only.",
+          bond: { amount: agent.availableBond, currency: "USDC", chain: "BASE_SEPOLIA" },
+          totalEarned: { amount: agent.totalEarned, currency: "USDC", chain: "BASE_SEPOLIA" },
+          lockedBond: { amount: agent.lockedBond, currency: "USDC", chain: "BASE_SEPOLIA" },
         },
       });
     } catch (err: any) {

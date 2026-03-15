@@ -801,9 +801,9 @@ export default function ProfilePage() {
               )}
 
               <div className="space-y-1.5">
-                <InfoRow icon={<DollarSign className="w-3.5 h-3.5" />} label="Bond" value={`${formatUSDC(agent.availableBond)} · ${agent.bondTier.replace("_", " ")}`} />
+                <InfoRow icon={<DollarSign className="w-3.5 h-3.5" />} label="Bond" value={`${formatUSDC(agent.availableBond)} · ${agent.bondTier.replace("_", " ")}`} subLabel="Base Sepolia USDC" />
                 <InfoRow icon={<Briefcase className="w-3.5 h-3.5" />} label="Gigs" value={`${agent.totalGigsCompleted} completed`} />
-                <InfoRow icon={<TrendingUp className="w-3.5 h-3.5" />} label="Earned" value={formatUSDC(agent.totalEarned)} />
+                <InfoRow icon={<TrendingUp className="w-3.5 h-3.5" />} label="Earned" value={formatUSDC(agent.totalEarned)} subLabel="Base Sepolia USDC" />
                 <InfoRow icon={<Flame className="w-3.5 h-3.5" />} label="Clean Streak" value={`${agent.cleanStreakDays}d`} />
                 {x402Data && x402Data.stats.totalPayments > 0 && (
                   <InfoRow
@@ -1591,7 +1591,7 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
   );
 }
 
-function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function InfoRow({ icon, label, value, subLabel }: { icon: ReactNode; label: string; value: string; subLabel?: string }) {
   return (
     <div
       className="flex items-center justify-between text-[11px] font-mono px-3 py-1.5 rounded-sm"
@@ -1601,7 +1601,10 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
         <span style={{ color: "var(--claw-orange)" }}>{icon}</span>
         <span style={{ color: "var(--text-muted)" }}>{label}</span>
       </div>
-      <span style={{ color: "var(--shell-white)" }}>{value}</span>
+      <div className="flex flex-col items-end gap-0.5">
+        <span style={{ color: "var(--shell-white)" }}>{value}</span>
+        {subLabel && <span className="text-[9px]" style={{ color: "var(--text-muted)", opacity: 0.6 }}>{subLabel}</span>}
+      </div>
     </div>
   );
 }
@@ -1636,15 +1639,31 @@ function SectionTitle({ children, icon, color }: { children: ReactNode; icon?: R
 function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: number }) {
   const SYNC_KEY = `clawtrust_skale_sync_${agent.id}`;
 
-  const { data: skaleData, isLoading: skaleLoading } = useQuery<{
-    hasSkaleScore: boolean;
-    score: number | null;
-    updatedAt: string | null;
+  const { data: multichain, isLoading: mcLoading } = useQuery<{
+    agentId: string;
+    handle: string;
+    chains: {
+      BASE_SEPOLIA: {
+        registered: boolean;
+        fusedScore: number | null;
+        features: Record<string, any>;
+        contracts: Record<string, string>;
+      };
+      SKALE_TESTNET: {
+        registered: boolean;
+        hasScore: boolean;
+        fusedScore: number | null;
+        updatedAt: string | null;
+        features: Record<string, any>;
+        contracts: Record<string, string>;
+      };
+    };
+    budget: Record<string, any>;
   }>({
-    queryKey: ["/api/agents", agent.id, "skale-score"],
+    queryKey: ["/api/multichain", agent.id],
     queryFn: async () => {
-      const res = await fetch(`/api/agents/${agent.id}/skale-score`);
-      if (!res.ok) return { hasSkaleScore: false, score: null, updatedAt: null };
+      const res = await fetch(`/api/multichain/${agent.id}`);
+      if (!res.ok) return null as any;
       return res.json();
     },
     staleTime: 60_000,
@@ -1669,7 +1688,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
       const ts = data.syncedAt || new Date().toISOString();
       setLastSync(ts);
       try { localStorage.setItem(SYNC_KEY, ts); } catch {}
-      queryClient.invalidateQueries({ queryKey: ["/api/agents", agent.id, "skale-score"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/multichain", agent.id] });
       toast({ title: "Synced to SKALE", description: `TrustScore ${baseScore.toFixed(1)} synced. Tx: ${data.txHash?.slice(0, 10)}…` });
     },
     onError: (err: Error) => {
@@ -1677,8 +1696,20 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
     },
   });
 
-  const hasSkale = skaleData?.hasSkaleScore;
-  const skaleScore = skaleData?.score;
+  const base = multichain?.chains?.BASE_SEPOLIA;
+  const skale = multichain?.chains?.SKALE_TESTNET;
+  const skaleScore = skale?.fusedScore ?? null;
+  const hasSkale = skale?.hasScore ?? false;
+
+  const featureRows: { label: string; base: boolean; skale: boolean }[] = [
+    { label: "ERC-8004 Identity", base: true, skale: true },
+    { label: "Reputation Oracle", base: true, skale: true },
+    { label: "Bond / Escrow (USDC)", base: true, skale: false },
+    { label: "Gig Market", base: true, skale: false },
+    { label: "Swarm Validation", base: true, skale: false },
+    { label: "x402 Payments", base: true, skale: false },
+    { label: "Gas Token", base: false, skale: false },
+  ];
 
   return (
     <SectionCard testId="card-cross-chain-rep">
@@ -1687,42 +1718,85 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
           MULTI-CHAIN REPUTATION
         </h3>
         <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.2)" }}>
-          Base + SKALE
+          ERC-8004 · Base + SKALE
         </span>
       </div>
 
+      {/* Score Cards */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         {/* Base score */}
         <div className="rounded-sm p-3" style={{ background: "rgba(0,82,255,0.06)", border: "1px solid rgba(0,82,255,0.2)" }} data-testid="card-base-score">
-          <div className="flex items-center gap-1 mb-2">
-            <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff", border: "1px solid rgba(0,82,255,0.25)" }}>⬡ Base</span>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff", border: "1px solid rgba(0,82,255,0.25)" }}>⬡ Base Sepolia</span>
+            {base?.registered && (
+              <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}>✓ REG</span>
+            )}
           </div>
           <p className="text-xl font-mono font-bold" style={{ color: "var(--shell-white)" }}>{baseScore.toFixed(1)}</p>
-          <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>ACTIVE CHAIN</p>
+          <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>ACTIVE CHAIN · ETH gas</p>
         </div>
 
         {/* SKALE score */}
         <div className="rounded-sm p-3" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)" }} data-testid="card-skale-score">
-          <div className="flex items-center gap-1 mb-2">
+          <div className="flex items-center justify-between mb-2">
             <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>⬡ SKALE</span>
+            {skale?.registered ? (
+              <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}>✓ REG</span>
+            ) : (
+              <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>NOT REG</span>
+            )}
           </div>
-          {skaleLoading ? (
+          {mcLoading ? (
             <p className="text-sm font-mono animate-pulse" style={{ color: "var(--text-muted)" }}>…</p>
           ) : hasSkale && skaleScore !== null ? (
             <>
               <p className="text-xl font-mono font-bold" style={{ color: "#a78bfa" }}>{skaleScore.toFixed(1)}</p>
               <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
-                {skaleData?.updatedAt ? `Updated ${new Date(skaleData.updatedAt).toLocaleDateString()}` : "SYNCED"}
+                {skale?.updatedAt ? `Updated ${new Date(skale.updatedAt).toLocaleDateString()}` : "SYNCED"} · sFUEL gasless
               </p>
             </>
           ) : (
             <>
               <p className="text-xl font-mono font-bold" style={{ color: "var(--text-muted)" }}>—</p>
-              <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>NOT SYNCED</p>
+              <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>NOT SYNCED · sFUEL gasless</p>
             </>
           )}
         </div>
       </div>
+
+      {/* Feature Matrix */}
+      <div className="mb-4 rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }} data-testid="table-feature-matrix">
+        <div className="grid grid-cols-3 px-2 py-1.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(255,255,255,0.03)", color: "var(--text-muted)" }}>
+          <span>Feature</span>
+          <span className="text-center" style={{ color: "#6090ff" }}>Base</span>
+          <span className="text-center" style={{ color: "#a78bfa" }}>SKALE</span>
+        </div>
+        {featureRows.map((row) => (
+          <div key={row.label} className="grid grid-cols-3 px-2 py-1 text-[9px] font-mono" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+            <span style={{ color: "var(--text-muted)" }}>{row.label}</span>
+            <span className="text-center">{row.base ? <span style={{ color: "#22c55e" }}>✓</span> : <span style={{ color: "rgba(255,255,255,0.15)" }}>—</span>}</span>
+            <span className="text-center">{row.skale ? <span style={{ color: "#22c55e" }}>✓</span> : <span style={{ color: "rgba(255,255,255,0.15)" }}>—</span>}</span>
+          </div>
+        ))}
+        <div className="grid grid-cols-3 px-2 py-1 text-[9px] font-mono" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+          <span style={{ color: "var(--text-muted)" }}>Gas Token</span>
+          <span className="text-center" style={{ color: "#6090ff" }}>ETH</span>
+          <span className="text-center" style={{ color: "#a78bfa" }}>sFUEL</span>
+        </div>
+      </div>
+
+      {/* Contract Addresses */}
+      {skale?.contracts && (
+        <div className="mb-3 space-y-1" data-testid="div-skale-contracts">
+          <p className="text-[8px] font-mono uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>SKALE Contracts</p>
+          {Object.entries(skale.contracts).slice(0, 3).map(([k, v]) => (
+            <div key={k} className="flex justify-between text-[8px] font-mono">
+              <span style={{ color: "var(--text-muted)" }}>{k}</span>
+              <span style={{ color: "#a78bfa" }}>{(v as string).slice(0, 8)}…</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <button
         onClick={() => syncMutation.mutate()}

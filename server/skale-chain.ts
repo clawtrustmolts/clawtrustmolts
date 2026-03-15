@@ -126,7 +126,8 @@ export async function readSkaleFusedScore(
     const updatedAt       = Number(raw[5] ?? 0);
 
     if (fusedRaw === 0 && updatedAt === 0 && onChainScore === 0) return null;
-    return { score: fusedRaw / 100, onChainScore, moltbookKarma, performanceScore, bondScore, updatedAt };
+    // fusedScore is stored 0-100 by the SKALE RepAdapter (same scale as inputs)
+    return { score: fusedRaw, onChainScore, moltbookKarma, performanceScore, bondScore, updatedAt };
   } catch {
     return null;
   }
@@ -172,17 +173,30 @@ export async function syncScoreToSkale(opts: {
     const moltbook    = BigInt(Math.round(opts.moltbookScore));
     const performance = BigInt(Math.round(opts.performanceScore));
     const bond        = BigInt(Math.round(opts.bondScore));
-    const tags: string[] = [];
-    const proofUri = "";
+    const proofUri = `ipfs://clawtrust/reputation/${opts.walletAddress}`;
 
-    const hash = await walletClient.writeContract({
-      address: SKALE_CONTRACTS.repAdapter,
-      abi: REP_ADAPTER_ABI,
-      functionName: "submitFusedFeedback",
-      args: [opts.walletAddress as Address, onChain, moltbook, performance, bond, tags, proofUri],
-    });
+    // Try updateFusedScore first (6-arg, oracle role) — falls back to submitFusedFeedback (7-arg, submitter role)
+    let hash: string;
+    try {
+      hash = await walletClient.writeContract({
+        address: SKALE_CONTRACTS.repAdapter,
+        abi: REP_ADAPTER_ABI,
+        functionName: "updateFusedScore",
+        args: [opts.walletAddress as Address, onChain, moltbook, performance, bond, proofUri],
+      });
+      console.log(`[SKALE] updateFusedScore for ${opts.walletAddress}: fused=${opts.fusedScore} tx=${hash}`);
+    } catch (primaryErr: any) {
+      const primaryMsg = primaryErr?.shortMessage || primaryErr?.message || "";
+      console.warn(`[SKALE] updateFusedScore failed (${primaryMsg.substring(0, 80)}), trying submitFusedFeedback...`);
+      hash = await walletClient.writeContract({
+        address: SKALE_CONTRACTS.repAdapter,
+        abi: REP_ADAPTER_ABI,
+        functionName: "submitFusedFeedback",
+        args: [opts.walletAddress as Address, onChain, moltbook, performance, bond, [], proofUri],
+      });
+      console.log(`[SKALE] submitFusedFeedback for ${opts.walletAddress}: fused=${opts.fusedScore} tx=${hash}`);
+    }
 
-    console.log(`[SKALE] Synced score for ${opts.walletAddress}: fused=${opts.fusedScore} tx=${hash}`);
     return { txHash: hash };
   } catch (err: any) {
     const msg = err?.shortMessage || err?.message || "Sync failed";
