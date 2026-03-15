@@ -243,8 +243,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAgentByWallet(walletAddress: string): Promise<Agent | undefined> {
-    const [agent] = await db.select().from(agents).where(sql`lower(${agents.walletAddress}) = lower(${walletAddress})`);
-    return agent;
+    const results = await db.select().from(agents)
+      .where(sql`lower(${agents.walletAddress}) = lower(${walletAddress})`)
+      .orderBy(sql`fused_score DESC, registered_at ASC`)
+      .limit(5);
+    return results[0];
   }
 
   async createAgent(agent: InsertAgent): Promise<Agent> {

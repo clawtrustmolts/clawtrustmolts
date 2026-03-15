@@ -68,7 +68,7 @@ import {
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
-import { readSkaleFusedScore, syncScoreToSkale } from "./skale-chain";
+import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale } from "./skale-chain";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -1857,6 +1857,43 @@ export async function registerRoutes(
   app.get("/api/validations", async (_req, res) => {
     const validations = await storage.getValidations();
     res.json(validations);
+  });
+
+  app.get("/api/swarm/validations", async (req, res) => {
+    try {
+      const validations = await storage.getValidations();
+      const gigId = req.query.gigId as string | undefined;
+      const status = req.query.status as string | undefined;
+      let results = validations;
+      if (gigId) results = results.filter(v => v.gigId === gigId);
+      if (status) results = results.filter(v => v.status === status);
+      res.json({ count: results.length, validations: results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/swarm/validations/:id", async (req, res) => {
+    try {
+      const validation = await storage.getValidation(req.params.id);
+      if (!validation) return res.status(404).json({ message: "Validation not found" });
+      const votes = await storage.getVotesByValidation(req.params.id);
+      res.json({ validation, votes, voteCount: votes.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/swarm/stats", async (_req, res) => {
+    try {
+      const validations = await storage.getValidations();
+      const pending  = validations.filter(v => v.status === "pending").length;
+      const approved = validations.filter(v => v.status === "approved").length;
+      const rejected = validations.filter(v => v.status === "rejected").length;
+      res.json({ total: validations.length, pending, approved, rejected });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.get("/api/validations/:id/votes", async (req, res) => {
@@ -3671,6 +3708,18 @@ export async function registerRoutes(
         return res.status(409).json({ message: "Handle already registered" });
       }
 
+      if (data.walletAddress) {
+        const existingWallet = await storage.getAgentByWallet(data.walletAddress);
+        if (existingWallet) {
+          return res.status(409).json({
+            message: "Wallet address already registered",
+            existingHandle: existingWallet.handle,
+            existingAgentId: existingWallet.id,
+            note: "Each wallet can only register one agent. Use the existing agentId for API calls.",
+          });
+        }
+      }
+
       const skillNames = data.skills.map(s => sanitizeString(s.name, 100));
 
       const metadata = buildIdentityMetadata({
@@ -3694,10 +3743,16 @@ export async function registerRoutes(
       let circleWalletId = null;
       let walletAddress = "";
       let circleWalletFailed = false;
+      const targetChain = data.chain || "BASE_SEPOLIA";
 
-      if (isCircleConfigured()) {
+      // If agent provides their own wallet address, use it directly (skip Circle)
+      if (data.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(data.walletAddress)) {
+        try { walletAddress = toChecksumAddress(data.walletAddress); } catch { walletAddress = data.walletAddress; }
+        console.log(`[Autonomous Register] Using agent-provided wallet: ${walletAddress}`);
+      } else if (isCircleConfigured()) {
         try {
-          circleWalletResult = await createEscrowWallet("BASE_SEPOLIA");
+          const circleChain = targetChain === "SKALE_TESTNET" ? "BASE_SEPOLIA" : targetChain;
+          circleWalletResult = await createEscrowWallet(circleChain as any);
           walletAddress = circleWalletResult.address || walletAddress;
           circleWalletId = circleWalletResult.walletId;
         } catch (err: any) {
@@ -3806,6 +3861,20 @@ export async function registerRoutes(
         console.warn(`[Register] FusedScore sync failed for ${agent.id}:`, syncErr.message);
       }
 
+      let skaleRegistration: Record<string, any> | null = null;
+      if (hasRealWallet) {
+        registerAgentOnSkale({ walletAddress, agentURI: metadataUri })
+          .then((result) => {
+            if ("error" in result) {
+              console.warn(`[SKALE] Registration skipped for ${walletAddress}: ${result.error}`);
+            } else {
+              console.log(`[SKALE] Agent ${data.handle} registered: tx=${result.txHash}`);
+            }
+          })
+          .catch((e) => console.warn(`[SKALE] Register failed:`, e.message));
+        skaleRegistration = { status: "queued", chain: "SKALE_TESTNET", rpc: "https://testnet.skalenodes.com/v1/giant-half-dual-testnet", chainId: 974399131 };
+      }
+
       const finalAgent = (await storage.getAgent(agent.id)) ?? updatedAgent ?? agent;
       const hasMintedToken = !!finalAgent?.erc8004TokenId;
 
@@ -3815,6 +3884,7 @@ export async function registerRoutes(
         circleWalletId,
         circleWalletFailed,
         tempAgentId: agent.id,
+        chain: targetChain,
         metadata,
         erc8004: {
           identityRegistry: ERC8004_CONTRACTS.identity.address,
@@ -3825,6 +3895,7 @@ export async function registerRoutes(
             ? "ERC-8004 identity NFT minted on Base Sepolia"
             : "ERC-8004 identity NFT is being minted on Base Sepolia (check status with GET /api/agent-register/status/:tempId)",
         },
+        skale: skaleRegistration,
         mintTransaction: {
           to: mintTx.to,
           data: mintTx.data,
@@ -6863,6 +6934,35 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/skill-challenges", apiLimiter, async (req, res) => {
+    try {
+      const SKILL_CATEGORIES = [
+        { skill: "trust-verification",   label: "Trust Verification",   description: "Verify agent identity and trustworthiness on-chain" },
+        { skill: "reputation-analysis",  label: "Reputation Analysis",  description: "Analyze agent FusedScore and reputation components" },
+        { skill: "swarm-validation",     label: "Swarm Validation",     description: "Participate in decentralized gig validation votes" },
+        { skill: "agent-onboarding",     label: "Agent Onboarding",     description: "Guide new agents through ERC-8004 registration" },
+        { skill: "solidity",             label: "Solidity",             description: "Smart contract development on EVM chains" },
+        { skill: "research",             label: "Research",             description: "Web3 and AI research and reporting" },
+        { skill: "testing",              label: "Testing",              description: "End-to-end and on-chain testing" },
+        { skill: "audit",                label: "Audit",                description: "Security auditing of smart contracts and APIs" },
+        { skill: "data-analysis",        label: "Data Analysis",        description: "On-chain and off-chain data analysis" },
+        { skill: "content",              label: "Content",              description: "Web3 content writing and documentation" },
+      ];
+      const skill = req.query.skill as string | undefined;
+      const categories = skill
+        ? SKILL_CATEGORIES.filter(c => c.skill.includes(skill.toLowerCase()))
+        : SKILL_CATEGORIES;
+      res.json({
+        categories,
+        total: categories.length,
+        note: "Use GET /api/skill-challenges/:skill to get challenge questions for a specific skill",
+        attemptEndpoint: "POST /api/skill-challenges/:skill/attempt",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/skill-challenges/:skill", apiLimiter, async (req, res) => {
     try {
       const skill = String(req.params.skill).toLowerCase();
@@ -7293,13 +7393,33 @@ export async function registerRoutes(
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const result = await readSkaleFusedScore(agent.walletAddress);
-      if (!result) return res.json({ hasSkaleScore: false, score: null, updatedAt: null });
+      if (!result) {
+        const breakdown = getScoreBreakdown(agent);
+        return res.json({
+          hasSkaleScore: false,
+          score: null,
+          updatedAt: null,
+          walletAddress: agent.walletAddress,
+          baseScore: agent.fusedScore,
+          baseBreakdown: breakdown,
+          note: "No SKALE score yet — use POST /api/agents/:id/sync-to-skale to sync",
+        });
+      }
 
       return res.json({
         hasSkaleScore: true,
         score: result.score,
         updatedAt: result.updatedAt > 0 ? new Date(result.updatedAt * 1000).toISOString() : null,
         walletAddress: agent.walletAddress,
+        chain: "SKALE_TESTNET",
+        chainId: 974399131,
+        contract: "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
+        breakdown: {
+          onChainScore: result.onChainScore,
+          moltbookKarma: result.moltbookKarma,
+          performanceScore: result.performanceScore,
+          bondScore: result.bondScore,
+        },
       });
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
@@ -7312,18 +7432,22 @@ export async function registerRoutes(
       const agent = await storage.getAgent(req.params.id as string);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
+      if (!agent.walletAddress || /^0x0+$/.test(agent.walletAddress)) {
+        return res.status(400).json({ message: "Agent has no valid wallet address for SKALE sync" });
+      }
+
       const breakdown = getScoreBreakdown(agent);
       const result = await syncScoreToSkale({
         walletAddress: agent.walletAddress,
         fusedScore: agent.fusedScore ?? 0,
-        onChainScore: breakdown.onChainNormalized ?? 0,
-        moltbookScore: breakdown.moltbookNormalized ?? 0,
+        onChainScore: breakdown.rawOnChainScore ?? 0,
+        moltbookScore: breakdown.rawMoltbookKarma ?? 0,
         performanceScore: breakdown.performanceNormalized ?? 0,
         bondScore: breakdown.bondReliabilityNormalized ?? 0,
       });
 
       if ("error" in result) {
-        return res.status(500).json({ message: result.error });
+        return res.status(500).json({ message: result.error, walletAddress: agent.walletAddress });
       }
 
       return res.json({
@@ -7331,7 +7455,59 @@ export async function registerRoutes(
         txHash: result.txHash,
         syncedAt: new Date().toISOString(),
         walletAddress: agent.walletAddress,
+        chain: "SKALE_TESTNET",
+        chainId: 974399131,
         score: agent.fusedScore,
+        breakdown: {
+          onChainScore: breakdown.rawOnChainScore,
+          moltbookKarma: breakdown.rawMoltbookKarma,
+          performanceScore: breakdown.performanceNormalized,
+          bondScore: breakdown.bondReliabilityNormalized,
+        },
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── SKALE: Multi-chain agent info ────────────────────────────────
+  app.get("/api/multichain/:id", apiLimiter, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id as string);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const breakdown = getScoreBreakdown(agent);
+      const [skaleScore] = await Promise.all([
+        readSkaleFusedScore(agent.walletAddress).catch(() => null),
+      ]);
+      return res.json({
+        agentId: agent.id,
+        handle: agent.handle,
+        walletAddress: agent.walletAddress,
+        chains: {
+          BASE_SEPOLIA: {
+            chainId: 84532,
+            registered: !!agent.erc8004TokenId,
+            tokenId: agent.erc8004TokenId,
+            fusedScore: agent.fusedScore,
+            breakdown,
+          },
+          SKALE_TESTNET: {
+            chainId: 974399131,
+            rpc: "https://testnet.skalenodes.com/v1/giant-half-dual-testnet",
+            contract: "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
+            hasScore: !!skaleScore,
+            fusedScore: skaleScore?.score ?? null,
+            breakdown: skaleScore ? {
+              onChainScore: skaleScore.onChainScore,
+              moltbookKarma: skaleScore.moltbookKarma,
+              performanceScore: skaleScore.performanceScore,
+              bondScore: skaleScore.bondScore,
+            } : null,
+            updatedAt: skaleScore?.updatedAt && skaleScore.updatedAt > 0
+              ? new Date(skaleScore.updatedAt * 1000).toISOString() : null,
+            syncEndpoint: `POST /api/agents/${agent.id}/sync-to-skale`,
+          },
+        },
       });
     } catch (err: any) {
       return res.status(500).json({ message: err.message });

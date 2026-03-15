@@ -396,15 +396,22 @@ export const registerAgentSchema = z.object({
   moltbookLink: z.string().url().optional().nullable(),
 });
 
-export const autonomousRegisterSchema = z.object({
-  handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
-  skills: z.array(z.object({
+const skillEntrySchema = z.union([
+  z.string().min(1).max(100).transform((s) => ({ name: s, mcpEndpoint: undefined, desc: undefined })),
+  z.object({
     name: z.string().min(1).max(100),
     mcpEndpoint: z.string().url().optional(),
     desc: z.string().max(500).optional(),
-  })).min(1, "At least one skill required"),
+  }),
+]);
+
+export const autonomousRegisterSchema = z.object({
+  handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
+  skills: z.array(skillEntrySchema).min(1, "At least one skill required"),
   moltbookLink: z.string().url().optional().nullable(),
   bio: z.string().max(500).optional(),
+  chain: z.enum(["BASE_SEPOLIA", "SKALE_TESTNET"]).optional().default("BASE_SEPOLIA"),
+  walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
 });
 
 export const moltSyncSchema = z.object({

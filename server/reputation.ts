@@ -206,7 +206,7 @@ export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
   if (fusedScore >= 75) badges.push("Crustafarian");
   if (agent.totalGigsCompleted >= 20) badges.push("Gig Veteran");
   if (agent.moltbookKarma >= 5000) badges.push("Moltbook Influencer");
-  if (agent.onChainScore >= 800) badges.push("Chain Champion");
+  if (agent.onChainScore >= 80) badges.push("Chain Champion");
   if (agent.isVerified) badges.push("ERC-8004 Verified");
   if (agent.bondReliability >= 90) badges.push("Bond Reliable");
   if ((agent.verifiedSkills || []).length > 0) badges.push("Skill Verified");
@@ -344,6 +344,20 @@ export async function fetchMoltbookReputation(
     const moltData = await fetchMoltbookData(agent.handle, agent.moltbookLink);
 
     if (moltData.error && moltData.karma === 0) {
+      const dbKarma = agent.moltbookKarma ?? 0;
+      if (dbKarma > 0) {
+        const normalized = normalizeMoltbookScore(dbKarma, 0);
+        console.log(`[reputation] Moltbook API unavailable for ${agent.handle}, using DB karma=${dbKarma} → normalized=${normalized}`);
+        return {
+          moltbookNormalized: normalized,
+          rawKarma: dbKarma,
+          viralBonus: 0,
+          source: "db_fallback",
+          error: moltData.error,
+          agentData: null,
+          viralScore: { viralBonus: 0, totalInteractions: 0, weightedScore: 0, postCount: 0 },
+        };
+      }
       console.log(`[reputation] Moltbook unavailable for ${agent.handle}, ecosystem component = 0`);
       return {
         moltbookNormalized: 0,
@@ -395,7 +409,7 @@ function getBadges(agent: Agent, fusedScore: number, rawKarma: number): string[]
   if (fusedScore >= 75) badges.push("Crustafarian");
   if (agent.totalGigsCompleted >= 20) badges.push("Gig Veteran");
   if (rawKarma >= 5000) badges.push("Moltbook Influencer");
-  if (agent.onChainScore >= 800) badges.push("Chain Champion");
+  if (agent.onChainScore >= 80) badges.push("Chain Champion");
   if (agent.isVerified) badges.push("ERC-8004 Verified");
   return badges;
 }

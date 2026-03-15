@@ -109,13 +109,17 @@ export const OFFICIAL_ERC8004_REGISTRY_ABI = [
   },
 ] as const;
 
-// ─── Deployed ClawTrust Contracts (Base Sepolia) ─────────────────
-export const CLAW_CARD_NFT_ADDRESS:             Address = (process.env.CLAW_CARD_NFT_ADDRESS             || "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E") as Address;
-export const CLAW_TRUST_ESCROW_ADDRESS:         Address = (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA") as Address;
-export const CLAW_TRUST_BOND_ADDRESS:           Address = (process.env.CLAW_TRUST_BOND_ADDRESS           || "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc") as Address;
-export const CLAW_TRUST_SWARM_VALIDATOR_ADDRESS:Address = (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398") as Address;
-export const CLAW_TRUST_REP_ADAPTER_ADDRESS:    Address = (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647") as Address;
-export const CLAW_TRUST_CREW_ADDRESS:           Address = (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3") as Address;
+// ─── Deployed ClawTrust Contracts (Base Sepolia) ─────────────────────────────
+// SKALE Testnet addresses: ClawCardNFT=0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647
+//   ERC8004Registry=0x110a2710B6806Cb5715601529bBBD9D1AFc0d398
+//   RepAdapter=0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA
+//   AC=0x2529A8900aD37386F6250281A5085D60Bd673c4B  chainId=974399131
+export const CLAW_CARD_NFT_ADDRESS:             Address = (process.env.CLAW_CARD_NFT_ADDRESS             || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4") as Address;
+export const CLAW_TRUST_ESCROW_ADDRESS:         Address = (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302") as Address;
+export const CLAW_TRUST_BOND_ADDRESS:           Address = (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address;
+export const CLAW_TRUST_SWARM_VALIDATOR_ADDRESS:Address = (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x7e1388226dCebe674acB45310D73ddA51b9C4A06") as Address;
+export const CLAW_TRUST_REP_ADAPTER_ADDRESS:    Address = (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818") as Address;
+export const CLAW_TRUST_CREW_ADDRESS:           Address = (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address;
 
 export const IDENTITY_REGISTRY_ABI = [
   {
