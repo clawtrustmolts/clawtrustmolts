@@ -334,7 +334,7 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
     return res.status(401).json({ message: "Invalid authentication token" });
   }
 
-  verifyPrivyJWT(token).then((result) => {
+  verifyPrivyJWT(token).then(async (result) => {
     if (!result.verified) {
       logSuspiciousActivity(req, "auth_verification_failed", result.error || "JWT verification failed");
       return res.status(401).json({ message: "Authentication failed. Please reconnect your wallet." });
@@ -352,6 +352,36 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
     }
 
     const resolvedWallet = walletHeader || tokenWallet;
+
+    if (sensitive) {
+      const sig = req.headers["x-wallet-signature"] as string | undefined;
+      const sigTs = req.headers["x-sig-timestamp"] as string | undefined;
+      if (!sig || !sigTs) {
+        logSuspiciousActivity(req, "privy_sensitive_no_sig", `Privy JWT auth on sensitive route ${req.method} ${req.path} without SIWE signature — rejected`);
+        return res.status(401).json({ message: "Wallet signature required for this sensitive operation, even with Privy authentication." });
+      }
+      const sigAge = Date.now() - parseInt(sigTs, 10);
+      if (isNaN(sigAge) || sigAge < 0 || sigAge > SENSITIVE_SIG_TTL_MS) {
+        logSuspiciousActivity(req, "privy_sensitive_sig_expired", `Privy JWT + SIWE signature expired (${sigAge}ms) on ${req.method} ${req.path}`);
+        return res.status(401).json({ message: "Wallet signature expired for sensitive operation. Please re-sign." });
+      }
+      try {
+        const expectedMessage = buildSignMessage(resolvedWallet || "", sigTs);
+        const valid = await verifyMessage({
+          address: resolvedWallet as `0x${string}`,
+          message: expectedMessage,
+          signature: sig as `0x${string}`,
+        });
+        if (!valid) {
+          logSuspiciousActivity(req, "privy_sensitive_sig_invalid", `Privy JWT + SIWE signature invalid for ${resolvedWallet}`);
+          return res.status(401).json({ message: "Invalid wallet signature for sensitive operation." });
+        }
+      } catch (err: any) {
+        logSuspiciousActivity(req, "privy_sensitive_sig_error", `SIWE verification error in Privy flow: ${err?.message}`);
+        return res.status(401).json({ message: "Wallet signature verification failed." });
+      }
+    }
+
     (req as any).authUser = {
       sub: result.payload?.sub,
       walletAddress: resolvedWallet,
@@ -564,10 +594,15 @@ export async function registerRoutes(
     const boundProofHash = crypto.createHash("sha256").update(`${paymentHeader}|${callerWallet}|${endpoint}`).digest("hex");
     const now = Date.now();
 
-    const existingTs = x402UsedProofs.get(rawProofHash);
-    if (existingTs !== undefined && now - existingTs <= X402_PROOF_TTL_MS) {
+    const existingRawTs = x402UsedProofs.get(rawProofHash);
+    if (existingRawTs !== undefined && now - existingRawTs <= X402_PROOF_TTL_MS) {
       logSuspiciousActivity(req, "x402_replay", `Replayed x402 payment proof on ${endpoint} from ${callerWallet}`);
       return res.status(402).json({ message: "Payment proof already used. Submit a new payment." });
+    }
+    const existingBoundTs = x402UsedProofs.get(boundProofHash);
+    if (existingBoundTs !== undefined && now - existingBoundTs <= X402_PROOF_TTL_MS) {
+      logSuspiciousActivity(req, "x402_replay_bound", `Replayed x402 bound proof on ${endpoint} from ${callerWallet}`);
+      return res.status(402).json({ message: "Payment proof already used for this wallet and endpoint. Submit a new payment." });
     }
 
     x402UsedProofs.set(rawProofHash, now);
@@ -2021,8 +2056,17 @@ export async function registerRoutes(
 
         const escrow = await storage.getEscrowByGig(validation.gigId);
         if (escrow && escrow.status === "locked") {
+          const voteOnChainVerdict = await readSwarmVerdictOnChain(validation.gigId);
+          let onChainGatePass = false;
+          if (voteOnChainVerdict && voteOnChainVerdict.exists && voteOnChainVerdict.finalized && voteOnChainVerdict.status === 1) {
+            onChainGatePass = true;
+            console.log(`[Swarm] On-chain verdict confirmed for gig ${validation.gigId}: approved (${voteOnChainVerdict.votesFor}/${voteOnChainVerdict.totalVotes})`);
+          } else {
+            console.warn(`[Swarm] On-chain verdict NOT confirmed for gig ${validation.gigId} — exists=${voteOnChainVerdict?.exists}, finalized=${voteOnChainVerdict?.finalized}, status=${voteOnChainVerdict?.status}. Escrow release blocked.`);
+          }
+
           let circleTransferId = null;
-          if (escrow.circleWalletId && isCircleConfigured() && gig2?.assigneeId) {
+          if (onChainGatePass && escrow.circleWalletId && isCircleConfigured() && gig2?.assigneeId) {
             const assignee = await storage.getAgent(gig2.assigneeId);
             if (assignee) {
               const destAddress = escrow.chain === "SOL_DEVNET"
@@ -2041,17 +2085,19 @@ export async function registerRoutes(
               }
             }
           }
-          await storage.updateEscrow(escrow.id, {
-            status: "released",
-            circleTransactionId: circleTransferId,
-          });
-          escrowRelease = {
+          if (onChainGatePass) {
+            await storage.updateEscrow(escrow.id, {
+              status: "released",
+              circleTransactionId: circleTransferId,
+            });
+          }
+          escrowRelease = onChainGatePass ? {
             escrowId: escrow.id,
             amount: escrow.amount,
             currency: escrow.currency,
             chain: escrow.chain,
             circleTransactionId: circleTransferId,
-          };
+          } : null;
         }
 
         if (gig2) {
