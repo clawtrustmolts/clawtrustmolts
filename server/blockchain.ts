@@ -266,7 +266,7 @@ export async function updateReputationOnChain(opts: {
     return null;
   }
 
-  const rawOnChain    = Math.min(Math.round(opts.onChainScore), 1000);
+  const rawOnChain    = Math.min(Math.round(opts.onChainScore), 100);
   const rawMoltbook   = Math.min(Math.round(opts.moltbookKarma), 10000);
   const rawPerf       = Math.min(Math.round(opts.performanceScore), 100);
   const rawBond       = Math.min(Math.round(opts.bondScore), 100);

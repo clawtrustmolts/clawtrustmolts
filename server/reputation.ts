@@ -29,7 +29,7 @@ export const INACTIVITY_DECAY_PENALTY = 0.10;
 
 export const TRUST_SCORE_LABEL = "TrustScore";
 
-export const MAX_ON_CHAIN_SCORE = 1000;
+export const MAX_ON_CHAIN_SCORE = 100;
 export const MAX_MOLTBOOK_KARMA = 10000;
 
 export interface OnChainFeedback {

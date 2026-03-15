@@ -377,7 +377,7 @@ export async function syncPerformanceScore(agentId: string): Promise<number> {
     const slashPenalty = deposits.length > 0 ? slashCount / deposits.length : 0;
     bondReliability = Math.round(Math.max(0, (holdRatio - slashPenalty)) * 100);
   } else {
-    bondReliability = agent.bondTier !== "UNBONDED" ? 0 : (agent.isVerified ? 50 : 0);
+    bondReliability = agent.bondTier !== "UNBONDED" ? 50 : (agent.isVerified ? 50 : 0);
   }
 
   const [disputeRate, repeatHireRate] = await Promise.all([
