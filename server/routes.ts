@@ -47,6 +47,7 @@ import {
   readPassportById,
   readRepScore,
   readFusedScore,
+  readSwarmVerdictOnChain,
   queueBlockchainAction,
   getDeployerAddress,
   cleanupStuckQueueEntries,
@@ -67,6 +68,7 @@ import {
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
+import { readSkaleFusedScore, syncScoreToSkale } from "./skale-chain";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -179,6 +181,38 @@ async function verifyTurnstileToken(token: string): Promise<boolean> {
   }
 }
 
+const registrationWalletTracker = new Map<string, number>();
+const REGISTRATION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+if (!process.env.TURNSTILE_SECRET_KEY) {
+  console.warn("[Security] WARNING: TURNSTILE_SECRET_KEY is not set. CAPTCHA verification is disabled. Stricter IP+wallet rate limiting applied as fallback.");
+}
+
+function registrationRateLimit(req: Request, res: Response, next: NextFunction) {
+  const wallet = (req.headers["x-wallet-address"] as string || req.body?.walletAddress || "").toLowerCase();
+  if (!wallet) return next();
+
+  const now = Date.now();
+  for (const [k, ts] of registrationWalletTracker) {
+    if (now - ts > REGISTRATION_COOLDOWN_MS) registrationWalletTracker.delete(k);
+  }
+
+  const lastRegistration = registrationWalletTracker.get(wallet);
+  if (lastRegistration && now - lastRegistration < REGISTRATION_COOLDOWN_MS) {
+    logSuspiciousActivity(req, "registration_rate_limit", `Wallet ${wallet} attempted multiple registrations within 24h`);
+    return res.status(429).json({ message: "Only one agent registration per wallet address per 24 hours." });
+  }
+
+  const origJson = res.json.bind(res);
+  res.json = function(body: any) {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      registrationWalletTracker.set(wallet, Date.now());
+    }
+    return origJson(body);
+  };
+  next();
+}
+
 function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
   if (!process.env.TURNSTILE_SECRET_KEY) return next();
 
@@ -246,6 +280,28 @@ async function verifyPrivyJWT(token: string): Promise<{ verified: boolean; paylo
 }
 
 const SIG_TTL_MS = 24 * 60 * 60 * 1000;
+const SENSITIVE_SIG_TTL_MS = 30 * 60 * 1000;
+
+const SENSITIVE_ROUTES = new Set([
+  "POST /api/escrow/release",
+  "POST /api/escrow/admin-resolve",
+  "POST /api/escrow/dispute",
+  "POST /api/swarm/vote",
+  "POST /api/validations/vote",
+  "POST /api/swarm/validate",
+  "POST /api/bond/:agentId/withdraw",
+  "POST /api/bond/:agentId/slash",
+]);
+
+function isSensitiveRoute(method: string, path: string): boolean {
+  const key = `${method.toUpperCase()} ${path}`;
+  if (SENSITIVE_ROUTES.has(key)) return true;
+  for (const pattern of SENSITIVE_ROUTES) {
+    const regex = new RegExp("^" + pattern.replace(/:[^/]+/g, "[^/]+") + "$");
+    if (regex.test(key)) return true;
+  }
+  return false;
+}
 
 function buildSignMessage(nonce: number): string {
   return `Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet ownership.\nNo gas required. No transaction is sent.\n\nNonce: ${nonce}\nChain: Base Sepolia (84532)`;
@@ -261,11 +317,14 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
     const signature = req.headers["x-wallet-signature"] as string | undefined;
     const sigTimestamp = req.headers["x-wallet-sig-timestamp"] as string | undefined;
 
+    const sensitive = isSensitiveRoute(req.method, req.route?.path || req.path);
+    const ttl = sensitive ? SENSITIVE_SIG_TTL_MS : SIG_TTL_MS;
+
     if (signature && sigTimestamp) {
       const ts = parseInt(sigTimestamp, 10);
       const now = Date.now();
-      if (isNaN(ts) || now - ts > SIG_TTL_MS || ts > now + 60000) {
-        return res.status(401).json({ message: "Wallet signature expired or invalid. Please reconnect your wallet." });
+      if (isNaN(ts) || now - ts > ttl || ts > now + 60000) {
+        return res.status(401).json({ message: sensitive ? "Signature expired. Sensitive operations require re-signing within 30 minutes." : "Wallet signature expired or invalid. Please reconnect your wallet." });
       }
       try {
         const message = buildSignMessage(ts);
@@ -283,6 +342,10 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
         return res.status(401).json({ message: "Wallet signature verification failed." });
       }
     } else {
+      if (sensitive) {
+        logSuspiciousActivity(req, "sensitive_no_sig", `Unsigned sensitive request from ${walletHeader} on ${req.method} ${req.path} — rejected`);
+        return res.status(401).json({ message: "Wallet signature required for this operation. Please sign with your wallet." });
+      }
       console.warn(`[auth] Unsigned request from ${walletHeader} on ${req.method} ${req.path} — signature headers missing (SDK/backward compat)`);
     }
 
@@ -305,7 +368,7 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
     return res.status(401).json({ message: "Invalid authentication token" });
   }
 
-  verifyPrivyJWT(token).then((result) => {
+  verifyPrivyJWT(token).then(async (result) => {
     if (!result.verified) {
       logSuspiciousActivity(req, "auth_verification_failed", result.error || "JWT verification failed");
       return res.status(401).json({ message: "Authentication failed. Please reconnect your wallet." });
@@ -323,6 +386,38 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
     }
 
     const resolvedWallet = walletHeader || tokenWallet;
+
+    const sensitive = isSensitiveRoute(req.method, req.route?.path || req.path);
+    if (sensitive) {
+      const sig = req.headers["x-wallet-signature"] as string | undefined;
+      const sigTs = req.headers["x-wallet-sig-timestamp"] as string | undefined;
+      if (!sig || !sigTs) {
+        logSuspiciousActivity(req, "privy_sensitive_no_sig", `Privy JWT auth on sensitive route ${req.method} ${req.path} without SIWE signature — rejected`);
+        return res.status(401).json({ message: "Wallet signature required for this sensitive operation, even with Privy authentication." });
+      }
+      const ts = parseInt(sigTs, 10);
+      const now = Date.now();
+      if (isNaN(ts) || now - ts > SENSITIVE_SIG_TTL_MS || ts > now + 60000) {
+        logSuspiciousActivity(req, "privy_sensitive_sig_expired", `Privy JWT + SIWE signature expired on ${req.method} ${req.path}`);
+        return res.status(401).json({ message: "Wallet signature expired for sensitive operation. Please re-sign." });
+      }
+      try {
+        const expectedMessage = buildSignMessage(ts);
+        const valid = await verifyMessage({
+          address: resolvedWallet as `0x${string}`,
+          message: expectedMessage,
+          signature: sig as `0x${string}`,
+        });
+        if (!valid) {
+          logSuspiciousActivity(req, "privy_sensitive_sig_invalid", `Privy JWT + SIWE signature invalid for ${resolvedWallet}`);
+          return res.status(401).json({ message: "Invalid wallet signature for sensitive operation." });
+        }
+      } catch (err: any) {
+        logSuspiciousActivity(req, "privy_sensitive_sig_error", `SIWE verification error in Privy flow: ${err?.message}`);
+        return res.status(401).json({ message: "Wallet signature verification failed." });
+      }
+    }
+
     (req as any).authUser = {
       sub: result.payload?.sub,
       walletAddress: resolvedWallet,
@@ -336,7 +431,7 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
   });
 }
 
-function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+async function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
   const adminWallet = req.headers["x-admin-wallet"] as string | undefined;
   const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
 
@@ -358,6 +453,37 @@ function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
   if (!ADMIN_WALLETS.includes(adminWallet.toLowerCase())) {
     logSuspiciousActivity(req, "unauthorized_admin_action", `Non-admin wallet ${adminWallet} attempted admin access`, "critical");
     return res.status(403).json({ message: "Wallet not authorized for admin actions" });
+  }
+
+  const adminSig = req.headers["x-admin-signature"] as string | undefined;
+  const adminSigTs = req.headers["x-admin-sig-timestamp"] as string | undefined;
+
+  if (!adminSig || !adminSigTs) {
+    logSuspiciousActivity(req, "admin_no_signature", `Admin ${adminWallet} sent request without SIWE signature — rejected`);
+    return res.status(401).json({ message: "Admin signature required. Sign with your admin wallet to authenticate." });
+  }
+
+  const ts = parseInt(adminSigTs, 10);
+  const now = Date.now();
+  if (isNaN(ts) || now - ts > SENSITIVE_SIG_TTL_MS || ts > now + 60000) {
+    logSuspiciousActivity(req, "admin_sig_expired", `Admin ${adminWallet} sent expired signature`);
+    return res.status(401).json({ message: "Admin signature expired. Re-sign within 30 minutes." });
+  }
+
+  try {
+    const message = buildSignMessage(ts);
+    const valid = await verifyMessage({
+      address: adminWallet as Address,
+      message,
+      signature: adminSig as `0x${string}`,
+    });
+    if (!valid) {
+      logSuspiciousActivity(req, "admin_sig_invalid", `Admin signature verification failed for ${adminWallet}`, "critical");
+      return res.status(401).json({ message: "Invalid admin signature." });
+    }
+  } catch (err: any) {
+    logSuspiciousActivity(req, "admin_sig_error", `Admin signature verification error: ${err?.message}`);
+    return res.status(401).json({ message: "Admin signature verification failed." });
   }
 
   (req as any).adminWallet = adminWallet;
@@ -482,6 +608,45 @@ export async function registerRoutes(
   const x402PayToAddress = process.env.X402_PAY_TO_ADDRESS || "0x0000000000000000000000000000000000000000";
   const x402Enabled = x402PayToAddress !== "0x0000000000000000000000000000000000000000";
 
+  const x402UsedProofs = new Map<string, number>();
+  const X402_PROOF_TTL_MS = 10 * 60 * 1000;
+
+  function x402CleanupExpired() {
+    const now = Date.now();
+    for (const [key, ts] of x402UsedProofs) {
+      if (now - ts > X402_PROOF_TTL_MS) x402UsedProofs.delete(key);
+    }
+  }
+
+  setInterval(x402CleanupExpired, 60_000);
+
+  function x402ReplayGuard(req: Request, res: Response, next: NextFunction) {
+    const paymentHeader = (req.headers["x-payment"] || req.headers["x-payment-response"]) as string | undefined;
+    if (!paymentHeader) return next();
+
+    const callerWallet = (req.headers["x-wallet-address"] || req.ip || "unknown") as string;
+    const endpoint = `${req.method} ${req.path}`;
+    const rawProofHash = crypto.createHash("sha256").update(paymentHeader).digest("hex");
+    const boundProofHash = crypto.createHash("sha256").update(`${paymentHeader}|${callerWallet}|${endpoint}`).digest("hex");
+    const now = Date.now();
+
+    const existingRawTs = x402UsedProofs.get(rawProofHash);
+    if (existingRawTs !== undefined && now - existingRawTs <= X402_PROOF_TTL_MS) {
+      logSuspiciousActivity(req, "x402_replay", `Replayed x402 payment proof on ${endpoint} from ${callerWallet}`);
+      return res.status(402).json({ message: "Payment proof already used. Submit a new payment." });
+    }
+    const existingBoundTs = x402UsedProofs.get(boundProofHash);
+    if (existingBoundTs !== undefined && now - existingBoundTs <= X402_PROOF_TTL_MS) {
+      logSuspiciousActivity(req, "x402_replay_bound", `Replayed x402 bound proof on ${endpoint} from ${callerWallet}`);
+      return res.status(402).json({ message: "Payment proof already used for this wallet and endpoint. Submit a new payment." });
+    }
+
+    x402UsedProofs.set(rawProofHash, now);
+    x402UsedProofs.set(boundProofHash, now);
+
+    next();
+  }
+
   if (x402Enabled) {
     try {
       app.use(
@@ -512,7 +677,8 @@ export async function registerRoutes(
           },
         ),
       );
-      console.log("[x402] Payment middleware enabled — trust-check: $0.001, reputation: $0.002 USDC on Base Sepolia");
+      app.use(x402ReplayGuard);
+      console.log("[x402] Payment middleware enabled with replay protection — trust-check: $0.001, reputation: $0.002 USDC on Base Sepolia");
     } catch (err: any) {
       console.warn("[x402] Failed to initialize payment middleware:", err.message);
     }
@@ -779,7 +945,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/register-agent", strictLimiter, captchaMiddleware, walletAuthMiddleware, async (req, res) => {
+  app.post("/api/register-agent", strictLimiter, registrationRateLimit, captchaMiddleware, walletAuthMiddleware, async (req, res) => {
     try {
       if (req.body?.captchaToken) delete req.body.captchaToken;
       const data = registerAgentSchema.parse(req.body);
@@ -1368,6 +1534,27 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
+      const adminOnChainVerdict = await readSwarmVerdictOnChain(gigId);
+      if (adminOnChainVerdict === null) {
+        console.warn(`[Escrow] Admin-resolve: on-chain verdict check failed for gig ${gigId} — blocking as precaution`);
+        return res.status(503).json({ message: "Unable to verify on-chain swarm state. Please try again." });
+      }
+      if (!adminOnChainVerdict.exists) {
+        logSuspiciousActivity(req, "admin_resolve_no_onchain", `Admin ${adminWallet} attempted resolve on gig ${gigId} — no on-chain swarm validation`);
+        return res.status(403).json({ message: "No on-chain swarm validation found. Cannot resolve dispute without on-chain record." });
+      }
+      if (!adminOnChainVerdict.finalized) {
+        return res.status(400).json({ message: "On-chain swarm validation is still in progress. Cannot resolve until finalized." });
+      }
+      if (action === "release_to_assignee" && adminOnChainVerdict.status !== 1) {
+        logSuspiciousActivity(req, "admin_release_blocked", `Admin ${adminWallet} attempted release_to_assignee on gig ${gigId} but on-chain verdict is status=${adminOnChainVerdict.status} (not approved)`, "critical");
+        return res.status(403).json({ message: "On-chain swarm verdict is not approved. Cannot release to assignee. Use refund_to_poster instead." });
+      }
+      if (action === "refund_to_poster" && adminOnChainVerdict.status === 1) {
+        logSuspiciousActivity(req, "admin_refund_override", `Admin ${adminWallet} refunding poster on gig ${gigId} despite approved on-chain verdict — logged for audit`, "critical");
+      }
+      console.log(`[Escrow] Admin-resolve on-chain check for gig ${gigId}: exists=${adminOnChainVerdict.exists}, finalized=${adminOnChainVerdict.finalized}, status=${adminOnChainVerdict.status}, action=${action}`);
+
       let circleTransfer = null;
 
       if (action === "release_to_assignee") {
@@ -1530,6 +1717,24 @@ export async function registerRoutes(
       if (escrow.status !== "locked" && escrow.status !== "pending") {
         return res.status(400).json({ message: `Escrow is ${escrow.status}, cannot release` });
       }
+
+      const onChainVerdict = await readSwarmVerdictOnChain(gigId);
+      if (onChainVerdict === null) {
+        console.warn(`[Escrow] On-chain verdict check failed for gig ${gigId} — blocking release as precaution`);
+        return res.status(503).json({ message: "Unable to verify on-chain swarm verdict. Please try again." });
+      }
+      if (!onChainVerdict.exists) {
+        logSuspiciousActivity(req, "escrow_release_no_onchain", `Escrow release blocked for gig ${gigId} — no on-chain swarm validation exists`);
+        return res.status(403).json({ message: "No on-chain swarm validation found. Escrow release requires finalized on-chain approval." });
+      }
+      if (!onChainVerdict.finalized) {
+        return res.status(400).json({ message: "Swarm validation is not yet finalized on-chain. Cannot release escrow." });
+      }
+      if (onChainVerdict.status !== 1) {
+        logSuspiciousActivity(req, "escrow_release_blocked", `Escrow release blocked for gig ${gigId} — on-chain verdict status=${onChainVerdict.status} (not approved)`, "critical");
+        return res.status(403).json({ message: "On-chain swarm verdict is not approved. Escrow release denied." });
+      }
+      console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
 
       let circleTransfer = null;
       if (escrow.circleWalletId && isCircleConfigured()) {
@@ -1694,8 +1899,16 @@ export async function registerRoutes(
         gig.posterId,
         ...(gig.assigneeId ? [gig.assigneeId] : []),
       ];
+      const VALIDATOR_MIN_AGE_DAYS = 7;
+      const VALIDATOR_MIN_FUSED_SCORE = 5;
       const topAgentCandidates = await storage.getTopAgentsByFusedScore(candidateCount * 3, excludeIds);
-      let eligible = topAgentCandidates.filter(a => a.riskIndex <= 60);
+      const ageThreshold = Date.now() - VALIDATOR_MIN_AGE_DAYS * 24 * 60 * 60 * 1000;
+      let eligible = topAgentCandidates.filter(a => {
+        if (a.riskIndex > 60) return false;
+        if (a.fusedScore < VALIDATOR_MIN_FUSED_SCORE) return false;
+        if (a.registeredAt && new Date(a.registeredAt).getTime() > ageThreshold) return false;
+        return true;
+      });
 
       const seenWallets = new Set<string>();
       eligible = eligible.filter(a => {
@@ -1716,6 +1929,28 @@ export async function registerRoutes(
         ...assigneeFollowing.map(f => f.followedAgentId),
       ]);
       eligible = eligible.filter(a => !socialConnections.has(a.id));
+
+      // Skill-aware selection: prefer validators with verified skills matching the gig.
+      // Agents with matching verified skills are placed first; general validators (zero
+      // verified skills) fill remaining slots. Agents with verified skills that do NOT
+      // match are placed last so they are only chosen when no better candidates exist.
+      if (gig.skillsRequired && gig.skillsRequired.length > 0) {
+        const gigSkillSet = new Set(gig.skillsRequired.map((s: string) => s.toLowerCase()));
+        const withMatch: typeof eligible = [];
+        const generalValidators: typeof eligible = [];
+        const withMismatch: typeof eligible = [];
+        for (const agent of eligible) {
+          const agentVerified = (agent.verifiedSkills || []).map((s: string) => s.toLowerCase());
+          if (agentVerified.length === 0) {
+            generalValidators.push(agent);
+          } else if (agentVerified.some(s => gigSkillSet.has(s))) {
+            withMatch.push(agent);
+          } else {
+            withMismatch.push(agent);
+          }
+        }
+        eligible = [...withMatch, ...generalValidators, ...withMismatch];
+      }
 
       const topAgents = eligible.slice(0, candidateCount);
 
@@ -1794,6 +2029,14 @@ export async function registerRoutes(
       const parsed = voteBodySchema.parse(req.body);
       const { validationId, voterId, vote, reasoning } = parsed;
 
+      const voter = await storage.getAgent(voterId);
+      if (!voter) return res.status(404).json({ message: "Voter agent not found" });
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress || voter.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Authenticated wallet does not own the voter agent" });
+      }
+
       const validation = await storage.getValidation(validationId);
       if (!validation) return res.status(404).json({ message: "Validation not found" });
 
@@ -1803,6 +2046,26 @@ export async function registerRoutes(
 
       if (validation.selectedValidators.length > 0 && !validation.selectedValidators.includes(voterId)) {
         return res.status(403).json({ message: "You are not a selected validator for this gig" });
+      }
+
+      const gig = await storage.getGig(validation.gigId);
+      if (gig && gig.skillsRequired && gig.skillsRequired.length > 0) {
+        if (voter) {
+          const voterVerified = (voter.verifiedSkills || []).map((s: string) => s.toLowerCase());
+          const gigSkills = gig.skillsRequired.map((s: string) => s.toLowerCase());
+          const hasRelevantSkill = gigSkills.some((gs: string) => voterVerified.includes(gs));
+          // Skill match is only enforced when the validator has verified skills but none
+          // match the gig. Validators with zero verified skills are general validators
+          // and can vote on any gig — they are deprioritised at selection time, so they
+          // only reach this point when not enough skilled validators exist.
+          if (voterVerified.length > 0 && !hasRelevantSkill) {
+            return res.status(403).json({
+              message: "Your verified skills do not match this gig's requirements. Complete a Skill Proof for a relevant skill to vote on this gig.",
+              requiredSkills: gig.skillsRequired,
+              yourVerifiedSkills: voter.verifiedSkills || [],
+            });
+          }
+        }
       }
 
       const existingVote = await storage.getVoteByVoterAndValidation(voterId, validationId);
@@ -1833,13 +2096,22 @@ export async function registerRoutes(
       let rewardsDistributed: { validatorId: string; amount: number }[] = [];
 
       if (newStatus === "approved") {
-        const gig = await storage.getGig(validation.gigId);
+        const gig2 = gig || await storage.getGig(validation.gigId);
 
         const escrow = await storage.getEscrowByGig(validation.gigId);
         if (escrow && escrow.status === "locked") {
+          const voteOnChainVerdict = await readSwarmVerdictOnChain(validation.gigId);
+          let onChainGatePass = false;
+          if (voteOnChainVerdict && voteOnChainVerdict.exists && voteOnChainVerdict.finalized && voteOnChainVerdict.status === 1) {
+            onChainGatePass = true;
+            console.log(`[Swarm] On-chain verdict confirmed for gig ${validation.gigId}: approved (${voteOnChainVerdict.votesFor}/${voteOnChainVerdict.totalVotes})`);
+          } else {
+            console.warn(`[Swarm] On-chain verdict NOT confirmed for gig ${validation.gigId} — exists=${voteOnChainVerdict?.exists}, finalized=${voteOnChainVerdict?.finalized}, status=${voteOnChainVerdict?.status}. Escrow release blocked.`);
+          }
+
           let circleTransferId = null;
-          if (escrow.circleWalletId && isCircleConfigured() && gig?.assigneeId) {
-            const assignee = await storage.getAgent(gig.assigneeId);
+          if (onChainGatePass && escrow.circleWalletId && isCircleConfigured() && gig2?.assigneeId) {
+            const assignee = await storage.getAgent(gig2.assigneeId);
             if (assignee) {
               const destAddress = escrow.chain === "SOL_DEVNET"
                 ? assignee.solanaAddress || assignee.walletAddress
@@ -1857,53 +2129,55 @@ export async function registerRoutes(
               }
             }
           }
-          await storage.updateEscrow(escrow.id, {
-            status: "released",
-            circleTransactionId: circleTransferId,
-          });
-          escrowRelease = {
+          if (onChainGatePass) {
+            await storage.updateEscrow(escrow.id, {
+              status: "released",
+              circleTransactionId: circleTransferId,
+            });
+          }
+          escrowRelease = onChainGatePass ? {
             escrowId: escrow.id,
             amount: escrow.amount,
             currency: escrow.currency,
             chain: escrow.chain,
             circleTransactionId: circleTransferId,
-          };
+          } : null;
         }
 
-        if (gig) {
-          await storage.updateGigStatus(gig.id, "completed");
+        if (gig2) {
+          await storage.updateGigStatus(gig2.id, "completed");
 
-          if (gig.assigneeId) {
+          if (gig2.assigneeId) {
             await storage.createReputationEvent({
-              agentId: gig.assigneeId,
+              agentId: gig2.assigneeId,
               eventType: "Swarm Validated",
               scoreChange: 10,
               source: "swarm",
-              details: `Gig "${gig.title}" validated by swarm consensus (${newFor}/${validation.threshold})`,
+              details: `Gig "${gig2.title}" validated by swarm consensus (${newFor}/${validation.threshold})`,
               proofUri: null,
             });
 
-            const assignee = await storage.getAgent(gig.assigneeId);
+            const assignee = await storage.getAgent(gig2.assigneeId);
             if (assignee) {
-              await storage.updateAgent(gig.assigneeId, {
+              await storage.updateAgent(gig2.assigneeId, {
                 totalGigsCompleted: assignee.totalGigsCompleted + 1,
-                totalEarned: assignee.totalEarned + gig.budget,
+                totalEarned: assignee.totalEarned + gig2.budget,
                 onChainScore: Math.min(assignee.onChainScore + 10, 1000),
               });
-              await syncPerformanceScore(gig.assigneeId).catch(() => {});
+              await syncPerformanceScore(gig2.assigneeId).catch(() => {});
             }
 
-            if (gig.bondLocked && gig.bondRequired > 0) {
-              await unlockBondForGig(gig.assigneeId, gig.id);
-              await storage.updateGig(gig.id, { bondLocked: false });
-              console.log(`[Swarm] Unlocked bond for approved gig ${gig.id}`);
+            if (gig2.bondLocked && gig2.bondRequired > 0) {
+              await unlockBondForGig(gig2.assigneeId, gig2.id);
+              await storage.updateGig(gig2.id, { bondLocked: false });
+              console.log(`[Swarm] Unlocked bond for approved gig ${gig2.id}`);
             }
 
-            await recordRiskEvent(gig.assigneeId, "DISPUTE_RESOLVED", -5, `Swarm approved gig "${gig.title}"`).catch(err =>
+            await recordRiskEvent(gig2.assigneeId, "DISPUTE_RESOLVED", -5, `Swarm approved gig "${gig2.title}"`).catch(err =>
               console.error(`[Risk] Failed to record swarm approval: ${err.message}`)
             );
 
-            await syncPerformanceScore(gig.assigneeId).catch(err =>
+            await syncPerformanceScore(gig2.assigneeId).catch(err =>
               console.error(`[Swarm] Performance sync failed: ${err.message}`)
             );
           }
@@ -1920,7 +2194,7 @@ export async function registerRoutes(
                 eventType: "Swarm Reward",
                 scoreChange: 2,
                 source: "swarm",
-                details: `Validator reward: ${reward} ${gig.currency} for approving "${gig.title}"`,
+                details: `Validator reward: ${reward} ${gig2.currency} for approving "${gig2.title}"`,
                 proofUri: null,
               });
 
@@ -1990,6 +2264,11 @@ export async function registerRoutes(
       }
       res.status(400).json({ message: err.message });
     }
+  });
+
+  app.post("/api/swarm/vote", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    req.url = "/api/validations/vote";
+    app.handle(req, res);
   });
 
   app.post("/api/molt-sync", apiLimiter, walletAuthMiddleware, async (req, res) => {
@@ -2709,6 +2988,7 @@ export async function registerRoutes(
               moltDomain: dbAgentFallback.moltDomain,
               handle: dbAgentFallback.handle,
               skills: dbAgentFallback.skills || [],
+              verifiedSkills: dbAgentFallback.verifiedSkills || [],
               registeredAt: dbAgentFallback.registeredAt,
               profileUrl: dbAgentFallback.moltDomain
                 ? `clawtrust.org/profile/${dbAgentFallback.moltDomain}`
@@ -2786,6 +3066,7 @@ export async function registerRoutes(
           moltDomain,
           handle,
           skills,
+          verifiedSkills: dbAgent?.verifiedSkills || [],
           registeredAt,
           profileUrl: moltDomain
             ? `clawtrust.org/profile/${moltDomain}`
@@ -4082,9 +4363,13 @@ export async function registerRoutes(
 
       const enriched = await Promise.all(paged.map(async (g) => {
         const poster = await storage.getAgent(g.posterId);
+        const assignee = g.assigneeId ? await storage.getAgent(g.assigneeId) : null;
         return {
           ...g,
-          poster: poster ? { id: poster.id, handle: poster.handle, fusedScore: poster.fusedScore } : null,
+          skills: g.skillsRequired,
+          poster: poster ? { id: poster.id, handle: poster.handle, fusedScore: poster.fusedScore, verifiedSkills: poster.verifiedSkills || [] } : null,
+          assigneeVerifiedSkills: assignee?.verifiedSkills || [],
+          posterVerifiedSkills: poster?.verifiedSkills || [],
         };
       }));
 
@@ -5548,11 +5833,16 @@ export async function registerRoutes(
   // TRUST RECEIPTS
   // ═══════════════════════════════════════════════════════════════
 
+  const TRUST_RECEIPT_MIN_AMOUNT = 1;
+
   app.post("/api/trust-receipts", apiLimiter, async (req, res) => {
     try {
       const { gigId, agentId, posterId, gigTitle, amount, currency, chain, swarmVerdict, scoreChange, tierBefore, tierAfter } = req.body;
       if (!gigId || !agentId || !posterId || !gigTitle) {
         return res.status(400).json({ message: "Missing required fields" });
+      }
+      if (typeof amount !== "number" || amount < TRUST_RECEIPT_MIN_AMOUNT) {
+        return res.status(400).json({ message: `Trust receipt amount must be at least ${TRUST_RECEIPT_MIN_AMOUNT} USDC.` });
       }
       const existing = await storage.getTrustReceiptByGig(gigId, agentId);
       if (existing) {
@@ -5644,7 +5934,7 @@ export async function registerRoutes(
         receipt = allForPoster.find(r => r.gigId === gig.id) || null;
       }
 
-      if (!receipt && gig.assigneeId) {
+      if (!receipt && gig.assigneeId && gig.budget >= TRUST_RECEIPT_MIN_AMOUNT) {
         const swarmVerdict = validation?.status === "approved" ? "PASS" : validation?.status === "rejected" ? "FAIL" : null;
         receipt = await storage.createTrustReceipt({
           gigId: gig.id,
@@ -6563,6 +6853,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/agents/:id/verified-skills", apiLimiter, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(String(req.params.id));
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      res.json({ verifiedSkills: agent.verifiedSkills || [], count: (agent.verifiedSkills || []).length, maxBonus: 5, currentBonus: Math.min((agent.verifiedSkills || []).length, 5) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/skill-challenges/:skill", apiLimiter, async (req, res) => {
     try {
       const skill = String(req.params.skill).toLowerCase();
@@ -6588,16 +6888,44 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/skill-challenges/:skill/attempt", apiLimiter, async (req, res) => {
+  const skillChallengeSubmitHandler = async (req: any, res: any) => {
     try {
       const skill = String(req.params.skill).toLowerCase();
+      const walletAddress = req.headers["x-wallet-address"] as string;
       const agentId = req.headers["x-agent-id"] as string;
       if (!agentId) return res.status(401).json({ message: "x-agent-id header required" });
 
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      if (walletAddress && agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Authenticated wallet does not own this agent" });
+      }
+      if (!walletAddress) {
+        return res.status(401).json({ message: "Wallet authentication required for skill verification" });
+      }
+
       if (!agent.skills.map((s) => s.toLowerCase()).includes(skill)) {
         return res.status(400).json({ message: `Skill '${skill}' not on your profile. Add it first.` });
+      }
+
+      if ((agent.verifiedSkills || []).map((s: string) => s.toLowerCase()).includes(skill)) {
+        return res.status(400).json({ message: `Skill '${skill}' is already verified.` });
+      }
+
+      const previousAttempts = await storage.getChallengeAttemptsForAgent(agentId, skill);
+      if (previousAttempts.length > 0) {
+        const lastAttempt = previousAttempts[0];
+        if (lastAttempt.createdAt) {
+          const hoursSince = (Date.now() - new Date(lastAttempt.createdAt).getTime()) / (1000 * 60 * 60);
+          if (hoursSince < 24) {
+            const hoursLeft = Math.ceil(24 - hoursSince);
+            return res.status(429).json({
+              message: `Cooldown active. You can retry in ${hoursLeft} hour${hoursLeft !== 1 ? "s" : ""}.`,
+              cooldownEndsAt: new Date(new Date(lastAttempt.createdAt).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+            });
+          }
+        }
       }
 
       const { challengeId, submission } = req.body;
@@ -6637,6 +6965,13 @@ export async function registerRoutes(
           verificationMethod: "challenge",
           trustScore: Math.min(100, (existing?.trustScore ?? 0) + newTrustScore),
         });
+
+        const currentVerified = agent.verifiedSkills || [];
+        if (!currentVerified.map((s: string) => s.toLowerCase()).includes(skill)) {
+          await storage.updateAgent(agentId, {
+            verifiedSkills: [...currentVerified, skill],
+          });
+        }
       }
 
       res.json({
@@ -6652,17 +6987,23 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
-  });
+  };
 
-  app.post("/api/agents/:id/skills/:skill/github", apiLimiter, async (req, res) => {
+  app.post("/api/skill-challenges/:skill/attempt", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
+  app.post("/api/skill-challenges/:skill/submit", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
+
+  app.post("/api/agents/:id/skills/:skill/github", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const id = String(req.params.id);
       const skill = String(req.params.skill);
-      const agentId = req.headers["x-agent-id"] as string;
-      if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
 
       const agent = await storage.getAgent(id);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress || agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Authenticated wallet does not own this agent" });
+      }
 
       const { githubProfileUrl } = req.body;
       if (!githubProfileUrl || typeof githubProfileUrl !== "string") {
@@ -6694,15 +7035,18 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/agents/:id/skills/:skill/portfolio", apiLimiter, async (req, res) => {
+  app.post("/api/agents/:id/skills/:skill/portfolio", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const id = String(req.params.id);
       const skill = String(req.params.skill);
-      const agentId = req.headers["x-agent-id"] as string;
-      if (agentId !== id) return res.status(403).json({ message: "Agent ID mismatch" });
 
       const agent = await storage.getAgent(id);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress || agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Authenticated wallet does not own this agent" });
+      }
 
       const { portfolioUrl } = req.body;
       if (!portfolioUrl || typeof portfolioUrl !== "string") {
@@ -6939,6 +7283,58 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── SKALE Multi-chain: Read score ─────────────────────────────────
+  app.get("/api/agents/:id/skale-score", apiLimiter, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id as string);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const result = await readSkaleFusedScore(agent.walletAddress);
+      if (!result) return res.json({ hasSkaleScore: false, score: null, updatedAt: null });
+
+      return res.json({
+        hasSkaleScore: true,
+        score: result.score,
+        updatedAt: result.updatedAt > 0 ? new Date(result.updatedAt * 1000).toISOString() : null,
+        walletAddress: agent.walletAddress,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── SKALE Multi-chain: Sync score Base → SKALE ─────────────────────
+  app.post("/api/agents/:id/sync-to-skale", apiLimiter, async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id as string);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const breakdown = getScoreBreakdown(agent);
+      const result = await syncScoreToSkale({
+        walletAddress: agent.walletAddress,
+        fusedScore: agent.fusedScore ?? 0,
+        onChainScore: breakdown.onChainNormalized ?? 0,
+        moltbookScore: breakdown.moltbookNormalized ?? 0,
+        performanceScore: breakdown.performanceNormalized ?? 0,
+        bondScore: breakdown.bondReliabilityNormalized ?? 0,
+      });
+
+      if ("error" in result) {
+        return res.status(500).json({ message: result.error });
+      }
+
+      return res.json({
+        success: true,
+        txHash: result.txHash,
+        syncedAt: new Date().toISOString(),
+        walletAddress: agent.walletAddress,
+        score: agent.fusedScore,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
     }
   });
 
