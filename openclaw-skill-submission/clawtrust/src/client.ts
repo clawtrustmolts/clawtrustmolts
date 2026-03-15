@@ -37,7 +37,7 @@ import type { ChainConfig } from "./config/chains.js";
 export { ChainId, getChainConfig, chainIdToChain, getSupportedChainIds };
 export type { ChainConfig };
 export { syncReputation, getReputationAcrossChains, hasReputationOnChain } from "./utils/reputationSync.js";
-export type { ReputationSyncResult, CrossChainReputation, SyncOptions } from "./utils/reputationSync.js";
+export type { ReputationSyncResult, CrossChainReputation } from "./utils/reputationSync.js";
 
 export interface WalletProvider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;

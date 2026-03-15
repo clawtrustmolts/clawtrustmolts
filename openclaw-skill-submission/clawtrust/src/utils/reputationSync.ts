@@ -6,8 +6,6 @@ const GET_FUSED_SCORE_SELECTOR = "0xb242f17c";
 const SUBMIT_FUSED_FEEDBACK_SELECTOR = "0x8c6ec3a6";
 const BALANCE_OF_SELECTOR = "0x70a08231";
 
-const DEFAULT_API_URL = "https://clawtrust.org/api";
-
 interface FusedScoreData {
   onChainScore: number;
   moltbookKarma: number;
@@ -17,16 +15,6 @@ interface FusedScoreData {
   timestamp: number;
 }
 
-interface PassportData {
-  hasPassport: boolean;
-  nftBalance: number;
-}
-
-export interface SyncOptions {
-  walletProvider?: WalletProvider;
-  apiUrl?: string;
-}
-
 export interface ReputationSyncResult {
   score: number;
   syncedAt: string;
@@ -34,14 +22,12 @@ export interface ReputationSyncResult {
   toChain: ChainId;
   success: boolean;
   txHash?: string;
-  passport?: PassportData;
-  scoreBreakdown?: Omit<FusedScoreData, "fusedScore" | "timestamp">;
   error?: string;
 }
 
 export interface CrossChainReputation {
-  base: { score: number | null; error?: string };
-  skale: { score: number | null; error?: string };
+  base: number | null;
+  skale: number | null;
   mostActive: ChainId | null;
 }
 
@@ -183,53 +169,6 @@ async function sendTransaction(
   return txHash;
 }
 
-async function syncViaApi(
-  apiUrl: string,
-  agentAddress: string,
-  fromChain: ChainId,
-  toChain: ChainId,
-  fusedScore: FusedScoreData,
-  passport: PassportData
-): Promise<{ txHash: string }> {
-  const res = await fetch(`${apiUrl}/reputation/sync`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      agentAddress,
-      fromChain,
-      toChain,
-      fusedScore: {
-        onChainScore: fusedScore.onChainScore,
-        moltbookKarma: fusedScore.moltbookKarma,
-        performanceScore: fusedScore.performanceScore,
-        bondScore: fusedScore.bondScore,
-        fusedScore: fusedScore.fusedScore,
-      },
-      passport: {
-        hasPassport: passport.hasPassport,
-        nftBalance: passport.nftBalance,
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => "Unknown error");
-    throw new Error(`API sync failed (${res.status}): ${errorText}`);
-  }
-
-  const data = (await res.json()) as { txHash?: string; error?: string };
-
-  if (data.error) {
-    throw new Error(`API sync error: ${data.error}`);
-  }
-
-  if (!data.txHash) {
-    throw new Error("API sync response missing txHash");
-  }
-
-  return { txHash: data.txHash };
-}
-
 async function getFusedScoreFromChain(
   config: ChainConfig,
   agentAddress: string
@@ -257,34 +196,26 @@ async function getFusedScoreFromChain(
   };
 }
 
-async function getPassportData(
+async function getPassportBalance(
   config: ChainConfig,
   agentAddress: string
-): Promise<PassportData> {
+): Promise<number> {
   const data = BALANCE_OF_SELECTOR + encodeAddress(agentAddress);
+  const result = await ethCall(
+    config.rpcUrl,
+    config.contracts.ClawCardNFT,
+    data
+  );
 
-  try {
-    const result = await ethCall(
-      config.rpcUrl,
-      config.contracts.ClawCardNFT,
-      data
-    );
-
-    if (!result || result === "0x") return { hasPassport: false, nftBalance: 0 };
-
-    const balance = parseInt(result.replace("0x", ""), 16);
-    return { hasPassport: balance > 0, nftBalance: balance };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to read passport data from ${config.name}: ${message}`);
-  }
+  if (!result || result === "0x") return 0;
+  return parseInt(result.replace("0x", ""), 16) || 0;
 }
 
 export async function syncReputation(
   agentAddress: string,
   fromChain: ChainId,
   toChain: ChainId,
-  options?: SyncOptions
+  walletProvider: WalletProvider
 ): Promise<ReputationSyncResult> {
   try {
     if (fromChain === toChain) {
@@ -301,55 +232,39 @@ export async function syncReputation(
     const fromConfig = getChainConfig(fromChain);
     const toConfig = getChainConfig(toChain);
 
-    const [fusedScore, passport] = await Promise.all([
+    const [fusedScore, passportBalance] = await Promise.all([
       getFusedScoreFromChain(fromConfig, agentAddress),
-      getPassportData(fromConfig, agentAddress),
+      getPassportBalance(fromConfig, agentAddress),
     ]);
 
-    if (fusedScore.fusedScore === 0 && fusedScore.onChainScore === 0 && !passport.hasPassport) {
+    if (fusedScore.fusedScore === 0 && fusedScore.onChainScore === 0 && passportBalance === 0) {
       return {
         score: 0,
         syncedAt: new Date().toISOString(),
         fromChain,
         toChain,
         success: false,
-        passport,
         error: `Agent ${agentAddress} has no reputation data or passport on ${fromConfig.name}.`,
       };
     }
 
     const syncTimestamp = new Date().toISOString();
 
-    const scoreBreakdown = {
-      onChainScore: fusedScore.onChainScore,
-      moltbookKarma: fusedScore.moltbookKarma,
-      performanceScore: fusedScore.performanceScore,
-      bondScore: fusedScore.bondScore,
-    };
+    const calldata = encodeSubmitFusedFeedback(
+      agentAddress,
+      fusedScore.onChainScore,
+      fusedScore.moltbookKarma,
+      fusedScore.performanceScore,
+      fusedScore.bondScore,
+      ["cross-chain-sync"],
+      `sync:${fromChain}:${syncTimestamp}`
+    );
 
-    let txHash: string;
-
-    if (options?.walletProvider) {
-      const calldata = encodeSubmitFusedFeedback(
-        agentAddress,
-        fusedScore.onChainScore,
-        fusedScore.moltbookKarma,
-        fusedScore.performanceScore,
-        fusedScore.bondScore,
-        ["cross-chain-sync"],
-        `sync:${fromChain}:${syncTimestamp}`
-      );
-
-      txHash = await sendTransaction(
-        options.walletProvider,
-        toConfig.contracts.ClawTrustRepAdapter,
-        calldata
-      );
-    } else {
-      const apiUrl = (options?.apiUrl ?? DEFAULT_API_URL).replace(/\/$/, "");
-      const apiResult = await syncViaApi(apiUrl, agentAddress, fromChain, toChain, fusedScore, passport);
-      txHash = apiResult.txHash;
-    }
+    const txHash = await sendTransaction(
+      walletProvider,
+      toConfig.contracts.ClawTrustRepAdapter,
+      calldata
+    );
 
     return {
       score: fusedScore.fusedScore,
@@ -358,8 +273,6 @@ export async function syncReputation(
       toChain,
       success: true,
       txHash,
-      passport,
-      scoreBreakdown,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -378,8 +291,8 @@ export async function getReputationAcrossChains(
   agentAddress: string
 ): Promise<CrossChainReputation> {
   const result: CrossChainReputation = {
-    base: { score: null },
-    skale: { score: null },
+    base: null,
+    skale: null,
     mostActive: null,
   };
 
@@ -389,21 +302,19 @@ export async function getReputationAcrossChains(
   try {
     const baseConfig = getChainConfig(ChainId.BASE);
     const baseScore = await getFusedScoreFromChain(baseConfig, agentAddress);
-    result.base = { score: baseScore.fusedScore };
+    result.base = baseScore.fusedScore;
     baseTimestamp = baseScore.timestamp;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    result.base = { score: null, error: `Base chain error: ${message}` };
+  } catch {
+    result.base = null;
   }
 
   try {
     const skaleConfig = getChainConfig(ChainId.SKALE);
     const skaleScore = await getFusedScoreFromChain(skaleConfig, agentAddress);
-    result.skale = { score: skaleScore.fusedScore };
+    result.skale = skaleScore.fusedScore;
     skaleTimestamp = skaleScore.timestamp;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    result.skale = { score: null, error: `SKALE chain error: ${message}` };
+  } catch {
+    result.skale = null;
   }
 
   if (baseTimestamp > 0 || skaleTimestamp > 0) {
@@ -416,19 +327,17 @@ export async function getReputationAcrossChains(
 export async function hasReputationOnChain(
   agentAddress: string,
   chain: ChainId
-): Promise<{ exists: boolean; error?: string }> {
+): Promise<boolean> {
   try {
     const config = getChainConfig(chain);
 
-    const [passport, fusedScore] = await Promise.all([
-      getPassportData(config, agentAddress),
+    const [passportBalance, fusedScore] = await Promise.all([
+      getPassportBalance(config, agentAddress),
       getFusedScoreFromChain(config, agentAddress),
     ]);
 
-    const exists = passport.hasPassport || fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0;
-    return { exists };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { exists: false, error: `Failed to check reputation on ${chain}: ${message}` };
+    return passportBalance > 0 || fusedScore.fusedScore > 0 || fusedScore.onChainScore > 0;
+  } catch {
+    return false;
   }
 }
