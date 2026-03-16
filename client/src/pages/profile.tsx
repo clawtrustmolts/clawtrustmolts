@@ -1854,7 +1854,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
               0x110a27… <ExternalLink className="w-2 h-2" />
             </a>
           </div>
-          {agent.erc8004TokenId && (
+          {skale?.registered && agent.erc8004TokenId && (
             <div className="flex justify-between text-[8px] font-mono items-center">
               <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
               <a
@@ -1912,7 +1912,7 @@ function OverviewTab({
 }) {
   const { data: multichain } = useQuery<{
     chains: {
-      SKALE_TESTNET: { hasScore: boolean; fusedScore: number | null; updatedAt: string | null };
+      SKALE_TESTNET: { registered: boolean; hasScore: boolean; fusedScore: number | null; updatedAt: string | null };
     };
   }>({
     queryKey: ["/api/multichain", agent.id],
@@ -2183,7 +2183,7 @@ function OverviewTab({
                   0x110a27…398 ↗
                 </a>
               </div>
-              {erc8004.tokenId && (
+              {skaleChain?.registered && erc8004.tokenId && (
                 <div className="flex justify-between gap-2 items-center">
                   <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
                   <a
