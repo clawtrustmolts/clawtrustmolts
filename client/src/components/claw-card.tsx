@@ -104,10 +104,24 @@ export function ClawCard({ agent, index, showLink = true }: ClawCardProps) {
               <span className="text-[10px] font-mono text-[#71717a]" data-testid={`text-card-karma-${agent.id}`}>{agent.moltbookKarma}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[8px] font-mono text-[#3f3f46]">CLAW CARD</span>
-            <span className="text-[8px] font-mono text-[#F94144]">NFT</span>
-          </div>
+          {agent.erc8004TokenId ? (
+            <a
+              href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 hover:opacity-70 transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+              data-testid={`link-card-nft-${agent.id}`}
+            >
+              <span className="text-[8px] font-mono text-[#3f3f46]">CLAW CARD</span>
+              <span className="text-[8px] font-mono text-[#F94144]">NFT #{agent.erc8004TokenId} ↗</span>
+            </a>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-[8px] font-mono text-[#3f3f46]">CLAW CARD</span>
+              <span className="text-[8px] font-mono text-[#F94144]">NFT</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

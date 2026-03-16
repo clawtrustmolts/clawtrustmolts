@@ -908,15 +908,24 @@ export default function ProfilePage() {
                         ) : badge;
                       })
                     ) : agent.moltDomain ? (
-                      <Link href={`/profile/${agent.moltDomain}`}>
+                      <a
+                        href={agent.erc8004TokenId
+                          ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
+                          : `/passport?wallet=${agent.walletAddress}`}
+                        target={agent.erc8004TokenId ? "_blank" : undefined}
+                        rel={agent.erc8004TokenId ? "noopener noreferrer" : undefined}
+                        title={agent.erc8004TokenId ? "View name NFT on BaseScan" : "View passport"}
+                        className="hover:opacity-80 transition-opacity"
+                        data-testid="text-molt-domain"
+                      >
                         <span
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-mono font-bold"
                           style={{ background: "rgba(200,57,26,0.15)", color: "var(--claw-orange)", border: "1px solid rgba(200,57,26,0.35)" }}
-                          data-testid="text-molt-domain"
                         >
                           {agent.moltDomain}
+                          {agent.erc8004TokenId && <ExternalLink className="w-2.5 h-2.5 opacity-60" />}
                         </span>
-                      </Link>
+                      </a>
                     ) : null}
                   </div>
                 )}
@@ -1130,6 +1139,30 @@ export default function ProfilePage() {
                 style={{ border: "1px solid rgba(0,0,0,0.06)" }}
                 data-testid="img-claw-card"
               />
+              {agent.erc8004TokenId && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <a
+                    href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
+                    style={{ color: "var(--teal-glow)" }}
+                    data-testid="link-claw-card-basescan"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    NFT #{agent.erc8004TokenId} on BaseScan ↗
+                  </a>
+                  <a
+                    href={`/passport?wallet=${agent.walletAddress}`}
+                    className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
+                    style={{ color: "var(--claw-orange)" }}
+                    data-testid="link-claw-card-passport"
+                  >
+                    <Globe className="w-2.5 h-2.5" />
+                    View Passport ↗
+                  </a>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1787,16 +1820,55 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
         ))}
       </div>
 
-      {/* Contract Addresses */}
-      {skale?.contracts && (
-        <div className="mb-3 space-y-1" data-testid="div-skale-contracts">
-          <p className="text-[8px] font-mono uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>SKALE Contracts</p>
-          {Object.entries(skale.contracts).slice(0, 3).map(([k, v]) => (
-            <div key={k} className="flex justify-between text-[8px] font-mono">
-              <span style={{ color: "var(--text-muted)" }}>{k}</span>
-              <span style={{ color: "#a78bfa" }}>{(v as string).slice(0, 8)}…</span>
+      {/* SKALE Chain Proof Links */}
+      {(skale?.contracts || hasSkale) && (
+        <div className="mb-3 space-y-1.5" data-testid="div-skale-contracts">
+          <p className="text-[8px] font-mono uppercase tracking-wider mb-1.5" style={{ color: "var(--text-muted)" }}>
+            SKALE On-Chain Proof
+          </p>
+          {hasSkale && (
+            <div className="flex justify-between text-[8px] font-mono items-center">
+              <span style={{ color: "var(--text-muted)" }}>RepAdapter Score</span>
+              <a
+                href="https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/address/0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+                style={{ color: "#a78bfa" }}
+                data-testid="link-skale-rep-adapter"
+              >
+                0x9975Ab… <ExternalLink className="w-2 h-2" />
+              </a>
             </div>
-          ))}
+          )}
+          <div className="flex justify-between text-[8px] font-mono items-center">
+            <span style={{ color: "var(--text-muted)" }}>ERC-8004 Registry</span>
+            <a
+              href="https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/address/0x110a2710B6806Cb5715601529bBBD9D1AFc0d398"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+              style={{ color: "#a78bfa" }}
+              data-testid="link-skale-registry"
+            >
+              0x110a27… <ExternalLink className="w-2 h-2" />
+            </a>
+          </div>
+          {agent.erc8004TokenId && (
+            <div className="flex justify-between text-[8px] font-mono items-center">
+              <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
+              <a
+                href={`https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/token/0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647?a=${agent.erc8004TokenId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+                style={{ color: "#a78bfa" }}
+                data-testid="link-skale-nft"
+              >
+                Token #{agent.erc8004TokenId} <ExternalLink className="w-2 h-2" />
+              </a>
+            </div>
+          )}
         </div>
       )}
 
@@ -1838,6 +1910,20 @@ function OverviewTab({
   erc8004?: RepData["erc8004"];
   mcpSkills: AgentSkill[];
 }) {
+  const { data: multichain } = useQuery<{
+    chains: {
+      SKALE_TESTNET: { hasScore: boolean; fusedScore: number | null; updatedAt: string | null };
+    };
+  }>({
+    queryKey: ["/api/multichain", agent.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/multichain/${agent.id}`);
+      if (!res.ok) return null as any;
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+  const skaleChain = multichain?.chains?.SKALE_TESTNET;
   const isLive = liveFusion && liveFusion.source !== "fallback";
   const onChainNorm = isLive ? liveFusion.onChainAvg : (breakdown?.onChainNormalized ?? 0);
   const moltNorm = isLive ? liveFusion.moltWeight : (breakdown?.moltbookNormalized ?? 0);
@@ -2055,10 +2141,73 @@ function OverviewTab({
               rel="noopener noreferrer"
               className="text-[10px] font-mono flex items-center gap-1"
               style={{ color: "var(--teal-glow)" }}
+              data-testid="link-basescan-passport"
             >
               View passport on BaseScan ↗
             </a>
           </div>
+
+          {/* SKALE chain identity — shown when agent has been synced to SKALE */}
+          {skaleChain?.hasScore && (
+            <div className="mt-4 pt-3 border-t space-y-2 text-[11px] font-mono" style={{ borderColor: "rgba(139,92,246,0.2)" }}>
+              <p className="text-[9px] font-mono uppercase tracking-wider mb-1" style={{ color: "#a78bfa" }}>
+                ⬡ SKALE Chain Identity
+              </p>
+              <div className="flex justify-between gap-2 items-center">
+                <span style={{ color: "var(--text-muted)" }}>FusedScore On-Chain</span>
+                <span style={{ color: "#a78bfa" }}>{skaleChain.fusedScore?.toFixed(1) ?? "—"}</span>
+              </div>
+              <div className="flex justify-between gap-2 items-center">
+                <span style={{ color: "var(--text-muted)" }}>RepAdapter</span>
+                <a
+                  href="https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/address/0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+                  style={{ color: "#a78bfa" }}
+                  data-testid="link-skale-rep-adapter-erc8004"
+                >
+                  0x9975Ab…BdA ↗
+                </a>
+              </div>
+              <div className="flex justify-between gap-2 items-center">
+                <span style={{ color: "var(--text-muted)" }}>ERC-8004 Registry</span>
+                <a
+                  href="https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/address/0x110a2710B6806Cb5715601529bBBD9D1AFc0d398"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+                  style={{ color: "#a78bfa" }}
+                  data-testid="link-skale-registry-erc8004"
+                >
+                  0x110a27…398 ↗
+                </a>
+              </div>
+              {erc8004.tokenId && (
+                <div className="flex justify-between gap-2 items-center">
+                  <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
+                  <a
+                    href={`https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/token/0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647?a=${erc8004.tokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+                    style={{ color: "#a78bfa" }}
+                    data-testid="link-skale-nft-erc8004"
+                  >
+                    Token #{erc8004.tokenId} ↗
+                  </a>
+                </div>
+              )}
+              <div className="flex justify-between gap-2">
+                <span style={{ color: "var(--text-muted)" }}>Network</span>
+                <span style={{ color: "#a78bfa" }}>SKALE Testnet (974399131)</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span style={{ color: "var(--text-muted)" }}>Gas</span>
+                <span style={{ color: "#22c55e" }}>sFUEL (gasless)</span>
+              </div>
+            </div>
+          )}
         </SectionCard>
       )}
     </div>
