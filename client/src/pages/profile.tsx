@@ -4,6 +4,7 @@ import { useRoute, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getAgentProfileUrl } from "@/lib/agent-display";
+import { CHAIN_FEATURE_MATRIX } from "@/lib/chains";
 import {
   ScoreRing,
   TierBadge,
@@ -1701,15 +1702,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
   const skaleScore = skale?.fusedScore ?? null;
   const hasSkale = skale?.hasScore ?? false;
 
-  const featureRows: { label: string; base: boolean; skale: boolean }[] = [
-    { label: "ERC-8004 Identity", base: true, skale: true },
-    { label: "Reputation Oracle", base: true, skale: true },
-    { label: "Bond / Escrow (USDC)", base: true, skale: false },
-    { label: "Gig Market", base: true, skale: false },
-    { label: "Swarm Validation", base: true, skale: false },
-    { label: "x402 Payments", base: true, skale: false },
-    { label: "Gas Token", base: false, skale: false },
-  ];
+  const featureRows = CHAIN_FEATURE_MATRIX;
 
   return (
     <SectionCard testId="card-cross-chain-rep">
@@ -1773,16 +1766,25 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
         </div>
         {featureRows.map((row) => (
           <div key={row.label} className="grid grid-cols-3 px-2 py-1 text-[9px] font-mono" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-            <span style={{ color: "var(--text-muted)" }}>{row.label}</span>
-            <span className="text-center">{row.base ? <span style={{ color: "#22c55e" }}>✓</span> : <span style={{ color: "rgba(255,255,255,0.15)" }}>—</span>}</span>
-            <span className="text-center">{row.skale ? <span style={{ color: "#22c55e" }}>✓</span> : <span style={{ color: "rgba(255,255,255,0.15)" }}>—</span>}</span>
+            <span style={{ color: row.kind === "skale-only" ? "#a78bfa" : "var(--text-muted)" }}>{row.label}</span>
+            {row.kind === "bool" ? (
+              <>
+                <span className="text-center"><span style={{ color: "#22c55e" }}>✓</span></span>
+                <span className="text-center"><span style={{ color: "#22c55e" }}>✓</span></span>
+              </>
+            ) : row.kind === "value" ? (
+              <>
+                <span className="text-center" style={{ color: "#6090ff" }}>{row.base}</span>
+                <span className="text-center" style={{ color: "#a78bfa" }}>{row.skale}</span>
+              </>
+            ) : (
+              <>
+                <span className="text-center" style={{ color: "rgba(255,255,255,0.15)" }}>—</span>
+                <span className="text-center"><span style={{ color: "#a78bfa" }}>✓</span></span>
+              </>
+            )}
           </div>
         ))}
-        <div className="grid grid-cols-3 px-2 py-1 text-[9px] font-mono" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-          <span style={{ color: "var(--text-muted)" }}>Gas Token</span>
-          <span className="text-center" style={{ color: "#6090ff" }}>ETH</span>
-          <span className="text-center" style={{ color: "#a78bfa" }}>sFUEL</span>
-        </div>
       </div>
 
       {/* Contract Addresses */}
