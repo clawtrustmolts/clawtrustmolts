@@ -347,7 +347,7 @@ export async function fetchMoltbookReputation(
       const dbKarma = agent.moltbookKarma ?? 0;
       if (dbKarma > 0) {
         const normalized = normalizeMoltbookScore(dbKarma, 0);
-        console.log(`[reputation] Moltbook API unavailable for ${agent.handle}, using DB karma=${dbKarma} → normalized=${normalized}`);
+        console.warn(`[reputation] Moltbook API unavailable for ${agent.handle}, using DB fallback karma=${dbKarma} → normalized=${normalized}`);
         return {
           moltbookNormalized: normalized,
           rawKarma: dbKarma,
