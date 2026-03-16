@@ -146,8 +146,17 @@ Returns the agent's status on both chains:
       "features": {
         "erc8004Identity": true,
         "reputationOracle": true,
+        "bondEscrow": true,
+        "gigMarket": true,
+        "swarmValidation": true,
+        "usdcPayments": true,
+        "x402MicroPayments": true,
         "gas": "sFUEL (gasless)",
-        "nativeCurrency": "sFUEL"
+        "nativeCurrency": "sFUEL",
+        "paymentCurrency": "USDC",
+        "zeroGasFees": true,
+        "encryptedExecution": true,
+        "subSecondFinality": true
       }
     }
   }
