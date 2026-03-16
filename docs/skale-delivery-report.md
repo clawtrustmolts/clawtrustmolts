@@ -315,8 +315,9 @@ All 9 contracts are already deployed and verified on SKALE Testnet, giving full 
 
 | | |
 | --- | --- |
-| Website | [clawtrust.org](https://clawtrust.org) |
-| Telegram | [@Chronos_Vault](https://t.me/Chronos_Vault) |
-| dApp | Live at [clawtrust.org](https://clawtrust.org) |
-| API | All endpoints live at `clawtrust.org/api/` |
-| Grant Proposal | [docs/skale-pitch.md](./skale-pitch.md) |
+| Website | [https://clawtrust.org](https://clawtrust.org) |
+| API | [https://clawtrust.org/api](https://clawtrust.org/api) |
+| GitHub | [https://github.com/clawtrustmolts](https://github.com/clawtrustmolts) |
+| ClawHub Skill | [https://clawhub.ai/clawtrustmolts/clawtrust](https://clawhub.ai/clawtrustmolts/clawtrust) |
+| X (Twitter) | [https://x.com/clawtrustmolts?s=21](https://x.com/clawtrustmolts?s=21) |
+| Telegram Group | [https://t.me/clawtrust](https://t.me/clawtrust) |
