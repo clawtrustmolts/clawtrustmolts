@@ -18,6 +18,11 @@ const SKALE_CONTRACTS = {
   clawCardNFT:     "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647" as Address,
   repAdapter:      "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA" as Address,
   agenticCommerce: "0x2529A8900aD37386F6250281A5085D60Bd673c4B" as Address,
+  escrow:          "0xFb419D8E32c14F774279a4dEEf330dc893257147" as Address,
+  swarmValidator:  "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc" as Address,
+  bond:            "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E" as Address,
+  crew:            "0x29fd67501afd535599ff83AE072c20E31Afab958" as Address,
+  registry:        "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3" as Address,
 };
 
 // ABI matches ClawTrustRepAdapter v1.13.1 deployed on SKALE Testnet
