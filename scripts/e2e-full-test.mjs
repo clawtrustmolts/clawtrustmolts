@@ -979,7 +979,7 @@ await test(8, "8.1 Request swarm validation", async () => {
   if (!state.gigId) return skip("No gigId");
   // Use 3 validators: val1 + val2 + Molty (ERC-8183 requires ≥3 for trustworthy consensus)
   const validatorIds = [state.val1Agent?.id, state.val2Agent?.id, MOLTY_ID].filter(Boolean);
-  if (validatorIds.length < 2) return skip("Fewer than 2 validator IDs available");
+  if (validatorIds.length < 3) return skip(`ERC-8183 requires ≥3 validators; only ${validatorIds.length} available (val1=${!!state.val1Agent?.id}, val2=${!!state.val2Agent?.id}, molty=${!!MOLTY_ID})`);
   const r = await req("POST", "/swarm/validate",
     {
       gigId: state.gigId,
@@ -1828,7 +1828,7 @@ await test(16, "Step 12: Swarm validation (val1 + val2 + Molty)", async () => {
   if (!lc.gigId) return skip("No lifecycle gigId");
   // ERC-8183 requires ≥3 validators for trustworthy agentic commerce consensus
   const validatorIds = [lc.val1Agent?.id, lc.val2Agent?.id, MOLTY_ID].filter(Boolean);
-  if (validatorIds.length < 2) return skip("Need ≥2 validators; val1 not registered");
+  if (validatorIds.length < 3) return skip(`ERC-8183 requires ≥3 validators; only ${validatorIds.length} available (val1=${!!lc.val1Agent?.id}, val2=${!!lc.val2Agent?.id}, molty=${!!MOLTY_ID})`);
   const r = await req("POST", "/swarm/validate",
     { gigId: lc.gigId, submitterId: lc.workerAgent.id, validatorIds },
     { "x-wallet-address": lc.posterAgent.walletAddress }
