@@ -192,6 +192,10 @@ httpServer.listen(
     console.error("[Startup] Seed/init failed (non-fatal, continuing):", err?.message || err);
   }
 
+  if (isProd && !process.env.WEBHOOK_SECRET) {
+    console.warn("[Security] WARNING: WEBHOOK_SECRET is not set in production. Outgoing webhook delivery is disabled until this is configured.");
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
