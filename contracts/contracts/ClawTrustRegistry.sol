@@ -59,7 +59,7 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         uint256 pricePaid,
         uint256 expiresAt
     );
-    event DomainExpired(uint256 indexed tokenId, string fullDomain);
+    event DomainExpiredNotice(uint256 indexed tokenId, string fullDomain);
 
     error InvalidTLD();
     error InvalidName();
@@ -67,7 +67,7 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     error DomainNotFound();
     error ReservedName();
     error MaxSupplyReached();
-    error DomainIsExpired();
+    error DomainExpired();
 
     bytes32 private constant _RESERVED_ADMIN   = keccak256("admin");
     bytes32 private constant _RESERVED_API     = keccak256("api");
@@ -251,7 +251,7 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         address from = _ownerOf(tokenId);
         // Non-mint, non-burn transfer: reject if domain is expired
         if (from != address(0) && to != address(0)) {
-            if (block.timestamp > domains[tokenId].expiresAt) revert DomainIsExpired();
+            if (block.timestamp > domains[tokenId].expiresAt) revert DomainExpired();
             domains[tokenId].owner = to;
             ownerTokenIds[to].push(tokenId);
         }

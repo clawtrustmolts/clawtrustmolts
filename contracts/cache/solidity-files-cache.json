@@ -1297,8 +1297,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustRegistry.sol": {
-      "lastModificationDate": 1773782979401,
-      "contentHash": "2c0c1635d2450ea38b06ec175700379e",
+      "lastModificationDate": 1773783227227,
+      "contentHash": "1c04466495ec9d6d11ed3e6372166125",
       "sourceName": "contracts/ClawTrustRegistry.sol",
       "solcConfig": {
         "version": "0.8.24",
