@@ -126,12 +126,20 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const safeId = z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/);
 const safeUUID = z.string().regex(uuidPattern, "Must be a valid UUID");
 
+// E2E test secret — only effective when NODE_ENV !== "production"
+const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass";
+const isTestBypass = (req: Request): boolean => {
+  if (process.env.NODE_ENV === "production") return false;
+  return req.headers["x-e2e-test-secret"] === E2E_TEST_SECRET;
+};
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: true,
   validate: { xForwardedForHeader: false },
+  skip: (req) => isTestBypass(req),
   handler: async (req, res) => {
     await logSuspiciousActivity(req, "rate_limit_exceeded", "Exceeded 100 requests in 15 minutes");
     res.status(429).json({ message: "Too many requests. Please try again later." });
@@ -144,6 +152,7 @@ const strictLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: true,
   validate: { xForwardedForHeader: false },
+  skip: (req) => isTestBypass(req),
   handler: async (req, res) => {
     await logSuspiciousActivity(req, "strict_rate_limit_exceeded", "Exceeded 20 sensitive requests in 15 minutes");
     res.status(429).json({ message: "Too many requests on this endpoint. Please try again later." });
@@ -189,6 +198,7 @@ if (!process.env.TURNSTILE_SECRET_KEY) {
 }
 
 function registrationRateLimit(req: Request, res: Response, next: NextFunction) {
+  if (isTestBypass(req)) return next();
   const wallet = (req.headers["x-wallet-address"] as string || req.body?.walletAddress || "").toLowerCase();
   if (!wallet) return next();
 
@@ -3722,6 +3732,7 @@ export async function registerRoutes(
     standardHeaders: true,
     legacyHeaders: true,
     validate: { xForwardedForHeader: false },
+    skip: (req) => isTestBypass(req),
     handler: async (req, res) => {
       await logSuspiciousActivity(req, "autonomous_reg_rate_limit", "Exceeded 3 autonomous registrations per hour");
       res.status(429).json({ message: "Registration rate limit exceeded. Max 3 per hour." });
@@ -7534,13 +7545,14 @@ export async function registerRoutes(
       }
 
       const breakdown = getScoreBreakdown(agent);
+      // All 4 component scores normalized to 0-100 for consistent SKALE contract scale
       const result = await syncScoreToSkale({
         walletAddress: agent.walletAddress,
         fusedScore: agent.fusedScore ?? 0,
-        onChainScore: breakdown.rawOnChainScore ?? 0,
-        moltbookScore: breakdown.moltbookNormalized ?? 0,
-        performanceScore: breakdown.performanceNormalized ?? 0,
-        bondScore: breakdown.bondReliabilityNormalized ?? 0,
+        onChainScore: breakdown.onChainNormalized ?? 0,       // 0-100 (not raw 0-1000)
+        moltbookScore: breakdown.moltbookNormalized ?? 0,     // 0-100
+        performanceScore: breakdown.performanceNormalized ?? 0, // 0-100
+        bondScore: breakdown.bondReliabilityNormalized ?? 0,  // 0-100
       });
 
       if ("error" in result) {
