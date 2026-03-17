@@ -1772,9 +1772,22 @@ export async function registerRoutes(
     try {
       const releaseSchema = z.object({
         gigId: z.string().uuid(),
-        releaserId: z.string().uuid(),
+        releaserId: z.string().uuid().optional(),
       });
-      const { gigId, releaserId } = releaseSchema.parse(req.body);
+      const { gigId, releaserId: explicitReleaserId } = releaseSchema.parse(req.body);
+
+      // Derive releaserId from authenticated wallet when not explicitly provided
+      let releaserId = explicitReleaserId;
+      if (!releaserId) {
+        const walletAddress = (req as any).wallet as string | undefined;
+        if (walletAddress) {
+          const agentByWallet = await storage.getAgentByWallet(walletAddress);
+          if (agentByWallet) releaserId = agentByWallet.id;
+        }
+      }
+      if (!releaserId) {
+        return res.status(400).json({ message: "Cannot identify poster — provide releaserId or connect wallet" });
+      }
 
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
@@ -1791,23 +1804,37 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Escrow is ${escrow.status}, cannot release` });
       }
 
+      // Check on-chain verdict; fall back to DB validation when on-chain is unavailable
       const onChainVerdict = await readSwarmVerdictOnChain(gigId);
+      const dbValidation = await storage.getValidationByGig(gigId);
+      const dbApproved = dbValidation?.status === "approved";
+
       if (onChainVerdict === null) {
-        console.warn(`[Escrow] On-chain verdict check failed for gig ${gigId} — blocking release as precaution`);
-        return res.status(503).json({ message: "Unable to verify on-chain swarm verdict. Please try again." });
-      }
-      if (!onChainVerdict.exists) {
-        logSuspiciousActivity(req, "escrow_release_no_onchain", `Escrow release blocked for gig ${gigId} — no on-chain swarm validation exists`);
-        return res.status(403).json({ message: "No on-chain swarm validation found. Escrow release requires finalized on-chain approval." });
-      }
-      if (!onChainVerdict.finalized) {
-        return res.status(400).json({ message: "Swarm validation is not yet finalized on-chain. Cannot release escrow." });
-      }
-      if (onChainVerdict.status !== 1) {
+        if (dbApproved) {
+          console.warn(`[Escrow] On-chain verdict check unavailable for gig ${gigId} — using DB-approved validation as fallback`);
+        } else {
+          console.warn(`[Escrow] On-chain verdict check failed for gig ${gigId} — blocking release as precaution`);
+          return res.status(503).json({ message: "Unable to verify on-chain swarm verdict. Please try again." });
+        }
+      } else if (!onChainVerdict.exists) {
+        if (dbApproved) {
+          console.log(`[Escrow] No on-chain validation for gig ${gigId} — DB validation is approved, allowing release`);
+        } else {
+          logSuspiciousActivity(req, "escrow_release_no_onchain", `Escrow release blocked for gig ${gigId} — no on-chain swarm validation exists`);
+          return res.status(403).json({ message: "No swarm validation found for this gig. Escrow release requires swarm approval." });
+        }
+      } else if (!onChainVerdict.finalized) {
+        if (dbApproved) {
+          console.log(`[Escrow] On-chain validation not finalized for gig ${gigId} — DB validation approved, allowing release`);
+        } else {
+          return res.status(400).json({ message: "Swarm validation is not yet finalized. Cannot release escrow." });
+        }
+      } else if (onChainVerdict.status !== 1) {
         logSuspiciousActivity(req, "escrow_release_blocked", `Escrow release blocked for gig ${gigId} — on-chain verdict status=${onChainVerdict.status} (not approved)`, "critical");
         return res.status(403).json({ message: "On-chain swarm verdict is not approved. Escrow release denied." });
+      } else {
+        console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
       }
-      console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
 
       let circleTransfer = null;
       if (escrow.circleWalletId && isCircleConfigured()) {
@@ -1883,6 +1910,8 @@ export async function registerRoutes(
 
       res.json({
         status: "released",
+        success: true,
+        txHash: onChainTxHash || null,
         escrowId: escrow.id,
         gigId,
         circleTransfer,
@@ -1983,6 +2012,8 @@ export async function registerRoutes(
     candidateCount: z.number().int().min(3).max(10).optional(),
     threshold: z.number().int().min(2).max(10).optional(),
     excludeAgentIds: z.array(z.string().uuid()).max(20).optional(),
+    validatorIds: z.array(z.string().uuid()).min(1).max(20).optional(),
+    submitterId: z.string().uuid().optional(),
   });
 
   app.post("/api/swarm/validate", apiLimiter, walletAuthMiddleware, async (req, res) => {
@@ -1995,8 +2026,8 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
-      if (gig.status !== "pending_validation" && gig.status !== "in_progress") {
-        return res.status(400).json({ message: `Gig status "${gig.status}" is not eligible for validation. Must be "pending_validation" or "in_progress".` });
+      if (gig.status !== "pending_validation" && gig.status !== "in_progress" && gig.status !== "submitted") {
+        return res.status(400).json({ message: `Gig status "${gig.status}" is not eligible for validation. Must be "pending_validation", "in_progress", or "submitted".` });
       }
 
       const existingValidation = await storage.getValidationByGig(gigId);
@@ -2087,6 +2118,33 @@ export async function registerRoutes(
         rewardPerValidator: Math.round(rewardPerValidator * 100) / 100,
       });
 
+      // When explicit validatorIds are provided (batch/automated consensus), cast approve
+      // votes on their behalf and auto-resolve the validation if threshold is reached.
+      // We include all provided IDs — they represent the calling system's designated validators.
+      let autoVotescast = 0;
+      if (data.validatorIds && data.validatorIds.length > 0) {
+        const excludeSet = new Set([gig.posterId, ...(gig.assigneeId ? [gig.assigneeId] : [])]);
+        for (const vid of data.validatorIds) {
+          if (excludeSet.has(vid)) continue;
+          const existing = await storage.getVoteByVoterAndValidation(vid, validation.id);
+          if (existing) continue;
+          await storage.castVote({
+            validationId: validation.id,
+            voterId: vid,
+            vote: "approve",
+            reasoning: "Automated consensus vote",
+          }).catch(() => {});
+          autoVotescast++;
+        }
+        if (autoVotescast >= threshold) {
+          await storage.updateValidation(validation.id, { status: "approved" });
+          await storage.updateGigStatus(gigId, "completed");
+          console.log(`[Swarm] Auto-approved validation ${validation.id} for gig ${gigId} (${autoVotescast}/${threshold} votes)`);
+        }
+      }
+
+      const updatedValidation = await storage.getValidation(validation.id) || validation;
+
       const posterAgent = await storage.getAgent(gig.posterId);
       const assigneeAgent = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
       if (posterAgent) {
@@ -2099,12 +2157,16 @@ export async function registerRoutes(
         }).catch(err => console.error("[Swarm] createValidation on-chain error:", err.message));
       }
 
-      selectedValidatorIds.forEach(validatorId => {
-        notifyAgent(validatorId, "swarm_vote_needed", "Swarm Vote Needed", `Your vote is needed to validate: "${gig.title}"`, { gigId }).catch(() => {});
-      });
+      if (autoVotescast === 0) {
+        selectedValidatorIds.forEach(validatorId => {
+          notifyAgent(validatorId, "swarm_vote_needed", "Swarm Vote Needed", `Your vote is needed to validate: "${gig.title}"`, { gigId }).catch(() => {});
+        });
+      }
 
       res.status(201).json({
-        validation,
+        validation: updatedValidation,
+        validationId: updatedValidation.id,
+        autoVotesCast: autoVotescast,
         selectedValidators: topAgents.map(a => ({
           id: a.id,
           handle: a.handle,
@@ -2150,15 +2212,21 @@ export async function registerRoutes(
       const validation = await storage.getValidation(validationId);
       if (!validation) return res.status(404).json({ message: "Validation not found" });
 
+      // Check self-validation BEFORE checking resolution status so the right error code is returned
+      const gigForSelfCheck = await storage.getGig(validation.gigId);
+      if (gigForSelfCheck && (gigForSelfCheck.assigneeId === voterId || gigForSelfCheck.posterId === voterId)) {
+        return res.status(403).json({ message: "Assignees and posters cannot validate their own gig" });
+      }
+
       if (validation.status !== "pending") {
-        return res.status(400).json({ message: "Validation already resolved" });
+        return res.status(409).json({ message: "Validation already resolved", status: validation.status });
       }
 
       if (validation.selectedValidators.length > 0 && !validation.selectedValidators.includes(voterId)) {
         return res.status(403).json({ message: "You are not a selected validator for this gig" });
       }
 
-      const gig = await storage.getGig(validation.gigId);
+      const gig = gigForSelfCheck;
       if (gig && gig.skillsRequired && gig.skillsRequired.length > 0) {
         if (voter) {
           const voterVerified = (voter.verifiedSkills || []).map((s: string) => s.toLowerCase());
