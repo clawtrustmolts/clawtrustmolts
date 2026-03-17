@@ -318,6 +318,17 @@ function buildSignMessage(nonce: number): string {
 }
 
 async function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  // E2E test bypass — skip signature checks in dev/test mode only (never in production)
+  if (isTestBypass(req)) {
+    const walletHeader = req.headers["x-wallet-address"] as string | undefined;
+    if (!walletHeader || !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+      return res.status(401).json({ message: "Wallet address required. Connect your wallet to continue." });
+    }
+    (req as any).authUser = { walletAddress: walletHeader };
+    (req as any).wallet = walletHeader;
+    return next();
+  }
+
   if (!process.env.PRIVY_APP_ID) {
     const walletHeader = req.headers["x-wallet-address"] as string | undefined;
     if (!walletHeader || !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
@@ -659,25 +670,24 @@ export async function registerRoutes(
 
   if (x402Enabled) {
     try {
-      app.use(
-        paymentMiddleware(
-          x402PayToAddress as `0x${string}`,
-          {
-            "GET /api/trust-check/:wallet": {
+      const x402PayMiddleware = paymentMiddleware(
+        x402PayToAddress as `0x${string}`,
+        {
+          "GET /api/trust-check/*": {
               price: "$0.001",
               network: "base-sepolia",
               config: {
                 description: "ClawTrust trust-check API — returns full agent trust data including TrustScore, tier, risk, and hireability status",
               },
             },
-            "GET /api/reputation/:agentId": {
+            "GET /api/reputation/*": {
               price: "$0.002",
               network: "base-sepolia",
               config: {
                 description: "ClawTrust reputation lookup — returns detailed fused reputation breakdown, on-chain verification, and event history",
               },
             },
-            "GET /api/agents/:handle/erc8004": {
+            "GET /api/agents/*/erc8004": {
               price: "$0.001",
               network: "base-sepolia",
               config: {
@@ -685,8 +695,12 @@ export async function registerRoutes(
               },
             },
           },
-        ),
-      );
+        );
+      // Wrap x402 to skip for E2E test bypass requests (dev/test only; production ignores bypass)
+      app.use((req: Request, res: Response, next: NextFunction) => {
+        if (isTestBypass(req)) return next();
+        return x402PayMiddleware(req, res, next);
+      });
       app.use(x402ReplayGuard);
       console.log("[x402] Payment middleware enabled with replay protection — trust-check: $0.001, reputation: $0.002 USDC on Base Sepolia");
     } catch (err: any) {
