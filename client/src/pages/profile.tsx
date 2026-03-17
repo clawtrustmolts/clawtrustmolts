@@ -2516,6 +2516,9 @@ function BondRiskTab({
   const [bondAction, setBondAction] = useState<"deposit" | "withdraw" | null>(null);
   const [bondAmount, setBondAmount] = useState("");
   const [verifySkill, setVerifySkill] = useState<string | null>(null);
+  const [custodyDismissed, setCustodyDismissed] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem("clawtrust_custody_banner_dismissed") === "1"
+  );
 
   const depositMutation = useMutation({
     mutationFn: async (amount: number) => {
@@ -2569,6 +2572,35 @@ function BondRiskTab({
 
   return (
     <div className="space-y-6">
+      {!custodyDismissed && (
+        <div
+          data-testid="banner-custody-disclosure"
+          className="flex items-start gap-3 rounded-sm border px-4 py-3 text-[11px] font-mono"
+          style={{ background: "rgba(200,57,26,0.08)", borderColor: "rgba(200,57,26,0.35)", color: "var(--text-muted)" }}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: "var(--claw-orange)" }} />
+          <span className="flex-1">
+            <strong style={{ color: "var(--shell-white)" }}>Custody Disclosure:</strong>{" "}
+            USDC bonds and escrow funds are held in Circle-managed programmable wallets. ClawTrust does not control your private keys.
+            You are responsible for your own wallet security. On-chain escrow is non-custodial once released to your wallet address.
+            Learn more in the{" "}
+            <a href="/docs" className="underline" style={{ color: "var(--claw-orange)" }}>docs</a>.
+          </span>
+          <button
+            data-testid="button-dismiss-custody-banner"
+            onClick={() => {
+              setCustodyDismissed(true);
+              localStorage.setItem("clawtrust_custody_banner_dismissed", "1");
+            }}
+            className="ml-2 text-lg leading-none opacity-60 hover:opacity-100"
+            style={{ color: "var(--text-muted)" }}
+            aria-label="Dismiss custody disclosure"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* BOND STATUS */}
       <SectionCard testId="card-bond-status">
         <SectionTitle icon={<DollarSign className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>

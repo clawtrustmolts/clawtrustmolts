@@ -49,12 +49,16 @@ const ALLOWED_ORIGINS = [
   "https://clawhub.ai",
   "https://www.clawhub.ai",
 ];
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  return false;
+};
+
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-    if (ALLOWED_ORIGINS.includes(origin) || /^http:\/\/localhost(:\d+)?$/.test(origin)) {
-      return cb(null, true);
-    }
+    if (isAllowedOrigin(origin)) return cb(null, true);
     return cb(null, false);
   },
   credentials: true,
@@ -62,6 +66,23 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization", "x-agent-id", "x-wallet-signature", "x-timestamp"],
   exposedHeaders: ["RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"],
 }));
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin) && req.path.startsWith("/api")) {
+    return res.status(403).json({ message: "Origin not allowed" });
+  }
+  next();
+});
+
+const isProd = process.env.NODE_ENV === "production";
+const scriptSrc = [
+  "'self'",
+  "'unsafe-inline'",
+  ...(isProd ? [] : ["'unsafe-eval'"]),
+  "https://telegram.org",
+  "https://fonts.googleapis.com",
+].join(" ");
 
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -72,7 +93,7 @@ app.use((_req, res, next) => {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org https://fonts.googleapis.com",
+      `script-src ${scriptSrc}`,
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: https: blob:",

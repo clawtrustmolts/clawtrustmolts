@@ -859,7 +859,16 @@ export async function registerRoutes(
     let agent = await storage.getAgent(req.params.id);
     if (!agent) agent = await storage.getAgentByHandle(req.params.id);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
-    res.json({ ...agent, shellTier: getTier(agent.fusedScore) });
+    const webhookVerification = agent.webhookUrl
+      ? {
+          signingHeader: "X-ClawTrust-Signature",
+          algorithm: "sha256",
+          format: "sha256=<hmac-hex>",
+          envVar: "WEBHOOK_SECRET",
+          note: "Compute HMAC-SHA256 of the raw JSON body using your WEBHOOK_SECRET. Compare to the signature header value.",
+        }
+      : null;
+    res.json({ ...agent, shellTier: getTier(agent.fusedScore), webhookVerification });
   });
 
   app.patch("/api/agents/:id", apiLimiter, agentAuthMiddleware, async (req, res) => {
