@@ -176,7 +176,23 @@ class RateLimitError extends Error {
 }
 
 // E2E test bypass secret — matches server-side E2E_TEST_SECRET env var (dev-only)
-const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass";
+// Requires explicit opt-in via E2E_TEST_SECRET env var.
+// On localhost, defaults to the well-known dev value for convenience.
+// Hard-fails if bypass is used against any production domain.
+const IS_LOCAL = BASE_URL.includes("localhost") || BASE_URL.includes("127.0.0.1");
+const IS_PRODUCTION = BASE_URL.includes("clawtrust.org") || BASE_URL.includes(".replit.app");
+
+// Explicit env var takes priority; fallback only on localhost (never on production)
+const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET !== undefined
+  ? process.env.E2E_TEST_SECRET
+  : (IS_LOCAL ? "clawtrust-e2e-test-bypass" : "");
+
+// Hard-fail if bypass is active against a production-like domain
+if (E2E_TEST_SECRET && IS_PRODUCTION) {
+  console.error(`\n❌ SECURITY VIOLATION: E2E bypass secret must NOT be used against production domain: ${BASE_URL}`);
+  console.error(`   Unset E2E_TEST_SECRET or target a dev/staging server.\n`);
+  process.exit(1);
+}
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 async function req(method, path, body, extraHeaders = {}) {
@@ -184,8 +200,8 @@ async function req(method, path, body, extraHeaders = {}) {
   const headers = {
     "Content-Type": "application/json",
     "User-Agent": `ClawTrust-E2E-Test/${RUN_ID}`,
-    // Bypass rate limiters in dev (ignored in production — NODE_ENV=production check server-side)
-    "x-e2e-test-secret": E2E_TEST_SECRET,
+    // Bypass rate limiters in dev (only sent when E2E_TEST_SECRET is set; never on production)
+    ...(E2E_TEST_SECRET ? { "x-e2e-test-secret": E2E_TEST_SECRET } : {}),
     ...extraHeaders,
   };
   const opts = { method, headers };
@@ -1421,35 +1437,46 @@ await test(14, "14.3 Read FusedScore from SKALE RepAdapter (direct viem)", async
 });
 
 await test(14, "14.4 Base Sepolia ClawCardNFT soulbound restriction", async () => {
+  let balance;
   try {
-    const balance = await baseClient.readContract({
+    balance = await baseClient.readContract({
       address: BASE_CONTRACTS.ClawCardNFT,
       abi: ERC721_ABI,
       functionName: "balanceOf",
       args: [MOLTY_WALLET],
     });
-    assert(Number(balance) >= 0, "balanceOf returned negative");
-    if (Number(balance) === 0) return skip("Molty has no ClawCardNFT on Base Sepolia");
-    // Simulate transfer — soulbound should revert
-    try {
-      await baseClient.simulateContract({
-        address: BASE_CONTRACTS.ClawCardNFT,
-        abi: ERC721_ABI,
-        functionName: "safeTransferFrom",
-        args: [MOLTY_WALLET, "0x000000000000000000000000000000000000dEaD", BigInt(1)],
-        account: MOLTY_WALLET,
-      });
-      throw new Error("Transfer should have reverted (soulbound NFT) but simulation succeeded");
-    } catch (revertErr) {
-      if (revertErr.message === "Transfer should have reverted (soulbound NFT) but simulation succeeded") throw revertErr;
-      // Any revert confirms soulbound enforcement
+  } catch (rpcErr) {
+    // Only skip for transient RPC/network errors — rethrow all contract errors
+    const msg = rpcErr.message || "";
+    if (msg.includes("timeout") || msg.includes("network") || msg.includes("fetch") || msg.includes("ECONNREFUSED")) {
+      return skip(`Base Sepolia RPC unavailable: ${msg.slice(0, 80)}`);
     }
-  } catch (err) {
-    if (err.message?.includes("timeout") || err.message?.includes("network") || err.message?.includes("fetch")) {
-      return skip(`Base Sepolia RPC unavailable: ${err.message.slice(0, 80)}`);
-    }
-    if (err.message === "Transfer should have reverted (soulbound NFT) but simulation succeeded") throw err;
+    throw new Error(`balanceOf() failed unexpectedly on ClawCardNFT: ${msg.slice(0, 120)}`);
   }
+  assert(Number(balance) >= 0, `balanceOf returned invalid value: ${balance}`);
+  if (Number(balance) === 0) return skip("Molty has no ClawCardNFT on Base Sepolia — cannot test soulbound restriction");
+
+  // Simulate transfer — a soulbound (non-transferable) NFT must revert on transfer
+  let simulationPassed = false;
+  try {
+    await baseClient.simulateContract({
+      address: BASE_CONTRACTS.ClawCardNFT,
+      abi: ERC721_ABI,
+      functionName: "safeTransferFrom",
+      args: [MOLTY_WALLET, "0x000000000000000000000000000000000000dEaD", BigInt(1)],
+      account: MOLTY_WALLET,
+    });
+    simulationPassed = true; // transfer did NOT revert — this is wrong for a soulbound NFT
+  } catch (revertErr) {
+    // Expected path: soulbound NFT reverts on transfer — verify it's a contract revert, not RPC error
+    const revertMsg = revertErr.message || "";
+    if (revertMsg.includes("timeout") || revertMsg.includes("fetch") || revertMsg.includes("ECONNREFUSED")) {
+      return skip(`RPC error during soulbound simulation: ${revertMsg.slice(0, 80)}`);
+    }
+    // Any contract revert (ContractFunctionRevertedError, execution reverted, etc.) confirms soulbound
+  }
+  assert(!simulationPassed,
+    "ClawCardNFT transfer simulation succeeded — NFT is NOT soulbound. ERC-8004 identity NFTs must be non-transferable.");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1748,6 +1775,7 @@ await test(16, "Step 8: Worker discovers and applies", async () => {
 
 // Step 9: Accept worker
 let lcAcceptSucceeded = false;
+let lcAcceptSkipReason = null; // track why Step 9 skipped (auth/system vs logic error)
 await test(16, "Step 9: Poster accepts worker", async () => {
   if (!lc.gigId) return skip("No lifecycle gigId");
   // Route expects applicantAgentId (not applicantId)
@@ -1755,9 +1783,11 @@ await test(16, "Step 9: Poster accepts worker", async () => {
     { applicantAgentId: lc.workerAgent.id },
     { "x-agent-id": lc.posterAgent.id }
   );
-  if (r.status === 400) return skip(`Accept condition: ${r.data?.message?.slice(0, 80)}`);
-  if (r.status === 403) return skip(`Risk/auth: ${r.data?.message?.slice(0, 80)}`);
-  if (r.status === 404) return skip("Application not found");
+  // 400/403 may be legitimate conditional skips (e.g. gig closed, risk policy)
+  if (r.status === 400) { lcAcceptSkipReason = `400: ${r.data?.message?.slice(0, 60)}`; return skip(`Accept condition: ${r.data?.message?.slice(0, 80)}`); }
+  if (r.status === 403) { lcAcceptSkipReason = `403: ${r.data?.message?.slice(0, 60)}`; return skip(`Risk/auth: ${r.data?.message?.slice(0, 80)}`); }
+  // 404 after a successful apply (Step 8) is unexpected — fail, don't skip
+  if (r.status === 404) throw new Error("Application not found (404) after Step 8 apply succeeded — check apply route");
   assert(r.ok, `Accept failed: ${JSON.stringify(r.data).slice(0, 100)}`);
   lcAcceptSucceeded = true;
 });
@@ -1776,7 +1806,12 @@ await test(16, "Step 10: Fund escrow", async () => {
 // Step 11: Submit deliverable
 await test(16, "Step 11: Worker submits deliverable", async () => {
   if (!lc.gigId) return skip("No lifecycle gigId");
-  if (!lcAcceptSucceeded) return skip("Worker not assigned (Step 9 accept was skipped/failed)");
+  if (!lcAcceptSucceeded) {
+    // If Step 9 had a documented conditional skip (auth/policy), propagate as skip
+    if (lcAcceptSkipReason) return skip(`Worker not assigned (Step 9 skipped: ${lcAcceptSkipReason})`);
+    // Otherwise Step 9 failed unexpectedly — propagate as a FAIL so it's visible
+    throw new Error("Worker not assigned: Step 9 (accept-applicant) failed without a skip reason — investigate apply/accept flow");
+  }
   // Route expects: deliverableNote, deliverableUrl, requestValidation
   const r = await req("POST", `/gigs/${lc.gigId}/submit-deliverable`, {
     deliverableNote: "Lifecycle test deliverable — smart contract audit complete, 2 issues found. See repo for full report.",
