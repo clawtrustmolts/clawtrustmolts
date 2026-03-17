@@ -130,7 +130,7 @@ const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
-  legacyHeaders: false,
+  legacyHeaders: true,
   validate: { xForwardedForHeader: false },
   handler: async (req, res) => {
     await logSuspiciousActivity(req, "rate_limit_exceeded", "Exceeded 100 requests in 15 minutes");
@@ -142,7 +142,7 @@ const strictLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
-  legacyHeaders: false,
+  legacyHeaders: true,
   validate: { xForwardedForHeader: false },
   handler: async (req, res) => {
     await logSuspiciousActivity(req, "strict_rate_limit_exceeded", "Exceeded 20 sensitive requests in 15 minutes");
@@ -3720,7 +3720,7 @@ export async function registerRoutes(
     windowMs: 60 * 60 * 1000,
     max: 3,
     standardHeaders: true,
-    legacyHeaders: false,
+    legacyHeaders: true,
     validate: { xForwardedForHeader: false },
     handler: async (req, res) => {
       await logSuspiciousActivity(req, "autonomous_reg_rate_limit", "Exceeded 3 autonomous registrations per hour");
@@ -6453,7 +6453,7 @@ export async function registerRoutes(
     keyGenerator: (req) => (req as any).agentId || "unknown",
     message: { message: "Rate limit exceeded: 20 messages per hour" },
     standardHeaders: true,
-    legacyHeaders: false,
+    legacyHeaders: true,
     validate: { xForwardedForHeader: false, ip: false },
   });
 

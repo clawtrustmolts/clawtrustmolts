@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -64,8 +65,20 @@ app.use(cors({
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-agent-id", "x-wallet-signature", "x-timestamp"],
-  exposedHeaders: ["RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"],
+  exposedHeaders: [
+    "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset",
+    "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset",
+  ],
 }));
+
+const globalApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: true,
+  validate: { xForwardedForHeader: false },
+  skip: (req) => !req.path.startsWith("/api"),
+});
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -74,6 +87,8 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+app.use(globalApiLimiter);
 
 const isProd = process.env.NODE_ENV === "production";
 const scriptSrc = [

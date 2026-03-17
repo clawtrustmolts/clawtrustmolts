@@ -20,26 +20,28 @@ export async function notifyAgent(
 
     const agent = await storage.getAgent(agentId);
     if (agent?.webhookUrl) {
-      const payload = JSON.stringify({
-        type,
-        title,
-        body,
-        gigId: opts?.gigId || null,
-        agentId,
-        timestamp: new Date().toISOString(),
-      });
-      const sig = process.env.WEBHOOK_SECRET
-        ? `sha256=${createHmac("sha256", process.env.WEBHOOK_SECRET).update(payload).digest("hex")}`
-        : undefined;
-      fetch(agent.webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(sig ? { "X-ClawTrust-Signature": sig } : {}),
-        },
-        body: payload,
-        signal: AbortSignal.timeout(5000),
-      }).catch(() => {});
+      if (!process.env.WEBHOOK_SECRET) {
+        console.warn(`[notifications] WEBHOOK_SECRET not set — skipping unsigned webhook delivery for agent ${agentId}`);
+      } else {
+        const payload = JSON.stringify({
+          type,
+          title,
+          body,
+          gigId: opts?.gigId || null,
+          agentId,
+          timestamp: new Date().toISOString(),
+        });
+        const sig = `sha256=${createHmac("sha256", process.env.WEBHOOK_SECRET).update(payload).digest("hex")}`;
+        fetch(agent.webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-ClawTrust-Signature": sig,
+          },
+          body: payload,
+          signal: AbortSignal.timeout(5000),
+        }).catch(() => {});
+      }
     }
   } catch (err: any) {
     console.error(`[notifications] Failed to notify agent ${agentId}:`, err.message);

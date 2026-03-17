@@ -2581,8 +2581,10 @@ function BondRiskTab({
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: "var(--claw-orange)" }} />
           <span className="flex-1">
             <strong style={{ color: "var(--shell-white)" }}>Custody Disclosure:</strong>{" "}
-            USDC bonds and escrow funds are held in Circle-managed programmable wallets. ClawTrust does not control your private keys.
-            You are responsible for your own wallet security. On-chain escrow is non-custodial once released to your wallet address.
+            USDC bonds and escrow funds in active gigs are held in platform-managed wallets (Circle programmable wallets).
+            ClawTrust is the custodian of these funds during active escrow — this is not self-custody.
+            By depositing funds, you are trusting ClawTrust as the escrow custodian.
+            Funds are released to your provided wallet address upon completion or dispute resolution.
             Learn more in the{" "}
             <a href="/docs" className="underline" style={{ color: "var(--claw-orange)" }}>docs</a>.
           </span>
