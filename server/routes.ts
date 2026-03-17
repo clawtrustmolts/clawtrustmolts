@@ -696,6 +696,26 @@ export async function registerRoutes(
             },
           },
         );
+      // Inject WWW-Authenticate header on 402 x402 responses for RFC 9110 compliance
+      // x402-express v1 uses JSON body format; this adds the standard HTTP header alongside it
+      app.use((req: Request, res: Response, next: NextFunction) => {
+        const origJson = (res.json as any).bind(res);
+        (res as any).json = function(body: any) {
+          if (res.statusCode === 402 && body?.x402Version !== undefined && Array.isArray(body?.accepts) && body.accepts.length > 0) {
+            const first = body.accepts[0];
+            if (first && !res.headersSent) {
+              const amount = first.maxAmountRequired || "0";
+              const currency = (first.extra as any)?.name || "USDC";
+              const payTo = first.payTo || "";
+              const network = first.network || "base-sepolia";
+              res.setHeader("WWW-Authenticate",
+                `Bearer realm="x402", amount="${amount}", currency="${currency}", payTo="${payTo}", network="${network}"`);
+            }
+          }
+          return origJson(body);
+        };
+        next();
+      });
       // Wrap x402 to skip for E2E test bypass requests (dev/test only; production ignores bypass)
       app.use((req: Request, res: Response, next: NextFunction) => {
         if (isTestBypass(req)) return next();
@@ -7703,44 +7723,47 @@ export async function registerRoutes(
 
     try {
       const totalSupply = await (clawCardNFT as any).read.totalSupply();
-      results.ClawCardNFT = { address: nftAddr, responding: true, totalSupply: Number(totalSupply) };
+      results.ClawCardNFT = { address: nftAddr, responding: true, healthy: true, totalSupply: Number(totalSupply) };
     } catch (e: any) {
-      results.ClawCardNFT = { address: nftAddr, responding: false, error: e.message?.slice(0, 100) };
+      results.ClawCardNFT = { address: nftAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
     }
 
     try {
       const fee = await (escrowContract as any).read.platformFeeRate();
-      results.ClawTrustEscrow = { address: escrowAddr, responding: true, platformFee: Number(fee) };
+      results.ClawTrustEscrow = { address: escrowAddr, responding: true, healthy: true, platformFee: Number(fee) };
     } catch (e: any) {
-      results.ClawTrustEscrow = { address: escrowAddr, responding: false, error: e.message?.slice(0, 100) };
+      results.ClawTrustEscrow = { address: escrowAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
     }
 
     try {
       const repCode = await publicClient.getCode({ address: repAddr as `0x${string}` });
-      results.ClawTrustRepAdapter = { address: repAddr, responding: !!repCode && repCode !== "0x" };
+      const repHealthy = !!repCode && repCode !== "0x";
+      results.ClawTrustRepAdapter = { address: repAddr, responding: repHealthy, healthy: repHealthy };
     } catch (e: any) {
-      results.ClawTrustRepAdapter = { address: repAddr, responding: false, error: e.message?.slice(0, 100) };
+      results.ClawTrustRepAdapter = { address: repAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
     }
 
     try {
       const swarmCode = await publicClient.getCode({ address: swarmAddr as `0x${string}` });
-      results.ClawTrustSwarmValidator = { address: swarmAddr, responding: !!swarmCode && swarmCode !== "0x" };
+      const swarmHealthy = !!swarmCode && swarmCode !== "0x";
+      results.ClawTrustSwarmValidator = { address: swarmAddr, responding: swarmHealthy, healthy: swarmHealthy };
     } catch (e: any) {
-      results.ClawTrustSwarmValidator = { address: swarmAddr, responding: false, error: e.message?.slice(0, 100) };
+      results.ClawTrustSwarmValidator = { address: swarmAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
     }
 
     try {
       const minDep = await (bondContract as any).read.MIN_DEPOSIT();
-      results.ClawTrustBond = { address: bondAddr, responding: true, minDeposit: minDep.toString() };
+      results.ClawTrustBond = { address: bondAddr, responding: true, healthy: true, minDeposit: minDep.toString() };
     } catch (e: any) {
-      results.ClawTrustBond = { address: bondAddr, responding: false, error: e.message?.slice(0, 100) };
+      results.ClawTrustBond = { address: bondAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
     }
 
     try {
       const crewCode = await publicClient.getCode({ address: crewAddr as `0x${string}` });
-      results.ClawTrustCrew = { address: crewAddr, responding: !!crewCode && crewCode !== "0x" };
+      const crewHealthy = !!crewCode && crewCode !== "0x";
+      results.ClawTrustCrew = { address: crewAddr, responding: crewHealthy, healthy: crewHealthy };
     } catch (e: any) {
-      results.ClawTrustCrew = { address: crewAddr, responding: false, error: e.message?.slice(0, 100) };
+      results.ClawTrustCrew = { address: crewAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
     }
 
     res.json(results);
