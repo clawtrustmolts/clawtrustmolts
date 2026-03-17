@@ -7714,12 +7714,17 @@ export async function registerRoutes(
   // ─── Health: Contract Status ────────────────────────────────────────
   app.get("/api/health/contracts", async (_req, res) => {
     const results: Record<string, any> = {};
-    const nftAddr = process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
-    const escrowAddr = process.env.CLAW_TRUST_ESCROW_ADDRESS || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302";
-    const repAddr = process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818";
-    const swarmAddr = process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x7e1388226dCebe674acB45310D73ddA51b9C4A06";
-    const bondAddr = process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c";
-    const crewAddr = process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3";
+    // ── Core ClawTrust contracts (deployed on Base Sepolia) ──────────────────
+    const nftAddr    = process.env.CLAW_CARD_NFT_ADDRESS              || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+    const escrowAddr = process.env.CLAW_TRUST_ESCROW_ADDRESS          || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302";
+    const repAddr    = process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS     || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818";
+    const swarmAddr  = process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0x7e1388226dCebe674acB45310D73ddA51b9C4A06";
+    const bondAddr   = process.env.CLAW_TRUST_BOND_ADDRESS            || "0x23a1E1e958C932639906d0650A13283f6E60132c";
+    const crewAddr   = process.env.CLAW_TRUST_CREW_ADDRESS            || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3";
+    // ── Additional Base Sepolia contracts (ERC-8004 registry + ERC-8183 AC + domain registry) ──
+    const erc8004RegAddr  = "0x8004A818BFB912233c491871b3d84c89A494BD9e"; // Official ERC-8004 identity registry
+    const clawACAddr      = "0x1933D67CDB911653765e84758f47c60A1E868bC0"; // ClawTrustAC — ERC-8183 agentic commerce
+    const clawRegAddr     = "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4"; // ClawTrustRegistry — .claw/.shell/.pinch domains
 
     try {
       const totalSupply = await (clawCardNFT as any).read.totalSupply();
@@ -7764,6 +7769,31 @@ export async function registerRoutes(
       results.ClawTrustCrew = { address: crewAddr, responding: crewHealthy, healthy: crewHealthy };
     } catch (e: any) {
       results.ClawTrustCrew = { address: crewAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
+    }
+
+    // ── Additional Base Sepolia contracts ──────────────────────────────────
+    try {
+      const erc8004Code = await publicClient.getCode({ address: erc8004RegAddr as `0x${string}` });
+      const h = !!erc8004Code && erc8004Code !== "0x";
+      results.ERC8004IdentityRegistry = { address: erc8004RegAddr, responding: h, healthy: h, role: "ERC-8004 global agent identity registry" };
+    } catch (e: any) {
+      results.ERC8004IdentityRegistry = { address: erc8004RegAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
+    }
+
+    try {
+      const acCode = await publicClient.getCode({ address: clawACAddr as `0x${string}` });
+      const h = !!acCode && acCode !== "0x";
+      results.ClawTrustAC = { address: clawACAddr, responding: h, healthy: h, role: "ERC-8183 agentic commerce adapter" };
+    } catch (e: any) {
+      results.ClawTrustAC = { address: clawACAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
+    }
+
+    try {
+      const regCode = await publicClient.getCode({ address: clawRegAddr as `0x${string}` });
+      const h = !!regCode && regCode !== "0x";
+      results.ClawTrustRegistry = { address: clawRegAddr, responding: h, healthy: h, role: ".claw/.shell/.pinch TLD domain registry" };
+    } catch (e: any) {
+      results.ClawTrustRegistry = { address: clawRegAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
     }
 
     res.json(results);

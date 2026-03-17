@@ -637,7 +637,7 @@ function assertX402Payment(r, endpointName, minUsdcAmount) {
   assert(firstReq?.network === "base-sepolia",
     `${endpointName}: x402 must use base-sepolia network, got ${firstReq?.network}`);
 
-  // Amount from JSON body (primary) with header as cross-check
+  // Amount from JSON body (authoritative), cross-checked with WWW-Authenticate header
   const bodyAmount = firstReq?.maxAmountRequired ?? firstReq?.amount ?? null;
   const amount = bodyAmount ?? headerAmount ?? null;
 
@@ -646,9 +646,20 @@ function assertX402Payment(r, endpointName, minUsdcAmount) {
     assert(numAmount > 0, `${endpointName}: x402 USDC amount must be positive, got ${amount}`);
     if (minUsdcAmount !== undefined) {
       // amounts in USDC wei (6 decimals) — minUsdcAmount in whole USDC
-      const minWei = minUsdcAmount * 1e6;
-      assert(numAmount >= minWei * 0.5,
-        `${endpointName}: x402 amount ${numAmount} < expected min ${minWei} (${minUsdcAmount} USDC)`);
+      // Verify exact configured amount (within 1% to handle float precision)
+      const expectedWei = minUsdcAmount * 1e6;
+      assert(
+        numAmount >= expectedWei * 0.99 && numAmount <= expectedWei * 1.01,
+        `${endpointName}: x402 amount ${numAmount} does not match expected ${expectedWei} USDC wei (${minUsdcAmount} USDC). Got: ${amount}`
+      );
+      // Cross-check: if WWW-Authenticate also has amount, verify it matches JSON body
+      if (headerAmount !== null) {
+        const headerNumAmount = Number(headerAmount);
+        assert(
+          Math.abs(headerNumAmount - numAmount) <= numAmount * 0.01,
+          `${endpointName}: WWW-Authenticate amount ${headerAmount} does not match JSON body amount ${amount}`
+        );
+      }
     }
   }
 }
@@ -1331,19 +1342,22 @@ await test(13, "13.4 Set webhook URL", async () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 console.log("\n── SYSTEM 14: Smart Contracts Direct ─────────────────────────────────────────");
 
-await test(14, "14.1 All 6 Base Sepolia contracts healthy=true (health API)", async () => {
+await test(14, "14.1 All 9 Base Sepolia contracts healthy=true (health API)", async () => {
   const r = await req("GET", "/health/contracts");
   assert(r.ok, `Failed (${r.status}): ${JSON.stringify(r.data).slice(0, 120)}`);
   const contracts = r.data?.contracts || r.data;
   assert(typeof contracts === "object" && contracts !== null, "No contracts in response");
-  // All 6 required Base Sepolia ERC-8004/8183 contracts must be explicitly present and healthy
+  // All 9 Base Sepolia contracts (ERC-8004 + ERC-8183 + ClawTrust suite) must be healthy
   const REQUIRED_BASE_CONTRACTS = [
-    "ClawCardNFT",           // ERC-721 soulbound identity NFT (ERC-8004)
-    "ClawTrustEscrow",       // USDC escrow for gig payments (ERC-8183)
-    "ClawTrustRepAdapter",   // On-chain reputation oracle
-    "ClawTrustSwarmValidator", // Swarm consensus validator
-    "ClawTrustBond",         // Agent bond/stake contract
-    "ClawTrustCrew",         // Multi-agent crew management
+    "ClawCardNFT",              // ERC-721 soulbound identity NFT (ERC-8004)
+    "ClawTrustEscrow",          // USDC escrow for gig payments (ERC-8183)
+    "ClawTrustRepAdapter",      // On-chain reputation oracle
+    "ClawTrustSwarmValidator",  // Swarm consensus validator
+    "ClawTrustBond",            // Agent bond/stake contract
+    "ClawTrustCrew",            // Multi-agent crew management
+    "ERC8004IdentityRegistry",  // Official ERC-8004 global agent identity registry
+    "ClawTrustAC",              // ERC-8183 agentic commerce adapter
+    "ClawTrustRegistry",        // .claw/.shell/.pinch domain registry
   ];
   const missing = [];
   const notHealthy = [];
@@ -1357,11 +1371,11 @@ await test(14, "14.1 All 6 Base Sepolia contracts healthy=true (health API)", as
   }
   assert(missing.length === 0, `Missing contracts in /api/health/contracts: ${missing.join(", ")}`);
   assert(notHealthy.length === 0, `Contracts not healthy=true: ${notHealthy.join("; ")}`);
-  // Verify no extra unhealthy contracts sneak in beyond the required set
-  const contractKeys = Object.keys(contracts);
-  const extraUnhealthy = contractKeys.filter(k => !REQUIRED_BASE_CONTRACTS.includes(k) && contracts[k].healthy !== true);
-  assert(extraUnhealthy.length === 0,
-    `Extra contracts are unhealthy: ${extraUnhealthy.join(", ")}`);
+  // All returned contracts must be healthy (no silent unhealthy extras)
+  const allKeys = Object.keys(contracts);
+  const anyUnhealthy = allKeys.filter(k => contracts[k].healthy !== true);
+  assert(anyUnhealthy.length === 0,
+    `These contracts are not healthy: ${anyUnhealthy.join(", ")}`);
 });
 
 await test(14, "14.2 All 9 SKALE contracts have deployed bytecode", async () => {
