@@ -93,10 +93,8 @@ app.use(globalApiLimiter);
 const isProd = process.env.NODE_ENV === "production";
 const scriptSrc = [
   "'self'",
-  "'unsafe-inline'",
-  ...(isProd ? [] : ["'unsafe-eval'"]),
+  ...(isProd ? [] : ["'unsafe-inline'", "'unsafe-eval'"]),
   "https://telegram.org",
-  "https://fonts.googleapis.com",
 ].join(" ");
 
 app.use((_req, res, next) => {
