@@ -8,6 +8,12 @@ import "./interfaces/IERC8004Reputation.sol";
 contract ERC8004IdentityRegistry is Ownable2Step, IERC8004Identity, IERC8004Reputation {
     uint256 private _nextTokenId;
 
+    error AlreadyRegistered();
+    error HandleTaken();
+    error NotFound();
+    error NotOwner();
+    error IndexOutOfBounds();
+
     mapping(uint256 => AgentMetadata) private _identities;
     mapping(uint256 => address) private _owners;
     mapping(address => uint256) private _agentToToken;
@@ -24,8 +30,8 @@ contract ERC8004IdentityRegistry is Ownable2Step, IERC8004Identity, IERC8004Repu
         string calldata metadataUri,
         string[] calldata skills
     ) external returns (uint256 tokenId) {
-        require(_agentToToken[msg.sender] == 0, "Already registered");
-        require(_handleToToken[handle] == 0, "Handle taken");
+        if (_agentToToken[msg.sender] != 0) revert AlreadyRegistered();
+        if (_handleToToken[handle] != 0) revert HandleTaken();
 
         tokenId = _nextTokenId++;
         _identities[tokenId] = AgentMetadata({
@@ -42,24 +48,24 @@ contract ERC8004IdentityRegistry is Ownable2Step, IERC8004Identity, IERC8004Repu
     }
 
     function getIdentity(uint256 tokenId) external view returns (AgentMetadata memory) {
-        require(_owners[tokenId] != address(0), "Not found");
+        if (_owners[tokenId] == address(0)) revert NotFound();
         return _identities[tokenId];
     }
 
     function getIdentityByHandle(string calldata handle) external view returns (uint256 tokenId, AgentMetadata memory) {
         tokenId = _handleToToken[handle];
-        require(tokenId != 0, "Not found");
+        if (tokenId == 0) revert NotFound();
         return (tokenId, _identities[tokenId]);
     }
 
     function updateMetadata(uint256 tokenId, string calldata newUri) external {
-        require(_owners[tokenId] == msg.sender, "Not owner");
+        if (_owners[tokenId] != msg.sender) revert NotOwner();
         _identities[tokenId].metadataUri = newUri;
         emit MetadataUpdated(tokenId, newUri);
     }
 
     function ownerOfIdentity(uint256 tokenId) external view returns (address) {
-        require(_owners[tokenId] != address(0), "Not found");
+        if (_owners[tokenId] == address(0)) revert NotFound();
         return _owners[tokenId];
     }
 
@@ -96,7 +102,7 @@ contract ERC8004IdentityRegistry is Ownable2Step, IERC8004Identity, IERC8004Repu
     }
 
     function getFeedback(address agent, uint256 index) external view returns (Feedback memory) {
-        require(index < _feedbacks[agent].length, "Index out of bounds");
+        if (index >= _feedbacks[agent].length) revert IndexOutOfBounds();
         return _feedbacks[agent][index];
     }
 }

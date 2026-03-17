@@ -52,6 +52,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
     mapping(address => ScoreHistory[]) public scoreHistory;
     mapping(address => bool) public authorizedOracles;
     mapping(address => uint256) public lastUpdateTime;
+    mapping(address => uint256) public historyHead;
 
     // ERC-8004 feedback storage
     mapping(address => Feedback[]) internal _feedbacks;
@@ -130,7 +131,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
             BOND_WEIGHT        * bondScore
         ) / WEIGHT_DENOMINATOR;
 
-        assert(fused <= MAX_SCORE);
+        if(fused > MAX_SCORE) revert ScoreOutOfBounds();
         return fused;
     }
 
@@ -143,7 +144,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
         string calldata proofUri
     ) external onlyOracle whenNotPaused rateLimited(agent) {
         if(agent == address(0)) revert InvalidAddress();
-        if(bytes(proofUri).length == 0) revert InvalidProof();
+        if(bytes(proofUri).length < 10) revert InvalidProof();
 
         uint256 fused = computeFusedScore(onChainScore, moltbookKarma, performanceScore, bondScore);
         bytes32 proofHash = keccak256(bytes(proofUri));
@@ -220,7 +221,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
         string calldata proofUri
     ) external override onlyOracle whenNotPaused nonReentrant {
         if(to == address(0)) revert InvalidAddress();
-        if(bytes(proofUri).length == 0) revert InvalidProof();
+        if(bytes(proofUri).length < 10) revert InvalidProof();
 
         _feedbacks[to].push(Feedback({
             from: msg.sender,
@@ -298,7 +299,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
         string calldata proofUri
     ) external onlyOracle whenNotPaused rateLimited(agentAddress) nonReentrant {
         if(agentAddress == address(0)) revert InvalidAddress();
-        if(bytes(proofUri).length == 0) revert InvalidProof();
+        if(bytes(proofUri).length < 10) revert InvalidProof();
 
         uint256 fused = computeFusedScore(onChainScore, moltbookKarma, performanceScore, bondScore);
         bytes32 proofHash = keccak256(bytes(proofUri));
@@ -333,19 +334,15 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
 
     function _appendHistory(address agent, uint256 fused) internal {
         ScoreHistory[] storage history = scoreHistory[agent];
+        ScoreHistory memory entry = ScoreHistory({ fusedScore: fused, timestamp: block.timestamp });
 
-        if(history.length >= MAX_HISTORY_LENGTH) {
-            uint256 pruneCount = history.length - MAX_HISTORY_LENGTH + 1;
-            for(uint256 i = 0; i < history.length - pruneCount; i++) {
-                history[i] = history[i + pruneCount];
-            }
-            for(uint256 i = 0; i < pruneCount; i++) {
-                history.pop();
-            }
-            emit ScoreHistoryPruned(agent, pruneCount);
+        if(history.length < MAX_HISTORY_LENGTH) {
+            history.push(entry);
+        } else {
+            uint256 idx = historyHead[agent] % MAX_HISTORY_LENGTH;
+            history[idx] = entry;
+            historyHead[agent]++;
         }
-
-        history.push(ScoreHistory({ fusedScore: fused, timestamp: block.timestamp }));
     }
 
     function getFusedScore(address agent) external view returns (FusedScore memory) {
@@ -395,7 +392,6 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
 
     function setMinOracleCount(uint256 _minCount) external onlyOwner {
         if(_minCount == 0) revert InvalidScore();
-        if(_minCount > oracleCount) revert InsufficientOracles();
         uint256 oldCount = minOracleCount;
         minOracleCount = _minCount;
         emit MinOracleCountUpdated(oldCount, _minCount);

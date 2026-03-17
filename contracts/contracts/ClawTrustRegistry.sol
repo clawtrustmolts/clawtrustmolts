@@ -67,6 +67,7 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     error DomainNotFound();
     error ReservedName();
     error MaxSupplyReached();
+    error DomainIsExpired();
 
     bytes32 private constant _RESERVED_ADMIN   = keccak256("admin");
     bytes32 private constant _RESERVED_API     = keccak256("api");
@@ -144,7 +145,29 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     }
 
     function getOwnerTokenIds(address owner) external view returns (uint256[] memory) {
-        return ownerTokenIds[owner];
+        uint256[] storage allIds = ownerTokenIds[owner];
+        uint256 count = 0;
+        for (uint256 i = 0; i < allIds.length; i++) {
+            uint256 tokenId = allIds[i];
+            if (_ownerOf(tokenId) == owner && block.timestamp <= domains[tokenId].expiresAt) {
+                count++;
+            }
+        }
+        uint256[] memory result = new uint256[](count);
+        uint256 idx = 0;
+        for (uint256 i = 0; i < allIds.length; i++) {
+            uint256 tokenId = allIds[i];
+            if (_ownerOf(tokenId) == owner && block.timestamp <= domains[tokenId].expiresAt) {
+                result[idx++] = tokenId;
+            }
+        }
+        return result;
+    }
+
+    function renew(uint256 tokenId) external onlyRole(REGISTRAR_ROLE) {
+        if (domains[tokenId].registeredAt == 0) revert DomainNotFound();
+        domains[tokenId].expiresAt = block.timestamp + 365 days;
+        domains[tokenId].active = true;
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
@@ -226,7 +249,9 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         internal override returns (address)
     {
         address from = _ownerOf(tokenId);
+        // Non-mint, non-burn transfer: reject if domain is expired
         if (from != address(0) && to != address(0)) {
+            if (block.timestamp > domains[tokenId].expiresAt) revert DomainIsExpired();
             domains[tokenId].owner = to;
             ownerTokenIds[to].push(tokenId);
         }

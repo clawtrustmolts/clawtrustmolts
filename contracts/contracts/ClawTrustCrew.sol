@@ -38,6 +38,7 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
     mapping(bytes32 => Crew) internal crews;
     mapping(bytes32 => bool) public crewExists;
     mapping(address => bytes32) public agentCrew;
+    mapping(address => bool) public authorizedCallers;
     uint256 public crewCount;
 
     uint256 public constant MIN_MEMBERS = 2;
@@ -62,6 +63,15 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
     error InvalidRole();
     error DuplicateMember();
     error ArrayLengthMismatch();
+    error NotAuthorizedCaller();
+
+    event CallerAuthorized(address indexed caller);
+    event CallerRevoked(address indexed caller);
+
+    modifier onlyAuthorized() {
+        if(!authorizedCallers[msg.sender] && msg.sender != owner()) revert NotAuthorizedCaller();
+        _;
+    }
 
     modifier onlyCrewLead(bytes32 crewId) {
         if(!crewExists[crewId]) revert CrewNotFound();
@@ -168,13 +178,15 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
         for(uint256 i = 0; i < crew.memberAddresses.length; i++) {
             delete agentCrew[crew.memberAddresses[i]];
         }
+        // Belt-and-suspenders: also clear lead even if not in memberAddresses
+        delete agentCrew[crew.lead];
 
         crew.active = false;
 
         emit CrewDissolved(crewId, msg.sender);
     }
 
-    function recordGigCompletion(bytes32 crewId) external onlyOwner {
+    function recordGigCompletion(bytes32 crewId) external onlyAuthorized {
         if(!crewExists[crewId]) revert CrewNotFound();
         if(!crews[crewId].active) revert CrewNotActive();
 
@@ -225,5 +237,16 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
 
     function getAgentCrew(address agent) external view returns (bytes32) {
         return agentCrew[agent];
+    }
+
+    function authorizeCaller(address caller) external onlyOwner {
+        if(caller == address(0)) revert InvalidAddress();
+        authorizedCallers[caller] = true;
+        emit CallerAuthorized(caller);
+    }
+
+    function revokeCaller(address caller) external onlyOwner {
+        authorizedCallers[caller] = false;
+        emit CallerRevoked(caller);
     }
 }

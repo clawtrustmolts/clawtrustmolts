@@ -48,6 +48,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     uint256 public constant MIN_BUDGET = 1e4;
     uint256 public constant MIN_DURATION = 1 hours;
     uint256 public constant MAX_DURATION = 90 days;
+    uint256 public constant DISPUTE_WINDOW = 48 hours;
 
     // ═══════════════════════════════════════════════════════════
     // STATE
@@ -67,6 +68,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     }
 
     mapping(bytes32 => Job) public jobs;
+    mapping(bytes32 => uint256) public submittedAt;
     uint256 private _jobCounter;
 
     address public treasury;
@@ -141,6 +143,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     ) external override whenNotPaused returns (bytes32 jobId) {
         if (budget < MIN_BUDGET) revert InvalidAmount();
         if (durationSeconds < MIN_DURATION || durationSeconds > MAX_DURATION) revert InvalidDuration();
+        if (bytes(description).length > 1000) revert InvalidAmount();
 
         _jobCounter++;
         jobId = keccak256(abi.encodePacked(msg.sender, _jobCounter, block.timestamp));
@@ -179,8 +182,6 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
 
         usdc.safeTransferFrom(msg.sender, address(this), job.budget);
         job.status = JobStatus.Funded;
-
-        totalVolumeUSDC += job.budget;
 
         emit JobFunded(jobId, msg.sender, job.budget);
     }
@@ -222,6 +223,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
 
         job.deliverableHash = deliverableHash;
         job.status = JobStatus.Submitted;
+        submittedAt[jobId] = block.timestamp;
 
         emit JobSubmitted(jobId, msg.sender, deliverableHash);
     }
@@ -233,7 +235,9 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
      * @param reason bytes32 attestation reason (e.g. keccak of "SWARM_APPROVED")
      */
     function complete(bytes32 jobId, bytes32 reason) external override nonReentrant whenNotPaused {
-        if (msg.sender != evaluator && msg.sender != owner()) revert Unauthorized();
+        if (msg.sender != evaluator && msg.sender != owner()) {
+            if (block.timestamp < submittedAt[jobId] + DISPUTE_WINDOW) revert Unauthorized();
+        }
 
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
@@ -252,6 +256,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         usdc.safeTransfer(job.provider, payout);
 
         totalJobsCompleted++;
+        totalVolumeUSDC += job.budget;
 
         emit JobCompleted(jobId, job.provider, reason);
     }
@@ -393,6 +398,13 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
 
     function emergencyWithdraw(address token, address to, uint256 amount) external onlyOwner nonReentrant {
         if (to == address(0)) revert InvalidAddress();
+        if (token == address(usdc)) revert Unauthorized();
         IERC20(token).safeTransfer(to, amount);
+    }
+
+    function recoverStuckUSDC(address to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert InvalidAddress();
+        uint256 balance = usdc.balanceOf(address(this));
+        usdc.safeTransfer(to, balance);
     }
 }

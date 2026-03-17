@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("ClawTrustEscrow", function () {
-  let escrow, swarmValidator, mockUsdc, owner, depositor, payee, other;
+  let escrow, swarmValidator, mockUsdc, mockClawCard, owner, depositor, payee, other;
   const GIG_ID = ethers.id("gig-001");
   const GIG_ID_2 = ethers.id("gig-002");
   const FEE_RATE = 250;
@@ -19,11 +19,19 @@ describe("ClawTrustEscrow", function () {
     swarmValidator = await SwarmValidator.deploy(owner.address);
     await swarmValidator.waitForDeployment();
 
+    const MockClawCard = await ethers.getContractFactory("MockClawCard");
+    mockClawCard = await MockClawCard.deploy();
+    await mockClawCard.waitForDeployment();
+    // Register payee so identity check passes
+    await mockClawCard.setRegistered(payee.address, true);
+
     const Escrow = await ethers.getContractFactory("ClawTrustEscrow");
     escrow = await Escrow.deploy(
       await mockUsdc.getAddress(),
       await swarmValidator.getAddress(),
-      FEE_RATE
+      FEE_RATE,
+      await mockClawCard.getAddress(),
+      ethers.ZeroAddress
     );
     await escrow.waitForDeployment();
 
@@ -32,13 +40,14 @@ describe("ClawTrustEscrow", function () {
   });
 
   describe("lockUSDC", function () {
-    it("should lock USDC escrow", async function () {
+    it("should lock USDC escrow with requiresSwarmValidation=true", async function () {
       await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
       const e = await escrow.getEscrow(GIG_ID);
       expect(e.amount).to.equal(AMOUNT);
       expect(e.status).to.equal(1);
       expect(e.depositor).to.equal(depositor.address);
       expect(e.payee).to.equal(payee.address);
+      expect(e.requiresSwarmValidation).to.equal(true);
     });
 
     it("should revert on duplicate gigId", async function () {
@@ -59,11 +68,26 @@ describe("ClawTrustEscrow", function () {
         escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, 100)
       ).to.be.revertedWithCustomError(escrow, "BelowMinimumAmount");
     });
+
+    it("should revert if payee is not a registered agent", async function () {
+      await mockClawCard.setRegistered(other.address, false);
+      await expect(
+        escrow.connect(depositor).lockUSDC(GIG_ID, other.address, AMOUNT)
+      ).to.be.revertedWithCustomError(escrow, "PayeeNotRegisteredAgent");
+    });
+  });
+
+  describe("lockUSDCDirect", function () {
+    it("should lock USDC with requiresSwarmValidation=false", async function () {
+      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+      const e = await escrow.getEscrow(GIG_ID);
+      expect(e.requiresSwarmValidation).to.equal(false);
+    });
   });
 
   describe("release", function () {
-    it("should release USDC to payee with fee", async function () {
-      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+    it("should release USDC to payee with fee (using lockUSDCDirect)", async function () {
+      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
       const payeeBefore = await mockUsdc.balanceOf(payee.address);
       await escrow.connect(depositor).release(GIG_ID);
       const e = await escrow.getEscrow(GIG_ID);
@@ -74,18 +98,33 @@ describe("ClawTrustEscrow", function () {
     });
 
     it("should revert if not depositor or owner", async function () {
-      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
       await expect(
         escrow.connect(other).release(GIG_ID)
       ).to.be.revertedWithCustomError(escrow, "Unauthorized");
     });
 
     it("should revert if already released", async function () {
-      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
       await escrow.connect(depositor).release(GIG_ID);
       await expect(
         escrow.connect(depositor).release(GIG_ID)
       ).to.be.revertedWithCustomError(escrow, "InvalidStatus");
+    });
+
+    it("should revert with SwarmNotApproved when requiresSwarmValidation=true", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await expect(
+        escrow.connect(depositor).release(GIG_ID)
+      ).to.be.revertedWithCustomError(escrow, "SwarmNotApproved");
+    });
+
+    it("should allow release after setSwarmRequired(false)", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(owner).setSwarmRequired(GIG_ID, false);
+      await escrow.connect(depositor).release(GIG_ID);
+      const e = await escrow.getEscrow(GIG_ID);
+      expect(e.status).to.equal(2);
     });
   });
 
@@ -125,6 +164,7 @@ describe("ClawTrustEscrow", function () {
       await escrow.connect(depositor).dispute(GIG_ID);
       const e = await escrow.getEscrow(GIG_ID);
       expect(e.status).to.equal(4);
+      expect(e.disputedAt).to.be.gt(0);
     });
 
     it("payee can dispute", async function () {
@@ -176,6 +216,33 @@ describe("ClawTrustEscrow", function () {
     });
   });
 
+  describe("claimAfterDisputeTimeout", function () {
+    it("should release to payee after dispute timeout", async function () {
+      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(depositor).dispute(GIG_ID);
+      await ethers.provider.send("evm_increaseTime", [30 * 24 * 60 * 60 + 1]);
+      await ethers.provider.send("evm_mine");
+      const before = await mockUsdc.balanceOf(payee.address);
+      await escrow.connect(other).claimAfterDisputeTimeout(GIG_ID);
+      const after = await mockUsdc.balanceOf(payee.address);
+      expect(after).to.be.gt(before);
+    });
+
+    it("should revert before timeout", async function () {
+      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(depositor).dispute(GIG_ID);
+      await expect(
+        escrow.connect(other).claimAfterDisputeTimeout(GIG_ID)
+      ).to.be.revertedWithCustomError(escrow, "DisputeTimeoutNotReached");
+    });
+  });
+
+  describe("verifySwarmConnection", function () {
+    it("should return true", async function () {
+      expect(await escrow.verifySwarmConnection()).to.equal(true);
+    });
+  });
+
   describe("setPlatformFeeRate", function () {
     it("owner can set fee rate", async function () {
       await escrow.setPlatformFeeRate(500);
@@ -184,6 +251,17 @@ describe("ClawTrustEscrow", function () {
 
     it("reverts on fee too high", async function () {
       await expect(escrow.setPlatformFeeRate(1001)).to.be.revertedWithCustomError(escrow, "FeeTooHigh");
+    });
+  });
+
+  describe("setTreasury", function () {
+    it("owner can set treasury", async function () {
+      await escrow.setTreasury(other.address);
+      expect(await escrow.treasury()).to.equal(other.address);
+    });
+
+    it("reverts on zero address", async function () {
+      await expect(escrow.setTreasury(ethers.ZeroAddress)).to.be.revertedWithCustomError(escrow, "InvalidAddress");
     });
   });
 

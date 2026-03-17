@@ -41,15 +41,19 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
     uint256 public constant SWARM_THRESHOLD = 3;
     uint256 public constant MIN_FUSED_SCORE = 50;
 
+    address public treasury;
+
     event BondDeposited(address indexed agent, uint256 amount);
     event BondWithdrawn(address indexed agent, uint256 amount);
     event BondLocked(address indexed agent, uint256 amount, bytes32 gigId);
+    event BondLockRequested(bytes32 indexed gigId, address indexed agent, uint256 amount, address requester);
     event BondUnlocked(address indexed agent, uint256 amount, bytes32 gigId);
     event BondSlashed(address indexed agent, uint256 amount, bytes32 gigId, string reason);
     event SwarmVote(bytes32 gigId, address validator, bool approve);
     event PerformanceScoreUpdated(address indexed agent, uint256 performanceScore);
     event CallerAuthorized(address indexed caller);
     event CallerRevoked(address indexed caller);
+    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
 
     error BelowMinDeposit();
     error InsufficientBond();
@@ -100,13 +104,15 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
         emit BondWithdrawn(msg.sender, amount);
     }
 
-    function updatePerformanceScore(address agent, uint256 score) external onlyOwner {
+    function updatePerformanceScore(address agent, uint256 score) external onlyAuthorized {
         if(score > 100) revert ScoreOutOfRange();
         bonds[agent].performanceScore = score;
         emit PerformanceScoreUpdated(agent, score);
     }
 
     function lockBondForGig(bytes32 gigId, address agent, uint256 amount) external onlyAuthorized nonReentrant whenNotPaused {
+        emit BondLockRequested(gigId, agent, amount, msg.sender);
+
         if(gigExists[gigId]) revert GigAlreadyExists();
         if(amount == 0) revert ZeroAmount();
 
@@ -177,7 +183,7 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
             bond.available += remaining;
             bond.lastSlashTimestamp = block.timestamp;
 
-            usdcToken.safeTransfer(owner(), slashAmount);
+            usdcToken.safeTransfer(treasury != address(0) ? treasury : owner(), slashAmount);
 
             emit BondSlashed(gig.agent, slashAmount, gigId, "Swarm-rejected");
             if(remaining > 0) {
@@ -191,6 +197,13 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
         Gig storage gig = gigs[gigId];
         if(gig.finalized) revert GigAlreadyFinalized();
         _finalizeGig(gigId, success);
+    }
+
+    function setTreasury(address _treasury) external onlyOwner {
+        if(_treasury == address(0)) revert InvalidAddress();
+        address old = treasury;
+        treasury = _treasury;
+        emit TreasuryUpdated(old, _treasury);
     }
 
     function authorizeCaller(address caller) external onlyOwner {

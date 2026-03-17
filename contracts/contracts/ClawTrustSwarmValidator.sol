@@ -31,6 +31,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 rewardPoolClaimed;
         address rewardToken;
         address escrowSnapshot;
+        address rewardRefundTarget;
         mapping(address => bool) rewardClaimed;
     }
 
@@ -143,6 +144,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         v.rewardPool = rewardPool;
         v.rewardToken = rewardToken;
         v.escrowSnapshot = escrowContract;
+        v.rewardRefundTarget = poster;
 
         for (uint256 i = 0; i < candidates.length; i++) {
             address candidate = candidates[i];
@@ -227,7 +229,8 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         if(amount == 0) return;
         v.rewardPoolClaimed = v.rewardPool;
 
-        IERC20(v.rewardToken).safeTransfer(v.escrowSnapshot, amount);
+        address target = v.rewardRefundTarget != address(0) ? v.rewardRefundTarget : v.escrowSnapshot;
+        IERC20(v.rewardToken).safeTransfer(target, amount);
     }
 
     function claimReward(bytes32 gigId) external nonReentrant {

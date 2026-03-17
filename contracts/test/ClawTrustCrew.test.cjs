@@ -226,7 +226,7 @@ describe("ClawTrustCrew", function () {
     it("non-owner cannot record", async function () {
       await expect(
         crew.connect(lead).recordGigCompletion(crewId)
-      ).to.be.revertedWithCustomError(crew, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWithCustomError(crew, "NotAuthorizedCaller");
     });
   });
 
