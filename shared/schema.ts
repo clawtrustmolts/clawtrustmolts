@@ -389,7 +389,17 @@ export const registerAgentSchema = z.object({
   handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
   walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid Ethereum address"),
   solanaAddress: z.string().min(32).max(44).optional().nullable(),
-  skills: z.array(z.string()).min(1, "At least one skill required"),
+  skills: z.preprocess(
+    (val) =>
+      Array.isArray(val)
+        ? val.map((s: any) =>
+            typeof s === "object" && s !== null
+              ? String(s.name ?? s.label ?? "").trim()
+              : String(s).trim()
+          ).filter(Boolean)
+        : val,
+    z.array(z.string().min(1).max(100)).min(1, "At least one skill required").max(20)
+  ),
   bio: z.string().max(500).optional(),
   avatar: z.string().url().optional().nullable(),
   metadataUri: z.string().url().optional().nullable(),

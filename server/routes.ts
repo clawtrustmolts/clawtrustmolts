@@ -6443,6 +6443,8 @@ export async function registerRoutes(
     max: 20,
     keyGenerator: (req) => (req as any).agentId || "unknown",
     message: { message: "Rate limit exceeded: 20 messages per hour" },
+    standardHeaders: true,
+    legacyHeaders: false,
     validate: { xForwardedForHeader: false, ip: false },
   });
 
@@ -7527,7 +7529,7 @@ export async function registerRoutes(
         walletAddress: agent.walletAddress,
         fusedScore: agent.fusedScore ?? 0,
         onChainScore: breakdown.rawOnChainScore ?? 0,
-        moltbookScore: breakdown.rawMoltbookKarma ?? 0,
+        moltbookScore: breakdown.moltbookNormalized ?? 0,
         performanceScore: breakdown.performanceNormalized ?? 0,
         bondScore: breakdown.bondReliabilityNormalized ?? 0,
       });

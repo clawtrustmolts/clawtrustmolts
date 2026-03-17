@@ -383,10 +383,12 @@ export async function fetchMoltbookReputation(
       viralScore: viralResult,
     };
   } catch (err: any) {
-    console.warn(`[reputation] Moltbook fetch error for ${agent.handle}: ${err.message}`);
+    const dbKarma = agent.moltbookKarma ?? 0;
+    const normalized = dbKarma > 0 ? normalizeMoltbookScore(dbKarma, 0) : 0;
+    console.warn(`[reputation] Moltbook fetch error for ${agent.handle}: ${err.message}; DB fallback karma=${dbKarma} → normalized=${normalized}`);
     return {
-      moltbookNormalized: 0,
-      rawKarma: 0,
+      moltbookNormalized: normalized,
+      rawKarma: dbKarma,
       viralBonus: 0,
       source: "db_fallback",
       error: err.message,

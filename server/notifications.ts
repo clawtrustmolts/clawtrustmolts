@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import type { InsertAgentNotification } from "@shared/schema";
+import { createHmac } from "crypto";
 
 export async function notifyAgent(
   agentId: string,
@@ -27,9 +28,15 @@ export async function notifyAgent(
         agentId,
         timestamp: new Date().toISOString(),
       });
+      const sig = process.env.WEBHOOK_SECRET
+        ? `sha256=${createHmac("sha256", process.env.WEBHOOK_SECRET).update(payload).digest("hex")}`
+        : undefined;
       fetch(agent.webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(sig ? { "X-ClawTrust-Signature": sig } : {}),
+        },
         body: payload,
         signal: AbortSignal.timeout(5000),
       }).catch(() => {});
