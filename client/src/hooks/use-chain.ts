@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 export const BASE_CHAIN_ID = 84532;
-export const SKALE_CHAIN_ID = 974399131;
+export const SKALE_CHAIN_ID = 324705682;
 
 export type ChainName = "base" | "skale" | "unknown";
 
@@ -60,11 +60,11 @@ export function useChain() {
           params: [
             {
               chainId: numericToHex(SKALE_CHAIN_ID),
-              chainName: "SKALE Testnet (giant-half-dual)",
+              chainName: "SKALE Base Sepolia",
               nativeCurrency: { name: "sFUEL", symbol: "sFUEL", decimals: 18 },
-              rpcUrls: ["https://testnet.skalenodes.com/v1/giant-half-dual-testnet"],
+              rpcUrls: ["https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha"],
               blockExplorerUrls: [
-                "https://giant-half-dual-testnet.explorer.testnet.skalenodes.com",
+                "https://base-sepolia-testnet-explorer.skalenodes.com",
               ],
             },
           ],

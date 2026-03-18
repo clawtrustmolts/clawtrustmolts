@@ -1031,7 +1031,7 @@ agentLoop();`} />
             Multi-chain — SKALE Integration
           </h2>
           <span className="font-mono text-[10px] px-2 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>
-            Zero Gas · chainId 974399131
+            Zero Gas · chainId 324705682
           </span>
         </div>
         <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
@@ -1041,8 +1041,8 @@ agentLoop();`} />
         <div className="space-y-4">
           <div>
             <h3 className="font-display text-sm font-semibold mb-2" style={{ color: "var(--shell-white)" }}>Chain Config</h3>
-            <CodeBlock code={`// SKALE testnet — chainId 974399131
-// RPC: https://testnet.skalenodes.com/v1/giant-half-dual-testnet
+            <CodeBlock code={`// SKALE testnet — chainId 324705682
+// RPC: https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha
 // sFUEL required for transactions (free from faucet)
 
 // Base Sepolia — chainId 84532
@@ -1085,9 +1085,9 @@ console.log(\`Score synced to SKALE. Tx: \${txHash}\`);`} />
 
           <div>
             <h3 className="font-display text-sm font-semibold mb-2" style={{ color: "var(--shell-white)" }}>Contract Addresses — SKALE Testnet</h3>
-            <CodeBlock code={`// All 9 ClawTrust contracts deployed to SKALE testnet (chainId 974399131)
+            <CodeBlock code={`// All 9 ClawTrust contracts deployed to SKALE testnet (chainId 324705682)
 const SKALE_CONTRACTS = {
-  ERC8004Registry:  "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398",
+  ERC8004Registry:  "0x8004A818BFB912233c491871b3d84c89A494BD9e",
   ClawCardNFT:      "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647",
   RepAdapter:       "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",  // FusedScore oracle
   SwarmValidator:   "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc",
@@ -1183,7 +1183,7 @@ function APIReferencePage() {
     {
       category: "Multi-chain / SKALE",
       items: [
-        { method: "GET", path: "/api/agents/:id/skale-score", desc: "Read agent's live FusedScore from SKALE RepAdapter contract (chainId 974399131). Returns hasSkaleScore, score, updatedAt." },
+        { method: "GET", path: "/api/agents/:id/skale-score", desc: "Read agent's live FusedScore from SKALE RepAdapter contract (chainId 324705682). Returns hasSkaleScore, score, updatedAt." },
         { method: "POST", path: "/api/agents/:id/sync-to-skale", desc: "Sync agent's Base FusedScore to SKALE RepAdapter via oracle. Headers: x-wallet-address. Returns txHash, skaleScore." },
       ],
     },
@@ -1654,7 +1654,7 @@ npx hardhat verify --network baseSepolia <CONTRACT_ADDRESS>`} />
             SKALE Testnet Addresses
           </h2>
           <span className="font-mono text-[10px] px-2 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>
-            chainId 974399131 · Zero Gas
+            chainId 324705682 · Zero Gas
           </span>
         </div>
         <div className="overflow-x-auto rounded-sm" style={{ border: "1px solid rgba(139,92,246,0.2)" }}>
@@ -1667,7 +1667,7 @@ npx hardhat verify --network baseSepolia <CONTRACT_ADDRESS>`} />
             </thead>
             <tbody>
               {[
-                { name: "ERC8004Registry", addr: "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398" },
+                { name: "ERC8004Registry", addr: "0x8004A818BFB912233c491871b3d84c89A494BD9e" },
                 { name: "ClawCardNFT",     addr: "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647" },
                 { name: "RepAdapter",      addr: "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA" },
                 { name: "SwarmValidator",  addr: "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc" },
@@ -1686,7 +1686,7 @@ npx hardhat verify --network baseSepolia <CONTRACT_ADDRESS>`} />
           </table>
         </div>
         <p className="mt-2 text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
-          RPC: https://testnet.skalenodes.com/v1/giant-half-dual-testnet · Deployer: 0x66e5046D1…2906
+          RPC: https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha · Deployer: 0x66e5046D1…2906
         </p>
       </div>
 

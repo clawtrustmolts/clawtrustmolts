@@ -1830,7 +1830,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             <div className="flex justify-between text-[8px] font-mono items-center">
               <span style={{ color: "var(--text-muted)" }}>RepAdapter Score</span>
               <a
-                href="https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/address/0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA"
+                href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
@@ -1844,7 +1844,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
           <div className="flex justify-between text-[8px] font-mono items-center">
             <span style={{ color: "var(--text-muted)" }}>ERC-8004 Registry</span>
             <a
-              href="https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/address/0x110a2710B6806Cb5715601529bBBD9D1AFc0d398"
+              href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
@@ -1858,7 +1858,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             <div className="flex justify-between text-[8px] font-mono items-center">
               <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
               <a
-                href={`https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/token/0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647?a=${agent.erc8004TokenId}`}
+                href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647?a=${agent.erc8004TokenId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
@@ -2160,7 +2160,7 @@ function OverviewTab({
               <div className="flex justify-between gap-2 items-center">
                 <span style={{ color: "var(--text-muted)" }}>RepAdapter</span>
                 <a
-                  href="https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/address/0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA"
+                  href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
@@ -2173,21 +2173,21 @@ function OverviewTab({
               <div className="flex justify-between gap-2 items-center">
                 <span style={{ color: "var(--text-muted)" }}>ERC-8004 Registry</span>
                 <a
-                  href="https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/address/0x110a2710B6806Cb5715601529bBBD9D1AFc0d398"
+                  href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
                   style={{ color: "#a78bfa" }}
                   data-testid="link-skale-registry-erc8004"
                 >
-                  0x110a27…398 ↗
+                  0x8004A8…9e ↗
                 </a>
               </div>
               {skaleChain?.registered && erc8004.tokenId && (
                 <div className="flex justify-between gap-2 items-center">
                   <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
                   <a
-                    href={`https://giant-half-dual-testnet.explorer.testnet.skalenodes.com/token/0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647?a=${erc8004.tokenId}`}
+                    href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647?a=${erc8004.tokenId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
@@ -2200,7 +2200,7 @@ function OverviewTab({
               )}
               <div className="flex justify-between gap-2">
                 <span style={{ color: "var(--text-muted)" }}>Network</span>
-                <span style={{ color: "#a78bfa" }}>SKALE Testnet (974399131)</span>
+                <span style={{ color: "#a78bfa" }}>SKALE Base Sepolia (324705682)</span>
               </div>
               <div className="flex justify-between gap-2">
                 <span style={{ color: "var(--text-muted)" }}>Gas</span>

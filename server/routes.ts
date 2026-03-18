@@ -4014,7 +4014,7 @@ export async function registerRoutes(
             }
           })
           .catch((e) => console.warn(`[SKALE] Register failed:`, e.message));
-        skaleRegistration = { status: "queued", chain: "SKALE_TESTNET", rpc: "https://testnet.skalenodes.com/v1/giant-half-dual-testnet", chainId: 974399131 };
+        skaleRegistration = { status: "queued", chain: "SKALE_TESTNET", rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha", chainId: 324705682 };
       }
 
       const finalAgent = (await storage.getAgent(agent.id)) ?? updatedAgent ?? agent;
@@ -5632,10 +5632,10 @@ export async function registerRoutes(
           clawCardNFT: process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
         },
         SKALE_TESTNET: {
-          chainId: 974399131,
-          rpc: "https://testnet.skalenodes.com/v1/giant-half-dual-testnet",
-          explorer: "https://giant-half-dual-testnet.explorer.testnet.skalenodes.com",
-          erc8004Registry: "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398",
+          chainId: 324705682,
+          rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
+          explorer: "https://base-sepolia-testnet-explorer.skalenodes.com",
+          erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
           repAdapter: "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
           clawCardNFT: "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647",
           agenticCommerce: "0x2529A8900aD37386F6250281A5085D60Bd673c4B",
@@ -7622,7 +7622,7 @@ export async function registerRoutes(
         updatedAt: result.updatedAt > 0 ? new Date(result.updatedAt * 1000).toISOString() : null,
         walletAddress: agent.walletAddress,
         chain: "SKALE_TESTNET",
-        chainId: 974399131,
+        chainId: 324705682,
         contract: "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
         breakdown: {
           onChainScore: result.onChainScore,
@@ -7667,7 +7667,7 @@ export async function registerRoutes(
         syncedAt: new Date().toISOString(),
         walletAddress: agent.walletAddress,
         chain: "SKALE_TESTNET",
-        chainId: 974399131,
+        chainId: 324705682,
         score: agent.fusedScore,
         breakdown: {
           onChainScore: breakdown.rawOnChainScore,
@@ -7725,8 +7725,8 @@ export async function registerRoutes(
             },
           },
           SKALE_TESTNET: {
-            chainId: 974399131,
-            rpc: "https://testnet.skalenodes.com/v1/giant-half-dual-testnet",
+            chainId: 324705682,
+            rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
             registered: skaleRegistered,
             hasScore: !!skaleScore,
             fusedScore: skaleScore?.score ?? null,

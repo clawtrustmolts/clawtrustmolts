@@ -118,6 +118,7 @@ export function ChainBadge({ chain }: { chain: string }) {
   const isSkale =
     chain === "skale" ||
     chain === "974399131" ||
+    chain === "324705682" ||
     chain?.toLowerCase().includes("skale");
 
   if (isSkale) {
