@@ -14,16 +14,17 @@ const skaleTestnet = {
 } as const;
 
 // Deployed to SKALE Base Sepolia (324705682) — 2026-03-18 via scripts/deploy-skale-base.mjs
+// x402Facilitator deployed as address(0) then set via setX402Facilitator (secure-by-default)
 const SKALE_CONTRACTS = {
   erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e" as Address, // canonical ERC-8004 — never redeploy
-  clawCardNFT:     "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3" as Address,
-  repAdapter:      "0x29fd67501afd535599ff83AE072c20E31Afab958" as Address,
-  agenticCommerce: "0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91" as Address,
-  escrow:          "0x21De95EbA01E31173Efe1b9c4D57E58bb840bA86" as Address,
-  swarmValidator:  "0x2529A8900aD37386F6250281A5085D60Bd673c4B" as Address,
-  bond:            "0xFb419D8E32c14F774279a4dEEf330dc893257147" as Address,
-  crew:            "0x6818bbb8f604b4c0b52320f633C1E5BF2c5b07bd" as Address,
-  registry:        "0x659e28aBa9cA6d6b83fa8bB9C5940155Fa609e4E" as Address,
+  clawCardNFT:     "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83" as Address,
+  repAdapter:      "0xFafCA23a7c085A842E827f53A853141C8243F924" as Address,
+  agenticCommerce: "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6" as Address,
+  escrow:          "0x39601883CD9A115Aba0228fe0620f468Dc710d54" as Address,
+  swarmValidator:  "0x7693a841Eec79Da879241BC0eCcc80710F39f399" as Address,
+  bond:            "0x5bC40A7a47A2b767D948FEEc475b24c027B43867" as Address,
+  crew:            "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0" as Address,
+  registry:        "0xecc00bbE268Fa4D0330180e0fB445f64d824d818" as Address,
 };
 
 // ABI matches ClawTrustRepAdapter v1.14.0 deployed on SKALE Base Sepolia (324705682)

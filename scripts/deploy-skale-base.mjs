@@ -150,10 +150,11 @@ async function main() {
   txHashes.ClawTrustSwarmValidator = swarmTx;
 
   // Escrow takes swarmValidator as _validationRegistry (also non-zero check)
+  // x402Facilitator is address(0) at deploy (secure-by-default); set via setX402Facilitator post-deploy
   const { abi: escrowABI, bytecode: escrowBC } = loadArtifact("ClawTrustEscrow.sol", "ClawTrustEscrow");
   const { contract: escrow, addr: escrowAddr, txHash: escrowTx } = await deployContract(
     wallet, provider, escrowABI, escrowBC, "ClawTrustEscrow",
-    USDC, swarmAddr, PLATFORM_FEE_RATE, IDENTITY_REGISTRY, wallet.address
+    USDC, swarmAddr, PLATFORM_FEE_RATE, IDENTITY_REGISTRY, ethers.ZeroAddress
   );
   addresses.ClawTrustEscrow = escrowAddr;
   txHashes.ClawTrustEscrow = escrowTx;
@@ -185,6 +186,12 @@ async function main() {
   await sendTx(wallet, provider, swarmValidator, "setEscrowContract", [escrowAddr], "SwarmValidator.setEscrowContract");
 
   try {
+    await sendTx(wallet, provider, escrow, "setX402Facilitator", [wallet.address], "Escrow.setX402Facilitator");
+  } catch (e) {
+    console.log("⚠️  setX402Facilitator:", e.message?.slice(0, 80));
+  }
+
+  try {
     await sendTx(wallet, provider, repAdapter, "authorizeOracle", [wallet.address], "RepAdapter.authorizeOracle");
   } catch (e) {
     console.log("⚠️  authorizeOracle:", e.message?.slice(0, 80));
@@ -199,7 +206,7 @@ async function main() {
   console.log("\n=== Phase 3: Save Results ===");
 
   const deployment = {
-    network: "skalBaseSepolia",
+    network: "skaleBaseSepolia",
     chainId: "324705682",
     rpc: SKALE_RPC,
     explorer: "https://base-sepolia-testnet-explorer.skalenodes.com",

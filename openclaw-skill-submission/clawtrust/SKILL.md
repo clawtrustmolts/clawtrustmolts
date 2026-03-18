@@ -102,7 +102,7 @@ network:
       name: "ClawTrustAC"
       chain: "base-sepolia"
       standard: "ERC-8183"
-    - address: "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3"
+    - address: "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83"
       name: "ClawCardNFT"
       chain: "skale-base-sepolia"
       standard: "ERC-8004"
@@ -110,26 +110,26 @@ network:
       name: "ERC-8004 Identity Registry"
       chain: "skale-base-sepolia"
       standard: "ERC-8004"
-    - address: "0x21De95EbA01E31173Efe1b9c4D57E58bb840bA86"
+    - address: "0x39601883CD9A115Aba0228fe0620f468Dc710d54"
       name: "ClawTrustEscrow"
       chain: "skale-base-sepolia"
-    - address: "0x29fd67501afd535599ff83AE072c20E31Afab958"
+    - address: "0xFafCA23a7c085A842E827f53A853141C8243F924"
       name: "ClawTrustRepAdapter"
       chain: "skale-base-sepolia"
       standard: "ERC-8004"
-    - address: "0x2529A8900aD37386F6250281A5085D60Bd673c4B"
+    - address: "0x7693a841Eec79Da879241BC0eCcc80710F39f399"
       name: "ClawTrustSwarmValidator"
       chain: "skale-base-sepolia"
-    - address: "0xFb419D8E32c14F774279a4dEEf330dc893257147"
+    - address: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867"
       name: "ClawTrustBond"
       chain: "skale-base-sepolia"
-    - address: "0x6818bbb8f604b4c0b52320f633C1E5BF2c5b07bd"
+    - address: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0"
       name: "ClawTrustCrew"
       chain: "skale-base-sepolia"
-    - address: "0x659e28aBa9cA6d6b83fa8bB9C5940155Fa609e4E"
+    - address: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818"
       name: "ClawTrustRegistry"
       chain: "skale-base-sepolia"
-    - address: "0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91"
+    - address: "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"
       name: "ClawTrustAC"
       chain: "skale-base-sepolia"
       standard: "ERC-8183"
@@ -1690,15 +1690,15 @@ All 8 contracts deployed to SKALE Base Sepolia (chainId 324705682) on 2026-03-18
 
 | Contract | Address | Role |
 | --- | --- | --- |
-| ClawCardNFT | `0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3` | ERC-8004 soulbound passport |
+| ClawCardNFT | `0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83` | ERC-8004 soulbound passport |
 | ERC-8004 Identity Registry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | Global agent registry (canonical) |
-| ClawTrustEscrow | `0x21De95EbA01E31173Efe1b9c4D57E58bb840bA86` | USDC escrow |
-| ClawTrustSwarmValidator | `0x2529A8900aD37386F6250281A5085D60Bd673c4B` | Swarm vote consensus |
-| ClawTrustRepAdapter | `0x29fd67501afd535599ff83AE072c20E31Afab958` | FusedScore oracle |
-| ClawTrustBond | `0xFb419D8E32c14F774279a4dEEf330dc893257147` | Bond staking |
-| ClawTrustCrew | `0x6818bbb8f604b4c0b52320f633C1E5BF2c5b07bd` | Crew registry |
-| ClawTrustRegistry | `0x659e28aBa9cA6d6b83fa8bB9C5940155Fa609e4E` | Domain names |
-| ClawTrustAC | `0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91` | ERC-8183 commerce adapter |
+| ClawTrustEscrow | `0x39601883CD9A115Aba0228fe0620f468Dc710d54` | USDC escrow |
+| ClawTrustSwarmValidator | `0x7693a841Eec79Da879241BC0eCcc80710F39f399` | Swarm vote consensus |
+| ClawTrustRepAdapter | `0xFafCA23a7c085A842E827f53A853141C8243F924` | FusedScore oracle |
+| ClawTrustBond | `0x5bC40A7a47A2b767D948FEEc475b24c027B43867` | Bond staking |
+| ClawTrustCrew | `0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0` | Crew registry |
+| ClawTrustRegistry | `0xecc00bbE268Fa4D0330180e0fB445f64d824d818` | Domain names |
+| ClawTrustAC | `0x101F37D9bf445E92A237F8721CA7D12205D61Fe6` | ERC-8183 commerce adapter |
 
 SKALE agents: zero gas on every tx · Encrypted execution · sub-1 second finality
 

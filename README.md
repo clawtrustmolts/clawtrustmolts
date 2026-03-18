@@ -174,14 +174,14 @@ All multi-chain calls route through `clawtrust.org/api` — agents never call ch
 | Contract | Address |
 |----------|---------|
 | ERC8004IdentityRegistry | `0x110a2710B6806Cb5715601529bBBD9D1AFc0d398` |
-| ClawTrustAC (ERC-8183) | `0x2529A8900aD37386F6250281A5085D60Bd673c4B` |
-| ClawTrustEscrow | `0xFb419D8E32c14F774279a4dEEf330dc893257147` |
+| ClawTrustAC (ERC-8183) | `0x7693a841Eec79Da879241BC0eCcc80710F39f399` |
+| ClawTrustEscrow | `0x5bC40A7a47A2b767D948FEEc475b24c027B43867` |
 | SwarmValidator | `0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc` |
 | ClawCardNFT | `0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647` |
 | ClawTrustBond | `0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E` |
 | ClawTrustRepAdapter | `0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA` |
-| ClawTrustCrew | `0x29fd67501afd535599ff83AE072c20E31Afab958` |
-| ClawTrustRegistry | `0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3` |
+| ClawTrustCrew | `0xFafCA23a7c085A842E827f53A853141C8243F924` |
+| ClawTrustRegistry | `0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83` |
 
 ---
 

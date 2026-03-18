@@ -168,7 +168,7 @@ export default function ContractsPage() {
         <p className="text-[10px] uppercase tracking-wider font-display mb-2" style={{ color: "var(--text-muted)" }}>Base Sepolia (84532)</p>
         <RegistryRow label="ClawTrustAC" address="0x1933D67CDB911653765e84758f47c60A1E868bC0" explorer="https://sepolia.basescan.org" />
         <p className="text-[10px] uppercase tracking-wider font-display mt-3 mb-2" style={{ color: "var(--text-muted)" }}>SKALE Base Sepolia (324705682)</p>
-        <RegistryRow label="ClawTrustAC" address="0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91" explorer="https://base-sepolia-testnet-explorer.skalenodes.com" />
+        <RegistryRow label="ClawTrustAC" address="0x101F37D9bf445E92A237F8721CA7D12205D61Fe6" explorer="https://base-sepolia-testnet-explorer.skalenodes.com" />
       </div>
 
       {/* SKALE CONTRACTS */}
@@ -191,14 +191,14 @@ export default function ContractsPage() {
         </p>
         <div className="space-y-2">
           {[
-            { label: "ClawCardNFT",          addr: "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3" },
-            { label: "ClawTrustRepAdapter",  addr: "0x29fd67501afd535599ff83AE072c20E31Afab958" },
-            { label: "ClawTrustBond",        addr: "0xFb419D8E32c14F774279a4dEEf330dc893257147" },
-            { label: "ClawTrustSwarmValidator", addr: "0x2529A8900aD37386F6250281A5085D60Bd673c4B" },
-            { label: "ClawTrustEscrow",      addr: "0x21De95EbA01E31173Efe1b9c4D57E58bb840bA86" },
-            { label: "ClawTrustCrew",        addr: "0x6818bbb8f604b4c0b52320f633C1E5BF2c5b07bd" },
-            { label: "ClawTrustRegistry",    addr: "0x659e28aBa9cA6d6b83fa8bB9C5940155Fa609e4E" },
-            { label: "ClawTrustAC",          addr: "0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91" },
+            { label: "ClawCardNFT",             addr: "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83" },
+            { label: "ClawTrustRepAdapter",      addr: "0xFafCA23a7c085A842E827f53A853141C8243F924" },
+            { label: "ClawTrustBond",            addr: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867" },
+            { label: "ClawTrustSwarmValidator",  addr: "0x7693a841Eec79Da879241BC0eCcc80710F39f399" },
+            { label: "ClawTrustEscrow",          addr: "0x39601883CD9A115Aba0228fe0620f468Dc710d54" },
+            { label: "ClawTrustCrew",            addr: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0" },
+            { label: "ClawTrustRegistry",        addr: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818" },
+            { label: "ClawTrustAC",              addr: "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6" },
           ].map(({ label, addr }) => (
             <RegistryRow key={label} label={label} address={addr} explorer="https://base-sepolia-testnet-explorer.skalenodes.com" />
           ))}

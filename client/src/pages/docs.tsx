@@ -1088,14 +1088,14 @@ console.log(\`Score synced to SKALE. Tx: \${txHash}\`);`} />
             <CodeBlock code={`// All 8 ClawTrust contracts deployed to SKALE Base Sepolia (chainId 324705682)
 const SKALE_CONTRACTS = {
   ERC8004Registry:  "0x8004A818BFB912233c491871b3d84c89A494BD9e",  // canonical
-  ClawCardNFT:      "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3",
-  RepAdapter:       "0x29fd67501afd535599ff83AE072c20E31Afab958",  // FusedScore oracle
-  SwarmValidator:   "0x2529A8900aD37386F6250281A5085D60Bd673c4B",
-  Bond:             "0xFb419D8E32c14F774279a4dEEf330dc893257147",
-  Escrow:           "0x21De95EbA01E31173Efe1b9c4D57E58bb840bA86",
-  Crew:             "0x6818bbb8f604b4c0b52320f633C1E5BF2c5b07bd",
-  ClawTrustRegistry:"0x659e28aBa9cA6d6b83fa8bB9C5940155Fa609e4E",
-  AC:               "0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91",
+  ClawCardNFT:      "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83",
+  RepAdapter:       "0xFafCA23a7c085A842E827f53A853141C8243F924",  // FusedScore oracle
+  SwarmValidator:   "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
+  Bond:             "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
+  Escrow:           "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
+  Crew:             "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
+  ClawTrustRegistry:"0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+  AC:               "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
 };
 
 // Base Sepolia contracts (chainId 84532)
@@ -1668,14 +1668,14 @@ npx hardhat verify --network baseSepolia <CONTRACT_ADDRESS>`} />
             <tbody>
               {[
                 { name: "ERC8004Registry", addr: "0x8004A818BFB912233c491871b3d84c89A494BD9e" },
-                { name: "ClawCardNFT",     addr: "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3" },
-                { name: "RepAdapter",      addr: "0x29fd67501afd535599ff83AE072c20E31Afab958" },
-                { name: "SwarmValidator",  addr: "0x2529A8900aD37386F6250281A5085D60Bd673c4B" },
-                { name: "Bond",            addr: "0xFb419D8E32c14F774279a4dEEf330dc893257147" },
-                { name: "Escrow",          addr: "0x21De95EbA01E31173Efe1b9c4D57E58bb840bA86" },
-                { name: "Crew",            addr: "0x6818bbb8f604b4c0b52320f633C1E5BF2c5b07bd" },
-                { name: "ClawTrustRegistry", addr: "0x659e28aBa9cA6d6b83fa8bB9C5940155Fa609e4E" },
-                { name: "AC (ERC-8183)",   addr: "0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91" },
+                { name: "ClawCardNFT",       addr: "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83" },
+                { name: "RepAdapter",        addr: "0xFafCA23a7c085A842E827f53A853141C8243F924" },
+                { name: "SwarmValidator",    addr: "0x7693a841Eec79Da879241BC0eCcc80710F39f399" },
+                { name: "Bond",              addr: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867" },
+                { name: "Escrow",            addr: "0x39601883CD9A115Aba0228fe0620f468Dc710d54" },
+                { name: "Crew",              addr: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0" },
+                { name: "ClawTrustRegistry", addr: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818" },
+                { name: "AC (ERC-8183)",     addr: "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6" },
               ].map(row => (
                 <tr key={row.name} style={{ borderBottom: "1px solid rgba(139,92,246,0.08)" }}>
                   <td className="px-4 py-2.5 font-semibold" style={{ color: "#a78bfa" }}>{row.name}</td>

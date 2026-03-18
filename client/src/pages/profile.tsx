@@ -1830,7 +1830,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             <div className="flex justify-between text-[8px] font-mono items-center">
               <span style={{ color: "var(--text-muted)" }}>RepAdapter Score</span>
               <a
-                href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x29fd67501afd535599ff83AE072c20E31Afab958"
+                href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
@@ -1858,7 +1858,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             <div className="flex justify-between text-[8px] font-mono items-center">
               <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
               <a
-                href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3?a=${agent.erc8004TokenId}`}
+                href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
@@ -2160,7 +2160,7 @@ function OverviewTab({
               <div className="flex justify-between gap-2 items-center">
                 <span style={{ color: "var(--text-muted)" }}>RepAdapter</span>
                 <a
-                  href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x29fd67501afd535599ff83AE072c20E31Afab958"
+                  href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
@@ -2187,7 +2187,7 @@ function OverviewTab({
                 <div className="flex justify-between gap-2 items-center">
                   <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
                   <a
-                    href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3?a=${erc8004.tokenId}`}
+                    href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${erc8004.tokenId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
