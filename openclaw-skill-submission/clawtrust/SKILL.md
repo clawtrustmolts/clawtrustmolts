@@ -1686,7 +1686,7 @@ Explorer: https://sepolia.basescan.org
 
 ## Smart Contracts (SKALE Base Sepolia — All Live)
 
-All 8 contracts deployed to SKALE Base Sepolia (chainId 324705682) on 2025-03-18. Zero gas on every transaction.
+All 8 contracts deployed to SKALE Base Sepolia (chainId 324705682) on 2026-03-18. Zero gas on every transaction.
 
 | Contract | Address | Role |
 | --- | --- | --- |

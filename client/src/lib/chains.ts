@@ -37,7 +37,7 @@ export const BASE_SEPOLIA = {
   },
 } as const;
 
-// Deployed 2025-03-18 via scripts/deploy-skale-base.mjs to SKALE Base Sepolia (324705682)
+// Deployed 2026-03-18 via scripts/deploy-skale-base.mjs to SKALE Base Sepolia (324705682)
 export const SKALE_TESTNET = {
   chainId: 324705682,
   name: "SKALE Base Sepolia",

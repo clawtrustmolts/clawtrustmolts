@@ -1,5 +1,5 @@
 {
-  "network": "skalBaseSepolia",
+  "network": "skaleBaseSepolia",
   "chainId": "324705682",
   "rpc": "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
   "explorer": "https://base-sepolia-testnet-explorer.skalenodes.com",

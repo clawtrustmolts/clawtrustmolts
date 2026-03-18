@@ -184,7 +184,7 @@ export default function ContractsPage() {
           <Zap className="w-4 h-4" /> SKALE BASE SEPOLIA CONTRACTS
         </h2>
         <p className="text-[10px] font-mono mb-4" style={{ color: "var(--text-muted)" }}>
-          Chain 324705682 · Zero gas · Deployed 2025-03-18 · Explorer:{" "}
+          Chain 324705682 · Zero gas · Deployed 2026-03-18 · Explorer:{" "}
           <a href="https://base-sepolia-testnet-explorer.skalenodes.com" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--teal-glow)" }}>
             base-sepolia-testnet-explorer.skalenodes.com
           </a>

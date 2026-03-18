@@ -13,7 +13,7 @@ const skaleTestnet = {
   },
 } as const;
 
-// Deployed to SKALE Base Sepolia (324705682) — 2025-03-18 via scripts/deploy-skale-base.mjs
+// Deployed to SKALE Base Sepolia (324705682) — 2026-03-18 via scripts/deploy-skale-base.mjs
 const SKALE_CONTRACTS = {
   erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e" as Address, // canonical ERC-8004 — never redeploy
   clawCardNFT:     "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3" as Address,
