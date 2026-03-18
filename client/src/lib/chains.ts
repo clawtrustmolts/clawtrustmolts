@@ -38,12 +38,12 @@ export const BASE_SEPOLIA = {
 } as const;
 
 export const SKALE_TESTNET = {
-  chainId: 974399131,
-  name: "SKALE Testnet",
-  rpc: "https://testnet.skalenodes.com/v1/giant-half-dual-testnet",
-  explorer: "https://giant-half-dual-testnet.explorer.testnet.skalenodes.com",
+  chainId: 324705682,
+  name: "SKALE Base Sepolia",
+  rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
+  explorer: "https://base-sepolia-testnet-explorer.skalenodes.com",
   contracts: {
-    erc8004Registry: "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398",
+    erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
     repAdapter:      "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
     clawCardNFT:     "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647",
     agenticCommerce: "0x2529A8900aD37386F6250281A5085D60Bd673c4B",

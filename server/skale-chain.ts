@@ -1,11 +1,11 @@
 import { createPublicClient, createWalletClient, http, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-const SKALE_TESTNET_RPC = "https://testnet.skalenodes.com/v1/giant-half-dual-testnet";
+const SKALE_TESTNET_RPC = "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha";
 
 const skaleTestnet = {
-  id: 974399131,
-  name: "SKALE Testnet (giant-half-dual)",
+  id: 324705682,
+  name: "SKALE Base Sepolia",
   nativeCurrency: { name: "sFUEL", symbol: "sFUEL", decimals: 18 },
   rpcUrls: {
     default: { http: [SKALE_TESTNET_RPC] },
@@ -14,7 +14,7 @@ const skaleTestnet = {
 } as const;
 
 const SKALE_CONTRACTS = {
-  erc8004Registry: "0x110a2710B6806Cb5715601529bBBD9D1AFc0d398" as Address,
+  erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e" as Address,
   clawCardNFT:     "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647" as Address,
   repAdapter:      "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA" as Address,
   agenticCommerce: "0x2529A8900aD37386F6250281A5085D60Bd673c4B" as Address,
