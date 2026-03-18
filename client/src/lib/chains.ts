@@ -37,6 +37,7 @@ export const BASE_SEPOLIA = {
   },
 } as const;
 
+// Deployed 2025-03-18 via scripts/deploy-skale-base.mjs to SKALE Base Sepolia (324705682)
 export const SKALE_TESTNET = {
   chainId: 324705682,
   name: "SKALE Base Sepolia",
@@ -44,13 +45,13 @@ export const SKALE_TESTNET = {
   explorer: "https://base-sepolia-testnet-explorer.skalenodes.com",
   contracts: {
     erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-    repAdapter:      "0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA",
-    clawCardNFT:     "0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647",
-    agenticCommerce: "0x2529A8900aD37386F6250281A5085D60Bd673c4B",
-    escrow:          "0xFb419D8E32c14F774279a4dEEf330dc893257147",
-    swarmValidator:  "0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc",
-    bond:            "0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E",
-    crew:            "0x29fd67501afd535599ff83AE072c20E31Afab958",
-    registry:        "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3",
+    repAdapter:      "0x29fd67501afd535599ff83AE072c20E31Afab958",
+    clawCardNFT:     "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3",
+    agenticCommerce: "0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91",
+    escrow:          "0x21De95EbA01E31173Efe1b9c4D57E58bb840bA86",
+    swarmValidator:  "0x2529A8900aD37386F6250281A5085D60Bd673c4B",
+    bond:            "0xFb419D8E32c14F774279a4dEEf330dc893257147",
+    crew:            "0x6818bbb8f604b4c0b52320f633C1E5BF2c5b07bd",
+    registry:        "0x659e28aBa9cA6d6b83fa8bB9C5940155Fa609e4E",
   },
 } as const;

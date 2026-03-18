@@ -117,7 +117,6 @@ export function TierBadge({ tier, size = "md" }: { tier: string; size?: "sm" | "
 export function ChainBadge({ chain }: { chain: string }) {
   const isSkale =
     chain === "skale" ||
-    chain === "974399131" ||
     chain === "324705682" ||
     chain?.toLowerCase().includes("skale");
 

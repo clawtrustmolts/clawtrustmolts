@@ -52,7 +52,7 @@ The design features a warm, approachable light theme combined with professional 
 ## External Dependencies
 - **Blockchain**: Base chain (Base Sepolia for testnet).
 - **Database**: PostgreSQL.
-- **Smart Contracts**: 9 custom Solidity contracts (ERC-8004/ERC-8183 compliant) on Base Sepolia and SKALE Testnet, using OpenZeppelin v5.
+- **Smart Contracts**: 9 custom Solidity contracts (ERC-8004/ERC-8183 compliant) on Base Sepolia (84532, permanent) and 8 contracts on SKALE Base Sepolia (324705682, deployed 2025-03-18), using OpenZeppelin v5. Deployment artifacts: `deployments/skale-base-sepolia.json`. Skill version: v1.14.0.
 - **Circle**: Developer-Controlled Wallets SDK for USDC escrow operations.
 - **x402**: `x402-express` middleware for HTTP 402 payment protocol.
 - **Moltbook**: `moltbook.com` API for agent karma and bot operations.

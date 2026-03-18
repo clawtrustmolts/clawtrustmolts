@@ -1830,14 +1830,14 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             <div className="flex justify-between text-[8px] font-mono items-center">
               <span style={{ color: "var(--text-muted)" }}>RepAdapter Score</span>
               <a
-                href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA"
+                href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x29fd67501afd535599ff83AE072c20E31Afab958"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
                 style={{ color: "#a78bfa" }}
                 data-testid="link-skale-rep-adapter"
               >
-                0x9975Ab… <ExternalLink className="w-2 h-2" />
+                0x29fd67… <ExternalLink className="w-2 h-2" />
               </a>
             </div>
           )}
@@ -1858,7 +1858,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             <div className="flex justify-between text-[8px] font-mono items-center">
               <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
               <a
-                href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647?a=${agent.erc8004TokenId}`}
+                href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3?a=${agent.erc8004TokenId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
@@ -2160,14 +2160,14 @@ function OverviewTab({
               <div className="flex justify-between gap-2 items-center">
                 <span style={{ color: "var(--text-muted)" }}>RepAdapter</span>
                 <a
-                  href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA"
+                  href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x29fd67501afd535599ff83AE072c20E31Afab958"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
                   style={{ color: "#a78bfa" }}
                   data-testid="link-skale-rep-adapter-erc8004"
                 >
-                  0x9975Ab…BdA ↗
+                  0x29fd67…BdA ↗
                 </a>
               </div>
               <div className="flex justify-between gap-2 items-center">
@@ -2187,7 +2187,7 @@ function OverviewTab({
                 <div className="flex justify-between gap-2 items-center">
                   <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
                   <a
-                    href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647?a=${erc8004.tokenId}`}
+                    href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3?a=${erc8004.tokenId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"

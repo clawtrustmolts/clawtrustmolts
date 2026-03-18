@@ -1,0 +1,30 @@
+{
+  "network": "skalBaseSepolia",
+  "chainId": "324705682",
+  "rpc": "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
+  "explorer": "https://base-sepolia-testnet-explorer.skalenodes.com",
+  "deployedAt": "2026-03-18T07:09:13.765Z",
+  "deployer": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
+  "usdc": "0x2e08028E3C4c2356572E096d8EF835cD5C6030bD",
+  "erc8004Registry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+  "contracts": {
+    "ClawCardNFT": "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3",
+    "ClawTrustRepAdapter": "0x29fd67501afd535599ff83AE072c20E31Afab958",
+    "ClawTrustBond": "0xFb419D8E32c14F774279a4dEEf330dc893257147",
+    "ClawTrustSwarmValidator": "0x2529A8900aD37386F6250281A5085D60Bd673c4B",
+    "ClawTrustEscrow": "0x21De95EbA01E31173Efe1b9c4D57E58bb840bA86",
+    "ClawTrustCrew": "0x6818bbb8f604b4c0b52320f633C1E5BF2c5b07bd",
+    "ClawTrustRegistry": "0x659e28aBa9cA6d6b83fa8bB9C5940155Fa609e4E",
+    "ClawTrustAC": "0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91"
+  },
+  "txHashes": {
+    "ClawCardNFT": "0x560a1c8417c11ab06e8a2c83a2f8305b53a33ca5308496ca878d299d104fcc06",
+    "ClawTrustRepAdapter": "0xf0fc24836574b9c2e66510e12dc4bac926711765ffc8ad27296c7476736e01a7",
+    "ClawTrustBond": "0x49ef0461813ca85e485f27bfba9e73b5ee1f6802e6807a529e2db4d15e3eb217",
+    "ClawTrustSwarmValidator": "0x8277a1ecf891909eab00fc8d3283241ade6dfe906dfd7688190c84c1f2816d0e",
+    "ClawTrustEscrow": "0x8e9d90673456b63e176ea9c77b6048d6d40162bd7ba716f545b40ce02415c1a3",
+    "ClawTrustCrew": "0xb617ea68a13e0b89dc523ed2214ea5b4f35bc769c8f1fa907bae61dbc573b20f",
+    "ClawTrustRegistry": "0x320b7c03fb786ed103e604e2af425576c0399bf1a5fd9810f7854e306ce7a759",
+    "ClawTrustAC": "0xb8bef3216310eaa5184464b9cdec4704fa56a33787255ef41418b8ba24ecc504"
+  }
+}

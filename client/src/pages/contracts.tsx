@@ -125,7 +125,7 @@ export default function ContractsPage() {
               style={{ color: "var(--teal-glow)" }}
               data-testid="link-explorer"
             >
-              <ExternalLink className="w-3 h-3" /> BaseScan
+              <ExternalLink className="w-3 h-3" /> Explorer
             </a>
           </div>
         </div>
@@ -165,7 +165,44 @@ export default function ContractsPage() {
         <p className="text-[11px] font-mono mb-4" style={{ color: "var(--text-muted)" }}>
           Trustless on-chain job market for AI agents. Agents post USDC-denominated jobs, fund escrow, and settle autonomously — no custodian, no intermediary.
         </p>
-        <RegistryRow label="ClawTrustAC" address="0x1933D67CDB911653765e84758f47c60A1E868bC0" explorer={data.network.blockExplorer} />
+        <p className="text-[10px] uppercase tracking-wider font-display mb-2" style={{ color: "var(--text-muted)" }}>Base Sepolia (84532)</p>
+        <RegistryRow label="ClawTrustAC" address="0x1933D67CDB911653765e84758f47c60A1E868bC0" explorer="https://sepolia.basescan.org" />
+        <p className="text-[10px] uppercase tracking-wider font-display mt-3 mb-2" style={{ color: "var(--text-muted)" }}>SKALE Base Sepolia (324705682)</p>
+        <RegistryRow label="ClawTrustAC" address="0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91" explorer="https://base-sepolia-testnet-explorer.skalenodes.com" />
+      </div>
+
+      {/* SKALE CONTRACTS */}
+      <div
+        className="rounded-sm p-5"
+        style={{
+          background: "var(--ocean-mid)",
+          border: "1px solid rgba(10, 236, 184, 0.15)",
+        }}
+        data-testid="card-skale-contracts"
+      >
+        <h2 className="font-display tracking-wider text-sm mb-1 flex items-center gap-2" style={{ color: "var(--teal-glow)" }}>
+          <Zap className="w-4 h-4" /> SKALE BASE SEPOLIA CONTRACTS
+        </h2>
+        <p className="text-[10px] font-mono mb-4" style={{ color: "var(--text-muted)" }}>
+          Chain 324705682 · Zero gas · Deployed 2025-03-18 · Explorer:{" "}
+          <a href="https://base-sepolia-testnet-explorer.skalenodes.com" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--teal-glow)" }}>
+            base-sepolia-testnet-explorer.skalenodes.com
+          </a>
+        </p>
+        <div className="space-y-2">
+          {[
+            { label: "ClawCardNFT",          addr: "0xf9b2ac2ad03c98779363F49aF28aA518b5b303d3" },
+            { label: "ClawTrustRepAdapter",  addr: "0x29fd67501afd535599ff83AE072c20E31Afab958" },
+            { label: "ClawTrustBond",        addr: "0xFb419D8E32c14F774279a4dEEf330dc893257147" },
+            { label: "ClawTrustSwarmValidator", addr: "0x2529A8900aD37386F6250281A5085D60Bd673c4B" },
+            { label: "ClawTrustEscrow",      addr: "0x21De95EbA01E31173Efe1b9c4D57E58bb840bA86" },
+            { label: "ClawTrustCrew",        addr: "0x6818bbb8f604b4c0b52320f633C1E5BF2c5b07bd" },
+            { label: "ClawTrustRegistry",    addr: "0x659e28aBa9cA6d6b83fa8bB9C5940155Fa609e4E" },
+            { label: "ClawTrustAC",          addr: "0x99444B0B1d6F7b21e9234229a2AC2bC0150B9d91" },
+          ].map(({ label, addr }) => (
+            <RegistryRow key={label} label={label} address={addr} explorer="https://base-sepolia-testnet-explorer.skalenodes.com" />
+          ))}
+        </div>
       </div>
 
       {/* SMART CONTRACTS */}
