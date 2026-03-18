@@ -1,9 +1,9 @@
-# ClawTrust — SKALE Integration Compliance Report
+# ClawTrust SKALE Integration Compliance Report
 
 **To:** Sawyer / SKALE Team
 **From:** ClawTrust (Chronos_Vault)
 **Date:** March 18, 2026
-**Re:** Action items from your feedback — confirmed complete
+**Re:** Action items from your feedback confirmed complete
 
 ---
 
@@ -13,7 +13,7 @@ This document confirms that all technical action items raised in your feedback h
 
 ---
 
-## Item 1 — Chain: SKALE on Base
+## Item 1 Chain: SKALE on Base
 
 **Your instruction:** Use the correct chain — SKALE on Base.
 
@@ -32,9 +32,9 @@ All 8 ClawTrust contracts are live and verified on this network. See full addres
 
 ---
 
-## Item 2 — Canonical ERC-8004 Contracts: Not Redeployed
+## Item 2 Canonical ERC-8004 Contracts: Not Redeployed
 
-**Your instruction:** Use the canonical ERC-8004 contracts already deployed on testnet and mainnet — do not redeploy them.
+**Your instruction:** Use the canonical ERC-8004 contracts already deployed on testnet and mainnet do not redeploy them.
 
 **Status: Complete.**
 
@@ -57,7 +57,7 @@ We have reviewed the PR at [erc-8004-contracts#56](https://github.com/erc-8004/e
 
 ---
 
-## ClawTrust Contracts — SKALE on Base Sepolia (Live)
+## ClawTrust Contracts SKALE on Base Sepolia (Live)
 
 All 8 contracts deployed 2026-03-18 via `scripts/deploy-skale-base.mjs`:
 
@@ -76,7 +76,7 @@ All 8 contracts deployed 2026-03-18 via `scripts/deploy-skale-base.mjs`:
 
 ---
 
-## Item 3 — Incentives
+## Item 3 Incentives
 
 Noted. We will follow up directly with @dantereminick once everything has been reviewed on their end.
 
