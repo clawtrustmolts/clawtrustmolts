@@ -1,0 +1,65 @@
+{
+  "network": "baseSepolia",
+  "chainId": "84532",
+  "deployedAt": "2026-03-19T21:54:26.859Z",
+  "deployer": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
+  "task": "Task #27 — Smart contract security patches (CRITICAL-3, CRITICAL-4, HIGH-1, bonus getGigVerdict)",
+  "patches": [
+    "CRITICAL-3: ERC8004IdentityRegistry.submitFeedback — onlyOwner + score clamped to [-10000, 10000]",
+    "CRITICAL-4: ClawTrustRepAdapter.updateCooldown — owner-settable (was constant 1h; set to 5min post-deploy)",
+    "HIGH-1: ClawTrustRegistry.getOwnerTokenIds — filters stale/expired entries (was already in source, now deployed)",
+    "bonus: ClawTrustSwarmValidator.getGigVerdict — convenience view returning string status"
+  ],
+  "contracts": {
+    "ERC8004IdentityRegistry": {
+      "address": "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF",
+      "deploymentTxHash": "0xa221d5b6fa87cbe99e36037740c127bfa510d9f45ba5b83c515ed1cfd2e6c1b0",
+      "constructorArgs": [],
+      "basescanUrl": "https://sepolia.basescan.org/address/0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF#code"
+    },
+    "ClawTrustRepAdapter": {
+      "address": "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB",
+      "deploymentTxHash": "0x50c5ff30e40cbe10907d811b31f55f1cd11f7402f9851f2a0a0dce369ece3081",
+      "constructorArgs": [
+        "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF"
+      ],
+      "basescanUrl": "https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB#code"
+    },
+    "ClawTrustSwarmValidator": {
+      "address": "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
+      "deploymentTxHash": "0x8312af94f8145064f2b879dd00254439184fdfd632cf2ad2932c736f5f295d6d",
+      "constructorArgs": [
+        "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906"
+      ],
+      "basescanUrl": "https://sepolia.basescan.org/address/0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743#code"
+    },
+    "ClawTrustEscrow": {
+      "address": "0x6B676744B8c4900F9999E9a9323728C160706126",
+      "deploymentTxHash": "0x7cca4df33350e97de1e9d29588f173568ee3fef1639320d7bca5b4f3af20eb45",
+      "constructorArgs": [
+        "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
+        250,
+        "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF",
+        "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906"
+      ],
+      "basescanUrl": "https://sepolia.basescan.org/address/0x6B676744B8c4900F9999E9a9323728C160706126#code"
+    },
+    "ClawTrustRegistry": {
+      "address": "0x950aa4E7300e75e899d37879796868E2dd84A59c",
+      "deploymentTxHash": "0x3f0eb7f375ea7107819dadcfa60897ff2c8ddfef87c30986d91a1c72d597e61b",
+      "constructorArgs": [],
+      "basescanUrl": "https://sepolia.basescan.org/address/0x950aa4E7300e75e899d37879796868E2dd84A59c#code"
+    }
+  },
+  "wiring": {
+    "SwarmValidator.setEscrowContract": "0x6B676744B8c4900F9999E9a9323728C160706126",
+    "wireReceipt": "0x8b70d03a10c5b98315464c11d08fcc7c9d8bbb9a746dfca185913bc5b6774556",
+    "RepAdapter.setUpdateCooldown(300)": "5 minutes",
+    "cooldownReceipt": "0xc67d03e74cb934667c9847704e9e913fb4924d38244b64c78a22dcee8fa9487e"
+  },
+  "smokeTests": {
+    "repAdapterCooldown": 300,
+    "swarmEscrow": "0x6B676744B8c4900F9999E9a9323728C160706126"
+  }
+}

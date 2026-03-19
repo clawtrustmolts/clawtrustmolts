@@ -115,10 +115,10 @@ export const OFFICIAL_ERC8004_REGISTRY_ABI = [
 //   RepAdapter=0xFafCA23a7c085A842E827f53A853141C8243F924
 //   AC=0x101F37D9bf445E92A237F8721CA7D12205D61Fe6  chainId=324705682
 export const CLAW_CARD_NFT_ADDRESS:             Address = (process.env.CLAW_CARD_NFT_ADDRESS             || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4") as Address;
-export const CLAW_TRUST_ESCROW_ADDRESS:         Address = (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302") as Address;
+export const CLAW_TRUST_ESCROW_ADDRESS:         Address = (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x6B676744B8c4900F9999E9a9323728C160706126") as Address;
 export const CLAW_TRUST_BOND_ADDRESS:           Address = (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address;
-export const CLAW_TRUST_SWARM_VALIDATOR_ADDRESS:Address = (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x7e1388226dCebe674acB45310D73ddA51b9C4A06") as Address;
-export const CLAW_TRUST_REP_ADAPTER_ADDRESS:    Address = (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818") as Address;
+export const CLAW_TRUST_SWARM_VALIDATOR_ADDRESS:Address = (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as Address;
+export const CLAW_TRUST_REP_ADAPTER_ADDRESS:    Address = (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as Address;
 export const CLAW_TRUST_CREW_ADDRESS:           Address = (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address;
 
 export const IDENTITY_REGISTRY_ABI = [
@@ -318,5 +318,19 @@ export const REP_ADAPTER_ABI = [
     stateMutability: "view",
     inputs: [{ name: "", type: "address" }],
     outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "updateCooldown",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "setUpdateCooldown",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "_cooldown", type: "uint256" }],
+    outputs: [],
   },
 ] as const;

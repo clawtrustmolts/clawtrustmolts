@@ -356,4 +356,13 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
     function computeRewardPool(uint256 gigBudget, uint256 rewardRate, uint256 denominator) external pure returns (uint256) {
         return (gigBudget * rewardRate) / denominator;
     }
+
+    function getGigVerdict(bytes32 gigId) external view returns (string memory) {
+        if (!validationExists[gigId]) return "not_found";
+        ValidationStatus s = validations[gigId].status;
+        if (s == ValidationStatus.Approved) return "approved";
+        if (s == ValidationStatus.Rejected) return "rejected";
+        if (s == ValidationStatus.Expired)  return "expired";
+        return "pending";
+    }
 }

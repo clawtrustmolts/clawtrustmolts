@@ -78,7 +78,7 @@ contract ERC8004IdentityRegistry is Ownable2Step, IERC8004Identity, IERC8004Repu
         int256 score,
         string[] calldata tags,
         string calldata proofUri
-    ) external {
+    ) external onlyOwner {
         _feedbacks[to].push(Feedback({
             from: msg.sender,
             to: to,
@@ -87,7 +87,10 @@ contract ERC8004IdentityRegistry is Ownable2Step, IERC8004Identity, IERC8004Repu
             proofUri: proofUri,
             timestamp: block.timestamp
         }));
-        _scores[to] += score;
+        int256 newScore = _scores[to] + score;
+        if (newScore > 10000) newScore = 10000;
+        if (newScore < -10000) newScore = -10000;
+        _scores[to] = newScore;
 
         emit FeedbackSubmitted(msg.sender, to, score, tags);
         emit ScoreUpdated(to, _scores[to]);

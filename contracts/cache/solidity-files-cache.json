@@ -819,8 +819,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustSwarmValidator.sol": {
-      "lastModificationDate": 1773782764097,
-      "contentHash": "5ee1cf09fe1f5305269645bcde5c307d",
+      "lastModificationDate": 1773956967949,
+      "contentHash": "b41d8ac4631ba56ff68af807d4bb59fe",
       "sourceName": "contracts/ClawTrustSwarmValidator.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -1218,8 +1218,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustRepAdapter.sol": {
-      "lastModificationDate": 1773782742207,
-      "contentHash": "35a52d6d1a429cdbdc69cfaf3e2d0e69",
+      "lastModificationDate": 1773956989592,
+      "contentHash": "29edebae13d4c710c366fec20bffe594",
       "sourceName": "contracts/ClawTrustRepAdapter.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -1691,8 +1691,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ERC8004IdentityRegistry.sol": {
-      "lastModificationDate": 1773782905329,
-      "contentHash": "5b6b5565cfdabb18d6751d40fe8ddf0e",
+      "lastModificationDate": 1773956959340,
+      "contentHash": "91fb76d59f0c1416d722d8ce9746291a",
       "sourceName": "contracts/ERC8004IdentityRegistry.sol",
       "solcConfig": {
         "version": "0.8.24",

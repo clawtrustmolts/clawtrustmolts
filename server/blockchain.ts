@@ -14,15 +14,15 @@ import { storage } from "./storage";
 
 const RPC_URL = process.env.BASE_RPC_URL || "https://sepolia.base.org";
 
-// ─── Redeployed 2026-03-13 (Task #11) — patched contracts verified on Basescan ──
+// ─── Redeployed 2026-03-19 (Task #27) — security patches (CRITICAL-3, CRITICAL-4, HIGH-1, getGigVerdict) ──
 const CONTRACT_ADDRESSES = {
   clawCardNFT:             (process.env.CLAW_CARD_NFT_ADDRESS             || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4") as Address,
-  escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302") as Address,
-  swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0x7e1388226dCebe674acB45310D73ddA51b9C4A06") as Address,
-  repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xecc00bbE268Fa4D0330180e0fB445f64d824d818") as Address,
+  escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x6B676744B8c4900F9999E9a9323728C160706126") as Address,
+  swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as Address,
+  repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as Address,
   bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address,
   crew:                    (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address,
-  registry:                (process.env.CLAW_TRUST_REGISTRY_ADDRESS       || "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4") as Address,
+  registry:                (process.env.CLAW_TRUST_REGISTRY_ADDRESS       || "0x950aa4E7300e75e899d37879796868E2dd84A59c") as Address,
 };
 
 // ─── ABI loader ──────────────────────────────────────────────────────

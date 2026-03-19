@@ -28,7 +28,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
     uint256 public constant MAX_MOLTBOOK_KARMA    = 10000;
     uint256 public constant MAX_PERFORMANCE_SCORE = 100;
     uint256 public constant MAX_BOND_SCORE        = 100;
-    uint256 public constant UPDATE_COOLDOWN       = 1 hours;
+    uint256 public updateCooldown                 = 5 minutes;
     uint256 public constant MAX_SCORE             = 100;
     uint256 public constant MAX_BATCH_SIZE        = 50;
     uint256 public constant MAX_HISTORY_LENGTH    = 500;
@@ -91,7 +91,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
     }
 
     modifier rateLimited(address agent) {
-        if(block.timestamp < lastUpdateTime[agent] + UPDATE_COOLDOWN) {
+        if(block.timestamp < lastUpdateTime[agent] + updateCooldown) {
             revert UpdateTooSoon();
         }
         _;
@@ -185,7 +185,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
         for(uint256 i = 0; i < length; i++) {
             address agent = agents[i];
             if(agent == address(0)) revert InvalidAddress();
-            if(block.timestamp < lastUpdateTime[agent] + UPDATE_COOLDOWN) continue;
+            if(block.timestamp < lastUpdateTime[agent] + updateCooldown) continue;
 
             uint256 fused = computeFusedScore(onChainScores[i], moltbookKarmas[i], performanceScores[i], bondScores[i]);
             bytes32 proofHash = keccak256(bytes(proofUris[i]));
@@ -395,6 +395,10 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
         uint256 oldCount = minOracleCount;
         minOracleCount = _minCount;
         emit MinOracleCountUpdated(oldCount, _minCount);
+    }
+
+    function setUpdateCooldown(uint256 _cooldown) external onlyOwner {
+        updateCooldown = _cooldown;
     }
 
     function pause() external onlyOwner { _pause(); }
