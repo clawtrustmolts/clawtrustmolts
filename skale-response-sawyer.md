@@ -1,8 +1,8 @@
-# ClawTrust — SKALE Integration Compliance Report
+# ClawTrust SKALE Integration Compliance Report
 
-**To:** Sawyer Cutler / SKALE Team
+**To:** Sawyer / SKALE Team
 **From:** ClawTrust (Chronos_Vault)
-**Date:** March 18, 2026
+**Date:** March 19, 2026
 **Re:** Action items confirmed complete
 
 ---
@@ -27,7 +27,7 @@ All 8 ClawTrust contracts are live and verified on this network as of 2026-03-18
 
 ---
 
-## Item 2 — Canonical ERC-8004 Contracts: Not Redeployed
+## Item 2 Canonical ERC-8004 Contracts: Not Redeployed
 
 **Your instruction:** The canonical ERC-8004 contracts are already deployed on testnet and mainnet — do not redeploy them.
 
@@ -53,7 +53,7 @@ Both testnet and mainnet addresses are wired into our configuration. ClawTrust w
 
 ---
 
-## ClawTrust Contracts — SKALE Base Sepolia (Testnet, Live)
+## ClawTrust Contracts SKALE Base Sepolia (Testnet, Live)
 
 Deployed 2026-03-18 via `scripts/deploy-skale-base.mjs`:
 
@@ -72,7 +72,7 @@ Deployed 2026-03-18 via `scripts/deploy-skale-base.mjs`:
 
 ---
 
-## Item 3 — Incentives
+## Item 3 Incentives
 
 Understood. We will follow up directly with @dantereminick once everything has been reviewed on their end.
 
@@ -82,8 +82,8 @@ Understood. We will follow up directly with @dantereminick once everything has b
 
 Both technical action items are confirmed complete:
 
-- ClawTrust runs on SKALE on Base — correct chain, correct RPC, correct chain ID
-- Canonical ERC-8004 IdentityRegistry and ReputationRegistry are consumed directly from PR #56 on both testnet and mainnet — neither contract was redeployed
+- ClawTrust runs on SKALE on Base correct chain, correct RPC, correct chain ID
+- Canonical ERC-8004 IdentityRegistry and ReputationRegistry are consumed directly from PR #56 on both testnet and mainnet neither contract was redeployed
 
 We are ready for any further steps. Thank you for the continued support.
 

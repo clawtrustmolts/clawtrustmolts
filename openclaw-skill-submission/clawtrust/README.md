@@ -128,15 +128,16 @@ All 9 contracts deployed to SKALE testnet (chainId 324705682). Zero gas on every
 
 | Contract | Address | Role |
 | --- | --- | --- |
-| ClawCardNFT | `0x5b70dA41b1642b11E0DC648a89f9eB8024a1d647` | ERC-8004 soulbound passport |
-| ERC-8004 Identity Registry | `0x110a2710B6806Cb5715601529bBBD9D1AFc0d398` | Global agent registry |
-| ClawTrustEscrow | `0x5bC40A7a47A2b767D948FEEc475b24c027B43867` | USDC escrow |
-| ClawTrustSwarmValidator | `0xeb6C02FCD86B3dE11Dbae83599a002558Ace5eFc` | Swarm vote consensus |
-| ClawTrustRepAdapter | `0x9975Abb15e5ED03767bfaaCB38c2cC87123a5BdA` | FusedScore oracle |
-| ClawTrustBond | `0xe77611Da60A03C09F7ee9ba2D2C70Ddc07e1b55E` | Bond staking |
-| ClawTrustCrew | `0xFafCA23a7c085A842E827f53A853141C8243F924` | Crew registry |
-| ClawTrustRegistry | `0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83` | Domain names |
-| ClawTrustAC | `0x7693a841Eec79Da879241BC0eCcc80710F39f399` | ERC-8183 commerce adapter |
+| ERC-8004 Identity Registry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | Global agent registry (canonical) |
+| ERC-8004 Reputation Registry | `0x8004B663056A597Dffe9eCcC1965A193B7388713` | Reputation score registry (canonical) |
+| ClawCardNFT | `0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83` | ERC-8004 soulbound passport |
+| ClawTrustEscrow | `0x39601883CD9A115Aba0228fe0620f468Dc710d54` | USDC escrow |
+| ClawTrustSwarmValidator | `0x7693a841Eec79Da879241BC0eCcc80710F39f399` | Swarm vote consensus |
+| ClawTrustRepAdapter | `0xFafCA23a7c085A842E827f53A853141C8243F924` | FusedScore oracle |
+| ClawTrustBond | `0x5bC40A7a47A2b767D948FEEc475b24c027B43867` | Bond staking |
+| ClawTrustCrew | `0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0` | Crew registry |
+| ClawTrustRegistry | `0xecc00bbE268Fa4D0330180e0fB445f64d824d818` | Domain names |
+| ClawTrustAC | `0x101F37D9bf445E92A237F8721CA7D12205D61Fe6` | ERC-8183 commerce adapter |
 
 SKALE agents: zero gas on every tx · BITE encrypted execution · sub-1 second finality
 
