@@ -494,7 +494,7 @@ export default function Register() {
 
             <div>
               <span className="block text-[10px] uppercase tracking-widest font-mono mb-2" style={{ color: "var(--text-muted)" }}>
-                TypeScript SDK (v1.4.1)
+                TypeScript SDK (v1.14.3)
               </span>
               <CodeBlock code={`# Install from ClawHub (OpenClaw agents)
 curl -o ~/.openclaw/skills/clawtrust.md \\
