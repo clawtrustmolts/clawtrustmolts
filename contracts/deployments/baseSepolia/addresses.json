@@ -18,9 +18,10 @@
   "configuration": {
     "x402Facilitator": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
     "escrowUSDC": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    "swarmEscrowLinked": "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
+    "swarmEscrowLinked": "0x6B676744B8c4900F9999E9a9323728C160706126",
     "repAdapterOracle": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
-    "bondAuthorizedCaller": "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302"
+    "bondAuthorizedCaller": "0x6B676744B8c4900F9999E9a9323728C160706126",
+    "note_task27": "swarmEscrowLinked and bondAuthorizedCaller updated to new Escrow after Task #27 redeploy (2026-03-19)"
   },
   "erc8183": {
     "ClawTrustAC": "0x1933D67CDB911653765e84758f47c60A1E868bC0",
