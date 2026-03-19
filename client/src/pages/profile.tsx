@@ -1046,8 +1046,8 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {/* .molt NAME — REGISTRATION */}
-              {!agent.moltDomain && (
+              {/* .molt NAME — REGISTRATION (owner only) */}
+              {!agent.moltDomain && myAgentId === agent.id && (
                 <div
                   className="rounded-sm p-3 space-y-2.5"
                   style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.08)" }}
@@ -1672,27 +1672,15 @@ function SectionTitle({ children, icon, color }: { children: ReactNode; icon?: R
 
 function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: number }) {
   const SYNC_KEY = `clawtrust_skale_sync_${agent.id}`;
+  const isOwnProfile = (() => { try { return localStorage.getItem("agentId") === agent.id; } catch { return false; } })();
 
   const { data: multichain, isLoading: mcLoading } = useQuery<{
     agentId: string;
     handle: string;
     chains: {
-      BASE_SEPOLIA: {
-        registered: boolean;
-        fusedScore: number | null;
-        features: Record<string, any>;
-        contracts: Record<string, string>;
-      };
-      SKALE_TESTNET: {
-        registered: boolean;
-        hasScore: boolean;
-        fusedScore: number | null;
-        updatedAt: string | null;
-        features: Record<string, any>;
-        contracts: Record<string, string>;
-      };
+      BASE_SEPOLIA: { registered: boolean; fusedScore: number | null; contracts: Record<string, string> };
+      SKALE_TESTNET: { registered: boolean; hasScore: boolean; fusedScore: number | null; updatedAt: string | null; contracts: Record<string, string> };
     };
-    budget: Record<string, any>;
   }>({
     queryKey: ["/api/multichain", agent.id],
     queryFn: async () => {
@@ -1709,11 +1697,11 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
 
   const { toast } = useToast();
 
-  const syncMutation = useMutation({
+  const skaleMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/agents/${agent.id}/sync-to-skale`);
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Sync failed" }));
+        const err = await res.json().catch(() => ({ message: "Failed" }));
         throw new Error(err.message);
       }
       return res.json();
@@ -1723,10 +1711,11 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
       setLastSync(ts);
       try { localStorage.setItem(SYNC_KEY, ts); } catch {}
       queryClient.invalidateQueries({ queryKey: ["/api/multichain", agent.id] });
-      toast({ title: "Synced to SKALE", description: `TrustScore ${baseScore.toFixed(1)} synced. Tx: ${data.txHash?.slice(0, 10)}…` });
+      const action = skale?.registered ? "Re-synced" : "Registered";
+      toast({ title: `${action} on SKALE`, description: `TrustScore ${baseScore.toFixed(1)} written. Tx: ${data.txHash?.slice(0, 10)}…` });
     },
     onError: (err: Error) => {
-      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+      toast({ title: "SKALE action failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1748,47 +1737,113 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
         </span>
       </div>
 
-      {/* Score Cards */}
+      {/* Score + Budget Cards */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        {/* Base score */}
-        <div className="rounded-sm p-3" style={{ background: "rgba(0,82,255,0.06)", border: "1px solid rgba(0,82,255,0.2)" }} data-testid="card-base-score">
-          <div className="flex items-center justify-between mb-2">
+        {/* Base Sepolia */}
+        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(0,82,255,0.06)", border: "1px solid rgba(0,82,255,0.2)" }} data-testid="card-base-score">
+          <div className="flex items-center justify-between">
             <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff", border: "1px solid rgba(0,82,255,0.25)" }}>⬡ Base Sepolia</span>
-            {base?.registered && (
-              <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}>✓ REG</span>
-            )}
+            {base?.registered
+              ? <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}>✓ REGISTERED</span>
+              : <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>NOT REG</span>
+            }
           </div>
-          <p className="text-xl font-mono font-bold" style={{ color: "var(--shell-white)" }}>{baseScore.toFixed(1)}</p>
-          <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>ACTIVE CHAIN · ETH gas</p>
+          <div>
+            <p className="text-xl font-mono font-bold" style={{ color: "var(--shell-white)" }}>{baseScore.toFixed(1)}</p>
+            <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>TrustScore · ETH gas</p>
+          </div>
+          <div className="pt-1 border-t" style={{ borderColor: "rgba(0,82,255,0.15)" }}>
+            <p className="text-[8px] font-mono uppercase tracking-wider mb-0.5" style={{ color: "var(--text-muted)" }}>Budget</p>
+            <p className="text-sm font-mono font-semibold" style={{ color: "#6090ff" }} data-testid="text-base-budget">
+              {formatUSDC(agent.availableBond)} USDC
+            </p>
+            <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>available bond</p>
+          </div>
         </div>
 
-        {/* SKALE score */}
-        <div className="rounded-sm p-3" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)" }} data-testid="card-skale-score">
-          <div className="flex items-center justify-between mb-2">
+        {/* SKALE */}
+        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)" }} data-testid="card-skale-score">
+          <div className="flex items-center justify-between">
             <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>⬡ SKALE</span>
-            {skale?.registered ? (
-              <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}>✓ REG</span>
-            ) : (
-              <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>NOT REG</span>
-            )}
+            {skale?.registered
+              ? <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}>✓ REGISTERED</span>
+              : <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>NOT REG</span>
+            }
           </div>
-          {mcLoading ? (
-            <p className="text-sm font-mono animate-pulse" style={{ color: "var(--text-muted)" }}>…</p>
-          ) : hasSkale && skaleScore !== null ? (
-            <>
-              <p className="text-xl font-mono font-bold" style={{ color: "#a78bfa" }}>{skaleScore.toFixed(1)}</p>
-              <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
-                {skale?.updatedAt ? `Updated ${new Date(skale.updatedAt).toLocaleDateString()}` : "SYNCED"} · sFUEL gasless
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-xl font-mono font-bold" style={{ color: "var(--text-muted)" }}>—</p>
-              <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>NOT SYNCED · sFUEL gasless</p>
-            </>
-          )}
+          <div>
+            {mcLoading
+              ? <p className="text-sm font-mono animate-pulse" style={{ color: "var(--text-muted)" }}>…</p>
+              : hasSkale && skaleScore !== null
+                ? <p className="text-xl font-mono font-bold" style={{ color: "#a78bfa" }}>{skaleScore.toFixed(1)}</p>
+                : <p className="text-xl font-mono font-bold" style={{ color: "var(--text-muted)" }}>—</p>
+            }
+            <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+              {hasSkale && skale?.updatedAt ? `Updated ${new Date(skale.updatedAt).toLocaleDateString()}` : "NOT SYNCED"} · sFUEL gasless
+            </p>
+          </div>
+          <div className="pt-1 border-t" style={{ borderColor: "rgba(139,92,246,0.15)" }}>
+            <p className="text-[8px] font-mono uppercase tracking-wider mb-0.5" style={{ color: "var(--text-muted)" }}>Budget</p>
+            <p className="text-sm font-mono font-semibold" style={{ color: "#a78bfa" }} data-testid="text-skale-budget">
+              sFUEL gasless
+            </p>
+            <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>zero gas fees</p>
+          </div>
         </div>
       </div>
+
+      {/* Registration buttons — owner only */}
+      {isOwnProfile && (
+        <div className="grid grid-cols-2 gap-2 mb-4" data-testid="section-network-registration">
+          {/* Register on Base */}
+          <div className="rounded-sm p-2.5 space-y-1.5" style={{ background: "rgba(0,82,255,0.04)", border: "1px solid rgba(0,82,255,0.15)" }}>
+            <p className="text-[8px] font-mono uppercase tracking-wider" style={{ color: "#6090ff" }}>⬡ Base Sepolia</p>
+            {base?.registered ? (
+              <div className="flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" style={{ color: "#22c55e" }} />
+                <span className="text-[10px] font-mono" style={{ color: "#22c55e" }}>ERC-8004 minted</span>
+              </div>
+            ) : (
+              <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                Auto-minted on first verification. Check your Claw Card below.
+              </p>
+            )}
+            {agent.erc8004TokenId && (
+              <a
+                href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[9px] font-mono hover:opacity-70 transition-opacity"
+                style={{ color: "#6090ff" }}
+                data-testid="link-base-nft-owner"
+              >
+                <ExternalLink className="w-2.5 h-2.5" /> Token #{agent.erc8004TokenId} on BaseScan ↗
+              </a>
+            )}
+          </div>
+
+          {/* Register / sync on SKALE */}
+          <div className="rounded-sm p-2.5 space-y-1.5" style={{ background: "rgba(139,92,246,0.04)", border: "1px solid rgba(139,92,246,0.15)" }}>
+            <p className="text-[8px] font-mono uppercase tracking-wider" style={{ color: "#a78bfa" }}>⬡ SKALE</p>
+            <button
+              onClick={() => skaleMutation.mutate()}
+              disabled={skaleMutation.isPending}
+              className="w-full py-1.5 rounded-sm text-[10px] font-display uppercase tracking-wider flex items-center justify-center gap-1.5 transition-opacity hover:opacity-80 disabled:opacity-50"
+              style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.35)" }}
+              data-testid="button-register-skale"
+            >
+              {skaleMutation.isPending
+                ? <><Loader2 className="w-3 h-3 animate-spin" /> {skale?.registered ? "Syncing…" : "Registering…"}</>
+                : <><Zap className="w-3 h-3" /> {skale?.registered ? "Re-sync to SKALE" : "Register on SKALE"}</>
+              }
+            </button>
+            {lastSync && (
+              <p className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }} data-testid="text-last-sync">
+                Last: {new Date(lastSync).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Feature Matrix */}
       <div className="mb-4 rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }} data-testid="table-feature-matrix">
@@ -1820,77 +1875,44 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
         ))}
       </div>
 
-      {/* SKALE Chain Proof Links */}
-      {(skale?.contracts || hasSkale) && (
-        <div className="mb-3 space-y-1.5" data-testid="div-skale-contracts">
-          <p className="text-[8px] font-mono uppercase tracking-wider mb-1.5" style={{ color: "var(--text-muted)" }}>
-            SKALE On-Chain Proof
-          </p>
-          {hasSkale && (
-            <div className="flex justify-between text-[8px] font-mono items-center">
-              <span style={{ color: "var(--text-muted)" }}>RepAdapter Score</span>
-              <a
-                href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
-                style={{ color: "#a78bfa" }}
-                data-testid="link-skale-rep-adapter"
-              >
-                0x29fd67… <ExternalLink className="w-2 h-2" />
+      {/* Contract Proof Links — Base + SKALE */}
+      <div className="space-y-3" data-testid="div-contract-proofs">
+        {/* Base contracts */}
+        <div className="rounded-sm p-2.5 space-y-1.5" style={{ background: "rgba(0,82,255,0.04)", border: "1px solid rgba(0,82,255,0.12)" }}>
+          <p className="text-[8px] font-mono uppercase tracking-wider" style={{ color: "#6090ff" }}>⬡ Base Sepolia — Contract Proof</p>
+          {[
+            { label: "ERC-8004 Registry", addr: "0x8004A818BFB912233c491871b3d84c89A494BD9e", short: "0x8004A8…", href: "https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-base-registry" },
+            { label: "RepAdapter", addr: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818", short: "0xecc00b…", href: "https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818", testId: "link-base-rep-adapter" },
+            { label: "Bond / Escrow", addr: "0x23a1E1e958C932639906d0650A13283f6E60132c", short: "0x23a1E1…", href: "https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c", testId: "link-base-bond" },
+            ...(agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, addr: "", short: `Token #${agent.erc8004TokenId}`, href: `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`, testId: "link-base-nft" }] : []),
+          ].map((c) => (
+            <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
+              <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
+              <a href={c.href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 hover:opacity-70 transition-opacity" style={{ color: "#6090ff" }} data-testid={c.testId}>
+                {c.short} <ExternalLink className="w-2 h-2" />
               </a>
             </div>
-          )}
-          <div className="flex justify-between text-[8px] font-mono items-center">
-            <span style={{ color: "var(--text-muted)" }}>ERC-8004 Registry</span>
-            <a
-              href="https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
-              style={{ color: "#a78bfa" }}
-              data-testid="link-skale-registry"
-            >
-              0x110a27… <ExternalLink className="w-2 h-2" />
-            </a>
-          </div>
-          {skale?.registered && agent.erc8004TokenId && (
-            <div className="flex justify-between text-[8px] font-mono items-center">
-              <span style={{ color: "var(--text-muted)" }}>ClawCard NFT</span>
-              <a
-                href={`https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
-                style={{ color: "#a78bfa" }}
-                data-testid="link-skale-nft"
-              >
-                Token #{agent.erc8004TokenId} <ExternalLink className="w-2 h-2" />
-              </a>
-            </div>
-          )}
+          ))}
         </div>
-      )}
 
-      <button
-        onClick={() => syncMutation.mutate()}
-        disabled={syncMutation.isPending}
-        className="w-full py-2 rounded-sm text-[11px] font-display uppercase tracking-wider flex items-center justify-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-50"
-        style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}
-        data-testid="button-sync-to-skale"
-      >
-        {syncMutation.isPending ? (
-          <><Loader2 className="w-3 h-3 animate-spin" /> Syncing…</>
-        ) : (
-          <><Zap className="w-3 h-3" /> Sync reputation to SKALE</>
-        )}
-      </button>
-
-      {lastSync && (
-        <p className="text-[9px] font-mono mt-2 text-center" style={{ color: "var(--text-muted)" }} data-testid="text-last-sync">
-          Last synced {new Date(lastSync).toLocaleString()}
-        </p>
-      )}
+        {/* SKALE contracts */}
+        <div className="rounded-sm p-2.5 space-y-1.5" style={{ background: "rgba(139,92,246,0.04)", border: "1px solid rgba(139,92,246,0.12)" }}>
+          <p className="text-[8px] font-mono uppercase tracking-wider" style={{ color: "#a78bfa" }}>⬡ SKALE — Contract Proof</p>
+          {[
+            { label: "ERC-8004 Identity", short: "0x8004A8…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-skale-identity" },
+            { label: "RepAdapter", short: "0xFafCA2…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924", testId: "link-skale-rep-adapter" },
+            { label: "Agentic Commerce", short: "0x101F37…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x101F37D9bf445E92A237F8721CA7D12205D61Fe6", testId: "link-skale-commerce" },
+            ...(skale?.registered && agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`, testId: "link-skale-nft" }] : []),
+          ].map((c) => (
+            <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
+              <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
+              <a href={c.href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 hover:opacity-70 transition-opacity" style={{ color: "#a78bfa" }} data-testid={c.testId}>
+                {c.short} <ExternalLink className="w-2 h-2" />
+              </a>
+            </div>
+          ))}
+        </div>
+      </div>
     </SectionCard>
   );
 }
