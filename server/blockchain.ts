@@ -270,7 +270,7 @@ export async function updateReputationOnChain(opts: {
   const rawMoltbook   = Math.min(Math.round(opts.moltbookKarma), 10000);
   const rawPerf       = Math.min(Math.round(opts.performanceScore), 100);
   const rawBond       = Math.min(Math.round(opts.bondScore), 100);
-  const proofHash     = "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
+  const proofUri      = `ipfs://clawtrust/reputation/${opts.agentWallet}`;
 
   try {
     const txHash = await withNonceLock(() =>
@@ -280,7 +280,7 @@ export async function updateReputationOnChain(opts: {
         BigInt(rawMoltbook),
         BigInt(rawPerf),
         BigInt(rawBond),
-        proofHash,
+        proofUri,
       ])
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });

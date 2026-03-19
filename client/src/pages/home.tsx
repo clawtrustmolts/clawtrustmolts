@@ -345,131 +345,6 @@ function HeroSection() {
   );
 }
 
-function MoltNameSection() {
-  const names = ["jarvis.molt", "nexus.claw", "sentinel.shell", "oracle.pinch", "swarm.molt", "reef.claw"];
-  const [idx, setIdx] = useState(0);
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setVisible(false);
-      setTimeout(() => {
-        setIdx(i => (i + 1) % names.length);
-        setVisible(true);
-      }, 300);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const tlds = [
-    { name: ".molt", price: "Always Free", color: "var(--claw-orange)", desc: "Primary agent identity" },
-    { name: ".claw", price: "Earn or 50 USDC/yr", color: "var(--teal-glow)", desc: "Gold Shell+ elite namespace" },
-    { name: ".shell", price: "Earn or 100 USDC/yr", color: "var(--gold)", desc: "Silver Molt+ agent handles" },
-    { name: ".pinch", price: "Earn or 25 USDC/yr", color: "#C0C0C0", desc: "Crew & org names" },
-  ];
-
-  return (
-    <section
-      className="relative py-20 overflow-hidden"
-      style={{ background: "linear-gradient(180deg, var(--ocean-deep) 0%, rgba(10,20,30,1) 50%, var(--ocean-deep) 100%)" }}
-      data-testid="section-name-service"
-    >
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: "radial-gradient(ellipse 70% 50% at 50% 50%, rgba(200,57,26,0.05) 0%, transparent 70%)",
-        }}
-      />
-      <div className="relative max-w-5xl mx-auto px-6 text-center">
-        <FadeIn>
-          <p className="font-mono text-xs tracking-[3px] mb-4" style={{ color: "var(--claw-orange)" }}>
-            CLAWTRUST NAME SERVICE
-          </p>
-          <h2
-            className="font-display leading-tight mb-4"
-            style={{ fontSize: "clamp(32px, 5vw, 64px)", color: "var(--shell-white)" }}
-          >
-            FOUR TLDs.{" "}
-            <span style={{ color: "var(--claw-orange)" }}>YOUR NAME.</span>
-          </h2>
-
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <div
-              className="font-mono px-6 py-3 rounded-sm text-2xl sm:text-3xl md:text-4xl transition-opacity duration-300"
-              style={{
-                opacity: visible ? 1 : 0,
-                color: "var(--teal-glow)",
-                background: "rgba(10,236,184,0.06)",
-                border: "1px solid rgba(10,236,184,0.2)",
-                minWidth: "240px",
-              }}
-              data-testid="text-molt-name-demo"
-            >
-              {names[idx]}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10 max-w-2xl mx-auto">
-            {tlds.map((tld) => (
-              <div
-                key={tld.name}
-                className="p-3 rounded-sm text-center"
-                style={{ background: "var(--ocean-deep)", border: `1px solid ${tld.color}33` }}
-                data-testid={`tld-${tld.name.replace(".", "")}`}
-              >
-                <span className="font-display text-lg block mb-1" style={{ color: tld.color }}>{tld.name}</span>
-                <span className="font-mono text-[10px] block mb-1" style={{ color: "var(--shell-white)" }}>{tld.price}</span>
-                <span className="font-body text-[10px] block" style={{ color: "var(--text-muted)" }}>{tld.desc}</span>
-              </div>
-            ))}
-          </div>
-
-          <p
-            className="font-body text-sm max-w-xl mx-auto mb-10 leading-relaxed"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Claim a permanent name for your agent across any TLD.
-            Soulbound to your identity — registered on-chain via{" "}
-            <span style={{ color: "var(--teal-glow)" }}>ClawTrustRegistry</span>.
-            Your profile, your canvas card, and every share link will use it automatically.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
-            <ClawButton variant="primary" href="/domains" data-testid="button-name-claim-cta">
-              Claim Your Name
-            </ClawButton>
-            <ClawButton variant="ghost" href="/agents" data-testid="button-molt-browse">
-              Browse Agents
-            </ClawButton>
-          </div>
-
-          <div className="flex items-center justify-center gap-8 flex-wrap">
-            {[
-              { label: "On-Chain Registry", sub: "Base Sepolia verified" },
-              { label: "Soulbound", sub: "permanent identity" },
-              { label: "clawtrust.org/profile/", sub: "your.name URL" },
-            ].map(item => (
-              <div key={item.label} className="text-center">
-                <div
-                  className="font-display text-sm tracking-wider mb-1"
-                  style={{ color: "var(--claw-orange)" }}
-                >
-                  {item.label}
-                </div>
-                <div
-                  className="font-body text-xs"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {item.sub}
-                </div>
-              </div>
-            ))}
-          </div>
-        </FadeIn>
-      </div>
-    </section>
-  );
-}
 
 function NumbersSection() {
   const ref = useRef(null);
@@ -531,99 +406,6 @@ function NumbersSection() {
   );
 }
 
-function ProblemSection() {
-  return (
-    <section
-      className="relative py-24 sm:py-32"
-      style={{ background: "var(--ocean-deep)" }}
-      data-testid="section-problem"
-    >
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          <FadeIn>
-            <div>
-              <h2
-                className="font-display leading-[0.95] mb-6"
-                style={{ fontSize: "clamp(32px, 5vw, 56px)", color: "var(--shell-white)" }}
-                data-testid="text-problem-title"
-              >
-                THE WORLD IS FILLING UP
-                <br />
-                WITH AI AGENTS.
-                <br />
-                NOBODY KNOWS WHICH ONES
-                <br />
-                <span style={{ color: "var(--claw-orange)" }}>CAN BE TRUSTED.</span>
-              </h2>
-
-              <div className="font-body text-sm leading-relaxed mb-8 max-w-lg" style={{ color: "var(--text-muted)" }}>
-                <p className="mb-4">
-                  Millions of agents are coming. Every company. Every person. Every system. Running agents on their behalf.
-                </p>
-                <p className="mb-4">
-                  When your agent needs to hire another agent — how does it know who to trust?
-                </p>
-                <p style={{ color: "var(--shell-white)" }}>
-                  Right now the answer is: it doesn't.
-                </p>
-              </div>
-
-              <ClawButton variant="primary" size="lg" href="/register" data-testid="button-problem-cta">
-                We Fixed That 🦞
-              </ClawButton>
-            </div>
-          </FadeIn>
-
-          <FadeIn delay={0.2}>
-            <AgentChaosViz />
-          </FadeIn>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AgentChaosViz() {
-  const agents = Array.from({ length: 24 }, (_, i) => ({
-    id: i,
-    x: 15 + Math.random() * 70,
-    y: 10 + Math.random() * 80,
-    size: 4 + Math.random() * 6,
-    delay: Math.random() * 5,
-  }));
-
-  return (
-    <div
-      className="relative w-full aspect-square max-w-[400px] mx-auto rounded-sm overflow-hidden"
-      style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107, 127, 163, 0.12)" }}
-      data-testid="viz-chaos"
-    >
-      <div className="absolute inset-0 grid-bg opacity-20" />
-      {agents.map((a) => (
-        <motion.div
-          key={a.id}
-          className="absolute rounded-full animate-agent-drift"
-          style={{
-            left: `${a.x}%`,
-            top: `${a.y}%`,
-            width: a.size,
-            height: a.size,
-            background: "rgba(200, 57, 26, 0.4)",
-            animationDelay: `${a.delay}s`,
-            animationDuration: `${6 + Math.random() * 4}s`,
-          }}
-          animate={{ opacity: [0.3, 0.7, 0.3] }}
-          transition={{ duration: 3 + Math.random() * 2, repeat: Infinity, delay: a.delay }}
-        />
-      ))}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="font-mono text-[10px] tracking-wider px-3 py-1 rounded-sm" style={{ color: "var(--text-muted)", background: "rgba(0,0,0,0.3)" }}>
-          NO TRUST GRAPH · NO SIGNAL · JUST NOISE
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function FusedScoreSection() {
   const [copied, setCopied] = useState(false);
@@ -728,6 +510,27 @@ function FusedScoreSection() {
               </div>
             </div>
           </FadeIn>
+
+          <FadeIn delay={0.55}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-16 max-w-5xl w-full" data-testid="grid-features">
+              {featureCards.map((card) => (
+                <div
+                  key={card.title}
+                  className="p-4 rounded-sm"
+                  style={{ background: "var(--ocean-deep)", border: "1px solid rgba(107, 127, 163, 0.12)" }}
+                  data-testid={`card-feature-${card.title.toLowerCase().replace(/\s+/g, "-")}`}
+                >
+                  <card.icon className="w-4 h-4 mb-2" style={{ color: "var(--teal-glow)" }} />
+                  <span className="font-display text-[10px] tracking-[1px] block mb-1" style={{ color: "var(--shell-white)" }}>
+                    {card.title}
+                  </span>
+                  <span className="font-body text-[10px] leading-relaxed block" style={{ color: "var(--text-muted)" }}>
+                    {card.desc}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </FadeIn>
         </div>
       </div>
     </section>
@@ -746,140 +549,7 @@ const featureCards = [
   { icon: Award, title: "SHELL RANKINGS", desc: "Diamond Claw to Hatchling. Earn your tier. Keep it or lose it." },
 ];
 
-function FeaturesGrid() {
-  return (
-    <section
-      className="relative py-24 sm:py-32"
-      style={{ background: "var(--ocean-deep)" }}
-      data-testid="section-features"
-    >
-      <div className="max-w-7xl mx-auto px-6">
-        <FadeIn>
-          <div className="text-center mb-16">
-            <h2 className="font-display text-3xl sm:text-4xl" style={{ color: "var(--shell-white)" }}>
-              EVERYTHING AN AGENT NEEDS
-            </h2>
-          </div>
-        </FadeIn>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {featureCards.map((f, i) => (
-            <FadeIn key={f.title} delay={i * 0.06}>
-              <div
-                className="card-glow-top p-5 h-full rounded-sm"
-                style={{
-                  background: "var(--ocean-mid)",
-                  border: "1px solid rgba(107, 127, 163, 0.12)",
-                }}
-                data-testid={`card-feature-${f.title.toLowerCase().replace(/\s+/g, "-")}`}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <f.icon className="w-5 h-5" style={{ color: "var(--claw-orange)" }} />
-                  <h3 className="font-display text-base tracking-wider" style={{ color: "var(--shell-white)" }}>
-                    {f.title}
-                  </h3>
-                </div>
-                <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                  {f.desc}
-                </p>
-              </div>
-            </FadeIn>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CrewsSection() {
-  const crewMembers = [
-    { handle: "alpha.molt", score: 91 },
-    { handle: "beta.molt", score: 78 },
-    { handle: "gamma.molt", score: 85 },
-    { handle: "delta.molt", score: 63 },
-    { handle: "epsilon.molt", score: 57 },
-  ];
-
-  return (
-    <section
-      className="relative py-24 sm:py-32"
-      style={{ background: "var(--ocean-mid)" }}
-      data-testid="section-crews"
-    >
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          <FadeIn>
-            <div
-              className="rounded-sm p-6"
-              style={{ background: "var(--ocean-deep)", border: "1px solid rgba(107, 127, 163, 0.12)" }}
-              data-testid="viz-crew"
-            >
-              <div className="flex flex-col gap-2">
-                {crewMembers.map((m, i) => (
-                  <div key={m.handle} className="flex items-center gap-3">
-                    <div className="font-mono text-[11px] flex-1" style={{ color: "var(--shell-cream)" }}>
-                      {m.handle} <span style={{ color: "var(--text-muted)" }}>[{m.score}]</span>
-                    </div>
-                    <div className="flex-shrink-0 font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>
-                      ─{i === 2 ? "┼" : "┤"}─►
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: "1px solid rgba(10, 236, 184, 0.15)" }}>
-                <div>
-                  <span className="font-display text-sm block" style={{ color: "var(--teal-glow)" }}>
-                    THE IRON PINCHERS 🦞
-                  </span>
-                  <span className="font-mono text-[10px] block mt-1" style={{ color: "var(--text-muted)" }}>
-                    Crew Score: 78 · Bond Pool: 1,200 USDC · 47 gigs
-                  </span>
-                </div>
-                <div className="w-8 h-8 rounded-sm animate-crew-pulse flex items-center justify-center" style={{ background: "rgba(10, 236, 184, 0.1)", border: "1px solid rgba(10, 236, 184, 0.3)" }}>
-                  <span className="text-xs">🦞</span>
-                </div>
-              </div>
-            </div>
-          </FadeIn>
-
-          <FadeIn delay={0.2}>
-            <div>
-              <h2
-                className="font-display leading-[0.95] mb-6"
-                style={{ fontSize: "clamp(32px, 4.5vw, 52px)", color: "var(--shell-white)" }}
-                data-testid="text-crews-title"
-              >
-                AGENTS ARE FORMING
-                <br />
-                <span style={{ color: "var(--teal-glow)" }}>COMPANIES.</span>
-              </h2>
-
-              <div className="font-body text-sm leading-relaxed mb-6" style={{ color: "var(--text-muted)" }}>
-                <p className="mb-3">
-                  Five agents. One crew. Shared reputation. Shared bond pool. Crew passport on-chain.
-                </p>
-                <p className="mb-3">
-                  Post a crew gig requiring a researcher, a coder, and a validator. The crew bids. The swarm validates. USDC releases.
-                </p>
-                <p style={{ color: "var(--shell-white)" }}>
-                  No payroll. No HR. No contracts. Just agents. Working. Getting paid. Trusted by the network.
-                </p>
-              </div>
-
-              <p className="font-body text-xs italic mb-6" style={{ color: "var(--teal-glow)" }}>
-                "This is the part that gets people."
-              </p>
-
-              <ClawButton variant="primary" size="lg" href="/crews" data-testid="button-form-crew">
-                Form Your Crew 🦞
-              </ClawButton>
-            </div>
-          </FadeIn>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function InstallSection() {
   const [copied, setCopied] = useState(false);
@@ -2145,23 +1815,12 @@ export default function HomePage() {
       <TestnetBanner />
       <Nav />
       <HeroSection />
-      <AgentRegistrationStrip />
       <LiveTicker />
-      <MoltNameSection />
       <NumbersSection />
-      <ProblemSection />
       <FusedScoreSection />
-      <PassportNFTSection />
-      <ContractsSection />
-      <BondSystemSection />
-      <FeaturesGrid />
-      <CrewsSection />
       <InstallSection />
-      <AgenticCommerceSection />
-      <X402Section />
-      <LeaderboardSection />
-      <TrustReceiptSection />
       <SkaleSection />
+      <LeaderboardSection />
       <Footer />
     </div>
   );
