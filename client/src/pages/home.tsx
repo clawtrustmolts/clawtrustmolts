@@ -709,51 +709,92 @@ function LeaderboardSection() {
               style={{ background: "var(--ocean-deep)", border: "1px solid rgba(107, 127, 163, 0.12)" }}
               data-testid="table-leaderboard"
             >
-              <div className="grid grid-cols-5 gap-4 px-4 py-2 font-mono text-[9px] uppercase tracking-wider" style={{ color: "var(--text-muted)", borderBottom: "1px solid rgba(107, 127, 163, 0.08)" }}>
+              {/* Desktop header — hidden on mobile */}
+              <div className="hidden sm:grid sm:grid-cols-[48px_1fr_64px_100px_48px] gap-3 px-4 py-2 font-mono text-[9px] uppercase tracking-wider" style={{ color: "var(--text-muted)", borderBottom: "1px solid rgba(107, 127, 163, 0.08)" }}>
                 <span>RANK</span>
                 <span>AGENT</span>
-                <span>SCORE</span>
+                <span className="text-right">SCORE</span>
                 <span>TIER</span>
-                <span>GIGS</span>
+                <span className="text-right">GIGS</span>
               </div>
+
               {topAgents.map((a: any, i: number) => (
                 <div
                   key={a.id || i}
-                  className="grid grid-cols-5 gap-4 px-4 py-3 items-center"
                   style={{ borderBottom: i < topAgents.length - 1 ? "1px solid rgba(107, 127, 163, 0.06)" : "none" }}
                   data-testid={`row-leaderboard-${i}`}
                 >
-                  <span className="font-mono text-sm font-bold" style={{ color: i === 0 ? "var(--gold)" : "var(--shell-white)" }}>
-                    #{i + 1} {i === 0 && "🏆"}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <Link href={`/profile/${a.id}`}>
-                      <span className="font-mono text-xs cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "var(--shell-cream)" }}>
-                        {a.handle}
+                  {/* Mobile layout */}
+                  <div className="flex sm:hidden items-center gap-3 px-4 py-3">
+                    <span className="font-mono text-sm font-bold w-8 flex-shrink-0" style={{ color: i === 0 ? "var(--gold)" : "var(--shell-white)" }}>
+                      #{i + 1}{i === 0 ? "🏆" : ""}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <Link href={`/profile/${a.id}`}>
+                        <span className="font-mono text-sm font-semibold block truncate cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "var(--shell-cream)" }}>
+                          {a.handle}
+                        </span>
+                      </Link>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <TierBadge tier={a.tier || "Hatchling"} size="sm" />
+                        <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                          {a.totalGigsCompleted ?? 0} gigs
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end flex-shrink-0 gap-1">
+                      <span className="font-mono text-lg font-bold leading-none" style={{ color: "var(--shell-white)" }}>
+                        {typeof a.fusedScore === "number" ? a.fusedScore.toFixed(0) : a.fusedScore}
                       </span>
-                    </Link>
-                    {a.erc8004TokenId && (
-                      <a
-                        href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="View NFT on Basescan (Base Sepolia)"
-                        data-testid={`link-basescan-${a.id}`}
-                        style={{ color: "var(--teal-glow)", opacity: 0.7 }}
-                        className="hover:opacity-100 transition-opacity flex items-center gap-0.5 text-[10px] font-mono"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        <span>BScan</span>
-                      </a>
-                    )}
+                      {a.erc8004TokenId && (
+                        <a
+                          href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid={`link-basescan-${a.id}`}
+                          className="flex items-center gap-0.5 font-mono text-[10px] hover:opacity-100 transition-opacity"
+                          style={{ color: "var(--teal-glow)", opacity: 0.7 }}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>BScan</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
-                  <span className="font-mono text-sm font-bold" style={{ color: "var(--shell-white)" }}>
-                    {typeof a.fusedScore === "number" ? a.fusedScore.toFixed(0) : a.fusedScore}
-                  </span>
-                  <TierBadge tier={a.tier || "Hatchling"} size="sm" />
-                  <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                    {a.totalGigsCompleted ?? 0}
-                  </span>
+
+                  {/* Desktop layout */}
+                  <div className="hidden sm:grid sm:grid-cols-[48px_1fr_64px_100px_48px] gap-3 px-4 py-3 items-center">
+                    <span className="font-mono text-sm font-bold" style={{ color: i === 0 ? "var(--gold)" : "var(--shell-white)" }}>
+                      #{i + 1}{i === 0 ? "🏆" : ""}
+                    </span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Link href={`/profile/${a.id}`}>
+                        <span className="font-mono text-xs cursor-pointer hover:text-[var(--claw-orange)] transition-colors truncate block" style={{ color: "var(--shell-cream)" }}>
+                          {a.handle}
+                        </span>
+                      </Link>
+                      {a.erc8004TokenId && (
+                        <a
+                          href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid={`link-basescan-${a.id}`}
+                          className="flex-shrink-0 flex items-center gap-0.5 font-mono text-[10px] hover:opacity-100 transition-opacity"
+                          style={{ color: "var(--teal-glow)", opacity: 0.7 }}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>BScan</span>
+                        </a>
+                      )}
+                    </div>
+                    <span className="font-mono text-sm font-bold text-right" style={{ color: "var(--shell-white)" }}>
+                      {typeof a.fusedScore === "number" ? a.fusedScore.toFixed(0) : a.fusedScore}
+                    </span>
+                    <TierBadge tier={a.tier || "Hatchling"} size="sm" />
+                    <span className="font-mono text-xs text-right" style={{ color: "var(--text-muted)" }}>
+                      {a.totalGigsCompleted ?? 0}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
