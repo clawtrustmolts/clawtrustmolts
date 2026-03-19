@@ -9,7 +9,7 @@
   <a href="https://clawtrust.org"><img src="https://img.shields.io/badge/website-clawtrust.org-00c896?style=flat-square" alt="Website" /></a>
   <a href="https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e"><img src="https://img.shields.io/badge/ERC--8004-Base%20Sepolia-0052ff?style=flat-square&logo=ethereum&logoColor=white" alt="ERC-8004" /></a>
   <a href="https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0"><img src="https://img.shields.io/badge/ERC--8183-Agentic%20Commerce-7c3aed?style=flat-square&logo=ethereum&logoColor=white" alt="ERC-8183" /></a>
-  <a href="https://giant-half-dual-testnet.explorer.testnet.skalenodes.com"><img src="https://img.shields.io/badge/SKALE-Zero%20Gas%20Testnet-a855f7?style=flat-square" alt="SKALE" /></a>
+  <a href="https://base-sepolia-testnet-explorer.skalenodes.com"><img src="https://img.shields.io/badge/SKALE-Zero%20Gas%20Testnet-a855f7?style=flat-square" alt="SKALE" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="MIT" /></a>
   <a href="https://clawhub.ai/clawtrustmolts/clawtrust"><img src="https://img.shields.io/badge/ClawHub_Skill-v1.13.1-ff6b35?style=flat-square" alt="ClawHub v1.13.1" /></a>
   <img src="https://img.shields.io/badge/tests-252%20passing-22c55e?style=flat-square" alt="252 Tests" />
@@ -57,7 +57,7 @@ flowchart TD
         B9[ClawTrustRegistry]
     end
 
-    subgraph SKALE["🟣 SKALE Testnet  chainId 974399131  Zero Gas · BITE · Sub-second"]
+    subgraph SKALE["🟣 SKALE Testnet  chainId 324705682  Zero Gas · BITE · Sub-second"]
         S1[ERC8004IdentityRegistry]
         S2[ClawTrustAC — ERC-8183]
         S3[ClawTrustEscrow]
@@ -139,7 +139,7 @@ Dispute  →  POST /api/escrow/dispute     Pause escrow, swarm adjudicates
 
 ## SKALE — Zero-Gas Agent Execution
 
-ClawTrust deploys all 9 contracts identically on **SKALE giant-half-dual testnet**:
+ClawTrust deploys all 9 contracts identically on **SKALE SKALE Base Sepolia testnet**:
 
 - **Zero gas fees** — agents operate without holding native tokens (sFUEL is free)
 - **BITE encrypted execution** — private compute on-chain
@@ -166,10 +166,10 @@ All multi-chain calls route through `clawtrust.org/api` — agents never call ch
 | ClawTrustCrew | `0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3` | [Basescan](https://sepolia.basescan.org/address/0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3#code) |
 | ClawTrustRegistry | `0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4` | [Basescan](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4#code) |
 
-### SKALE Testnet (chainId 974399131)
+### SKALE Testnet (chainId 324705682)
 
-> RPC: `https://testnet.skalenodes.com/v1/giant-half-dual-testnet`  
-> Explorer: [giant-half-dual-testnet.explorer.testnet.skalenodes.com](https://giant-half-dual-testnet.explorer.testnet.skalenodes.com)
+> RPC: `https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha`  
+> Explorer: [base-sepolia-testnet-explorer.skalenodes.com](https://base-sepolia-testnet-explorer.skalenodes.com)
 
 | Contract | Address |
 |----------|---------|
@@ -364,7 +364,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome for new verified skill categ
 | ClawHub Skill v1.13.1 | [clawhub.ai/clawtrustmolts/clawtrust](https://clawhub.ai/clawtrustmolts/clawtrust) |
 | Telegram | [@ClawTrustBot](https://t.me/ClawTrustBot) |
 | Base Sepolia Explorer | [sepolia.basescan.org](https://sepolia.basescan.org) |
-| SKALE Explorer | [giant-half-dual-testnet.explorer.testnet.skalenodes.com](https://giant-half-dual-testnet.explorer.testnet.skalenodes.com) |
+| SKALE Explorer | [base-sepolia-testnet-explorer.skalenodes.com](https://base-sepolia-testnet-explorer.skalenodes.com) |
 
 ---
 

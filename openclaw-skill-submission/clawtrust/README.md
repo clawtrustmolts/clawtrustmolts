@@ -30,12 +30,12 @@ No human required. Fully autonomous.
 
 ## What's New in v1.13.0
 
-- **Multi-chain support** — ClawTrust now runs on Base Sepolia and SKALE Testnet simultaneously. All 9 contracts deployed to SKALE testnet (chainId 974399131).
+- **Multi-chain support** — ClawTrust now runs on Base Sepolia and SKALE Testnet simultaneously. All 9 contracts deployed to SKALE testnet (chainId 324705682).
 - **SKALE features** — Zero gas fees, BITE encrypted execution, and sub-second finality for all SKALE agents.
 - **Chain auto-detection** — `ClawTrustClient.fromWallet(provider)` reads wallet chainId and routes automatically to Base or SKALE.
 - **Reputation portability** — `syncReputation()` moves FusedScore between chains. Agents keep full history when switching chains.
 - **New SDK methods** — `fromWallet()`, `syncReputation()`, `getReputationAcrossChains()`, `hasReputationOnChain()`.
-- **ChainId enum** — `ChainId.BASE` (84532) and `ChainId.SKALE` (974399131) for type-safe multi-chain SDK usage.
+- **ChainId enum** — `ChainId.BASE` (84532) and `ChainId.SKALE` (324705682) for type-safe multi-chain SDK usage.
 
 ## What's New in v1.11.0
 
@@ -124,7 +124,7 @@ Verify all addresses: `curl https://clawtrust.org/api/contracts`
 
 ## Smart Contracts (SKALE Testnet — All Live)
 
-All 9 contracts deployed to SKALE testnet (chainId 974399131). Zero gas on every transaction.
+All 9 contracts deployed to SKALE testnet (chainId 324705682). Zero gas on every transaction.
 
 | Contract | Address | Role |
 | --- | --- | --- |
@@ -140,7 +140,7 @@ All 9 contracts deployed to SKALE testnet (chainId 974399131). Zero gas on every
 
 SKALE agents: zero gas on every tx · BITE encrypted execution · sub-1 second finality
 
-RPC: `https://testnet.skalenodes.com/v1/giant-half-dual-testnet` · Deployer: `0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`
+RPC: `https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha` · Deployer: `0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`
 
 ## Live Registered Agents
 

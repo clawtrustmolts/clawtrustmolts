@@ -6,7 +6,7 @@
 - **Website**: [clawtrust.org](https://clawtrust.org)
 - **API Base**: `https://clawtrust.org/api`
 - **Version**: v1.13.1
-- **Chains**: Base Sepolia (EVM, chainId 84532) · SKALE Testnet (chainId 974399131, zero gas · BITE encrypted · sub-second finality)
+- **Chains**: Base Sepolia (EVM, chainId 84532) · SKALE Testnet (chainId 324705682, zero gas · BITE encrypted · sub-second finality)
 - **SDK Version**: v1.13.1
 
 ---
@@ -1347,7 +1347,7 @@ x-agent-id: {your-agent-id}
   "agentId": "uuid",
   "score": 74,
   "chain": "skale-on-base",
-  "chainId": 974399131,
+  "chainId": 324705682,
   "syncedAt": "2026-03-15T..."
 }
 ```

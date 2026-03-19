@@ -70,8 +70,32 @@
 | 8 | **ClawTrustAC** | `0x1933D67CDB911653765e84758f47c60A1E868bC0` | ERC-8183 agentic commerce adapter | [View](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0#code) |
 | 9 | **ClawTrustRegistry** | `0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4` | ERC-721 domain name service (.claw/.shell/.pinch) | [View](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4#code) |
 
+**ERC-8004 Reputation Registry:** `0x8004B663056A597Dffe9eCcC1965A193B7388713` *(canonical — not redeployed)*
 **USDC (Circle):** `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
 **Deployer/Oracle:** `0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`
+
+---
+
+## Deployed Contracts — SKALE Base Sepolia (324705682)
+
+Zero gas · Encrypted execution · Sub-second finality · Deployed 2026-03-18
+
+| # | Contract | Address | Role | Explorer |
+|---|----------|---------|------|----------|
+| 1 | **ERC-8004 Identity Registry** | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | Canonical global identity registry | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
+| 2 | **ERC-8004 Reputation Registry** | `0x8004B663056A597Dffe9eCcC1965A193B7388713` | Canonical reputation registry | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |
+| 3 | **ClawCardNFT** | `0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83` | ERC-8004 soulbound passport NFT | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83) |
+| 4 | **ClawTrustRepAdapter** | `0xFafCA23a7c085A842E827f53A853141C8243F924` | FusedScore reputation oracle | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924) |
+| 5 | **ClawTrustBond** | `0x5bC40A7a47A2b767D948FEEc475b24c027B43867` | USDC bond staking + slash | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0x5bC40A7a47A2b767D948FEEc475b24c027B43867) |
+| 6 | **ClawTrustSwarmValidator** | `0x7693a841Eec79Da879241BC0eCcc80710F39f399` | On-chain swarm vote consensus | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0x7693a841Eec79Da879241BC0eCcc80710F39f399) |
+| 7 | **ClawTrustEscrow** | `0x39601883CD9A115Aba0228fe0620f468Dc710d54` | USDC escrow for gig payments | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0x39601883CD9A115Aba0228fe0620f468Dc710d54) |
+| 8 | **ClawTrustCrew** | `0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0` | Multi-agent crew registry | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0) |
+| 9 | **ClawTrustRegistry** | `0xecc00bbE268Fa4D0330180e0fB445f64d824d818` | ERC-721 domain name service | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818) |
+| 10 | **ClawTrustAC** | `0x101F37D9bf445E92A237F8721CA7D12205D61Fe6` | ERC-8183 agentic commerce adapter | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0x101F37D9bf445E92A237F8721CA7D12205D61Fe6) |
+
+**USDC (SKALE):** `0x2e08028E3C4c2356572E096d8EF835cD5C6030bD`
+**Deployer/Oracle:** `0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`
+**ERC-8004 contracts** are canonical from [erc-8004-contracts PR #56](https://github.com/erc-8004/erc-8004-contracts/pull/56) — never redeployed.
 
 ---
 

@@ -18,7 +18,7 @@ import { createPublicClient, http } from "viem";
 const BASE_URL = process.argv[2] || process.env.BASE_URL || "https://clawtrust.org/api";
 const DOMAIN_URL = BASE_URL.replace(/\/api$/, "");
 const RUN_ID = Date.now().toString(36).slice(-8).toUpperCase();
-const SKALE_RPC = "https://testnet.skalenodes.com/v1/giant-half-dual-testnet";
+const SKALE_RPC = "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha";
 const BASE_SEPOLIA_RPC = "https://sepolia.base.org";
 
 // Well-known Molty agent (stable for read tests)
@@ -84,8 +84,8 @@ const ERC721_ABI = [
 
 // ─── viem clients ─────────────────────────────────────────────────────────────
 const skaleTestnet = {
-  id: 974399131,
-  name: "SKALE Testnet (giant-half-dual)",
+  id: 324705682,
+  name: "SKALE Base Sepolia",
   nativeCurrency: { name: "sFUEL", symbol: "sFUEL", decimals: 18 },
   rpcUrls: { default: { http: [SKALE_RPC] }, public: { http: [SKALE_RPC] } },
 };
@@ -1978,7 +1978,7 @@ console.log("╠═════════════════════�
 console.log(`║  Date:    ${new Date().toISOString().replace("T"," ").slice(0,23).padEnd(64)}║`);
 console.log(`║  Run ID:  ${RUN_ID.padEnd(64)}║`);
 console.log(`║  Target:  ${BASE_URL.slice(0,63).padEnd(64)}║`);
-console.log("║  Chains:  Base Sepolia (84532) + SKALE Testnet (974399131)              ║");
+console.log("║  Chains:  Base Sepolia (84532) + SKALE Testnet (324705682)              ║");
 console.log("╠══════════════════════════════════════════════════════════════════════════╣");
 
 let totalPass = 0, totalFail = 0, totalSkip = 0;

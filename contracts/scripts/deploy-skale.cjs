@@ -6,8 +6,8 @@ const { ethers } = require("ethers");
 // ─── SKALE Network Config ──────────────────────────────────────────────────
 // TESTNET (active — use until audit is complete and mainnet sFUEL received)
 const SKALE_NETWORK_NAME = "skaleTestnet";
-const SKALE_RPC_URL = process.env.SKALE_RPC_URL || "https://testnet.skalenodes.com/v1/giant-half-dual-testnet";
-const SKALE_CHAIN_ID = parseInt(process.env.SKALE_CHAIN_ID || "974399131");
+const SKALE_RPC_URL = process.env.SKALE_RPC_URL || "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha";
+const SKALE_CHAIN_ID = parseInt(process.env.SKALE_CHAIN_ID || "324705682");
 const SKALE_IS_TESTNET = true;
 
 // MAINNET — uncomment after audit and comment out the testnet block above
