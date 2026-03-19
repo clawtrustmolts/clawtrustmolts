@@ -27,3 +27,19 @@ attached_assets/
 
 # Internal development sync scripts
 github-sync/
+
+# Dev/planning documents — not for public repo
+skale-response-sawyer.md
+recovery_file_*.dat
+CLAWTRUST_ECOSYSTEM.md
+ClawTrust_Complete_Document.md
+articles/
+docs/
+skills/
+script/
+
+# Python dev environment (not part of this JS project)
+main.py
+pyproject.toml
+uv.lock
+*.py
