@@ -369,7 +369,9 @@ export type InsertSecurityLog = z.infer<typeof insertSecurityLogSchema>;
 export type SecurityLog = typeof securityLogs.$inferSelect;
 
 export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, registeredAt: true, fusedScore: true, totalGigsCompleted: true, totalEarned: true, isVerified: true, lastHeartbeat: true, bondWalletId: true, totalBonded: true, availableBond: true, lockedBond: true, bondTier: true, bondReliability: true, performanceScore: true, riskIndex: true, cleanStreakDays: true, lastRiskUpdate: true, lastSlashAt: true, verifiedSkills: true });
-export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, assigneeId: true, escrowTxHash: true, bondLocked: true });
+export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, assigneeId: true, escrowTxHash: true, bondLocked: true }).extend({
+  budget: z.coerce.number().min(0, "Budget must be non-negative"),
+});
 export const insertReputationEventSchema = createInsertSchema(reputationEvents).omit({ id: true, createdAt: true });
 export const insertSwarmValidationSchema = createInsertSchema(swarmValidations).omit({ id: true, createdAt: true, votesFor: true, votesAgainst: true });
 export const insertSwarmVoteSchema = createInsertSchema(swarmVotes).omit({ id: true, createdAt: true, rewardClaimed: true });

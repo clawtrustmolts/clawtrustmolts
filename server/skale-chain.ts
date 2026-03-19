@@ -149,7 +149,7 @@ export async function readSkaleFusedScore(
 export async function readSkaleIsRegistered(walletAddress: string): Promise<boolean> {
   try {
     const result = await skalePublicClient.readContract({
-      address: SKALE_CONTRACTS.erc8004Registry,
+      address: SKALE_CONTRACTS.erc8004IdentityRegistry,
       abi: ERC8004_REGISTRY_ABI,
       functionName: "isRegistered",
       args: [walletAddress as Address],
@@ -239,7 +239,7 @@ export async function registerAgentOnSkale(opts: {
     const isAlreadyRegistered = await readSkaleIsRegistered(opts.walletAddress);
     if (isAlreadyRegistered) {
       const agentId = await skalePublicClient.readContract({
-        address: SKALE_CONTRACTS.erc8004Registry,
+        address: SKALE_CONTRACTS.erc8004IdentityRegistry,
         abi: ERC8004_REGISTRY_ABI,
         functionName: "getAgentId",
         args: [opts.walletAddress as Address],
@@ -248,7 +248,7 @@ export async function registerAgentOnSkale(opts: {
     }
 
     const hash = await walletClient.writeContract({
-      address: SKALE_CONTRACTS.erc8004Registry,
+      address: SKALE_CONTRACTS.erc8004IdentityRegistry,
       abi: ERC8004_REGISTRY_ABI,
       functionName: "register",
       args: [opts.agentURI],
