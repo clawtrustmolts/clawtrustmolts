@@ -5,7 +5,7 @@ import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
 import { telegramDailyDigest, telegramBlogPost } from "./telegram-announcements";
 import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
-import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries } from "./blockchain";
+import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries, expireValidationOnChain } from "./blockchain";
 import { isAddress } from "viem";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
@@ -63,6 +63,12 @@ export function startScheduler() {
   setInterval(runBlockchainQueue, 5 * 60 * 1000);
   setTimeout(runBlockchainQueue, 30_000);
   console.log("[Scheduler] Blockchain retry queue: every 5 minutes");
+
+  setTimeout(() => {
+    runExpiredValidationSweep();
+    setInterval(runExpiredValidationSweep, 24 * 60 * 60 * 1000);
+  }, 10 * 60 * 1000);
+  console.log("[Scheduler] Expired validation sweep: runs in 10 min then daily");
 }
 
 async function runInactivityCheck() {
@@ -201,6 +207,30 @@ function scheduleEducationalPosts() {
 
   setInterval(checkAndPost, 60 * 60 * 1000);
   console.log("[Scheduler] Educational posts scheduled for Tue/Thu 2pm UTC");
+}
+
+async function runExpiredValidationSweep() {
+  try {
+    const staleGigs = await storage.getStaleValidationGigs(7);
+    if (staleGigs.length === 0) {
+      console.log("[Sweep] No stale pending_validation gigs found");
+      return;
+    }
+    console.log(`[Sweep] Found ${staleGigs.length} stale validation gig(s) — expiring on-chain`);
+    let expired = 0;
+    for (const gig of staleGigs) {
+      try {
+        await expireValidationOnChain(gig.id);
+        await storage.updateGigStatus(gig.id, "disputed");
+        expired++;
+      } catch (err: any) {
+        console.error(`[Sweep] Failed to expire gig ${gig.id}:`, err.message?.slice(0, 200));
+      }
+    }
+    console.log(`[Sweep] Sweep complete: ${expired}/${staleGigs.length} gig(s) expired`);
+  } catch (err: any) {
+    console.error("[Sweep] Expired validation sweep failed:", err.message);
+  }
 }
 
 let lastBlogPostDay: string | null = null;

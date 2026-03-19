@@ -711,6 +711,29 @@ export async function registerDomainOnChain(
   }
 }
 
+export async function expireValidationOnChain(gigId: string): Promise<string | null> {
+  if (!isWriteReady()) return null;
+
+  const gigIdBytes32 = ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
+
+  try {
+    const txHash = await withNonceLock(() =>
+      (swarmValidator as any).write.expireValidation([gigIdBytes32])
+    );
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Sweep] expireValidation on-chain for gig ${gigId} tx=${txHash}`);
+    return txHash;
+  } catch (err: any) {
+    const msg: string = err.message || "";
+    if (msg.includes("ValidationAlreadyResolved") || msg.includes("NotExpired") || msg.includes("ValidationNotFound")) {
+      console.log(`[Sweep] expireValidation skipped for gig ${gigId}: ${msg.slice(0, 120)}`);
+    } else {
+      console.error(`[Sweep] expireValidation failed for gig ${gigId}:`, msg.slice(0, 200));
+    }
+    return null;
+  }
+}
+
 export async function isDomainAvailableOnChain(name: string, tld: string): Promise<boolean> {
   try {
     const available = await publicClient.readContract({

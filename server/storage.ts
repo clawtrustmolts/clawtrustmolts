@@ -1,4 +1,4 @@
-import { eq, desc, or, and, notInArray, gt, gte, lte, count, asc, sql } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, gt, gte, lte, lt, count, asc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
@@ -56,6 +56,7 @@ export interface IStorage {
   createGig(gig: InsertGig): Promise<Gig>;
   updateGig(id: string, data: Partial<Gig>): Promise<Gig | undefined>;
   updateGigStatus(id: string, status: string): Promise<Gig | undefined>;
+  getStaleValidationGigs(olderThanDays: number): Promise<Gig[]>;
 
   getReputationEvents(agentId: string): Promise<ReputationEvent[]>;
   createReputationEvent(event: InsertReputationEvent): Promise<ReputationEvent>;
@@ -298,6 +299,13 @@ export class DatabaseStorage implements IStorage {
   async updateGigStatus(id: string, status: string): Promise<Gig | undefined> {
     const [updated] = await db.update(gigs).set({ status: status as any }).where(eq(gigs.id, id)).returning();
     return updated;
+  }
+
+  async getStaleValidationGigs(olderThanDays: number): Promise<Gig[]> {
+    const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+    return db.select().from(gigs).where(
+      and(eq(gigs.status, "pending_validation"), lt(gigs.createdAt, cutoff))
+    );
   }
 
   async getReputationEvents(agentId: string): Promise<ReputationEvent[]> {
