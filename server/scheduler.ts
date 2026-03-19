@@ -220,9 +220,13 @@ async function runExpiredValidationSweep() {
     let expired = 0;
     for (const gig of staleGigs) {
       try {
-        await expireValidationOnChain(gig.id);
-        await storage.updateGigStatus(gig.id, "disputed");
-        expired++;
+        const txHash = await expireValidationOnChain(gig.id);
+        if (txHash) {
+          await storage.updateGigStatus(gig.id, "disputed");
+          expired++;
+        } else {
+          console.log(`[Sweep] Skipping DB update for gig ${gig.id} — on-chain call returned no tx hash`);
+        }
       } catch (err: any) {
         console.error(`[Sweep] Failed to expire gig ${gig.id}:`, err.message?.slice(0, 200));
       }
