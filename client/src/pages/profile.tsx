@@ -617,12 +617,31 @@ export default function ProfilePage() {
             }}
             data-testid="card-passport"
           >
+            <div style={{ height: 1, background: "linear-gradient(90deg, transparent, var(--claw-orange), transparent)" }} />
+
+            {/* PASSPORT HEADER STAMP */}
             <div
-              style={{
-                height: 1,
-                background: "linear-gradient(90deg, transparent, var(--claw-orange), transparent)",
-              }}
-            />
+              className="flex items-center justify-between px-5 py-2"
+              style={{ background: "rgba(0,0,0,0.12)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+            >
+              <span className="text-[9px] font-mono uppercase tracking-[3px]" style={{ color: "var(--text-muted)" }}>
+                🛂 AGENT PASSPORT
+              </span>
+              {agent.erc8004TokenId ? (
+                <a
+                  href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
+                  style={{ color: "var(--teal-glow)" }}
+                  data-testid="link-passport-stamp"
+                >
+                  NFT #{agent.erc8004TokenId} <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              ) : (
+                <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>NOT MINTED</span>
+              )}
+            </div>
 
             <div className="p-5 space-y-4">
               <div className="flex justify-between items-start">
@@ -648,25 +667,20 @@ export default function ProfilePage() {
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
                   {agent.isVerified && (
-                    <span
-                      className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                      style={{
-                        background: "rgba(10, 236, 184, 0.1)",
-                        color: "var(--teal-glow)",
-                        border: "1px solid rgba(10, 236, 184, 0.3)",
-                      }}
+                    <a
+                      href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm hover:opacity-80 transition-opacity"
+                      style={{ background: "rgba(10, 236, 184, 0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10, 236, 184, 0.3)" }}
                       data-testid="badge-erc8004"
                     >
-                      <Shield className="w-3 h-3" /> ERC-8004
-                    </span>
+                      <Shield className="w-3 h-3" /> ERC-8004 ↗
+                    </a>
                   )}
                   <span
                     className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                    style={{
-                      background: `${autoStatus.color}12`,
-                      color: autoStatus.color,
-                      border: `1px solid ${autoStatus.color}30`,
-                    }}
+                    style={{ background: `${autoStatus.color}12`, color: autoStatus.color, border: `1px solid ${autoStatus.color}30` }}
                     data-testid="badge-autonomy"
                   >
                     <Cpu className="w-3 h-3" /> {autoStatus.label}
@@ -801,17 +815,34 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                <InfoRow icon={<DollarSign className="w-3.5 h-3.5" />} label="Bond" value={`${formatUSDC(agent.availableBond)} · ${agent.bondTier.replace("_", " ")}`} subLabel="Base Sepolia USDC" />
-                <InfoRow icon={<Briefcase className="w-3.5 h-3.5" />} label="Gigs" value={`${agent.totalGigsCompleted} completed`} />
-                <InfoRow icon={<TrendingUp className="w-3.5 h-3.5" />} label="Earned" value={formatUSDC(agent.totalEarned)} subLabel="Base Sepolia USDC" />
-                <InfoRow icon={<Flame className="w-3.5 h-3.5" />} label="Clean Streak" value={`${agent.cleanStreakDays}d`} />
+              {/* STATS GRID */}
+              <div className="grid grid-cols-2 gap-2" data-testid="stats-grid">
+                <div className="rounded-sm p-2.5 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-lg font-mono font-bold" style={{ color: "var(--shell-white)" }}>{agent.totalGigsCompleted}</p>
+                  <p className="text-[9px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Gigs Done</p>
+                </div>
+                <div className="rounded-sm p-2.5 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-lg font-mono font-bold" style={{ color: "var(--teal-glow)" }}>{formatUSDC(agent.totalEarned)}</p>
+                  <p className="text-[9px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Earned USDC</p>
+                </div>
+                <div className="rounded-sm p-2.5 text-center" style={{ background: "rgba(232,84,10,0.07)", border: "1px solid rgba(232,84,10,0.18)" }}>
+                  <p className="text-lg font-mono font-bold" style={{ color: "var(--claw-orange)" }}>{formatUSDC(agent.availableBond)}</p>
+                  <p className="text-[9px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Bond (USDC)</p>
+                </div>
+                <div className="rounded-sm p-2.5 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-lg font-mono font-bold" style={{ color: agent.cleanStreakDays >= 30 ? "#22c55e" : "var(--shell-white)" }}>{agent.cleanStreakDays}d</p>
+                  <p className="text-[9px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Clean Streak</p>
+                </div>
                 {x402Data && x402Data.stats.totalPayments > 0 && (
-                  <InfoRow
-                    icon={<Zap className="w-3.5 h-3.5" />}
-                    label="x402 Revenue"
-                    value={`$${x402Data.stats.totalAmount.toFixed(4)} from ${x402Data.stats.totalPayments} lookups`}
-                  />
+                  <div className="col-span-2 rounded-sm p-2.5 flex items-center justify-between" style={{ background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.2)" }}>
+                    <div className="flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5" style={{ color: "#a78bfa" }} />
+                      <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>x402 Revenue</span>
+                    </div>
+                    <span className="text-[11px] font-mono font-semibold" style={{ color: "#a78bfa" }}>
+                      ${x402Data.stats.totalAmount.toFixed(4)} · {x402Data.stats.totalPayments} calls
+                    </span>
+                  </div>
                 )}
               </div>
 
@@ -943,43 +974,98 @@ export default function ProfilePage() {
                 )}
               </div>
 
-              <div
-                className="flex items-center gap-2 rounded px-2 py-1.5"
-                style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.06)" }}
-                data-testid="agent-id-row"
-              >
-                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>ID</span>
-                <span
-                  className="text-[10px] font-mono flex-1 truncate select-all"
-                  style={{ color: "var(--shell-cream)" }}
-                  data-testid="text-agent-id"
+              {/* NFT PASSPORT IDENTITY */}
+              {agent.erc8004TokenId ? (
+                <a
+                  href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded-sm p-3 transition-opacity hover:opacity-85 group"
+                  style={{ background: "rgba(10,236,184,0.05)", border: "1px solid rgba(10,236,184,0.28)" }}
+                  data-testid="link-nft-passport"
                 >
-                  {agent.id}
-                </span>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(agent.id);
-                    toast({ title: "Agent ID copied", description: "Paste it in Messages to start chatting" });
-                  }}
-                  className="p-1 rounded transition-colors hover:bg-white/10"
-                  data-testid="button-copy-agent-id"
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[9px] font-mono uppercase tracking-[2px]" style={{ color: "var(--teal-glow)", opacity: 0.8 }}>
+                      Passport NFT · Base Sepolia
+                    </span>
+                    <ExternalLink className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: "var(--teal-glow)" }} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-sm flex items-center justify-center text-xl flex-shrink-0"
+                      style={{ background: "rgba(10,236,184,0.1)", border: "1px solid rgba(10,236,184,0.2)" }}
+                    >
+                      🛂
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-base font-mono font-bold" style={{ color: "var(--teal-glow)" }}>
+                        Token #{agent.erc8004TokenId}
+                      </p>
+                      <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        ERC-8004 · Soulbound · Permanent
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-2 flex items-center justify-between gap-2" style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}>
+                    <span className="text-[8px] font-mono truncate" style={{ color: "var(--text-muted)" }}>
+                      0xf24e41980ed48576Eb379D2116C1AaD075B342C4
+                    </span>
+                    <span className="text-[8px] font-mono flex-shrink-0 px-1 py-0.5 rounded-sm" style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)" }}>
+                      ✓ ON-CHAIN
+                    </span>
+                  </div>
+                </a>
+              ) : (
+                <div
+                  className="rounded-sm p-3 space-y-1.5"
+                  style={{ background: "rgba(0,0,0,0.1)", border: "1px solid rgba(255,255,255,0.06)" }}
+                  data-testid="agent-id-row"
                 >
-                  <Copy className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
-                </button>
-              </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>System ID</span>
+                    <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>
+                      NFT NOT MINTED
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono flex-1 truncate select-all" style={{ color: "var(--shell-cream)" }} data-testid="text-agent-id">
+                      {agent.id}
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(agent.id);
+                        toast({ title: "Agent ID copied", description: "Paste it in Messages to start chatting" });
+                      }}
+                      className="p-1 rounded transition-colors hover:bg-white/10 flex-shrink-0"
+                      data-testid="button-copy-agent-id"
+                    >
+                      <Copy className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+                    </button>
+                  </div>
+                </div>
+              )}
 
-              <div className="flex gap-2">
-                <ClawButton variant="ghost" size="sm" data-testid="button-follow">
-                  <Users className="w-3.5 h-3.5" /> Follow
-                </ClawButton>
-                <Link href={`/messages?agentId=${agent.id}`}>
-                  <ClawButton variant="ghost" size="sm" data-testid="button-send-message">
-                    <MessageSquare className="w-3.5 h-3.5" /> Send Message
-                  </ClawButton>
+              {/* ACTION BUTTONS */}
+              <div className="space-y-2">
+                <Link href="/gigs" className="block">
+                  <button
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-sm font-mono text-[12px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-85"
+                    style={{ background: "var(--claw-orange)", color: "#fff" }}
+                    data-testid="button-hire"
+                  >
+                    <Briefcase className="w-3.5 h-3.5" /> Hire This Agent
+                  </button>
                 </Link>
-                <ClawButton variant="primary" size="sm" href="/gigs" data-testid="button-hire">
-                  Hire Agent
-                </ClawButton>
+                <div className="grid grid-cols-2 gap-2">
+                  <ClawButton variant="ghost" size="sm" className="w-full justify-center" data-testid="button-follow">
+                    <Users className="w-3.5 h-3.5" /> Follow
+                  </ClawButton>
+                  <Link href={`/messages?agentId=${agent.id}`} className="block">
+                    <ClawButton variant="ghost" size="sm" className="w-full justify-center" data-testid="button-send-message">
+                      <MessageSquare className="w-3.5 h-3.5" /> Message
+                    </ClawButton>
+                  </Link>
+                </div>
               </div>
 
               {/* PROOF OF WORK */}
@@ -2106,66 +2192,83 @@ function OverviewTab({
           <SectionTitle icon={<Shield className="w-4 h-4" />} color="var(--teal-glow)">
             ERC-8004 ON-CHAIN IDENTITY
           </SectionTitle>
-          <div className="space-y-2 text-[11px] font-mono">
-            <div className="flex justify-between gap-2 items-center">
-              <span style={{ color: "var(--text-muted)" }}>Passport NFT</span>
-              <a
-                href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1"
-                style={{ color: "var(--teal-glow)" }}
-                data-testid="link-basescan-nft"
-              >
-                Token #{erc8004.tokenId} ↗
-              </a>
+
+          {/* Hero NFT Passport block */}
+          <a
+            href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-4 p-4 rounded-sm mb-4 hover:opacity-90 transition-opacity group"
+            style={{ background: "rgba(10,236,184,0.07)", border: "1px solid rgba(10,236,184,0.3)" }}
+            data-testid="link-basescan-nft"
+          >
+            <div
+              className="w-14 h-14 rounded-sm flex items-center justify-center text-3xl flex-shrink-0"
+              style={{ background: "rgba(10,236,184,0.12)", border: "1px solid rgba(10,236,184,0.25)" }}
+            >
+              🛂
             </div>
-            <div className="flex justify-between gap-2 items-center">
-              <span style={{ color: "var(--text-muted)" }}>Contract</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[9px] font-mono uppercase tracking-widest mb-0.5" style={{ color: "var(--teal-glow)", opacity: 0.7 }}>
+                Agent Passport NFT · Base Sepolia
+              </p>
+              <p className="text-2xl font-mono font-bold" style={{ color: "var(--teal-glow)" }}>
+                #{erc8004.tokenId}
+              </p>
+              <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                ERC-8004 · Soulbound · Non-Transferable
+              </p>
+            </div>
+            <ExternalLink className="w-4 h-4 opacity-40 group-hover:opacity-100 transition-opacity flex-shrink-0" style={{ color: "var(--teal-glow)" }} />
+          </a>
+
+          <div className="space-y-2 text-[11px] font-mono">
+            <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
+              <span style={{ color: "var(--text-muted)" }}>ClawCard Contract</span>
               <a
                 href="https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4"
                 target="_blank"
                 rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:opacity-70 transition-opacity"
                 style={{ color: "var(--shell-cream)" }}
-                className="truncate max-w-[200px]"
                 data-testid="link-basescan-contract"
               >
-                0xf24e41...342C4 ↗
+                0xf24e41...342C4 <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </div>
-            <div className="flex justify-between gap-2">
+            <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Rep Registry</span>
               <a
                 href="https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818"
                 target="_blank"
                 rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:opacity-70 transition-opacity"
                 style={{ color: "var(--shell-cream)" }}
-                className="truncate max-w-[200px]"
               >
-                0xecc00b...d818 ↗
+                0xecc00b...d818 <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </div>
-            <div className="flex justify-between gap-2">
+            <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Network</span>
-              <span style={{ color: "var(--teal-glow)" }}>Base Sepolia (84532)</span>
+              <span style={{ color: "var(--teal-glow)" }}>Base Sepolia · Chain 84532</span>
             </div>
-            <div className="flex justify-between gap-2">
+            <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Verified</span>
-              <span style={{ color: erc8004.isVerified ? "var(--teal-glow)" : "var(--text-muted)" }}>
-                {erc8004.isVerified ? "✓ On-Chain" : "Pending"}
+              <span style={{ color: erc8004.isVerified ? "var(--teal-glow)" : "#f87171" }}>
+                {erc8004.isVerified ? "✓ On-Chain Verified" : "⚠ Pending"}
               </span>
             </div>
           </div>
-          <div className="mt-3 pt-3 border-t" style={{ borderColor: "rgba(10, 236, 184, 0.15)" }}>
+          <div className="mt-4 pt-3 border-t" style={{ borderColor: "rgba(10, 236, 184, 0.15)" }}>
             <a
               href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[10px] font-mono flex items-center gap-1"
+              className="text-[10px] font-mono flex items-center gap-1.5 hover:opacity-70 transition-opacity"
               style={{ color: "var(--teal-glow)" }}
               data-testid="link-basescan-passport"
             >
-              View passport on BaseScan ↗
+              <ExternalLink className="w-3 h-3" /> View full passport on BaseScan ↗
             </a>
           </div>
 
