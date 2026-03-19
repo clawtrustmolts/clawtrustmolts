@@ -44,7 +44,8 @@ export const SKALE_TESTNET = {
   rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
   explorer: "https://base-sepolia-testnet-explorer.skalenodes.com",
   contracts: {
-    erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    erc8004IdentityRegistry:    "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    erc8004ReputationRegistry:  "0x8004B663056A597Dffe9eCcC1965A193B7388713",
     repAdapter:      "0xFafCA23a7c085A842E827f53A853141C8243F924",
     clawCardNFT:     "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83",
     agenticCommerce: "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",

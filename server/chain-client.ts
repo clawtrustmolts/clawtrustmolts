@@ -196,7 +196,8 @@ export const IDENTITY_REGISTRY_ABI = [
   },
 ] as const;
 
-export const REPUTATION_REGISTRY_ADDRESS: Address = "0xecc00bbE268Fa4D0330180e0fB445f64d824d818";
+// Canonical ERC-8004 ReputationRegistry — SKALE Base Sepolia (PR #56 by TheGreatAxios/Sawyer Cutler)
+export const REPUTATION_REGISTRY_ADDRESS: Address = "0x8004B663056A597Dffe9eCcC1965A193B7388713";
 
 export const REPUTATION_REGISTRY_ABI = [
   {

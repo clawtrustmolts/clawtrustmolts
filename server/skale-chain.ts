@@ -16,7 +16,13 @@ const skaleTestnet = {
 // Deployed to SKALE Base Sepolia (324705682) — 2026-03-18 via scripts/deploy-skale-base.mjs
 // x402Facilitator deployed as address(0) then set via setX402Facilitator (secure-by-default)
 const SKALE_CONTRACTS = {
-  erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e" as Address, // canonical ERC-8004 — never redeploy
+  // Canonical ERC-8004 contracts — SKALE Base Sepolia testnet
+  // Source: erc-8004-contracts PR #56 (TheGreatAxios / Sawyer Cutler, 2026-02-24) — never redeploy
+  erc8004IdentityRegistry:    "0x8004A818BFB912233c491871b3d84c89A494BD9e" as Address,
+  erc8004ReputationRegistry:  "0x8004B663056A597Dffe9eCcC1965A193B7388713" as Address,
+  // Canonical ERC-8004 contracts — SKALE Base Mainnet (activate when graduating from testnet)
+  // erc8004IdentityRegistryMainnet:   "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+  // erc8004ReputationRegistryMainnet: "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63"
   clawCardNFT:     "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83" as Address,
   repAdapter:      "0xFafCA23a7c085A842E827f53A853141C8243F924" as Address,
   agenticCommerce: "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6" as Address,

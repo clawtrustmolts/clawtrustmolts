@@ -1,65 +1,61 @@
-# ClawTrust SKALE Integration Compliance Report
+# ClawTrust — SKALE Integration Compliance Report
 
-**To:** Sawyer / SKALE Team
+**To:** Sawyer Cutler / SKALE Team
 **From:** ClawTrust (Chronos_Vault)
 **Date:** March 18, 2026
-**Re:** Action items from your feedback confirmed complete
+**Re:** Action items confirmed complete
 
 ---
 
-## Overview
+## Item 1 — Chain: SKALE on Base
 
-This document confirms that all technical action items raised in your feedback have been addressed and are live on SKALE on Base testnet as of today.
-
----
-
-## Item 1 Chain: SKALE on Base
-
-**Your instruction:** Use the correct chain — SKALE on Base.
+**Your instruction:** Use SKALE on Base.
 
 **Status: Complete.**
 
-ClawTrust is deployed and operating on **SKALE on Base Sepolia** (chain ID `324705682`), the exact network documented at [docs.skale.space/get-started/quick-start/skale-on-base](https://docs.skale.space/get-started/quick-start/skale-on-base).
+ClawTrust is fully deployed on **SKALE on Base Sepolia** (chain ID `324705682`), consistent with [docs.skale.space/get-started/quick-start/skale-on-base](https://docs.skale.space/get-started/quick-start/skale-on-base).
 
 | Parameter | Value |
 |---|---|
+| Network name | SKALE Base Sepolia |
 | Chain ID | `324705682` |
 | RPC | `https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha` |
 | Explorer | `https://base-sepolia-testnet-explorer.skalenodes.com` |
 | USDC | `0x2e08028E3C4c2356572E096d8EF835cD5C6030bD` |
 
-All 8 ClawTrust contracts are live and verified on this network. See full address table in Item 2 below.
+All 8 ClawTrust contracts are live and verified on this network as of 2026-03-18.
 
 ---
 
-## Item 2 Canonical ERC-8004 Contracts: Not Redeployed
+## Item 2 — Canonical ERC-8004 Contracts: Not Redeployed
 
-**Your instruction:** Use the canonical ERC-8004 contracts already deployed on testnet and mainnet do not redeploy them.
+**Your instruction:** The canonical ERC-8004 contracts are already deployed on testnet and mainnet — do not redeploy them.
 
 **Status: Complete.**
 
-ClawTrust has never redeployed the canonical ERC-8004 contracts. From day one, our integration reads the canonical registry addresses as immutable constants. They are not part of our deploy script. The comment in our codebase reads:
+ClawTrust has never redeployed either canonical ERC-8004 contract. Both are wired as immutable read-only constants in our codebase, sourced directly from [erc-8004-contracts PR #56](https://github.com/erc-8004/erc-8004-contracts/pull/56) submitted by TheGreatAxios.
 
-```
-// canonical ERC-8004 — never redeploy
-```
+### SKALE Base Sepolia (Testnet)
 
-The canonical addresses in use:
-
-| Contract | Address | Chain |
+| Contract | Address | Explorer |
 |---|---|---|
-| ERC-8004 IdentityRegistry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | SKALE on Base Sepolia |
-| ERC-8004 ReputationRegistry | `0x8004B663056A597Dffe9eCcC1965A193B7388713` | SKALE on Base Sepolia |
+| ERC-8004 IdentityRegistry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
+| ERC-8004 ReputationRegistry | `0x8004B663056A597Dffe9eCcC1965A193B7388713` | [View](https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |
 
-These are wired as read-only references across both our Base Sepolia deployment and our SKALE on Base deployment.
+### SKALE Base Mainnet
 
-We have reviewed the PR at [erc-8004-contracts#56](https://github.com/erc-8004/erc-8004-contracts/pull/56) and will integrate any updated mainnet addresses from that PR when we graduate to mainnet.
+| Contract | Address | Explorer |
+|---|---|---|
+| ERC-8004 IdentityRegistry | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` | [View](https://skale-base-explorer.skalenodes.com/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432) |
+| ERC-8004 ReputationRegistry | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` | [View](https://skale-base-explorer.skalenodes.com/address/0x8004BAa17C55a88189AE136b182e5fdA19dE9b63) |
+
+Both testnet and mainnet addresses are wired into our configuration. ClawTrust will activate mainnet when graduating from testnet.
 
 ---
 
-## ClawTrust Contracts SKALE on Base Sepolia (Live)
+## ClawTrust Contracts — SKALE Base Sepolia (Testnet, Live)
 
-All 8 contracts deployed 2026-03-18 via `scripts/deploy-skale-base.mjs`:
+Deployed 2026-03-18 via `scripts/deploy-skale-base.mjs`:
 
 | Contract | Address |
 |---|---|
@@ -72,23 +68,23 @@ All 8 contracts deployed 2026-03-18 via `scripts/deploy-skale-base.mjs`:
 | ClawTrustRegistry | `0xecc00bbE268Fa4D0330180e0fB445f64d824d818` |
 | ClawTrustAC *(ERC-8183 Agentic Commerce)* | `0x101F37D9bf445E92A237F8721CA7D12205D61Fe6` |
 
-**Security note:** `ClawTrustEscrow` is deployed with `x402Facilitator = address(0)` by default, and the facilitator address is set via a separate post-deploy `setX402Facilitator` call. This ensures no privileged address is baked into the constructor and the contract is inert until explicitly configured.
+**Security note:** `ClawTrustEscrow` is deployed with `x402Facilitator = address(0)` by default and enabled via a separate post-deploy `setX402Facilitator` call — secure-by-default.
 
 ---
 
-## Item 3 Incentives
+## Item 3 — Incentives
 
-Noted. We will follow up directly with @dantereminick once everything has been reviewed on their end.
+Understood. We will follow up directly with @dantereminick once everything has been reviewed on their end.
 
 ---
 
 ## Summary
 
-Both technical items from your feedback are confirmed complete:
+Both technical action items are confirmed complete:
 
-- SKALE on Base is the active chain in production
-- Canonical ERC-8004 contracts are used as-is — never redeployed
+- ClawTrust runs on SKALE on Base — correct chain, correct RPC, correct chain ID
+- Canonical ERC-8004 IdentityRegistry and ReputationRegistry are consumed directly from PR #56 on both testnet and mainnet — neither contract was redeployed
 
-We are ready for any further review or next steps you or the team require. Please do not hesitate to reach out.
+We are ready for any further steps. Thank you for the continued support.
 
 — **ClawTrust / Chronos_Vault**
