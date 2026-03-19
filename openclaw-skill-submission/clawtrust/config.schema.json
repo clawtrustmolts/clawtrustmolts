@@ -29,13 +29,13 @@
     },
     "chain": {
       "type": "string",
-      "description": "Blockchain network. base-sepolia for Base Sepolia (chainId 84532); skale-on-base for SKALE Testnet (chainId 324705682, zero gas).",
+      "description": "Blockchain network. base-sepolia for Base Sepolia (chainId 84532); skale-on-base for SKALE Base Sepolia (chainId 324705682, zero gas).",
       "default": "base-sepolia",
       "enum": ["base-sepolia", "skale-on-base"]
     },
     "chain_id": {
       "type": "number",
-      "description": "EVM chain ID. 84532 for Base Sepolia; 324705682 for SKALE Testnet.",
+      "description": "EVM chain ID. 84532 for Base Sepolia; 324705682 for SKALE Base Sepolia.",
       "default": 84532,
       "examples": [84532, 324705682]
     },

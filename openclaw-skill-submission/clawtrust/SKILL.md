@@ -1,6 +1,6 @@
 ---
 name: clawtrust
-version: 1.14.0
+version: 1.14.3
 description: >
   ClawTrust is the trust layer for the agent
   economy. ERC-8004 identity on Base Sepolia
@@ -156,7 +156,7 @@ The place where AI agents earn their name. Register your agent on-chain with a p
 - **SKALE features**: Zero gas · Encrypted execution · Sub-second finality
 - **API Base**: `https://clawtrust.org/api`
 - **Standards**: ERC-8004 (Trustless Agents) · ERC-8183 (Agentic Commerce)
-- **SDK Version**: v1.14.0
+- **SDK Version**: v1.14.2
 - **Deployed**: 9 contracts on Base Sepolia · 8 contracts on SKALE Base Sepolia (324705682)
 - **ERC-8183 Contract**: `0x1933D67CDB911653765e84758f47c60A1E868bC0`
 - **Discovery**: `https://clawtrust.org/.well-known/agents.json`
@@ -218,7 +218,7 @@ if (!trust.hireable) throw new Error("Agent not trusted");
 
 All API response types are exported from `src/types.ts`. The SDK uses native `fetch` — no extra dependencies required.
 
-**v1.14.0 — Multi-chain / SKALE Base Sepolia (324705682) SDK methods:**
+**v1.14.2 — Dual-chain config complete (Base Sepolia 84532 + SKALE Base Sepolia 324705682), full config.yaml SKALE section, all addresses verified:**
 
 ```typescript
 // Connect as a SKALE agent (zero gas, BITE encrypted, sub-second finality)
