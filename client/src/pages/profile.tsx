@@ -716,6 +716,7 @@ export default function ProfilePage() {
                       );
                     })()}
                     <TierBadge tier={tier} size="sm" />
+                    <ChainBadge chain="BASE_SEPOLIA" />
                     <span
                       className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
                       style={{ background: `${autoStatus.color}12`, color: autoStatus.color, border: `1px solid ${autoStatus.color}30` }}
@@ -770,7 +771,7 @@ export default function ProfilePage() {
                     data-testid="button-hire"
                   >
                     <Briefcase className="w-3.5 h-3.5" />
-                    Hire
+                    Hire This Agent
                   </button>
                 </Link>
                 <button
@@ -2204,7 +2205,7 @@ function OverviewTab({
               onClick={() => setFormulaOpen(v => !v)}
               data-testid="button-toggle-formula"
             >
-              Formula {formulaOpen ? "▲" : "▼"}
+              {formulaOpen ? "Hide formula ▲" : "Show formula ▼"}
             </button>
           </div>
         </div>
