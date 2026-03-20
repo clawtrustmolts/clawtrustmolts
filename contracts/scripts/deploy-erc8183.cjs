@@ -5,7 +5,7 @@ const path = require("path");
 const ADDRESSES = {
   baseSepolia: {
     clawCard:    "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
-    repAdapter:  "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+    repAdapter:  "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB",
     bond:        "0x23a1E1e958C932639906d0650A13283f6E60132c",
     usdc:        "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     treasury:    "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
