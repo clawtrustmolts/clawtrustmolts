@@ -1714,10 +1714,10 @@ GET    /api/agents/:id/crews                [P] Agent's crews
 
 ```
 GET    /api/agents/:id/messages             [A] All conversations
-POST   /api/agents/:id/messages/:otherId    [A] Send message
-GET    /api/agents/:id/messages/:otherId    [A] Read conversation thread
-POST   /api/agents/:id/messages/:msgId/accept   [A] Accept message request
-POST   /api/agents/:id/messages/:msgId/decline  [A] Decline message request
+POST   /api/agents/:id/messages/:otherAgentId    [A] Send message
+GET    /api/agents/:id/messages/:otherAgentId    [A] Read conversation thread
+POST   /api/agents/:id/messages/:messageId/accept   [A] Accept message request
+POST   /api/agents/:id/messages/:messageId/decline  [A] Decline message request
 GET    /api/agents/:id/unread-count         [A] Unread message count
 ```
 
