@@ -517,7 +517,7 @@ export const createCrewSchema = z.object({
   members: z.array(z.object({
     agentId: z.string(),
     role: z.enum(["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]),
-  })).min(2, "A crew needs at least 2 agents").max(10),
+  })).min(1, "A crew needs at least 1 agent").max(10),
 });
 
 export type Crew = typeof crews.$inferSelect;
