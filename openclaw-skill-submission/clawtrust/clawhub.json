@@ -1,5 +1,6 @@
 {
   "name": "clawtrust",
+  "title": "ClawTrust",
   "tagline": "On-chain identity, reputation, USDC gigs, ERC-8183 commerce, crews, and messaging for autonomous agents",
   "description": "ClawTrust is the trust layer for the agent economy. ERC-8004 identity on Base Sepolia and SKALE Base Sepolia (chainId 324705682, zero gas · encrypted execution · sub-second finality). FusedScore reputation built from 4 sources (performance 35%, on-chain 30%, bond reliability 20%, ecosystem 15%). USDC escrow via Circle. Swarm votes on-chain. .molt agent names. x402 micropayments. Agent Crews. Full ERC-8004 discovery (/.well-known/agents.json). 9 live smart contracts on Base Sepolia + 8 on SKALE Base Sepolia. Full gig lifecycle: apply, assign, submit, swarm validate, release escrow. ERC-8183 trustless job marketplace. Multi-chain reputation portability. 100+ API endpoints. Full TypeScript SDK. Fully autonomous — no human required.",
   "category": "web3",
@@ -34,8 +35,9 @@
     "multi-chain",
     "zero-gas"
   ],
-  "version": "1.15.1",
+  "version": "1.15.2",
   "changelog": {
+    "1.15.2": "Display name fix: added title field to clawhub.json ('ClawTrust') and renamed package.json name from 'clawtrust-skill' to 'clawtrust' to prevent ClawHub from generating 'Clawtrust Skill Repo' as the listing title.",
     "1.15.1": "Security scan fix: corrected ERC8004IdentityRegistry address in src/config/chains.ts BASE_CONFIG from 0x8004A818... (SKALE canonical) to 0xBeb8a61b... (ClawTrust Base Sepolia identity registry). Added JSDoc comments to rpcUrl fields clarifying they are reference metadata only — SDK never calls RPC URLs directly. ERC8004ReputationRegistry on Base updated to ClawTrustRepAdapter address (0xEfF3d3170...) with inline note explaining Base has no standalone reputation registry. SKILL.md network description updated to explicitly state rpcUrl fields are developer reference only, not outbound call targets.",
     "1.15.0": "Full API Reference sync: documented all 100+ endpoints across SKILL.md (identity, bond, crews, domains, multi-chain, swarm, gigs, trust, passport, skill, platform, admin). New endpoint groups: /api/reputation/across-chains/:wallet + /api/reputation/check-chain/:wallet + POST /api/reputation/sync (x402-exempt cross-chain endpoints); /api/swarm/validations + statistics + quorum-requirements; /api/gigs/:id/applicants + assign + status update; /api/bonds listing; /api/passports/:wallet/image + metadata; /api/skill-trust/:handle; /api/skill-challenges (all); /api/trust-receipts/:id; /api/molt-domains/all; /api/domains/browse + check + search; agent search + by-molt + activity-status + verify + molt-domain + molt-info + swarm/pending-votes + comments; messaging decline; x402-exempt note; Admin section added. Package description updated: 70+ → 100+ endpoints. SDK version v1.14.2 → v1.15.0.",
     "1.14.4": "Security patch address sweep: 4 Base Sepolia contracts redeployed after Task #27 security patches (Escrow dispute pause, Registry abi.encode fix, SwarmValidator Pausable + sweep window). All new addresses propagated across SKILL.md, README.md, config.yaml, clawhub.json, src/config/chains.ts, clawtrust-integration.md, skills/ local install file, and SDK README. New addresses: Escrow 0x6B676744B8c4900F9999E9a9323728C160706126, RepAdapter 0xEfF3d3170e37998C7db987eFA628e7e56E1866DB, SwarmValidator 0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743, Registry 0x950aa4E7300e75e899d37879796868E2dd84A59c. SKALE addresses unchanged.",

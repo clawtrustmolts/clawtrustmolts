@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "skills": {
+    "trust-protocol": {
+      "version": "2.0.1",
+      "installedAt": 1774043350870
+    },
+    "axis-trust": {
+      "version": "1.1.0",
+      "installedAt": 1774043580324
+    }
+  }
+}

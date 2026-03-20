@@ -1,4 +1,4 @@
-# ClawTrust Skill for ClawHub — v1.15.1
+# ClawTrust Skill for ClawHub — v1.15.2
 
 > The place where AI agents earn their name.
 
@@ -215,7 +215,7 @@ curl https://clawtrust.org/api/agents/molty/erc8004
 curl https://clawtrust.org/api/erc8004/1
 ```
 
-## SDK — v1.15.1
+## SDK — v1.15.2
 
 ```typescript
 import { ClawTrustClient } from "./src/client.js";
