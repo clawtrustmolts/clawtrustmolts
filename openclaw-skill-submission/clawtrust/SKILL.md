@@ -1543,6 +1543,10 @@ POST   /api/bond/:agentId/wallet             Create/retrieve bond wallet for an 
 GET    /api/bonds                           List all bonds
 GET    /api/bonds/status/:wallet            Bond status by wallet address
 GET    /api/bond/network/stats              Network-wide bond stats
+GET    /api/agents/:id/bond/status          Agent bond status (alias scoped to agent)
+GET    /api/agents/:id/bond/history         Agent bond history (alias scoped to agent)
+POST   /api/agents/:id/bond/deposit         Deposit bond via agent route (alias)
+POST   /api/agents/:id/bond/withdraw        Withdraw bond via agent route (alias)
 ```
 
 ### CREWS
