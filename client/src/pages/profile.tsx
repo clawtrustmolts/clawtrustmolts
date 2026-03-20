@@ -791,16 +791,15 @@ export default function ProfilePage() {
                     Message
                   </button>
                 </Link>
-                <Link href={`/profile/${agent.id}#comments`} className="col-span-1">
-                  <button
-                    className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
-                    style={{ background: "rgba(0,0,0,0.12)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
-                    data-testid="button-comment"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5 opacity-60" />
-                    Comment
-                  </button>
-                </Link>
+                <button
+                  className="col-span-1 w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                  style={{ background: "rgba(0,0,0,0.12)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  data-testid="button-comment"
+                  onClick={() => { setActiveTab("social"); setTimeout(() => { document.getElementById("tab-bar")?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 50); }}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 opacity-60" />
+                  Comment
+                </button>
               </div>
 
               {/* QUICK NAV — Agent Life + Owner/Human Dashboard */}
@@ -825,37 +824,57 @@ export default function ProfilePage() {
                 </Link>
               </div>
 
-              {/* STATS GRID — 2×3 */}
+              {/* STATS GRID — 2×3: FusedScore · Gigs Done · USDC Earned · On-Chain · Karma · Clean Streak */}
               <div className="grid grid-cols-3 gap-1.5" data-testid="stats-grid">
+                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(232,84,10,0.07)", border: "1px solid rgba(232,84,10,0.18)" }}>
+                  <p className="text-base font-mono font-bold" style={{ color: "var(--claw-orange)" }}>{agent.fusedScore ?? 0}</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>FusedScore</p>
+                </div>
                 <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <p className="text-base font-mono font-bold" style={{ color: "var(--shell-white)" }}>{agent.totalGigsCompleted}</p>
                   <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Gigs Done</p>
                 </div>
                 <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <p className="text-base font-mono font-bold" style={{ color: "var(--teal-glow)" }}>{formatUSDC(agent.totalEarned)}</p>
-                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Earned</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>USDC Earned</p>
                 </div>
-                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(232,84,10,0.07)", border: "1px solid rgba(232,84,10,0.18)" }}>
-                  {(agent.availableBond ?? 0) > 0 ? (
-                    <p className="text-base font-mono font-bold" style={{ color: "var(--claw-orange)" }}>{formatUSDC(agent.availableBond)}</p>
-                  ) : (
-                    <p className="text-[10px] font-mono font-medium leading-snug" style={{ color: "var(--text-muted)" }}>No bond posted</p>
-                  )}
-                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Bond</p>
+                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-base font-mono font-bold" style={{ color: "#6090ff" }}>{agent.onChainScore ?? 0}</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>On-Chain</p>
+                </div>
+                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-base font-mono font-bold" style={{ color: "#a78bfa" }}>{agent.moltbookKarma ?? 0}</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Karma</p>
                 </div>
                 <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <p className="text-base font-mono font-bold" style={{ color: agent.cleanStreakDays >= 30 ? "#22c55e" : "var(--shell-white)" }}>{agent.cleanStreakDays}d</p>
-                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Streak</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Clean Streak</p>
                 </div>
-                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-base font-mono font-bold" style={{ color: "var(--shell-white)" }}>{followersCount}</p>
-                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Followers</p>
-                </div>
-                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="flex items-center justify-center gap-1">
+              </div>
+
+              {/* RISK & BOND — two side-by-side cards */}
+              <div className="grid grid-cols-2 gap-1.5" data-testid="risk-bond-cards">
+                {/* Risk Index */}
+                <div className="rounded-sm p-2.5 space-y-1" style={{ background: "rgba(0,0,0,0.10)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <p className="text-[8px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Risk Index</p>
+                  <div className="flex items-center gap-1.5">
                     <RiskPill riskIndex={agent.riskIndex} />
                   </div>
-                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Risk</p>
+                  {slashCount === 0 ? (
+                    <p className="text-[9px] font-mono" style={{ color: "#22c55e" }}>Clean record</p>
+                  ) : (
+                    <p className="text-[9px] font-mono" style={{ color: "var(--claw-amber)" }}>{slashCount} slash{slashCount !== 1 ? "es" : ""}</p>
+                  )}
+                </div>
+                {/* Bond Status */}
+                <div className="rounded-sm p-2.5 space-y-1" style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.15)" }}>
+                  <p className="text-[8px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Bond Status</p>
+                  {(agent.availableBond ?? 0) > 0 ? (
+                    <p className="text-sm font-mono font-bold" style={{ color: "var(--claw-orange)" }}>{formatUSDC(agent.availableBond)}</p>
+                  ) : (
+                    <p className="text-[10px] font-mono font-medium" style={{ color: "var(--text-muted)" }}>No bond posted</p>
+                  )}
+                  <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>{agent.bondTier ?? "UNBONDED"}</p>
                 </div>
               </div>
 
@@ -1360,6 +1379,7 @@ export default function ProfilePage() {
         {/* RIGHT MAIN CONTENT */}
         <div className="flex-1 min-w-0">
           <div
+            id="tab-bar"
             className="flex gap-0 mb-6 overflow-x-auto"
             style={{ borderBottom: "1px solid rgba(0,0,0,0.10)" }}
             data-testid="tab-bar"
@@ -1905,7 +1925,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff", border: "1px solid rgba(0,82,255,0.25)" }}>⬡ Base Sepolia</span>
             {base?.registered
               ? <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}>✓ REGISTERED</span>
-              : <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>NOT REG</span>
+              : <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.3)", border: "1px solid rgba(255,255,255,0.08)" }}>not registered</span>
             }
           </div>
           <div>
@@ -1914,9 +1934,13 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
           </div>
           <div className="pt-1 border-t" style={{ borderColor: "rgba(0,82,255,0.15)" }}>
             <p className="text-[8px] font-mono uppercase tracking-wider mb-0.5" style={{ color: "var(--text-muted)" }}>Budget</p>
-            <p className="text-sm font-mono font-semibold" style={{ color: "#6090ff" }} data-testid="text-base-budget">
-              {formatUSDC(agent.availableBond)} USDC
-            </p>
+            {(agent.availableBond ?? 0) > 0 ? (
+              <p className="text-sm font-mono font-semibold" style={{ color: "#6090ff" }} data-testid="text-base-budget">
+                {formatUSDC(agent.availableBond)} USDC
+              </p>
+            ) : (
+              <p className="text-sm font-mono font-medium" style={{ color: "rgba(255,255,255,0.25)" }} data-testid="text-base-budget">No bond posted</p>
+            )}
             <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>available bond</p>
           </div>
         </div>
@@ -1927,7 +1951,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>⬡ SKALE</span>
             {skale?.registered
               ? <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}>✓ REGISTERED</span>
-              : <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)" }}>NOT REG</span>
+              : <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.25)", border: "1px solid rgba(255,255,255,0.07)" }}>Register on SKALE Base →</span>
             }
           </div>
           <div>
