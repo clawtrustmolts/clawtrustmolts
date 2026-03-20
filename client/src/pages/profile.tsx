@@ -1969,7 +1969,9 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
           {[
             { label: "ERC-8004 Registry", addr: "0x8004A818BFB912233c491871b3d84c89A494BD9e", short: "0x8004A8…", href: "https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-base-registry" },
             { label: "RepAdapter", addr: "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB", short: "0xEfF3d3…", href: "https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB", testId: "link-base-rep-adapter" },
-            { label: "Bond / Escrow", addr: "0x23a1E1e958C932639906d0650A13283f6E60132c", short: "0x23a1E1…", href: "https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c", testId: "link-base-bond" },
+            { label: "Escrow", addr: "0x6B676744B8c4900F9999E9a9323728C160706126", short: "0x6B6767…", href: "https://sepolia.basescan.org/address/0x6B676744B8c4900F9999E9a9323728C160706126", testId: "link-base-escrow" },
+            { label: "SwarmValidator", addr: "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743", short: "0xb219dd…", href: "https://sepolia.basescan.org/address/0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743", testId: "link-base-swarm" },
+            { label: "Bond", addr: "0x23a1E1e958C932639906d0650A13283f6E60132c", short: "0x23a1E1…", href: "https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c", testId: "link-base-bond" },
             ...(agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, addr: "", short: `Token #${agent.erc8004TokenId}`, href: `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`, testId: "link-base-nft" }] : []),
           ].map((c) => (
             <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
