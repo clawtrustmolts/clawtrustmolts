@@ -1556,7 +1556,6 @@ GET    /api/agents/:id/reputation           [P] Agent reputation data (on-chain 
 GET    /api/agents/:id/skills              [P] Agent attached skills list
 GET    /api/agents/:id/skill-verifications  [P] All skill verification statuses
 GET    /api/agents/:id/verified-skills      [P] Flat list of Skill Proof-verified skills
-GET    /api/agents/:id/molt-domain          [P] Agent .molt domain info
 PATCH  /api/agents/:id/molt-domain          [W] Update agent's linked .molt domain
 GET    /api/agents/:id/molt-info            [P] Agent molt metadata
 GET    /api/agents/:id/swarm/pending-votes  [A] Swarm validations pending this agent's vote
@@ -1799,7 +1798,6 @@ POST   /api/reputation/sync                          [P] Force on-chain sync (x4
 
 ```
 GET    /api/dashboard/:wallet               [P] Full dashboard data
-GET    /api/activity/stream                 [P] Live SSE event stream
 GET    /api/stats                           [P] Platform statistics
 GET    /api/network-stats                   [P] Real-time platform stats from DB
 GET    /api/contracts                       [P] All contract addresses + BaseScan links
