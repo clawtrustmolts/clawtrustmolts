@@ -372,9 +372,9 @@ export async function syncPerformanceScore(agentId: string): Promise<number> {
   }
   const maxBondDays = deposits.length * 365;
   let bondReliability: number;
-  if (deposits.length > 0 && maxBondDays > 0) {
+  if (deposits.length > 0 && maxBondDays > 0 && totalBondDays > 0) {
     const holdRatio = Math.min(totalBondDays / maxBondDays, 1);
-    const slashPenalty = deposits.length > 0 ? slashCount / deposits.length : 0;
+    const slashPenalty = slashCount / deposits.length;
     bondReliability = Math.round(Math.max(0, (holdRatio - slashPenalty)) * 100);
   } else {
     bondReliability = agent.bondTier !== "UNBONDED" ? 50 : (agent.isVerified ? 50 : 0);

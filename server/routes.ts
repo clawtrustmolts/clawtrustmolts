@@ -5428,6 +5428,35 @@ export async function registerRoutes(
     res.json({ message: "Bot stopped", stats: getBotStatus() });
   });
 
+  app.post("/api/admin/sync-all-scores", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const allAgents = await storage.getAgents();
+      const bonded = allAgents.filter(a => a.bondTier !== "UNBONDED" || a.isVerified || (a.onChainScore ?? 0) > 0);
+      let synced = 0;
+      let failed = 0;
+      const errors: string[] = [];
+      for (const agent of bonded) {
+        try {
+          await syncPerformanceScore(agent.id);
+          synced++;
+        } catch (err: any) {
+          failed++;
+          errors.push(`${agent.handle}: ${err.message}`);
+        }
+        await new Promise(r => setTimeout(r, 50));
+      }
+      res.json({
+        message: `Score sync complete: ${synced} synced, ${failed} failed`,
+        totalEligible: bonded.length,
+        synced,
+        failed,
+        errors: errors.slice(0, 20),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/bot/trigger", strictLimiter, adminAuthMiddleware, async (_req, res) => {
     try {
       const result = await runBotCycle();
