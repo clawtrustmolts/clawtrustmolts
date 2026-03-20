@@ -652,15 +652,42 @@ export async function registerRoutes(
     const boundProofHash = crypto.createHash("sha256").update(`${paymentHeader}|${callerWallet}|${endpoint}`).digest("hex");
     const now = Date.now();
 
+    const x402CostMap: Record<string, string> = {
+      "/api/trust-check": "$0.001",
+      "/api/reputation": "$0.002",
+      "/api/agents": "$0.001",
+    };
+    const endpointCost = Object.entries(x402CostMap).find(([prefix]) => req.path.startsWith(prefix))?.[1] || "$0.001";
+
     const existingRawTs = x402UsedProofs.get(rawProofHash);
     if (existingRawTs !== undefined && now - existingRawTs <= X402_PROOF_TTL_MS) {
       logSuspiciousActivity(req, "x402_replay", `Replayed x402 payment proof on ${endpoint} from ${callerWallet}`);
-      return res.status(402).json({ message: "Payment proof already used. Submit a new payment." });
+      return res.status(402).json({
+        error: "Payment proof already used",
+        code: 402,
+        reason: "x402 replay detected — this payment proof has already been submitted",
+        cost: endpointCost,
+        currency: "USDC",
+        network: "base-sepolia",
+        agentWallet: callerWallet !== "unknown" ? callerWallet : undefined,
+        retryAfter: "Submit a fresh payment with a new x-payment header",
+        message: "Payment proof already used. Submit a new payment.",
+      });
     }
     const existingBoundTs = x402UsedProofs.get(boundProofHash);
     if (existingBoundTs !== undefined && now - existingBoundTs <= X402_PROOF_TTL_MS) {
       logSuspiciousActivity(req, "x402_replay_bound", `Replayed x402 bound proof on ${endpoint} from ${callerWallet}`);
-      return res.status(402).json({ message: "Payment proof already used for this wallet and endpoint. Submit a new payment." });
+      return res.status(402).json({
+        error: "Payment proof already used",
+        code: 402,
+        reason: "x402 replay detected — this proof was already used for this wallet and endpoint combination",
+        cost: endpointCost,
+        currency: "USDC",
+        network: "base-sepolia",
+        agentWallet: callerWallet !== "unknown" ? callerWallet : undefined,
+        retryAfter: "Submit a fresh payment with a new x-payment header",
+        message: "Payment proof already used for this wallet and endpoint. Submit a new payment.",
+      });
     }
 
     x402UsedProofs.set(rawProofHash, now);
@@ -1141,7 +1168,7 @@ export async function registerRoutes(
     res.json(gigsWithValidation);
   });
 
-  app.post("/api/gigs", apiLimiter, captchaMiddleware, walletAuthMiddleware, async (req, res) => {
+  async function handleCreateGig(req: Request, res: Response) {
     try {
       if (req.body?.captchaToken) delete req.body.captchaToken;
       const data = insertGigSchema.parse(req.body);
@@ -1170,39 +1197,11 @@ export async function registerRoutes(
       }
       res.status(400).json({ message: err.message });
     }
-  });
+  }
 
-  // ─── Alias: POST /api/gigs/create → POST /api/gigs (tester-compatible) ──
-  app.post("/api/gigs/create", apiLimiter, captchaMiddleware, walletAuthMiddleware, async (req, res) => {
-    try {
-      if (req.body?.captchaToken) delete req.body.captchaToken;
-      const data = insertGigSchema.parse(req.body);
-
-      data.title = sanitizeString(data.title, 200);
-      data.description = sanitizeString(data.description, 2000);
-      if (data.skillsRequired) data.skillsRequired = sanitizeArray(data.skillsRequired);
-
-      if (data.posterId) {
-        const poster = await storage.getAgent(data.posterId);
-        if (!poster) {
-          return res.status(404).json({ message: "Poster agent not found" });
-        }
-        if (poster.fusedScore < 15 && !isTestBypass(req)) {
-          return res.status(403).json({ message: "Minimum TrustScore of 15 required to post gigs" });
-        }
-      } else {
-        return res.status(400).json({ message: "posterId is required to create a gig" });
-      }
-
-      const gig = await storage.createGig(data);
-      res.status(201).json(gig);
-    } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation failed", errors: err.errors });
-      }
-      res.status(400).json({ message: err.message });
-    }
-  });
+  app.post("/api/gigs", apiLimiter, captchaMiddleware, walletAuthMiddleware, handleCreateGig);
+  // ─── Alias: POST /api/gigs/create (tester-compatible, shares same handler) ──
+  app.post("/api/gigs/create", apiLimiter, captchaMiddleware, walletAuthMiddleware, handleCreateGig);
 
   app.patch("/api/gigs/:id/assign", apiLimiter, walletAuthMiddleware, async (req, res) => {
     try {
@@ -4563,11 +4562,15 @@ export async function registerRoutes(
   app.post("/api/agent-heartbeat", apiLimiter, agentAuthMiddleware, handleHeartbeat);
   app.post("/api/agents/heartbeat", apiLimiter, agentAuthMiddleware, handleHeartbeat);
 
-  // ─── Alias: agent ID in URL path (tester-compatible) ─────────────────
+  // ─── Alias: agent ID in URL path (tester-compatible, same auth trust boundary) ──
   app.post("/api/agents/:agentId/heartbeat", apiLimiter, async (req: Request, res: Response) => {
     const agentId = String(req.params.agentId);
     if (!uuidPattern.test(agentId)) {
       return res.status(400).json({ message: "Invalid agent ID format" });
+    }
+    const headerAgent = req.headers["x-agent-id"] as string | undefined;
+    if (!headerAgent || headerAgent !== agentId) {
+      return res.status(401).json({ message: "Agent authentication required. Send x-agent-id header matching the agentId in the URL." });
     }
     (req as any).agentId = agentId;
     (req as any).isE2EBypass = isTestBypass(req);
@@ -6574,7 +6577,7 @@ export async function registerRoutes(
   // AGENT CREWS
   // ═══════════════════════════════════════════════════════════════
 
-  app.post("/api/crews", apiLimiter, async (req, res) => {
+  async function handleCreateCrew(req: Request, res: Response) {
     try {
       const { createCrewSchema } = await import("@shared/schema");
       const parsed = createCrewSchema.safeParse(req.body);
@@ -6653,7 +6656,9 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
-  });
+  }
+
+  app.post("/api/crews", apiLimiter, handleCreateCrew);
 
   app.get("/api/crews", async (req, res) => {
     try {
@@ -6725,76 +6730,8 @@ export async function registerRoutes(
     }
   });
 
-  // ─── Alias: POST /api/crews/create → POST /api/crews (tester-compatible) ──
-  app.post("/api/crews/create", apiLimiter, async (req, res) => {
-    try {
-      const { createCrewSchema } = await import("@shared/schema");
-      const parsed = createCrewSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid crew data", errors: parsed.error.flatten() });
-      }
-      const { name, handle, description, members } = parsed.data;
-
-      const existingCrew = await storage.getCrewByHandle(handle);
-      if (existingCrew) {
-        return res.status(409).json({ message: "Crew handle already taken" });
-      }
-
-      const walletAddress = req.headers["x-wallet-address"] as string;
-      if (!walletAddress) {
-        return res.status(401).json({ message: "Wallet authentication required. Send x-wallet-address header." });
-      }
-
-      const leadMember = members.find((m: any) => m.role === "LEAD");
-      if (!leadMember) {
-        return res.status(400).json({ message: "A crew must have at least one LEAD member" });
-      }
-
-      const memberAgents = [];
-      for (const m of members) {
-        const agent = await storage.getAgent(m.agentId);
-        if (!agent) {
-          return res.status(400).json({ message: `Agent ${m.agentId} not found` });
-        }
-        memberAgents.push({ agent, role: m.role });
-      }
-
-      const leadAgent = memberAgents.find((m) => m.role === "LEAD");
-      if (leadAgent && leadAgent.agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-        return res.status(403).json({ message: "You must own the LEAD agent to form this crew" });
-      }
-
-      const avgScore = memberAgents.reduce((s, m) => s + m.agent.fusedScore, 0) / memberAgents.length;
-      const bondPool = memberAgents.reduce((s, m) => s + m.agent.availableBond, 0);
-
-      const crew = await storage.createCrew({
-        name,
-        handle,
-        description: description || null,
-        ownerWallet: walletAddress,
-      });
-
-      await storage.updateCrew(crew.id, {
-        fusedScore: Math.round(avgScore * 10) / 10,
-        bondPool: Math.round(bondPool * 100) / 100,
-      });
-
-      for (const m of members) {
-        await storage.addCrewMember({ crewId: crew.id, agentId: m.agentId, role: m.role });
-      }
-
-      const updatedCrew = await storage.getCrew(crew.id);
-      const crewMembers = await storage.getCrewMembers(crew.id);
-
-      res.status(201).json({
-        ...updatedCrew,
-        members: crewMembers,
-        tier: getCrewTier(updatedCrew?.fusedScore || 0),
-      });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
+  // ─── Alias: POST /api/crews/create (tester-compatible, shares same handler) ──
+  app.post("/api/crews/create", apiLimiter, handleCreateCrew);
 
   app.get("/api/crews/:id", async (req, res) => {
     try {
