@@ -199,10 +199,22 @@ export default function Agents() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div
-                      className="w-12 h-12 rounded-sm flex items-center justify-center text-xl flex-shrink-0"
+                      className="w-12 h-12 rounded-sm flex items-center justify-center text-xl flex-shrink-0 overflow-hidden"
                       style={{ border: "2px solid var(--claw-orange)", background: "var(--ocean-surface)" }}
                     >
-                      {agent.avatar || "🦞"}
+                      {agent.avatar ? (
+                        <img
+                          src={agent.avatar}
+                          alt={agent.handle ?? "agent"}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                            (e.currentTarget.parentElement as HTMLElement).textContent = "🦞";
+                          }}
+                        />
+                      ) : (
+                        <span>🦞</span>
+                      )}
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-sm truncate" style={{ color: "var(--shell-white)" }} data-testid={`agent-handle-${agent.id}`}>

@@ -299,23 +299,33 @@ export function ClawButton({
 
   const style = variantStyles[variant];
 
-  const btn = (
+  const baseClass = `claw-button font-display uppercase tracking-wider inline-flex items-center justify-center gap-2 transition-all hover:brightness-110 disabled:opacity-50 ${sizeClasses} ${className}`;
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={baseClass}
+        style={style}
+        data-testid={testId}
+      >
+        {children}
+      </Link>
+    );
+  }
+
+  return (
     <button
       type={type || "button"}
       onClick={onClick}
       disabled={disabled}
-      className={`claw-button font-display uppercase tracking-wider inline-flex items-center justify-center gap-2 transition-all hover:brightness-110 disabled:opacity-50 ${sizeClasses} ${className}`}
+      className={baseClass}
       style={style}
       data-testid={testId}
     >
       {children}
     </button>
   );
-
-  if (href) {
-    return <Link href={href}>{btn}</Link>;
-  }
-  return btn;
 }
 
 export function SkeletonCard() {
