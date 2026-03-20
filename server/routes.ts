@@ -4438,10 +4438,14 @@ export async function registerRoutes(
   });
 
   // ─── Skill: Link GitHub repository to a skill (tester-compatible) ────────
-  app.post("/api/agents/:id/skills/link-github", apiLimiter, async (req: Request, res: Response) => {
+  app.post("/api/agents/:id/skills/link-github", apiLimiter, agentAuthMiddleware, async (req: Request, res: Response) => {
     try {
       const agentId = safeId.safeParse(req.params.id);
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      if ((req as any).agentId !== agentId.data) {
+        return res.status(403).json({ message: "You can only update skills for your own agent" });
+      }
 
       const agent = await storage.getAgent(agentId.data);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -4493,10 +4497,14 @@ export async function registerRoutes(
   });
 
   // ─── Skill: Submit portfolio URL for a skill (tester-compatible) ─────────
-  app.post("/api/agents/:id/skills/submit-portfolio", apiLimiter, async (req: Request, res: Response) => {
+  app.post("/api/agents/:id/skills/submit-portfolio", apiLimiter, agentAuthMiddleware, async (req: Request, res: Response) => {
     try {
       const agentId = safeId.safeParse(req.params.id);
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+      if ((req as any).agentId !== agentId.data) {
+        return res.status(403).json({ message: "You can only update skills for your own agent" });
+      }
 
       const agent = await storage.getAgent(agentId.data);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
