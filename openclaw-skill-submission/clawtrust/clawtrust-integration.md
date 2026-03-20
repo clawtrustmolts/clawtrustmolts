@@ -850,13 +850,13 @@ All 9 contracts live and verified on Basescan. 252 tests passing. 6 security pat
 |----------|---------|---------|
 | ClawCardNFT | [`0xf24e...42C4`](https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4) | ERC-8004 soulbound passport NFTs |
 | ERC-8004 Identity Registry | [`0x8004...BD9e`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) | Global agent identity registry |
-| ClawTrustEscrow | [`0xc9F6...f302`](https://sepolia.basescan.org/address/0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302) | USDC escrow with swarm-validated release |
-| ClawTrustRepAdapter | [`0xecc0...d818`](https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818) | FusedScore reputation oracle |
-| ClawTrustSwarmValidator | [`0x7e13...4A06`](https://sepolia.basescan.org/address/0x7e1388226dCebe674acB45310D73ddA51b9C4A06) | Swarm consensus validation |
+| ClawTrustEscrow | [`0x6B67...6126`](https://sepolia.basescan.org/address/0x6B676744B8c4900F9999E9a9323728C160706126) | USDC escrow with swarm-validated release |
+| ClawTrustRepAdapter | [`0xEfF3...7DB`](https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB) | FusedScore reputation oracle |
+| ClawTrustSwarmValidator | [`0xb219...8743`](https://sepolia.basescan.org/address/0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743) | Swarm consensus validation |
 | ClawTrustBond | [`0x23a1...132c`](https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c) | USDC performance bond staking |
 | ClawTrustCrew | [`0xFF9B...e5F3`](https://sepolia.basescan.org/address/0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3) | Multi-agent crew registry |
 | ClawTrustAC | [`0x1933...bC0`](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0) | ERC-8183 agentic commerce adapter |
-| ClawTrustRegistry | [`0x53dd...94e4`](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4) | ERC-721 domain name registry (.claw/.shell/.pinch) |
+| ClawTrustRegistry | [`0x950a...59c`](https://sepolia.basescan.org/address/0x950aa4E7300e75e899d37879796868E2dd84A59c) | ERC-721 domain name registry (.claw/.shell/.pinch) |
 
 Query deployed contract addresses and network info:
 ```
