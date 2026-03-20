@@ -39,9 +39,12 @@ import {
   Copy,
   Check,
   RefreshCw,
+  Lock,
+  Wallet,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useWalletContext } from "@/context/wallet-context";
 
 interface DashboardData {
   agent: {
@@ -165,6 +168,7 @@ interface MigrationStatus {
 export default function HumanDashboard() {
   const [, params] = useRoute("/dashboard/:wallet");
   const wallet = params?.wallet || "";
+  const walletCtx = useWalletContext();
   const [chartRange, setChartRange] = useState<"weekly" | "monthly" | "all">("monthly");
   const [copiedWallet, setCopiedWallet] = useState(false);
   const [newWallet, setNewWallet] = useState("");
@@ -173,9 +177,11 @@ export default function HumanDashboard() {
   const [showConfirm, setShowConfirm] = useState(false);
   const { toast } = useToast();
 
+  const isOwner = walletCtx.isConnected && wallet.length > 0 && walletCtx.wallet.toLowerCase() === wallet.toLowerCase();
+
   const { data, isLoading, isError } = useQuery<DashboardData>({
     queryKey: ["/api/dashboard", wallet],
-    enabled: wallet.length > 0,
+    enabled: isOwner,
   });
 
   const agentId = data?.agent?.id;
@@ -221,6 +227,83 @@ export default function HumanDashboard() {
     return (
       <div className="p-6 max-w-4xl mx-auto">
         <ErrorState message="No wallet address provided" />
+      </div>
+    );
+  }
+
+  if (!walletCtx.isConnected) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center px-4"
+        style={{ background: "var(--ocean-deep)" }}
+        data-testid="gate-not-connected"
+      >
+        <div className="text-center max-w-sm w-full">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
+            style={{ background: "rgba(200,57,26,0.1)", border: "1px solid rgba(200,57,26,0.25)" }}
+          >
+            <Lock className="w-7 h-7" style={{ color: "var(--claw-orange)" }} />
+          </div>
+          <div className="flex items-center justify-center gap-1.5 mb-6">
+            <span className="text-xl">🦞</span>
+            <span className="font-display text-[20px] tracking-[2px]" style={{ color: "var(--shell-white)" }}>CLAW</span>
+            <span className="font-display text-[20px] tracking-[2px]" style={{ color: "var(--claw-orange)" }}>TRUST</span>
+          </div>
+          <h2 className="font-display text-2xl mb-3" style={{ color: "var(--shell-white)" }}>
+            This dashboard is private.
+          </h2>
+          <p className="font-body text-sm mb-8" style={{ color: "var(--text-muted)" }}>
+            Connect your wallet to access your agent dashboard.
+          </p>
+          <button
+            onClick={walletCtx.connect}
+            disabled={walletCtx.isConnecting}
+            className="claw-button inline-flex items-center gap-2 px-6 py-2.5 text-sm font-display uppercase tracking-wider text-white"
+            style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
+            data-testid="button-gate-connect"
+          >
+            <Wallet className="w-4 h-4" />
+            {walletCtx.isConnecting ? "Connecting…" : "Connect Wallet"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (wallet && walletCtx.wallet.toLowerCase() !== wallet.toLowerCase()) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center px-4"
+        style={{ background: "var(--ocean-deep)" }}
+        data-testid="gate-wrong-wallet"
+      >
+        <div className="text-center max-w-sm w-full">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
+            style={{ background: "rgba(242,201,76,0.08)", border: "1px solid rgba(242,201,76,0.25)" }}
+          >
+            <AlertTriangle className="w-7 h-7" style={{ color: "var(--gold)" }} />
+          </div>
+          <h2 className="font-display text-2xl mb-3" style={{ color: "var(--shell-white)" }}>
+            Wrong wallet.
+          </h2>
+          <p className="font-body text-sm mb-2" style={{ color: "var(--text-muted)" }}>
+            This dashboard belongs to a different wallet.
+          </p>
+          <p className="font-mono text-[11px] mb-8 px-3 py-2 rounded-sm" style={{ color: "var(--text-muted)", background: "var(--ocean-mid)", border: "1px solid rgba(107,127,163,0.15)" }}>
+            Connected: {walletCtx.wallet.slice(0, 8)}…{walletCtx.wallet.slice(-6)}
+          </p>
+          <Link href={`/dashboard/${walletCtx.wallet}`}>
+            <button
+              className="claw-button inline-flex items-center gap-2 px-6 py-2.5 text-sm font-display uppercase tracking-wider text-white"
+              style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
+              data-testid="button-gate-my-dashboard"
+            >
+              Go to My Dashboard
+            </button>
+          </Link>
+        </div>
       </div>
     );
   }

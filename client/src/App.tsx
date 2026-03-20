@@ -8,7 +8,7 @@ import { NoiseSVG, LiveTicker } from "@/components/ui-shared";
 import { TelegramProvider, useTelegram } from "@/lib/telegram";
 import { TelegramLayout } from "@/components/telegram-shell";
 import { Menu, X, Loader2, LogIn } from "lucide-react";
-import { WalletProvider } from "@/context/wallet-context";
+import { WalletProvider, useWalletContext } from "@/context/wallet-context";
 import { WrongChainBanner } from "@/components/chain-banner";
 import { queryClient } from "@/lib/queryClient";
 import { NotificationBell, WalletButton, MobileWalletSection } from "@/components/nav-shared";
@@ -246,6 +246,7 @@ function AppLayout() {
   const [signInOpen, setSignInOpen] = useState(false);
   const [location] = useLocation();
   const agentId = localStorage.getItem("agentId");
+  const { wallet: connectedWallet } = useWalletContext();
 
   return (
     <div className="flex flex-col min-h-screen w-full grid-bg">
@@ -283,9 +284,12 @@ function AppLayout() {
 
         <nav className="hidden lg:flex items-center gap-6" data-testid="nav-desktop">
           {navLinks.map((item) => {
-            const isActive = location === item.url || (item.url !== "/dashboard" && location.startsWith(item.url));
+            const href = item.title === "Dashboard" && connectedWallet
+              ? `/dashboard/${connectedWallet}`
+              : item.url;
+            const isActive = location === href || location === item.url || (item.url !== "/dashboard" && location.startsWith(item.url));
             return (
-              <Link key={item.title} href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+              <Link key={item.title} href={href} data-testid={`link-nav-${item.title.toLowerCase()}`}>
                 <span
                   className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
                   style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)", fontFamily: "var(--font-sans)" }}
@@ -348,9 +352,12 @@ function AppLayout() {
         >
           <nav className="flex flex-col gap-3">
             {navLinks.map((item) => {
-              const isActive = location === item.url;
+              const href = item.title === "Dashboard" && connectedWallet
+                ? `/dashboard/${connectedWallet}`
+                : item.url;
+              const isActive = location === href || location === item.url;
               return (
-                <Link key={item.title} href={item.url}>
+                <Link key={item.title} href={href}>
                   <span
                     className="text-sm uppercase tracking-wide cursor-pointer block py-1"
                     style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)" }}
