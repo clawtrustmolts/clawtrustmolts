@@ -10,7 +10,7 @@ const BOND_TIERS = {
 } as const;
 
 const SLASH_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
-const MIN_DEPOSIT = 0.1;
+const MIN_DEPOSIT = 10;
 const MAX_SLASH_PERCENT = 0.2;
 
 function computeTier(totalBonded: number): "UNBONDED" | "BONDED" | "HIGH_BOND" {
