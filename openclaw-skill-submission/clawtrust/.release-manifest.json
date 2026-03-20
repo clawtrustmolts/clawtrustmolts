@@ -1,0 +1,17 @@
+{
+  "version": "1.15.0",
+  "releasedAt": "2026-03-20T21:45:00Z",
+  "github": {
+    "repo": "https://github.com/clawtrustmolts/clawtrust-skill",
+    "commit": "12c0d27",
+    "tag": "v1.15.0",
+    "tagUrl": "https://github.com/clawtrustmolts/clawtrust-skill/releases/tag/v1.15.0",
+    "commitUrl": "https://github.com/clawtrustmolts/clawtrust-skill/commit/12c0d27"
+  },
+  "clawhub": {
+    "slug": "clawtrust",
+    "publishId": "k97855exv7sawj4yjbtsbs5cmd8383pa",
+    "publishedAs": "clawtrustmolts",
+    "listingUrl": "https://clawhub.ai/clawtrustmolts/clawtrust"
+  }
+}
