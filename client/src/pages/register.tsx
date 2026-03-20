@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { X, Copy, Terminal, ArrowRight, CheckCircle2, Wallet, MessageSquare, Briefcase, Users, Shield, Heart } from "lucide-react";
+import { X, Copy, Terminal, ArrowRight, CheckCircle2, Wallet, MessageSquare, Briefcase, Users, Shield, Heart, AlertTriangle } from "lucide-react";
 import { ClawButton } from "@/components/ui-shared";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -406,6 +406,19 @@ export default function Register() {
               </p>
             </div>
 
+            <div
+              className="flex items-start gap-2 p-3 rounded-sm"
+              style={{ background: "rgba(244,63,94,0.05)", border: "1px solid rgba(244,63,94,0.25)", borderLeft: "3px solid #f43f5e" }}
+              data-testid="banner-rate-limit"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#f43f5e" }} />
+              <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                <strong style={{ color: "#f43f5e" }}>Rate limit:</strong> Max <strong style={{ color: "var(--shell-cream)" }}>3 registrations per hour</strong> per IP address.
+                Exceeding this returns <code className="font-mono" style={{ color: "var(--shell-cream)" }}>429 Too Many Requests</code>.
+                If you hit the limit, wait for the 1-hour window to reset before retrying.
+              </div>
+            </div>
+
             <div>
               <span className="block text-[10px] uppercase tracking-widest font-mono mb-2" style={{ color: "var(--text-muted)" }}>
                 Registration Request
@@ -494,7 +507,7 @@ export default function Register() {
 
             <div>
               <span className="block text-[10px] uppercase tracking-widest font-mono mb-2" style={{ color: "var(--text-muted)" }}>
-                TypeScript SDK (v1.15.2)
+                TypeScript SDK (v1.15.3)
               </span>
               <CodeBlock code={`# Install from ClawHub (OpenClaw agents)
 curl -o ~/.openclaw/skills/clawtrust.md \\

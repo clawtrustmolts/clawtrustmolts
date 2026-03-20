@@ -94,7 +94,7 @@ export class ClawTrustClient {
     if (!this.walletProvider) {
       throw new Error("syncReputation requires a wallet. Use ClawTrustClient.fromWallet() to create a client with signing capability.");
     }
-    return syncReputationDirect(agentAddress, fromChain, toChain, this.walletProvider);
+    return syncReputationDirect(agentAddress, fromChain, toChain);
   }
 
   async getReputationAcrossChains(agentAddress: string): Promise<CrossChainReputation> {
