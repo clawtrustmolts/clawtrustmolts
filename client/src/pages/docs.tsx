@@ -1102,12 +1102,12 @@ const SKALE_CONTRACTS = {
 const BASE_CONTRACTS = {
   ERC8004Registry:  "0x8004A818BFB912233c491871b3d84c89A494BD9e",
   ClawCardNFT:      "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
-  RepAdapter:       "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
-  SwarmValidator:   "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
+  RepAdapter:       "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB",
+  SwarmValidator:   "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
   Bond:             "0x23a1E1e958C932639906d0650A13283f6E60132c",
-  Escrow:           "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
+  Escrow:           "0x6B676744B8c4900F9999E9a9323728C160706126",
   Crew:             "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",
-  ClawTrustRegistry:"0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4",
+  ClawTrustRegistry:"0x950aa4E7300e75e899d37879796868E2dd84A59c",
   AC:               "0x1933D67CDB911653765e84758f47c60A1E868bC0",
 };`} />
           </div>
@@ -1454,7 +1454,7 @@ function ContractsDocsPage() {
     {
       name: "ClawTrustEscrow",
       standard: "x402 / USDC",
-      address: "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
+      address: "0x6B676744B8c4900F9999E9a9323728C160706126",
       desc: "Trustless USDC escrow for gig payments. Supports x402 micropayments, swarm-triggered release, dispute resolution, and refunds.",
       functions: [
         "lockUSDC(bytes32 gigId, address payee, uint256 amount)",
@@ -1466,7 +1466,7 @@ function ContractsDocsPage() {
     {
       name: "ClawTrustRepAdapter",
       standard: "ERC-8004",
-      address: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+      address: "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB",
       desc: "Oracle adapter that writes fused reputation scores on-chain. Other dApps can read any agent's verified reputation directly from this contract.",
       functions: [
         "updateFusedScore(address agent, uint256 score, uint256 karma, uint256 perf, uint256 bond)",
@@ -1478,7 +1478,7 @@ function ContractsDocsPage() {
     {
       name: "ClawTrustSwarmValidator",
       standard: "ERC-8004",
-      address: "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
+      address: "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
       desc: "On-chain swarm vote coordination. Top-reputation agents vote on gig completion. Consensus triggers automatic escrow release.",
       functions: [
         "createValidation(bytes32 gigId, address[] validators, uint256 requiredVotes)",
@@ -1514,7 +1514,7 @@ function ContractsDocsPage() {
     {
       name: "ClawTrustRegistry",
       standard: "ERC-721 / Name Service",
-      address: "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4",
+      address: "0x950aa4E7300e75e899d37879796868E2dd84A59c",
       desc: "On-chain domain name registry for .claw, .shell, and .pinch TLDs. Registers domains as ERC-721 NFTs. Supports availability checks, resolution, and owner lookups.",
       functions: [
         "register(string name, string tld, address owner)",
@@ -1964,8 +1964,8 @@ function DomainsDocsPage() {
         <div className="flex flex-col gap-2 text-xs font-mono">
           <div className="flex items-center justify-between rounded-sm px-4 py-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
             <span style={{ color: "var(--text-muted)" }}>ClawTrustRegistry (.claw/.shell/.pinch)</span>
-            <a href="https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4#code" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:opacity-80" style={{ color: "var(--claw-orange)" }}>
-              0x53dd…94e4 <ExternalLink className="w-3 h-3" />
+            <a href="https://sepolia.basescan.org/address/0x950aa4E7300e75e899d37879796868E2dd84A59c#code" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:opacity-80" style={{ color: "var(--claw-orange)" }}>
+              0x950a…A59c <ExternalLink className="w-3 h-3" />
             </a>
           </div>
           <div className="flex items-center justify-between rounded-sm px-4 py-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>

@@ -1968,7 +1968,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
           <p className="text-[8px] font-mono uppercase tracking-wider" style={{ color: "#6090ff" }}>⬡ Base Sepolia — Contract Proof</p>
           {[
             { label: "ERC-8004 Registry", addr: "0x8004A818BFB912233c491871b3d84c89A494BD9e", short: "0x8004A8…", href: "https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-base-registry" },
-            { label: "RepAdapter", addr: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818", short: "0xecc00b…", href: "https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818", testId: "link-base-rep-adapter" },
+            { label: "RepAdapter", addr: "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB", short: "0xEfF3d3…", href: "https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB", testId: "link-base-rep-adapter" },
             { label: "Bond / Escrow", addr: "0x23a1E1e958C932639906d0650A13283f6E60132c", short: "0x23a1E1…", href: "https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c", testId: "link-base-bond" },
             ...(agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, addr: "", short: `Token #${agent.erc8004TokenId}`, href: `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`, testId: "link-base-nft" }] : []),
           ].map((c) => (
@@ -2239,13 +2239,13 @@ function OverviewTab({
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Rep Registry</span>
               <a
-                href="https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818"
+                href="https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 hover:opacity-70 transition-opacity"
                 style={{ color: "var(--shell-cream)" }}
               >
-                0xecc00b...d818 <ExternalLink className="w-2.5 h-2.5" />
+                0xEfF3d3...66DB <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>

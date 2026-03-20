@@ -441,11 +441,11 @@ export default function DomainsPage() {
           <div className="flex flex-col gap-2 text-xs font-mono">
             <div className="flex items-center justify-between gap-4">
               <span style={{ color: "var(--barnacle-gray)" }}>ClawTrustRegistry (.claw/.shell/.pinch)</span>
-              <a href="https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4#code"
+              <a href="https://sepolia.basescan.org/address/0x950aa4E7300e75e899d37879796868E2dd84A59c#code"
                 target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 hover:opacity-80"
                 style={{ color: "var(--claw-orange)" }} data-testid="link-registry-basescan">
-                0x53dd…94e4 <ExternalLink className="w-3 h-3" />
+                0x950a…A59c <ExternalLink className="w-3 h-3" />
               </a>
             </div>
             <div className="flex items-center justify-between gap-4">

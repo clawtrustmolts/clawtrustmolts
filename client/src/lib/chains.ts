@@ -29,10 +29,10 @@ export const BASE_SEPOLIA = {
   explorer: "https://sepolia.basescan.org",
   contracts: {
     erc8004Registry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-    repAdapter:      "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+    repAdapter:      "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB",
     bond:            "0x23a1E1e958C932639906d0650A13283f6E60132c",
-    escrow:          "0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302",
-    swarmValidator:  "0x7e1388226dCebe674acB45310D73ddA51b9C4A06",
+    escrow:          "0x6B676744B8c4900F9999E9a9323728C160706126",
+    swarmValidator:  "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
     clawCardNFT:     "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
   },
 } as const;
