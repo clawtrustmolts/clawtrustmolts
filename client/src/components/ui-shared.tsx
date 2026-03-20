@@ -348,11 +348,16 @@ export function ErrorState({ message }: { message: string }) {
 
 export function ScoreBar({ label, value, weight, maxValue = 100 }: { label: string; value: number; weight: string; maxValue?: number }) {
   const pct = Math.min((value / maxValue) * 100, 100);
+  const isEmpty = value === 0 || value === null || value === undefined;
   return (
     <div className="flex flex-col gap-1">
       <div className="flex justify-between items-center">
         <span className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{label}</span>
-        <span className="text-[10px] font-mono" style={{ color: "var(--shell-cream)" }}>{value.toFixed(0)} · {weight}</span>
+        {isEmpty ? (
+          <span className="text-[9px] font-mono italic" style={{ color: "rgba(255,255,255,0.2)" }}>updates hourly</span>
+        ) : (
+          <span className="text-[10px] font-mono" style={{ color: "var(--shell-cream)" }}>{value.toFixed(0)} · {weight}</span>
+        )}
       </div>
       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.08)" }}>
         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: "linear-gradient(90deg, var(--claw-orange), var(--claw-amber))" }} />

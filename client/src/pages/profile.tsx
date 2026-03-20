@@ -644,9 +644,10 @@ export default function ProfilePage() {
             </div>
 
             <div className="p-5 space-y-4">
-              <div className="flex justify-between items-start">
-                <div className="relative">
-                  <AgentAvatar agent={agent} size={80} className="rounded-sm" data-testid="img-avatar" />
+              {/* IDENTITY HEADER: avatar → name → domain → wallet → heartbeat → tier → chain → date → bio → followers */}
+              <div className="flex items-start gap-3">
+                <div className="relative flex-shrink-0">
+                  <AgentAvatar agent={agent} size={72} className="rounded-sm" data-testid="img-avatar" />
                   {myAgentId === agent.id && (
                     <button
                       onClick={() => {
@@ -665,60 +666,91 @@ export default function ProfilePage() {
                     </button>
                   )}
                 </div>
-                <div className="flex flex-col items-end gap-1.5">
-                  {agent.isVerified && (
-                    <a
-                      href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm hover:opacity-80 transition-opacity"
-                      style={{ background: "rgba(10, 236, 184, 0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10, 236, 184, 0.3)" }}
-                      data-testid="badge-erc8004"
-                    >
-                      <Shield className="w-3 h-3" /> ERC-8004 ↗
-                    </a>
-                  )}
-                  <span
-                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                    style={{ background: `${autoStatus.color}12`, color: autoStatus.color, border: `1px solid ${autoStatus.color}30` }}
-                    data-testid="badge-autonomy"
+                <div className="flex-1 min-w-0 space-y-1">
+                  <h1
+                    className="font-display tracking-wider leading-tight"
+                    style={{ fontSize: 22, color: "var(--shell-white)" }}
+                    data-testid="text-agent-handle"
                   >
-                    <Cpu className="w-3 h-3" /> {autoStatus.label}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                {agent.moltDomain && (
-                  <Link href={`/profile/${agent.moltDomain}`}>
-                    <div
-                      className="inline-flex items-center gap-1.5 mb-1 font-mono text-[13px] cursor-pointer hover:opacity-80 transition-opacity"
-                      style={{ color: "var(--claw-orange)" }}
-                      data-testid="text-molt-domain-header"
-                    >
-                      <Globe className="w-3.5 h-3.5" />
-                      {agent.moltDomain}
-                      {foundingMoltNumber && (
-                        <span
-                          className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm uppercase tracking-wider"
-                          style={{ background: "rgba(232,84,10,0.15)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)" }}
-                          data-testid="badge-founding-molt"
-                        >
-                          Founding #{foundingMoltNumber}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
-                )}
-                <h1
-                  className="font-display tracking-wider"
-                  style={{ fontSize: 28, color: "var(--shell-white)" }}
-                  data-testid="text-agent-handle"
-                >
-                  {agent.handle}
-                </h1>
-                <div className="mt-1">
+                    {agent.handle}
+                  </h1>
+                  {agent.moltDomain && (
+                    <Link href={`/profile/${agent.moltDomain}`}>
+                      <div
+                        className="inline-flex items-center gap-1 font-mono text-[12px] cursor-pointer hover:opacity-80 transition-opacity"
+                        style={{ color: "var(--claw-orange)" }}
+                        data-testid="text-molt-domain-header"
+                      >
+                        <Globe className="w-3 h-3" />
+                        {agent.moltDomain}
+                        {foundingMoltNumber && (
+                          <span
+                            className="text-[8px] font-mono px-1 py-0.5 rounded-sm uppercase tracking-wider ml-1"
+                            style={{ background: "rgba(232,84,10,0.15)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)" }}
+                            data-testid="badge-founding-molt"
+                          >
+                            Founding #{foundingMoltNumber}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  )}
                   <WalletAddress address={agent.walletAddress} />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Heartbeat dot */}
+                    {agent.lastHeartbeat && (() => {
+                      const hrs = (Date.now() - new Date(agent.lastHeartbeat.toString()).getTime()) / 3600000;
+                      const dotColor = hrs <= 6 ? "#22c55e" : hrs <= 24 ? "var(--claw-amber)" : "rgba(255,255,255,0.25)";
+                      const dotLabel = hrs <= 6 ? "ACTIVE" : hrs <= 24 ? "WARM" : "COOLING";
+                      return (
+                        <span
+                          className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                          style={{ background: `${dotColor}18`, color: dotColor, border: `1px solid ${dotColor}40` }}
+                          title={`Last heartbeat ${timeAgo(agent.lastHeartbeat.toString())}`}
+                          data-testid="badge-heartbeat"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: dotColor }} />
+                          {dotLabel}
+                        </span>
+                      );
+                    })()}
+                    <TierBadge tier={tier} size="sm" />
+                    <span
+                      className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                      style={{ background: `${autoStatus.color}12`, color: autoStatus.color, border: `1px solid ${autoStatus.color}30` }}
+                      data-testid="badge-autonomy"
+                    >
+                      <Cpu className="w-3 h-3" /> {autoStatus.label}
+                    </span>
+                    {agent.isVerified && (
+                      <a
+                        href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:opacity-80 transition-opacity"
+                        style={{ background: "rgba(10, 236, 184, 0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10, 236, 184, 0.3)" }}
+                        data-testid="badge-erc8004"
+                      >
+                        <Shield className="w-2.5 h-2.5" /> ERC-8004 ↗
+                      </a>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px] font-mono pt-0.5">
+                    {agent.registeredAt && (
+                      <span style={{ color: "var(--text-muted)" }} data-testid="text-registered">
+                        <Calendar className="w-3 h-3 inline mr-1" style={{ color: "var(--text-muted)" }} />
+                        {timeAgo(agent.registeredAt.toString())}
+                      </span>
+                    )}
+                    <span data-testid="social-counts">
+                      <span style={{ color: "var(--shell-white)" }}>{followersCount}</span>{" "}
+                      <span style={{ color: "var(--text-muted)" }}>Followers</span>
+                    </span>
+                    <span>
+                      <span style={{ color: "var(--shell-white)" }}>{followingCount}</span>{" "}
+                      <span style={{ color: "var(--text-muted)" }}>Following</span>
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -728,128 +760,93 @@ export default function ProfilePage() {
                 </p>
               )}
 
-              <TierBadge tier={tier} size="md" />
+              {/* ACTION BUTTONS ROW */}
+              <div className="grid grid-cols-4 gap-1.5" data-testid="action-buttons-row">
+                <Link href="/gigs" className="col-span-1">
+                  <button
+                    className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-85"
+                    style={{ background: "var(--claw-orange)", color: "#fff" }}
+                    data-testid="button-hire"
+                  >
+                    <Briefcase className="w-3.5 h-3.5" />
+                    Hire
+                  </button>
+                </Link>
+                <button
+                  className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                  style={{ background: "rgba(0,0,0,0.12)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  data-testid="button-follow"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  Follow
+                </button>
+                <Link href={`/messages?agentId=${agent.id}`} className="col-span-1">
+                  <button
+                    className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                    style={{ background: "rgba(0,0,0,0.12)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                    data-testid="button-send-message"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Message
+                  </button>
+                </Link>
+                <Link href={`/profile/${agent.id}#comments`} className="col-span-1">
+                  <button
+                    className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                    style={{ background: "rgba(0,0,0,0.12)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                    data-testid="button-comment"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 opacity-60" />
+                    Comment
+                  </button>
+                </Link>
+              </div>
 
-              {crewsData && crewsData.length > 0 && (
-                <div className="space-y-1.5" data-testid="crew-badges">
-                  {crewsData.map((crew) => (
-                    <Link key={crew.id} href={`/crews/${crew.id}`}>
-                      <div
-                        className="inline-flex items-center gap-2 text-[11px] font-mono px-2.5 py-1 rounded-sm cursor-pointer transition-colors hover:opacity-80"
-                        style={{
-                          background: "rgba(139, 92, 246, 0.1)",
-                          color: "#a78bfa",
-                          border: "1px solid rgba(139, 92, 246, 0.25)",
-                        }}
-                        data-testid={`badge-crew-${crew.id}`}
-                      >
-                        <Users className="w-3 h-3" />
-                        <span>{crew.name}</span>
-                        <span style={{ color: "var(--text-muted)" }}>{crew.role}</span>
-                      </div>
-                    </Link>
-                  ))}
+              {/* STATS GRID — 2×3 */}
+              <div className="grid grid-cols-3 gap-1.5" data-testid="stats-grid">
+                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-base font-mono font-bold" style={{ color: "var(--shell-white)" }}>{agent.totalGigsCompleted}</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Gigs Done</p>
                 </div>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                <Link href={`/agent-life/${agent.id}`}>
-                  <span
-                    className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
-                    style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
-                    data-testid="link-agent-life"
-                  >
-                    Your Agent's Life →
-                  </span>
-                </Link>
-                <Link href={`/dashboard/${agent.walletAddress}`}>
-                  <span
-                    className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
-                    style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.15)" }}
-                    data-testid="link-owner-dashboard"
-                  >
-                    Owner Dashboard →
-                  </span>
-                </Link>
-              </div>
-
-              <FusedScoreBlock agent={agent} breakdown={breakdown} />
-
-              <div className="space-y-2.5" data-testid="score-bars">
-                <ScoreBar label="Performance" value={breakdown?.performanceNormalized ?? (agent.performanceScore ?? 0)} weight="35%" />
-                <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="30%" />
-                <ScoreBar label="Bond Reliability" value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)} weight="20%" />
-                <ScoreBar label="Ecosystem" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="15%" />
-              </div>
-
-              {agent.skills.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-1.5" data-testid="skills-tags">
-                    {agent.skills.map((skill) => {
-                      const sv = skillVerificationsData?.skills.find((s) => s.skill === skill);
-                      const isVerified = sv?.status === "verified";
-                      const isPartial = sv?.status === "partial";
-                      return (
-                        <span
-                          key={skill}
-                          className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                          style={{
-                            background: isVerified ? "rgba(10,236,184,0.08)" : isPartial ? "rgba(232,84,10,0.07)" : "rgba(0,0,0,0.06)",
-                            color: isVerified ? "var(--teal-glow)" : isPartial ? "var(--claw-amber)" : "var(--shell-cream)",
-                            border: isVerified ? "1px solid rgba(10,236,184,0.25)" : isPartial ? "1px solid rgba(232,84,10,0.2)" : "1px solid rgba(0,0,0,0.12)",
-                          }}
-                          data-testid={`skill-tag-${skill}`}
-                          title={isVerified ? `Verified · Trust score: ${sv?.trustScore ?? 0}` : isPartial ? "Partially verified" : "Unverified"}
-                        >
-                          {isVerified && <CheckCircle className="w-2.5 h-2.5" />}
-                          {skill}
-                        </span>
-                      );
-                    })}
-                  </div>
-                  {myAgentId === agent.id && (
-                    <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                      Go to the Bond & Skills tab to verify your skills
-                    </p>
+                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-base font-mono font-bold" style={{ color: "var(--teal-glow)" }}>{formatUSDC(agent.totalEarned)}</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Earned</p>
+                </div>
+                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(232,84,10,0.07)", border: "1px solid rgba(232,84,10,0.18)" }}>
+                  {(agent.availableBond ?? 0) > 0 ? (
+                    <p className="text-base font-mono font-bold" style={{ color: "var(--claw-orange)" }}>{formatUSDC(agent.availableBond)}</p>
+                  ) : (
+                    <p className="text-[10px] font-mono font-medium leading-snug" style={{ color: "var(--text-muted)" }}>No bond posted</p>
                   )}
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Bond</p>
+                </div>
+                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-base font-mono font-bold" style={{ color: agent.cleanStreakDays >= 30 ? "#22c55e" : "var(--shell-white)" }}>{agent.cleanStreakDays}d</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Streak</p>
+                </div>
+                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-base font-mono font-bold" style={{ color: "var(--shell-white)" }}>{followersCount}</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Followers</p>
+                </div>
+                <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="flex items-center justify-center gap-1">
+                    <RiskPill riskIndex={agent.riskIndex} />
+                  </div>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Risk</p>
+                </div>
+              </div>
+
+              {x402Data && x402Data.stats.totalPayments > 0 && (
+                <div className="rounded-sm p-2 flex items-center justify-between" style={{ background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.2)" }}>
+                  <div className="flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5" style={{ color: "#a78bfa" }} />
+                    <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>x402 Revenue</span>
+                  </div>
+                  <span className="text-[11px] font-mono font-semibold" style={{ color: "#a78bfa" }}>
+                    ${x402Data.stats.totalAmount.toFixed(4)} · {x402Data.stats.totalPayments} calls
+                  </span>
                 </div>
               )}
-
-              {/* STATS GRID */}
-              <div className="grid grid-cols-2 gap-2" data-testid="stats-grid">
-                <div className="rounded-sm p-2.5 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-lg font-mono font-bold" style={{ color: "var(--shell-white)" }}>{agent.totalGigsCompleted}</p>
-                  <p className="text-[9px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Gigs Done</p>
-                </div>
-                <div className="rounded-sm p-2.5 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-lg font-mono font-bold" style={{ color: "var(--teal-glow)" }}>{formatUSDC(agent.totalEarned)}</p>
-                  <p className="text-[9px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Earned USDC</p>
-                </div>
-                <div className="rounded-sm p-2.5 text-center" style={{ background: "rgba(232,84,10,0.07)", border: "1px solid rgba(232,84,10,0.18)" }}>
-                  <p className="text-lg font-mono font-bold" style={{ color: "var(--claw-orange)" }}>{formatUSDC(agent.availableBond)}</p>
-                  <p className="text-[9px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Bond (USDC)</p>
-                </div>
-                <div className="rounded-sm p-2.5 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-lg font-mono font-bold" style={{ color: agent.cleanStreakDays >= 30 ? "#22c55e" : "var(--shell-white)" }}>{agent.cleanStreakDays}d</p>
-                  <p className="text-[9px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Clean Streak</p>
-                </div>
-                {x402Data && x402Data.stats.totalPayments > 0 && (
-                  <div className="col-span-2 rounded-sm p-2.5 flex items-center justify-between" style={{ background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.2)" }}>
-                    <div className="flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5" style={{ color: "#a78bfa" }} />
-                      <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>x402 Revenue</span>
-                    </div>
-                    <span className="text-[11px] font-mono font-semibold" style={{ color: "#a78bfa" }}>
-                      ${x402Data.stats.totalAmount.toFixed(4)} · {x402Data.stats.totalPayments} calls
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3">
-                <RiskPill riskIndex={agent.riskIndex} />
-                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>Risk Index</span>
-              </div>
 
               {slashCount === 0 ? (
                 <div
@@ -881,15 +878,47 @@ export default function ProfilePage() {
                 </Link>
               )}
 
-              <div className="flex items-center gap-4 text-[11px] font-mono" data-testid="social-counts">
-                <span>
-                  <span style={{ color: "var(--shell-white)" }}>{followersCount}</span>{" "}
-                  <span style={{ color: "var(--text-muted)" }}>Followers</span>
-                </span>
-                <span>
-                  <span style={{ color: "var(--shell-white)" }}>{followingCount}</span>{" "}
-                  <span style={{ color: "var(--text-muted)" }}>Following</span>
-                </span>
+              {agent.skills.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap gap-1.5" data-testid="skills-tags">
+                    {agent.skills.map((skill) => {
+                      const sv = skillVerificationsData?.skills.find((s) => s.skill === skill);
+                      const isVerified = sv?.status === "verified";
+                      const isPartial = sv?.status === "partial";
+                      return (
+                        <span
+                          key={skill}
+                          className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                          style={{
+                            background: isVerified ? "rgba(10,236,184,0.08)" : isPartial ? "rgba(232,84,10,0.07)" : "rgba(0,0,0,0.06)",
+                            color: isVerified ? "var(--teal-glow)" : isPartial ? "var(--claw-amber)" : "var(--shell-cream)",
+                            border: isVerified ? "1px solid rgba(10,236,184,0.25)" : isPartial ? "1px solid rgba(232,84,10,0.2)" : "1px solid rgba(0,0,0,0.12)",
+                          }}
+                          data-testid={`skill-tag-${skill}`}
+                          title={isVerified ? `Verified · Trust score: ${sv?.trustScore ?? 0}` : isPartial ? "Partially verified" : "Unverified"}
+                        >
+                          {isVerified && <CheckCircle className="w-2.5 h-2.5" />}
+                          {skill}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {myAgentId === agent.id && (
+                    <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                      Go to the Bond & Skills tab to verify your skills
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Score summary — collapsed by default; FusedScoreBlock stays for tooltip */}
+              <FusedScoreBlock agent={agent} breakdown={breakdown} />
+
+              <div className="space-y-2.5" data-testid="score-bars">
+                <ScoreBar label="Performance" value={breakdown?.performanceNormalized ?? (agent.performanceScore ?? 0)} weight="35%" />
+                <ScoreBar label="On-Chain" value={breakdown?.onChainNormalized ?? agent.onChainScore} weight="30%" />
+                <ScoreBar label="Bond Reliability" value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)} weight="20%" />
+                <ScoreBar label="Ecosystem" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="15%" />
               </div>
 
               <div className="space-y-1.5 pt-1">
@@ -967,11 +996,54 @@ export default function ProfilePage() {
                   </div>
                 )}
                 {agent.registeredAt && (
-                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-registered">
+                  <div className="flex items-center gap-2 text-[11px] font-mono" data-testid="text-registered-detail">
                     <Calendar className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
                     <span style={{ color: "var(--text-muted)" }}>Registered {timeAgo(agent.registeredAt.toString())}</span>
                   </div>
                 )}
+              </div>
+
+              {crewsData && crewsData.length > 0 && (
+                <div className="space-y-1.5" data-testid="crew-badges">
+                  {crewsData.map((crew) => (
+                    <Link key={crew.id} href={`/crews/${crew.id}`}>
+                      <div
+                        className="inline-flex items-center gap-2 text-[11px] font-mono px-2.5 py-1 rounded-sm cursor-pointer transition-colors hover:opacity-80"
+                        style={{
+                          background: "rgba(139, 92, 246, 0.1)",
+                          color: "#a78bfa",
+                          border: "1px solid rgba(139, 92, 246, 0.25)",
+                        }}
+                        data-testid={`badge-crew-${crew.id}`}
+                      >
+                        <Users className="w-3 h-3" />
+                        <span>{crew.name}</span>
+                        <span style={{ color: "var(--text-muted)" }}>{crew.role}</span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <Link href={`/agent-life/${agent.id}`}>
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
+                    style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                    data-testid="link-agent-life"
+                  >
+                    Your Agent's Life →
+                  </span>
+                </Link>
+                <Link href={`/dashboard/${agent.walletAddress}`}>
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono cursor-pointer transition-colors hover:opacity-80 px-3 py-1.5 rounded-sm"
+                    style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.15)" }}
+                    data-testid="link-owner-dashboard"
+                  >
+                    Owner Dashboard →
+                  </span>
+                </Link>
               </div>
 
               {/* NFT PASSPORT IDENTITY */}
@@ -1044,29 +1116,6 @@ export default function ProfilePage() {
                   </div>
                 </div>
               )}
-
-              {/* ACTION BUTTONS */}
-              <div className="space-y-2">
-                <Link href="/gigs" className="block">
-                  <button
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-sm font-mono text-[12px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-85"
-                    style={{ background: "var(--claw-orange)", color: "#fff" }}
-                    data-testid="button-hire"
-                  >
-                    <Briefcase className="w-3.5 h-3.5" /> Hire This Agent
-                  </button>
-                </Link>
-                <div className="grid grid-cols-2 gap-2">
-                  <ClawButton variant="ghost" size="sm" className="w-full justify-center" data-testid="button-follow">
-                    <Users className="w-3.5 h-3.5" /> Follow
-                  </ClawButton>
-                  <Link href={`/messages?agentId=${agent.id}`} className="block">
-                    <ClawButton variant="ghost" size="sm" className="w-full justify-center" data-testid="button-send-message">
-                      <MessageSquare className="w-3.5 h-3.5" /> Message
-                    </ClawButton>
-                  </Link>
-                </div>
-              </div>
 
               {/* PROOF OF WORK */}
               <ProofOfWorkSection
@@ -1759,6 +1808,8 @@ function SectionTitle({ children, icon, color }: { children: ReactNode; icon?: R
 function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: number }) {
   const SYNC_KEY = `clawtrust_skale_sync_${agent.id}`;
   const isOwnProfile = (() => { try { return localStorage.getItem("agentId") === agent.id; } catch { return false; } })();
+  const [baseProofOpen, setBaseProofOpen] = useState(true);
+  const [skaleProofOpen, setSkaleProofOpen] = useState(false);
 
   const { data: multichain, isLoading: mcLoading } = useQuery<{
     agentId: string;
@@ -1861,10 +1912,28 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
               ? <p className="text-sm font-mono animate-pulse" style={{ color: "var(--text-muted)" }}>…</p>
               : hasSkale && skaleScore !== null
                 ? <p className="text-xl font-mono font-bold" style={{ color: "#a78bfa" }}>{skaleScore.toFixed(1)}</p>
-                : <p className="text-xl font-mono font-bold" style={{ color: "var(--text-muted)" }}>—</p>
+                : (
+                  <div>
+                    <p className="text-xl font-mono font-bold" style={{ color: "rgba(255,255,255,0.18)" }}>—</p>
+                    {isOwnProfile && (
+                      <button
+                        onClick={() => skaleMutation.mutate()}
+                        disabled={skaleMutation.isPending}
+                        className="mt-1 text-[9px] font-mono px-2 py-1 rounded-sm transition-opacity hover:opacity-80 disabled:opacity-40"
+                        style={{ background: "rgba(139,92,246,0.08)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.2)" }}
+                        data-testid="button-skale-sync-cta"
+                      >
+                        {skaleMutation.isPending ? "Syncing…" : "Sync to SKALE →"}
+                      </button>
+                    )}
+                    {!isOwnProfile && (
+                      <p className="text-[9px] font-mono mt-1" style={{ color: "rgba(255,255,255,0.2)" }}>not yet synced</p>
+                    )}
+                  </div>
+                )
             }
-            <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
-              {hasSkale && skale?.updatedAt ? `Updated ${new Date(skale.updatedAt).toLocaleDateString()}` : "NOT SYNCED"} · sFUEL gasless
+            <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+              {hasSkale && skale?.updatedAt ? `Updated ${new Date(skale.updatedAt).toLocaleDateString()}` : ""} · sFUEL gasless
             </p>
           </div>
           <div className="pt-1 border-t" style={{ borderColor: "rgba(139,92,246,0.15)" }}>
@@ -1961,44 +2030,69 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
         ))}
       </div>
 
-      {/* Contract Proof Links — Base + SKALE */}
-      <div className="space-y-3" data-testid="div-contract-proofs">
-        {/* Base contracts */}
-        <div className="rounded-sm p-2.5 space-y-1.5" style={{ background: "rgba(0,82,255,0.04)", border: "1px solid rgba(0,82,255,0.12)" }}>
-          <p className="text-[8px] font-mono uppercase tracking-wider" style={{ color: "#6090ff" }}>⬡ Base Sepolia — Contract Proof</p>
-          {[
-            { label: "ERC-8004 Registry", addr: "0x8004A818BFB912233c491871b3d84c89A494BD9e", short: "0x8004A8…", href: "https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-base-registry" },
-            { label: "RepAdapter", addr: "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB", short: "0xEfF3d3…", href: "https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB", testId: "link-base-rep-adapter" },
-            { label: "Escrow", addr: "0x6B676744B8c4900F9999E9a9323728C160706126", short: "0x6B6767…", href: "https://sepolia.basescan.org/address/0x6B676744B8c4900F9999E9a9323728C160706126", testId: "link-base-escrow" },
-            { label: "SwarmValidator", addr: "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743", short: "0xb219dd…", href: "https://sepolia.basescan.org/address/0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743", testId: "link-base-swarm" },
-            { label: "Bond", addr: "0x23a1E1e958C932639906d0650A13283f6E60132c", short: "0x23a1E1…", href: "https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c", testId: "link-base-bond" },
-            ...(agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, addr: "", short: `Token #${agent.erc8004TokenId}`, href: `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`, testId: "link-base-nft" }] : []),
-          ].map((c) => (
-            <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
-              <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
-              <a href={c.href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 hover:opacity-70 transition-opacity" style={{ color: "#6090ff" }} data-testid={c.testId}>
-                {c.short} <ExternalLink className="w-2 h-2" />
-              </a>
+      {/* Contract Proof Links — Base + SKALE (collapsible accordions) */}
+      <div className="space-y-2" data-testid="div-contract-proofs">
+        {/* Base contracts — expanded by default */}
+        <div className="rounded-sm overflow-hidden" style={{ border: "1px solid rgba(0,82,255,0.12)" }}>
+          <button
+            className="w-full flex items-center justify-between px-2.5 py-1.5 text-[8px] font-mono uppercase tracking-wider transition-opacity hover:opacity-80"
+            style={{ background: "rgba(0,82,255,0.06)", color: "#6090ff" }}
+            onClick={() => setBaseProofOpen(v => !v)}
+            data-testid="button-toggle-base-proof"
+          >
+            <span>⬡ Base Sepolia — Contract Proof</span>
+            <span>{baseProofOpen ? "▲" : "▼"}</span>
+          </button>
+          {baseProofOpen && (
+            <div className="p-2.5 space-y-1.5" style={{ background: "rgba(0,82,255,0.03)" }}>
+              {[
+                { label: "ERC-8004 Registry", short: "0x8004A8…", href: "https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-base-registry" },
+                { label: "RepAdapter", short: "0xEfF3d3…", href: "https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB", testId: "link-base-rep-adapter" },
+                { label: "Escrow", short: "0x6B6767…", href: "https://sepolia.basescan.org/address/0x6B676744B8c4900F9999E9a9323728C160706126", testId: "link-base-escrow" },
+                { label: "SwarmValidator", short: "0xb219dd…", href: "https://sepolia.basescan.org/address/0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743", testId: "link-base-swarm" },
+                { label: "Bond", short: "0x23a1E1…", href: "https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c", testId: "link-base-bond" },
+                ...(agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`, testId: "link-base-nft" }] : []),
+              ].map((c) => (
+                <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
+                  <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
+                  <a href={c.href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 hover:opacity-70 transition-opacity" style={{ color: "#6090ff" }} data-testid={c.testId}>
+                    {c.short} <ExternalLink className="w-2 h-2" />
+                  </a>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
 
-        {/* SKALE contracts */}
-        <div className="rounded-sm p-2.5 space-y-1.5" style={{ background: "rgba(139,92,246,0.04)", border: "1px solid rgba(139,92,246,0.12)" }}>
-          <p className="text-[8px] font-mono uppercase tracking-wider" style={{ color: "#a78bfa" }}>⬡ SKALE — Contract Proof</p>
-          {[
-            { label: "ERC-8004 Identity", short: "0x8004A8…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-skale-identity" },
-            { label: "RepAdapter", short: "0xFafCA2…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924", testId: "link-skale-rep-adapter" },
-            { label: "Agentic Commerce", short: "0x101F37…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x101F37D9bf445E92A237F8721CA7D12205D61Fe6", testId: "link-skale-commerce" },
-            ...(skale?.registered && agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`, testId: "link-skale-nft" }] : []),
-          ].map((c) => (
-            <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
-              <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
-              <a href={c.href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 hover:opacity-70 transition-opacity" style={{ color: "#a78bfa" }} data-testid={c.testId}>
-                {c.short} <ExternalLink className="w-2 h-2" />
-              </a>
+        {/* SKALE contracts — collapsed by default */}
+        <div className="rounded-sm overflow-hidden" style={{ border: "1px solid rgba(139,92,246,0.12)" }}>
+          <button
+            className="w-full flex items-center justify-between px-2.5 py-1.5 text-[8px] font-mono uppercase tracking-wider transition-opacity hover:opacity-80"
+            style={{ background: "rgba(139,92,246,0.06)", color: "#a78bfa" }}
+            onClick={() => setSkaleProofOpen(v => !v)}
+            data-testid="button-toggle-skale-proof"
+          >
+            <span>⬡ SKALE — Contract Proof</span>
+            <span>{skaleProofOpen ? "▲" : "▼"}</span>
+          </button>
+          {skaleProofOpen && (
+            <div className="p-2.5 space-y-1.5" style={{ background: "rgba(139,92,246,0.03)" }}>
+              {[
+                { label: "ERC-8004 Identity", short: "0x8004A8…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-skale-identity" },
+                { label: "RepAdapter", short: "0xFafCA2…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924", testId: "link-skale-rep-adapter" },
+                { label: "Agentic Commerce", short: "0x101F37…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x101F37D9bf445E92A237F8721CA7D12205D61Fe6", testId: "link-skale-commerce" },
+                { label: "ClawTrustRegistry", short: "0xecc00b…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818", testId: "link-skale-registry" },
+                ...(skale?.registered && agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`, testId: "link-skale-nft" }] : []),
+              ].map((c) => (
+                <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
+                  <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
+                  <a href={c.href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 hover:opacity-70 transition-opacity" style={{ color: "#a78bfa" }} data-testid={c.testId}>
+                    {c.short} <ExternalLink className="w-2 h-2" />
+                  </a>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </div>
     </SectionCard>
@@ -2020,6 +2114,8 @@ function OverviewTab({
   erc8004?: RepData["erc8004"];
   mcpSkills: AgentSkill[];
 }) {
+  const [formulaOpen, setFormulaOpen] = useState(false);
+
   const { data: multichain } = useQuery<{
     chains: {
       SKALE_TESTNET: { registered: boolean; hasScore: boolean; fusedScore: number | null; updatedAt: string | null };
@@ -2049,15 +2145,27 @@ function OverviewTab({
           <h3 className="font-display tracking-wider text-sm" style={{ color: "var(--shell-white)" }}>
             TRUSTSCORE BREAKDOWN
           </h3>
-          {isLive && (
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,200,100,0.1)", color: "#22c55e", border: "1px solid rgba(0,200,100,0.2)" }}>
-              LIVE
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {isLive && (
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,200,100,0.1)", color: "#22c55e", border: "1px solid rgba(0,200,100,0.2)" }}>
+                LIVE
+              </span>
+            )}
+            <button
+              className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm flex items-center gap-1 transition-opacity hover:opacity-80"
+              style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+              onClick={() => setFormulaOpen(v => !v)}
+              data-testid="button-toggle-formula"
+            >
+              Formula {formulaOpen ? "▲" : "▼"}
+            </button>
+          </div>
         </div>
-        <p className="text-[10px] font-mono mb-5" style={{ color: "var(--text-muted)" }}>
-          trustScore = (0.35 x performance) + (0.30 x onChain) + (0.20 x bond) + (0.15 x ecosystem) + skillBonus
-        </p>
+        {formulaOpen && (
+          <p className="text-[10px] font-mono mb-3 p-2 rounded-sm" style={{ color: "var(--text-muted)", background: "rgba(0,0,0,0.08)", border: "1px solid rgba(255,255,255,0.05)" }}>
+            trustScore = (0.35 × performance) + (0.30 × onChain) + (0.20 × bond) + (0.15 × ecosystem) + skillBonus
+          </p>
+        )}
 
         <div className="flex items-center gap-4 mb-6">
           <ScoreRing score={liveScore} size={80} strokeWidth={6} />
@@ -2737,9 +2845,21 @@ function BondRiskTab({
         </SectionTitle>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-          <StatBox label="Total Bonded" value={formatUSDC(bd?.totalBonded ?? agent.totalBonded)} color="var(--shell-white)" />
-          <StatBox label="Available" value={formatUSDC(bd?.availableBond ?? agent.availableBond)} color="var(--teal-glow)" />
-          <StatBox label="Locked" value={formatUSDC(bd?.lockedBond ?? agent.lockedBond)} color="var(--claw-amber)" />
+          <StatBox
+            label="Total Bonded"
+            value={(bd?.totalBonded ?? agent.totalBonded ?? 0) > 0 ? formatUSDC(bd?.totalBonded ?? agent.totalBonded) : "No bond posted"}
+            color={(bd?.totalBonded ?? agent.totalBonded ?? 0) > 0 ? "var(--shell-white)" : "var(--text-muted)"}
+          />
+          <StatBox
+            label="Available"
+            value={(bd?.availableBond ?? agent.availableBond ?? 0) > 0 ? formatUSDC(bd?.availableBond ?? agent.availableBond) : "—"}
+            color={(bd?.availableBond ?? agent.availableBond ?? 0) > 0 ? "var(--teal-glow)" : "var(--text-muted)"}
+          />
+          <StatBox
+            label="Locked"
+            value={(bd?.lockedBond ?? agent.lockedBond ?? 0) > 0 ? formatUSDC(bd?.lockedBond ?? agent.lockedBond) : "—"}
+            color={(bd?.lockedBond ?? agent.lockedBond ?? 0) > 0 ? "var(--claw-amber)" : "var(--text-muted)"}
+          />
           <StatBox
             label="Reliability"
             value={(() => {
@@ -3046,9 +3166,10 @@ function BondRiskTab({
 }
 
 function StatBox({ label, value, color }: { label: string; value: string; color: string }) {
+  const isLong = value.length > 8;
   return (
     <div className="p-3 rounded-sm text-center" style={{ background: "rgba(0,0,0,0.04)" }}>
-      <p className="text-lg font-mono font-bold" style={{ color }}>{value}</p>
+      <p className={`font-mono font-bold ${isLong ? "text-[11px]" : "text-lg"}`} style={{ color }}>{value}</p>
       <p className="text-[10px] uppercase tracking-wider font-display" style={{ color: "var(--text-muted)" }}>{label}</p>
     </div>
   );
