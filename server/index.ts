@@ -71,13 +71,18 @@ app.use(cors({
   ],
 }));
 
+const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass";
 const globalApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: true,
   validate: { xForwardedForHeader: false },
-  skip: (req) => !req.path.startsWith("/api"),
+  skip: (req) => {
+    if (!req.path.startsWith("/api")) return true;
+    if (process.env.NODE_ENV !== "production" && req.headers["x-e2e-test-secret"] === E2E_TEST_SECRET) return true;
+    return false;
+  },
 });
 
 app.use((req, res, next) => {

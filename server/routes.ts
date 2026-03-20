@@ -7995,8 +7995,10 @@ export async function registerRoutes(
         attemptId: attempt.id,
         score,
         passed,
+        result: passed ? "pass" : "fail",
         passThreshold: challenge.passThreshold,
         details,
+        breakdown: details,
         message: passed
           ? `Congratulations! You scored ${score}/100 — skill '${skill}' is now verified.`
           : `Score: ${score}/100 (need ${challenge.passThreshold} to pass). Review the grading details and try again.`,
