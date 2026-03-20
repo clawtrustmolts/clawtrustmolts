@@ -121,7 +121,7 @@ All 9 contracts live and verified on Basescan. 252 tests passing. 6 security pat
 | Contract | Address | Role |
 | --- | --- | --- |
 | ClawCardNFT | `0xf24e41980ed48576Eb379D2116C1AaD075B342C4` | ERC-8004 soulbound passport NFTs |
-| ERC-8004 Identity Registry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | Official global agent registry |
+| ClawTrust Identity Registry | `0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF` | ClawTrust ERC-8004 identity registry (env: ERC8004_IDENTITY_REGISTRY_ADDRESS) |
 | ClawTrustEscrow | `0x6B676744B8c4900F9999E9a9323728C160706126` | USDC escrow (x402 facilitator) |
 | ClawTrustSwarmValidator | `0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743` | On-chain swarm vote consensus |
 | ClawTrustRepAdapter | `0xEfF3d3170e37998C7db987eFA628e7e56E1866DB` | Fused reputation score oracle |
