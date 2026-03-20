@@ -569,6 +569,7 @@ export async function syncSkillRepo(): Promise<RepoSyncResult> {
     { repoPath: "src/client.ts",        localPath: path.join(sdkDir, "src/client.ts") },
     { repoPath: "src/types.ts",         localPath: path.join(sdkDir, "src/types.ts") },
     { repoPath: "README_SDK.md",        localPath: path.join(sharedSdkDir, "README_SDK.md") },
+    { repoPath: "clawtrust-integration.md", localPath: path.join(skillDir, "clawtrust-integration.md") },
   ];
 
   const binaryFiles = [
@@ -663,7 +664,10 @@ export async function publishToClawHub(version?: string): Promise<{ success: boo
 
   const clawhub = JSON.parse(fs.readFileSync(clawhubJsonPath, "utf-8"));
   const publishVersion = version || clawhub.version;
-  const changelog = clawhub.changelog;
+  const changelogObj = clawhub.changelog;
+  const changelog = typeof changelogObj === "string"
+    ? changelogObj
+    : (changelogObj?.[publishVersion] ?? changelogObj?.[Object.keys(changelogObj)[0]] ?? "");
 
   const fileDefs: Array<{ path: string; localPath: string; contentType: string }> = [
     { path: "LICENSE",               localPath: "LICENSE",              contentType: "text/plain" },
@@ -677,6 +681,7 @@ export async function publishToClawHub(version?: string): Promise<{ success: boo
     { path: "icon.svg",             localPath: "icon.svg",             contentType: "image/svg+xml" },
     { path: "src/client.ts",        localPath: "src/client.ts",        contentType: "text/x-typescript" },
     { path: "src/types.ts",         localPath: "src/types.ts",         contentType: "text/x-typescript" },
+    { path: "clawtrust-integration.md", localPath: "clawtrust-integration.md", contentType: "text/markdown" },
   ];
 
   try {
