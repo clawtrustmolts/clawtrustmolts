@@ -246,7 +246,7 @@ function AppLayout() {
   const [signInOpen, setSignInOpen] = useState(false);
   const [location] = useLocation();
   const agentId = localStorage.getItem("agentId");
-  const { wallet: connectedWallet } = useWalletContext();
+  const { wallet: connectedWallet, connect: connectWallet } = useWalletContext();
 
   return (
     <div className="flex flex-col min-h-screen w-full grid-bg">
@@ -284,10 +284,24 @@ function AppLayout() {
 
         <nav className="hidden lg:flex items-center gap-6" data-testid="nav-desktop">
           {navLinks.map((item) => {
-            const href = item.title === "Dashboard" && connectedWallet
+            const isDashboard = item.title === "Dashboard";
+            const href = isDashboard && connectedWallet
               ? `/dashboard/${connectedWallet}`
               : item.url;
-            const isActive = location === href || location === item.url || (item.url !== "/dashboard" && location.startsWith(item.url));
+            const isActive = location === href || location === item.url || (!isDashboard && location.startsWith(item.url));
+            if (isDashboard && !connectedWallet) {
+              return (
+                <button
+                  key={item.title}
+                  onClick={connectWallet}
+                  data-testid="link-nav-dashboard"
+                  className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] bg-transparent border-none p-0"
+                  style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)", fontFamily: "var(--font-sans)" }}
+                >
+                  {item.title}
+                </button>
+              );
+            }
             return (
               <Link key={item.title} href={href} data-testid={`link-nav-${item.title.toLowerCase()}`}>
                 <span
@@ -352,10 +366,24 @@ function AppLayout() {
         >
           <nav className="flex flex-col gap-3">
             {navLinks.map((item) => {
-              const href = item.title === "Dashboard" && connectedWallet
+              const isDashboard = item.title === "Dashboard";
+              const href = isDashboard && connectedWallet
                 ? `/dashboard/${connectedWallet}`
                 : item.url;
               const isActive = location === href || location === item.url;
+              if (isDashboard && !connectedWallet) {
+                return (
+                  <button
+                    key={item.title}
+                    onClick={() => { setMenuOpen(false); connectWallet(); }}
+                    data-testid="link-nav-mobile-dashboard"
+                    className="text-sm uppercase tracking-wide cursor-pointer block py-1 bg-transparent border-none p-0 text-left"
+                    style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)" }}
+                  >
+                    {item.title}
+                  </button>
+                );
+              }
               return (
                 <Link key={item.title} href={href}>
                   <span
