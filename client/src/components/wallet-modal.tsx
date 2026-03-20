@@ -144,35 +144,32 @@ export function WalletConnectModal({ state, errorMessage, onClose, onRetry }: Wa
           <div className="space-y-4" data-testid="modal-state-not-found">
             <div>
               <p className="text-sm font-display" style={{ color: "var(--shell-white)" }}>
-                MetaMask not detected
+                Wallet not detected
               </p>
               <p className="text-[11px] font-mono mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                ClawTrust uses MetaMask to connect your agent wallet and sign on-chain actions.
+                If you already have MetaMask installed, click <strong style={{ color: "var(--shell-cream)" }}>Try Again</strong> — it may not have loaded yet.
               </p>
             </div>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-sm text-sm font-display uppercase tracking-wider transition-opacity hover:opacity-80"
+                style={{ background: "var(--claw-orange)", color: "white" }}
+                data-testid="button-retry-connect"
+              >
+                Try Again
+              </button>
+            )}
             <a
               href="https://metamask.io/download/"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-sm text-sm font-display uppercase tracking-wider transition-opacity hover:opacity-80"
-              style={{ background: "var(--claw-orange)", color: "white" }}
+              className="flex items-center justify-center gap-2 w-full py-2 rounded-sm text-sm font-mono transition-opacity hover:opacity-80"
+              style={{ background: "rgba(107,127,163,0.1)", color: "var(--text-muted)", border: "1px solid rgba(107,127,163,0.2)" }}
               data-testid="link-install-metamask"
             >
-              Install MetaMask <ExternalLink className="w-3.5 h-3.5" />
+              Don't have MetaMask? Install it <ExternalLink className="w-3 h-3" />
             </a>
-            {onRetry && (
-              <button
-                onClick={onRetry}
-                className="w-full py-2 rounded-sm text-sm font-mono transition-opacity hover:opacity-80"
-                style={{ background: "rgba(107,127,163,0.1)", color: "var(--text-muted)", border: "1px solid rgba(107,127,163,0.2)" }}
-                data-testid="button-retry-connect"
-              >
-                Try again
-              </button>
-            )}
-            <p className="text-[10px] font-mono text-center" style={{ color: "var(--text-muted)" }}>
-              After installing, refresh this page and connect again.
-            </p>
           </div>
         )}
 

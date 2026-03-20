@@ -81,7 +81,7 @@ export function ScoreRing({
           {Math.round(score)}
         </span>
         {label && (
-          <span className="uppercase text-[9px] tracking-widest" style={{ color: "var(--text-muted)" }}>
+          <span className="uppercase tracking-widest" style={{ fontSize: size * 0.1, color: variant === "teal" ? "var(--teal-glow)" : "var(--claw-orange)" }}>
             {label}
           </span>
         )}

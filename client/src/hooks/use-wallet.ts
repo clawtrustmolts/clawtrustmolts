@@ -31,7 +31,7 @@ function getStoredSig(): { address: string; sig: string; timestamp: number } | n
   }
 }
 
-async function detectEthereum(timeoutMs = 1200): Promise<boolean> {
+async function detectEthereum(timeoutMs = 2500): Promise<boolean> {
   if (window.ethereum) return true;
   return new Promise((resolve) => {
     const interval = 100;

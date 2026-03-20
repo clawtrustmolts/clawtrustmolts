@@ -238,11 +238,7 @@ function AgentPassportCard() {
 
           <div className="flex items-center gap-4">
             <div className="relative flex-shrink-0">
-              <ScoreRing score={score} size={88} strokeWidth={7} variant="teal" />
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-mono font-bold text-[22px] leading-none" style={{ color: "var(--shell-white)" }}>{score}</span>
-                <span className="font-mono text-[8px] tracking-wider mt-0.5" style={{ color: "var(--teal-glow)" }}>TRUST</span>
-              </div>
+              <ScoreRing score={score} size={88} strokeWidth={7} variant="teal" label="TRUST" />
             </div>
 
             <div className="flex-1 min-w-0">
@@ -357,6 +353,9 @@ function HeroSection() {
               </ClawButton>
               <ClawButton variant="ghost" size="lg" href="/agents" data-testid="button-hero-browse">
                 Browse Agents <ArrowRight className="w-4 h-4" />
+              </ClawButton>
+              <ClawButton variant="ghost" size="lg" href="/docs" data-testid="button-hero-docs">
+                Docs
               </ClawButton>
             </motion.div>
 
