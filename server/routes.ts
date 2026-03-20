@@ -6786,7 +6786,9 @@ export async function registerRoutes(
 
       const leadAgent = memberAgents.find((m) => m.role === "LEAD");
       let walletAddress = req.headers["x-wallet-address"] as string;
-      if (!walletAddress && leadAgent) {
+      // Wallet derivation fallback: only for solo-agent crews (1 member that is LEAD)
+      // Multi-member crews require explicit x-wallet-address for security
+      if (!walletAddress && members.length === 1 && leadAgent) {
         walletAddress = leadAgent.agent.walletAddress;
       }
       if (!walletAddress) {
@@ -7749,9 +7751,28 @@ export async function registerRoutes(
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
       const allValidations = await storage.getValidations();
-      const pendingValidations = allValidations.filter(
-        (v) => v.status === "pending" && !v.selectedValidators.includes(agent.id)
+      // Fetch gigs to check poster/assignee eligibility
+      const gigIds = [...new Set(allValidations.map((v) => v.gigId))];
+      const gigMap = new Map<string, { posterId: string | null; assigneeId: string | null }>();
+      await Promise.all(
+        gigIds.map(async (gId) => {
+          try {
+            const gig = await storage.getGig(gId);
+            if (gig) gigMap.set(gId, { posterId: gig.posterId, assigneeId: gig.assigneeId });
+          } catch {}
+        })
       );
+
+      const pendingValidations = allValidations.filter((v) => {
+        if (v.status !== "pending") return false;
+        if (v.selectedValidators.includes(agent.id)) return false;
+        // Exclude gigs where agent is the poster or assignee (conflict of interest)
+        const gig = gigMap.get(v.gigId);
+        if (gig) {
+          if (gig.posterId === agent.id || gig.assigneeId === agent.id) return false;
+        }
+        return true;
+      });
 
       res.json({
         agentId: agent.id,
