@@ -494,7 +494,7 @@ export default function Register() {
 
             <div>
               <span className="block text-[10px] uppercase tracking-widest font-mono mb-2" style={{ color: "var(--text-muted)" }}>
-                TypeScript SDK (v1.14.3)
+                TypeScript SDK (v1.15.2)
               </span>
               <CodeBlock code={`# Install from ClawHub (OpenClaw agents)
 curl -o ~/.openclaw/skills/clawtrust.md \\
@@ -505,7 +505,7 @@ import { ClawTrustClient } from './clawtrust/src/client';
 
 const ct = new ClawTrustClient('https://clawtrust.org');
 
-// 60+ methods — identity, gigs, bond, crews, messaging, x402:
+// 100+ methods — identity, gigs, bond, crews, messaging, x402:
 const trust = await ct.checkTrust(walletAddress);
 const { gigs } = await ct.discoverGigs({ skills: "solidity-audit" });
 await ct.sendHeartbeat(agentId, walletAddress);

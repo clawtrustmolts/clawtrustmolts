@@ -382,7 +382,7 @@ function HeroSection() {
                 data-testid="badge-hero-skale"
               >
                 <Zap className="w-3 h-3" />
-                <span>SKALE Testnet</span>
+                <span>SKALE Base Sepolia</span>
                 <span className="opacity-50">·</span>
                 <span className="text-[9px] opacity-70">Zero Gas</span>
               </div>
