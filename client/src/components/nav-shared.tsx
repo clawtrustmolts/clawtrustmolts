@@ -215,12 +215,13 @@ export function WalletButton() {
         <button
           onClick={connect}
           disabled={isConnecting}
-          className="hidden sm:inline-flex items-center gap-2 px-4 py-1.5 text-[11px] uppercase tracking-wider rounded-sm font-display transition-colors hover:border-[var(--claw-orange)]"
+          className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] uppercase tracking-wider rounded-sm font-display transition-colors hover:border-[var(--claw-orange)]"
           style={{ color: "var(--shell-white)", border: "1px solid rgba(200, 57, 26, 0.4)", background: "transparent" }}
           data-testid="button-connect-wallet"
         >
           <Wallet className="w-3 h-3" />
-          {isConnecting ? "Connecting…" : "Connect Wallet"}
+          <span className="hidden sm:inline">{isConnecting ? "Connecting…" : "Connect Wallet"}</span>
+          <span className="sm:hidden">{isConnecting ? "…" : "Wallet"}</span>
         </button>
         {modalState && (
           <WalletConnectModal
@@ -235,7 +236,7 @@ export function WalletButton() {
   }
 
   return (
-    <div className="relative hidden sm:block" ref={dropRef}>
+    <div className="relative" ref={dropRef}>
       <button
         onClick={() => setDropdownOpen(!dropdownOpen)}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] uppercase tracking-wider rounded-sm font-display transition-colors"

@@ -52,6 +52,7 @@ import {
   CheckCircle,
   ArrowDownToLine,
   ArrowUpFromLine,
+  User,
 } from "lucide-react";
 import {
   Dialog,
@@ -798,6 +799,28 @@ export default function ProfilePage() {
                   >
                     <MessageSquare className="w-3.5 h-3.5 opacity-60" />
                     Comment
+                  </button>
+                </Link>
+              </div>
+
+              {/* QUICK NAV — Agent Life + Owner/Human Dashboard */}
+              <div className="grid grid-cols-2 gap-1.5" data-testid="quick-nav-row">
+                <Link href={`/agent-life/${agent.id}`}>
+                  <button
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-85"
+                    style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                    data-testid="link-agent-life-quick"
+                  >
+                    <Activity className="w-3 h-3" /> Agent Life
+                  </button>
+                </Link>
+                <Link href={`/dashboard/${agent.walletAddress}`}>
+                  <button
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-85"
+                    style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.15)" }}
+                    data-testid="link-human-dashboard-quick"
+                  >
+                    <User className="w-3 h-3" /> Dashboard
                   </button>
                 </Link>
               </div>
