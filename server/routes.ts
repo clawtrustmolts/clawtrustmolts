@@ -1451,7 +1451,14 @@ export async function registerRoutes(
   app.get("/api/reputation/across-chains/:walletAddress", async (req, res) => {
     try {
       const walletAddress = req.params.walletAddress as string;
-      const agent = await storage.getAgentByWallet(walletAddress);
+      // Accept both wallet address and agentId (UUID) as the path parameter
+      let agent: any;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(walletAddress);
+      if (isUuid) {
+        agent = await storage.getAgent(walletAddress);
+      } else {
+        agent = await storage.getAgentByWallet(walletAddress);
+      }
       if (!agent) return res.status(404).json({ message: "No agent found for this wallet address" });
 
       const dbBreakdown = getScoreBreakdown(agent);
@@ -1494,7 +1501,14 @@ export async function registerRoutes(
     try {
       const walletAddress = req.params.walletAddress as string;
       const chain = (req.query.chain as string) || "base-sepolia";
-      const agent = await storage.getAgentByWallet(walletAddress);
+      // Accept both wallet address and agentId (UUID) as the path parameter
+      let agent: any;
+      const isUuidChain = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(walletAddress);
+      if (isUuidChain) {
+        agent = await storage.getAgent(walletAddress);
+      } else {
+        agent = await storage.getAgentByWallet(walletAddress);
+      }
       if (!agent) return res.status(404).json({ message: "No agent found for this wallet address" });
 
       const dbBreakdown = getScoreBreakdown(agent);
@@ -4563,11 +4577,17 @@ export async function registerRoutes(
       const agent = await storage.getAgent(agentId.data);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
+      const rawBody = req.body || {};
+      const normalizedBody = {
+        skillName: rawBody.skillName || rawBody.skill,
+        githubUrl: rawBody.githubUrl || rawBody.repoUrl || (rawBody.githubUsername ? `https://github.com/${rawBody.githubUsername}` : undefined),
+        chain: rawBody.chain,
+      };
       const body = z.object({
         skillName: z.string().min(1).max(100),
         githubUrl: z.string().url().regex(/^https:\/\/(www\.)?github\.com\//, "Must be a valid GitHub URL"),
         chain: z.string().optional(),
-      }).parse(req.body);
+      }).parse(normalizedBody);
 
       const existingSkills = await storage.getAgentSkills(agentId.data);
       const match = existingSkills.find(s => s.skillName.toLowerCase() === body.skillName.toLowerCase());
@@ -4622,11 +4642,21 @@ export async function registerRoutes(
       const agent = await storage.getAgent(agentId.data);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
+      const rawBody2 = req.body || {};
+      const normalizedBody2 = {
+        skillName: rawBody2.skillName || rawBody2.skill,
+        portfolioUrl: rawBody2.portfolioUrl,
+        chain: rawBody2.chain,
+        description: rawBody2.description,
+        evidenceLinks: rawBody2.evidenceLinks,
+      };
       const body = z.object({
         skillName: z.string().min(1).max(100),
         portfolioUrl: z.string().url(),
         chain: z.string().optional(),
-      }).parse(req.body);
+        description: z.string().max(500).optional(),
+        evidenceLinks: z.array(z.string().url()).max(10).optional(),
+      }).parse(normalizedBody2);
 
       const existingSkills = await storage.getAgentSkills(agentId.data);
       const match = existingSkills.find(s => s.skillName.toLowerCase() === body.skillName.toLowerCase());
@@ -5452,6 +5482,40 @@ export async function registerRoutes(
         failed,
         errors: errors.slice(0, 20),
       });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/seed-gigs", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const allAgents = await storage.getAgents();
+      const platformAgents = allAgents.filter(a => a.fusedScore >= 15);
+      const posterId = platformAgents[0]?.id;
+      if (!posterId) {
+        return res.status(400).json({ message: "No eligible poster agent found (need fusedScore >= 15)" });
+      }
+
+      const SEED_GIGS = [
+        { title: "Smart Contract Security Audit", description: "Audit a Solidity smart contract for vulnerabilities and best practices. Deliverables: detailed report with findings and remediation recommendations.", skillsRequired: ["security-audit", "solidity", "blockchain"], budget: 500, currency: "USDC", chain: "skale", posterId },
+        { title: "AI Agent Integration — ERC-8004 Passport", description: "Integrate ERC-8004 passport minting into an existing Node.js backend. Deliverables: working endpoint, unit tests, documentation.", skillsRequired: ["code-review", "nodejs", "blockchain"], budget: 300, currency: "USDC", chain: "skale", posterId },
+        { title: "Comprehensive Testing Suite for DeFi Protocol", description: "Write a full test suite covering edge cases for a DeFi lending protocol. Target: 95%+ coverage with Hardhat/Foundry.", skillsRequired: ["testing", "solidity", "data-analysis"], budget: 750, currency: "USDC", chain: "base-sepolia", posterId },
+        { title: "Data Analysis: On-Chain Reputation Metrics", description: "Analyze on-chain activity across Base Sepolia and SKALE to produce a reputation scoring model report.", skillsRequired: ["data-analysis", "blockchain", "research"], budget: 200, currency: "USDC", chain: "skale", posterId },
+        { title: "Code Review: Multi-Chain Bridge Implementation", description: "Review TypeScript bridge code for cross-chain asset transfers between SKALE and Base Sepolia.", skillsRequired: ["code-review", "typescript", "blockchain"], budget: 400, currency: "USDC", chain: "base-sepolia", posterId },
+      ];
+
+      const existing = await storage.getGigs();
+      const existingTitles = new Set(existing.map(g => g.title));
+      let created = 0;
+      let skipped = 0;
+
+      for (const gigData of SEED_GIGS) {
+        if (existingTitles.has(gigData.title)) { skipped++; continue; }
+        await storage.createGig(gigData as any);
+        created++;
+      }
+
+      res.json({ message: `Seed gigs: ${created} created, ${skipped} already existed`, totalGigs: existing.length + created });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -6815,17 +6879,36 @@ export async function registerRoutes(
 
       const leadAgent = memberAgents.find((m) => m.role === "LEAD");
       let walletAddress = req.headers["x-wallet-address"] as string;
-      // Wallet derivation fallback: only for solo-agent crews (1 member that is LEAD)
-      // Multi-member crews require explicit x-wallet-address for security
-      if (!walletAddress && members.length === 1 && leadAgent) {
-        walletAddress = leadAgent.agent.walletAddress;
-      }
-      if (!walletAddress) {
-        return res.status(401).json({ message: "Wallet authentication required. Send x-wallet-address header." });
+      const headerAgentId = req.headers["x-agent-id"] as string;
+
+      // Auth resolution order:
+      // 1. Solo crew (1 member = LEAD): derive wallet from lead agent (most permissive for SDK compatibility)
+      // 2. x-agent-id matches the LEAD agent ID → derive wallet from lead agent
+      // 3. x-wallet-address matches lead agent wallet → explicit ownership proof
+      if (!walletAddress && leadAgent) {
+        if (members.length === 1) {
+          // Solo crew: always derive wallet from the sole LEAD member
+          walletAddress = leadAgent.agent.walletAddress;
+        } else if (headerAgentId && headerAgentId === leadAgent.agent.id) {
+          // Multi-member crew: accept x-agent-id ownership of LEAD agent
+          walletAddress = leadAgent.agent.walletAddress;
+        }
       }
 
-      if (leadAgent && leadAgent.agent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-        return res.status(403).json({ message: "You must own the LEAD agent to form this crew" });
+      if (!walletAddress) {
+        return res.status(401).json({ message: "Wallet authentication required. Send x-wallet-address or x-agent-id header." });
+      }
+
+      // If wallet header sent but doesn't match LEAD agent, also accept if x-agent-id owns the LEAD
+      if (leadAgent && leadAgent.agent.walletAddress && walletAddress !== leadAgent.agent.walletAddress) {
+        const walletMatches = leadAgent.agent.walletAddress.toLowerCase() === walletAddress.toLowerCase();
+        const agentIdOwnsLead = headerAgentId && headerAgentId === leadAgent.agent.id;
+        if (!walletMatches && !agentIdOwnsLead) {
+          return res.status(403).json({ message: "You must own the LEAD agent to form this crew" });
+        }
+        if (!walletMatches && agentIdOwnsLead) {
+          walletAddress = leadAgent.agent.walletAddress;
+        }
       }
 
       const ownerWallet = walletAddress;
