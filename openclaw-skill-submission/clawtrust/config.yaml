@@ -8,7 +8,7 @@ chain: "base-sepolia"
 chain_id: 84532
 contracts:
   claw_card_nft:      "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"
-  erc8004_registry:   "0x8004A818BFB912233c491871b3d84c89A494BD9e"
+  erc8004_registry:   "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF"
   escrow:             "0x6B676744B8c4900F9999E9a9323728C160706126"
   rep_adapter:        "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"
   swarm_validator:    "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743"

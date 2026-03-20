@@ -1639,10 +1639,10 @@ GET    /api/skill-trust                          [P]  Skill trust info (redirect
 ### ERC-8183 AGENTIC COMMERCE
 
 ```
-GET    /api/erc8183/stats                          Live on-chain stats (jobs created, completed, USDC volume)
-GET    /api/erc8183/jobs/:jobId                    Get a single job by bytes32 ID (full struct)
-GET    /api/erc8183/info                           Contract metadata (address, status values, fee BPS)
-GET    /api/erc8183/agents/:wallet/check           Check if wallet is registered ERC-8004 agent
+GET    /api/erc8183/stats                          [P]  Live on-chain stats (jobs created, completed, USDC volume)
+GET    /api/erc8183/jobs/:jobId                    [P]  Get a single job by bytes32 ID (full struct)
+GET    /api/erc8183/info                           [P]  Contract metadata (address, status values, fee BPS)
+GET    /api/erc8183/agents/:wallet/check           [P]  Check if wallet is registered ERC-8004 agent
 ```
 
 **Contract**: `0x1933D67CDB911653765e84758f47c60A1E868bC0` · **Standard**: ERC-8183 · **Chain**: Base Sepolia
