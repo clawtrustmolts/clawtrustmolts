@@ -323,9 +323,17 @@ async function runChain(chain, agents, regSuccess) {
         baseClient.readContract({ address: nftAddr, abi: ERC721_ABI, functionName: "balanceOf", args: [poster.walletAddress] }),
         baseClient.readContract({ address: nftAddr, abi: ERC721_ABI, functionName: "name" }).catch(() => "ClawCardNFT"),
       ]);
-      const mintStatus = balance > 0n ? "minted ✓" : "pending (NFT minting is async — not a failure)";
-      pass(5, "ERC-8004 on-chain registration (viem readContract)",
-        `contract=${nftAddr.slice(0,10)}… (${contractName}) balance=${balance} ${mintStatus} chain=baseSepolia(84532)`);
+      if (balance > 0n) {
+        // NFT minted — definitive on-chain proof that ERC-8004 identity is established
+        proofLinks.push({ label: "ClawCardNFT contract (Base Sepolia)", explorer: BASE_SEPOLIA_CONFIG.explorer, contract: nftAddr });
+        pass(5, "ERC-8004 on-chain registration (viem readContract)",
+          `contract=${nftAddr.slice(0,10)}… (${contractName}) balance=${balance} minted ✓ chain=baseSepolia(84532)`);
+      } else {
+        // NFT not yet minted — viem readContract succeeded (contract accessible) but
+        // passport mint is async; SKIP rather than PASS to avoid overstating proof strength.
+        skip(5, "ERC-8004 on-chain registration (viem readContract)",
+          `contract=${nftAddr.slice(0,10)}… (${contractName}) balance=0 — NFT minting pending (ERC-8004 mint is async)`);
+      }
     } else {
       // SKALE — RepAdapter.fusedScores(wallet) view call proves on-chain accessibility
       const repAddr = SKALE_TESTNET_CONFIG.contracts.repAdapter;
@@ -797,8 +805,23 @@ function renderReport(baseOut, skaleOut, elapsed) {
     }
   }
 
-  // On-chain Proof Links (Basescan + SKALE explorer)
+  // On-chain Proof Links — always emit at least one Base Sepolia link + one SKALE link
+  // so the demo output is never ambiguous. If no per-step links were collected,
+  // fall back to the canonical contract addresses as permanent reference points.
   const allLinks = [...baseOut.proofLinks, ...skaleOut.proofLinks];
+  const hasBaseTx   = allLinks.some(l => l.explorer === BASE_SEPOLIA_CONFIG.explorer && l.hash);
+  const hasBaseLink = allLinks.some(l => l.explorer === BASE_SEPOLIA_CONFIG.explorer);
+  const hasSkale    = allLinks.some(l => l.explorer === SKALE_TESTNET_CONFIG.explorer);
+  if (!hasBaseLink) allLinks.push({
+    label:    "ClawCardNFT contract (Base Sepolia — always present)",
+    explorer: BASE_SEPOLIA_CONFIG.explorer,
+    contract: BASE_SEPOLIA_CONFIG.contracts.clawCardNFT,
+  });
+  if (!hasSkale) allLinks.push({
+    label:    "SKALE RepAdapter contract (always present)",
+    explorer: SKALE_TESTNET_CONFIG.explorer,
+    contract: SKALE_TESTNET_CONFIG.contracts.repAdapter,
+  });
   if (allLinks.length > 0) {
     console.log(`${BLD}╠${LINE}╣${RST}`);
     console.log(boxLine(`${BLD}On-chain Proof Links:${RST}`));
