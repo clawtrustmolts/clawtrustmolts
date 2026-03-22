@@ -21,10 +21,70 @@ function TagPill({ tag }: { tag: string }) {
   );
 }
 
+function tokenizeCode(raw: string, lang: string): string {
+  const e = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const solidityKw = new Set(["function","contract","interface","struct","enum","event","modifier","constructor","pragma","import","using","library","mapping","address","uint","uint256","uint128","uint64","uint32","uint16","uint8","int","int256","bool","bytes","bytes32","string","memory","storage","calldata","public","private","internal","external","view","pure","payable","returns","emit","require","revert","delete","new","this","super","override","virtual","abstract","is","if","else","for","while","return","true","false","indexed"]);
+  const tsKw = new Set(["import","export","const","let","var","function","class","interface","type","async","await","return","new","if","else","for","while","do","switch","case","break","continue","throw","try","catch","finally","typeof","instanceof","from","as","default","true","false","null","undefined","void","readonly","static","abstract","extends","implements","enum","of","in"]);
+  const jsonKw = new Set(["true","false","null"]);
+  const kws = lang === "solidity" ? solidityKw : lang === "json" ? jsonKw : tsKw;
+
+  let out = "";
+  let i = 0;
+  while (i < raw.length) {
+    if (raw[i] === "/" && raw[i + 1] === "/") {
+      const end = raw.indexOf("\n", i);
+      const seg = end === -1 ? raw.slice(i) : raw.slice(i, end);
+      out += `<span style="color:#64748b">${e(seg)}</span>`; i += seg.length; continue;
+    }
+    if (raw[i] === "/" && raw[i + 1] === "*") {
+      const end = raw.indexOf("*/", i + 2);
+      const seg = end === -1 ? raw.slice(i) : raw.slice(i, end + 2);
+      out += `<span style="color:#64748b">${e(seg)}</span>`; i += seg.length; continue;
+    }
+    if (raw[i] === "#" && lang === "bash") {
+      const end = raw.indexOf("\n", i);
+      const seg = end === -1 ? raw.slice(i) : raw.slice(i, end);
+      out += `<span style="color:#64748b">${e(seg)}</span>`; i += seg.length; continue;
+    }
+    if (raw[i] === '"' || raw[i] === "'") {
+      const q = raw[i]; let j = i + 1;
+      while (j < raw.length && raw[j] !== q && raw[j] !== "\n") { if (raw[j] === "\\") j++; j++; }
+      const seg = raw.slice(i, j + 1);
+      out += `<span style="color:#a3e635">${e(seg)}</span>`; i = j + 1; continue;
+    }
+    if (raw[i] === "`") {
+      let j = i + 1;
+      while (j < raw.length && raw[j] !== "`") { if (raw[j] === "\\") j++; j++; }
+      out += `<span style="color:#a3e635">${e(raw.slice(i, j + 1))}</span>`; i = j + 1; continue;
+    }
+    if (/[a-zA-Z_$]/.test(raw[i])) {
+      let j = i;
+      while (j < raw.length && /[a-zA-Z0-9_$]/.test(raw[j])) j++;
+      const word = raw.slice(i, j);
+      if (kws.has(word)) {
+        out += `<span style="color:#60a5fa">${e(word)}</span>`;
+      } else if (raw[j] === "(") {
+        out += `<span style="color:#c4b5fd">${e(word)}</span>`;
+      } else {
+        out += e(word);
+      }
+      i = j; continue;
+    }
+    if (/[0-9]/.test(raw[i]) || (raw[i] === "0" && raw[i+1] === "x")) {
+      let j = i;
+      while (j < raw.length && /[0-9a-fA-Fx._]/.test(raw[j])) j++;
+      out += `<span style="color:#fbbf24">${e(raw.slice(i, j))}</span>`; i = j; continue;
+    }
+    out += e(raw[i]); i++;
+  }
+  return out;
+}
+
 function renderMarkdown(content: string): string {
   const lines = content.split("\n");
   const html: string[] = [];
   let inCodeBlock = false;
+  let codeLang = "";
   let codeLines: string[] = [];
   let inTable = false;
   let tableRows: string[][] = [];
@@ -56,11 +116,14 @@ function renderMarkdown(content: string): string {
     if (line.startsWith("```")) {
       if (!inCodeBlock) {
         inCodeBlock = true;
+        codeLang = line.slice(3).trim().toLowerCase();
         codeLines = [];
       } else {
         inCodeBlock = false;
-        const code = codeLines.map(esc).join("\n");
-        html.push(`<div style="background:rgba(0,0,0,0.35);border:1px solid rgba(232,84,10,0.2);border-radius:4px;padding:16px 20px;margin:1.25rem 0;overflow-x:auto"><pre style="margin:0;font-family:var(--font-mono);font-size:12.5px;line-height:1.65;color:#e2e8f0">${code}</pre></div>`);
+        const highlighted = tokenizeCode(codeLines.join("\n"), codeLang);
+        const langLabel = codeLang ? `<span style="color:#64748b;font-size:10px;font-family:var(--font-mono);letter-spacing:0.5px">${codeLang}</span>` : "";
+        html.push(`<div style="background:#0a0f1a;border:1px solid rgba(96,165,250,0.15);border-radius:6px;margin:1.5rem 0;overflow:hidden"><div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid rgba(96,165,250,0.1);background:rgba(0,0,0,0.3)">${langLabel}</div><div style="padding:16px 20px;overflow-x:auto"><pre style="margin:0;font-family:var(--font-mono);font-size:12.5px;line-height:1.75;color:#e2e8f0">${highlighted}</pre></div></div>`);
+        codeLang = "";
       }
       continue;
     }
