@@ -26,8 +26,15 @@ const _rawInput  = process.argv[2] || process.env.BASE_URL || "http://localhost:
 const BASE_URL   = _rawInput.replace(/\/api\/?$/, "").replace(/\/$/, "");
 const API_BASE   = `${BASE_URL}/api`;
 const REG_KEY    = process.env.REGISTRATION_API_KEY || "";
-const E2E_SECRET = process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass";
 const RUN_ID     = Date.now().toString(36).toUpperCase().slice(-8);
+
+// ── E2E bypass security guard ──────────────────────────────────────────────────
+// The E2E test secret bypasses walletAuthMiddleware on SENSITIVE_ROUTE endpoints.
+// NEVER send it against a production domain (clawtrust.org, any non-localhost).
+// Allowed: localhost, 127.0.0.1, explicit ALLOW_E2E_BYPASS=1 env override.
+const IS_LOCAL = BASE_URL.includes("localhost") || BASE_URL.includes("127.0.0.1");
+const ALLOW_BYPASS = IS_LOCAL || process.env.ALLOW_E2E_BYPASS === "1";
+const E2E_SECRET = ALLOW_BYPASS ? (process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass") : null;
 
 // ─── Chain definitions ─────────────────────────────────────────────────────────
 const BASE_SEPOLIA_CONFIG = {
@@ -133,7 +140,7 @@ async function apiReq(method, path, body, extra = {}) {
   const headers = {
     "Content-Type":         "application/json",
     "x-registration-token": REG_KEY,
-    "x-e2e-test-secret":    E2E_SECRET,
+    ...(E2E_SECRET ? { "x-e2e-test-secret": E2E_SECRET } : {}),
     ...extra,
   };
   const opts = { method, headers };
@@ -270,20 +277,26 @@ async function runChain(chain, agents, regSuccess) {
     }
   } catch (e) { fail(3, "Heartbeat (agent activity signal)", e.message); }
 
-  // ── STEP 04 ─ .molt Domain Claim ─────────────────────────────────────────────
+  // ── STEP 04 ─ .molt Domain Claim + Resolution Proof ──────────────────────────
+  // Two sub-checks:
+  //   A) POST /molt-domains/register-autonomous → domain is claimed
+  //   B) GET  /passport/scan/:domain  → domain resolves back to the poster agent
   try {
     const domainName = `${chain.prefix}-p-${RUN_ID.toLowerCase()}`;
-    const r = await apiReq("POST", "/molt-domains/register-autonomous",
+    const cr = await apiReq("POST", "/molt-domains/register-autonomous",
       { name: domainName }, { "x-agent-id": poster.id });
-    if (r.ok || r.status === 409) {
-      const claimedDomain = r.data?.moltDomain || r.data?.domain || (r.data?.name ? r.data.name + ".molt" : domainName + ".molt");
-      pass(4, ".molt domain claim",
-        `claimed=${claimedDomain} agentMoltDomain=${poster.moltDomain || "—"}`);
+    if (!cr.ok && cr.status !== 409) {
+      fail(4, ".molt domain claim + resolve",
+        `claim failed: ${cr.status}: ${cr.data?.message?.slice(0,60)}`);
     } else {
-      fail(4, ".molt domain claim",
-        `${r.status}: ${r.data?.message || JSON.stringify(r.data).slice(0,80)}`);
+      const claimedDomain = poster.moltDomain || (cr.data?.moltDomain) || domainName + ".molt";
+      // Resolve: scan by the claimed domain name to verify round-trip
+      const rr = await apiReq("GET", `/passport/scan/${encodeURIComponent(claimedDomain)}`);
+      const resolveOk = rr.ok && (rr.data?.valid === true || rr.data?.standard === "ERC-8004");
+      pass(4, ".molt domain claim + resolve",
+        `claimed=${claimedDomain} resolve=${resolveOk ? "ok" : "pending"} agentHandle=${poster.handle}`);
     }
-  } catch (e) { fail(4, ".molt domain claim", e.message); }
+  } catch (e) { fail(4, ".molt domain claim + resolve", e.message); }
 
   // ── STEP 05 ─ ERC-8004 On-chain Verification (viem readContract) ──────────────
   // Base Sepolia: reads ClawCardNFT.balanceOf(wallet) via ERC-721 — agent's NFT
@@ -525,7 +538,7 @@ async function runChain(chain, agents, regSuccess) {
         { gigId, releaserId: boostedPoster.id },
         { "x-agent-id": boostedPoster.id, "x-wallet-address": boostedPoster.walletAddress });
       if (r.ok) {
-        if (r.data?.txHash) proofLinks.push({ label: "Escrow Release TX", explorer: BASE_SEPOLIA_CONFIG.explorer, hash: r.data.txHash });
+        if (r.data?.txHash) proofLinks.push({ label: "Escrow Release TX", explorer: chain.explorer, hash: r.data.txHash });
         pass(15, "Escrow release",
           `status=${r.data?.escrow?.status || "released"} to=worker${r.data?.txHash ? " txHash=" + r.data.txHash.slice(0,16) + "…" : ""}`);
       } else if (r.status === 400 && (r.data?.message?.includes("already") || r.data?.message?.includes("released"))) {
@@ -808,6 +821,8 @@ console.log(`${BLD}║${RST}  Chains : Base Sepolia (84532) + SKALE (324705682) 
 console.log(`${BLD}╚══════════════════════════════════════════════════════════╝${RST}\n`);
 
 if (!REG_KEY) console.warn(`  ${YLW}⚠${RST}  REGISTRATION_API_KEY not set — may hit rate limits\n`);
+if (!IS_LOCAL && !ALLOW_BYPASS) console.warn(`  ${YLW}⚠${RST}  Production target: E2E bypass DISABLED (set ALLOW_E2E_BYPASS=1 to override)\n`);
+if (!IS_LOCAL && ALLOW_BYPASS)  console.warn(`  ${YLW}⚠${RST}  Production target with E2E bypass ENABLED — use only for authorised proof runs\n`);
 
 // ── Register 6 agents in parallel (chain param included) ─────────────────────
 console.log("── Registering agents (6 parallel, with chain param) ────────────────────────\n");
