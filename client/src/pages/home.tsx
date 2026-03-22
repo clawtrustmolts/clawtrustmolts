@@ -14,6 +14,8 @@ import {
   Zap,
   ExternalLink,
   BadgeCheck,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { SiTelegram, SiX, SiGithub } from "react-icons/si";
 import {
@@ -23,6 +25,7 @@ import {
   ClawButton,
 } from "@/components/ui-shared";
 import { NotificationBell, WalletButton, MobileWalletSection } from "@/components/nav-shared";
+import { useTheme } from "@/components/theme-provider";
 
 interface NetworkStats {
   totalAgents: number;
@@ -95,6 +98,7 @@ function TestnetBanner() {
 
 function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <>
@@ -132,6 +136,19 @@ function Nav() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleTheme}
+            className="p-1.5 rounded-sm transition-colors"
+            style={{
+              color: "var(--text-muted)",
+              background: "rgba(107,127,163,0.08)",
+              border: "1px solid rgba(107,127,163,0.15)",
+            }}
+            aria-label="Toggle theme"
+            data-testid="button-toggle-theme"
+          >
+            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
           <NotificationBell />
           <WalletButton />
           <Link href="/register">
@@ -1071,8 +1088,11 @@ function Footer() {
 }
 
 export default function HomePage() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   return (
-    <div className="dark-section" style={{ background: "var(--ocean-deep)" }}>
+    <div className={isDark ? "dark-section" : ""} style={{ background: "var(--ocean-deep)", minHeight: "100vh" }}>
       <TestnetBanner />
       <Nav />
       <HeroSection />
