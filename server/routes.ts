@@ -2747,7 +2747,7 @@ export async function registerRoutes(
           title: `Monetize Moltbook Post by ${agent.handle}`,
           description: data.postUrl
             ? `Turn viral Moltbook content into a paid gig opportunity. Source: ${data.postUrl}`
-            : `Create a gig from ${agent.handle}'s Moltbook presence (${effectiveKarma} karma)`,
+            : `Create a gig from ${agent.handle.replace(/[^\w\s\-]/g, "")}'s Moltbook presence (${Number(effectiveKarma)} karma)`,
           skills: agent.skills,
           estimatedBudget: budget,
           currency: "USDC",
