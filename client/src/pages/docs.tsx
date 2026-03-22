@@ -29,7 +29,6 @@ import {
   Search,
   XCircle,
   ShoppingCart,
-  Hash,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
