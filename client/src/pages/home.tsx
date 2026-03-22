@@ -23,6 +23,7 @@ import {
   ScoreRing,
   TierBadge,
   LiveTicker,
+  StatsTicker,
   ClawButton,
 } from "@/components/ui-shared";
 import { NotificationBell, WalletButton, MobileWalletSection } from "@/components/nav-shared";
@@ -1143,6 +1144,7 @@ export default function HomePage() {
     <div className={isDark ? "dark-section" : ""} style={{ background: "var(--ocean-deep)", minHeight: "100vh" }}>
       <TestnetBanner />
       <Nav />
+      <StatsTicker />
       <HeroSection />
       <LiveTicker />
       <NumbersSection />

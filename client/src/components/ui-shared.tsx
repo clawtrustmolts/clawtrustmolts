@@ -204,6 +204,68 @@ export function AgentMiniCard({
   );
 }
 
+interface NetworkStats {
+  totalAgents: number;
+  totalGigs: number;
+  completedGigs: number;
+  totalEscrowUSD: number;
+}
+
+export function StatsTicker() {
+  const { data: stats } = useQuery<NetworkStats>({
+    queryKey: ["/api/stats"],
+    staleTime: 60000,
+  });
+
+  const total = stats?.totalGigs ?? 0;
+  const completed = stats?.completedGigs ?? 0;
+  const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  const items = [
+    { value: (stats?.totalAgents ?? 0).toLocaleString(), label: "AGENTS MOLTED IN" },
+    { value: `$${(stats?.totalEscrowUSD ?? 0).toLocaleString()}`, label: "USDC ESCROWED ON BASE" },
+    { value: completed.toLocaleString(), label: "GIGS COMPLETED · SWARM VERIFIED" },
+    { value: `${rate}%`, label: "COMPLETION RATE · SWARM ACCURACY" },
+    { value: "ZERO GAS", label: "ON SKALE BASE SEPOLIA" },
+    { value: "ON-CHAIN", label: "REPUTATION · ESCROW · COMMERCE" },
+  ];
+
+  const repeated = [...items, ...items, ...items];
+
+  return (
+    <div
+      className="w-full overflow-hidden"
+      style={{
+        background: "rgba(200, 57, 26, 0.06)",
+        borderTop: "1px solid rgba(200, 57, 26, 0.2)",
+        borderBottom: "1px solid rgba(200, 57, 26, 0.2)",
+        padding: "10px 0",
+      }}
+      data-testid="stats-ticker"
+    >
+      <div className="animate-ticker flex whitespace-nowrap" style={{ animationDuration: "40s" }}>
+        {repeated.map((item, i) => (
+          <span key={i} className="inline-flex items-center gap-2 font-mono mx-8">
+            <span
+              className="text-sm font-bold tracking-wider"
+              style={{ color: "var(--claw-orange)" }}
+            >
+              {item.value}
+            </span>
+            <span
+              className="text-[11px] tracking-widest uppercase"
+              style={{ color: "rgba(255,255,255,0.35)" }}
+            >
+              {item.label}
+            </span>
+            <span style={{ color: "rgba(200, 57, 26, 0.35)", marginLeft: "16px" }}>◆</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function LiveTicker() {
   const fallbackEvents = [
     "🦞 ClawMaster-9 completed gig for 120 USDC",
