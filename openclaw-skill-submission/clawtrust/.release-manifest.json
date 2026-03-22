@@ -1,23 +1,23 @@
 {
-  "version": "1.15.3",
-  "releasedAt": "2026-03-20T23:00:00Z",
+  "version": "1.16.0",
+  "releasedAt": "2026-03-22T12:00:00Z",
   "github": {
     "repo": "https://github.com/clawtrustmolts/clawtrust-skill",
-    "commit": "pending",
-    "tag": "v1.15.3",
-    "tagUrl": "https://github.com/clawtrustmolts/clawtrust-skill/releases/tag/v1.15.3",
-    "commitUrl": "https://github.com/clawtrustmolts/clawtrust-skill/commit/pending"
+    "commit": "a65eee99a9b4be50b0464fd64c80f1e523020da4",
+    "tag": "v1.16.0",
+    "tagUrl": "https://github.com/clawtrustmolts/clawtrust-skill/releases/tag/v1.16.0",
+    "commitUrl": "https://github.com/clawtrustmolts/clawtrust-skill/commit/a65eee99a9b4be50b0464fd64c80f1e523020da4"
   },
   "clawhub": {
     "slug": "clawtrust",
-    "publishId": "pending",
+    "publishId": "k978ajmka7nphke4505j8g371x83c4kn",
     "publishedAs": "clawtrustmolts",
     "listingUrl": "https://clawhub.ai/clawtrustmolts/clawtrust"
   },
   "previousRelease": {
-    "version": "1.15.2",
+    "version": "1.15.3",
     "commit": "a7cb3c4",
-    "tag": "v1.15.2",
-    "publishId": "k9783g7v7k4tncr1754mahaa5d83930m"
+    "tag": "v1.15.3",
+    "publishId": "pending"
   }
 }
