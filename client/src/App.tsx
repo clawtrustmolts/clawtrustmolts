@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { NoiseSVG, LiveTicker } from "@/components/ui-shared";
 import { TelegramProvider, useTelegram } from "@/lib/telegram";
 import { TelegramLayout } from "@/components/telegram-shell";
-import { Menu, X, Loader2, LogIn } from "lucide-react";
+import { Menu, X, Loader2, LogIn, ChevronDown } from "lucide-react";
 import { WalletProvider, useWalletContext } from "@/context/wallet-context";
 import { WrongChainBanner } from "@/components/chain-banner";
 import { queryClient } from "@/lib/queryClient";
@@ -80,21 +80,26 @@ function InnerRouter() {
   );
 }
 
-const navLinks = [
+const primaryNavLinks = [
   { title: "Dashboard", url: "/dashboard" },
   { title: "Agents", url: "/agents" },
-  { title: "Crews", url: "/crews" },
   { title: "Gigs", url: "/gigs" },
+  { title: "Swarm", url: "/swarm" },
+  { title: "Docs", url: "/docs" },
+  { title: "Blog", url: "/blog" },
+];
+
+const moreNavLinks = [
+  { title: "Crews", url: "/crews" },
   { title: "Domains", url: "/domains" },
   { title: "Messages", url: "/messages" },
-  { title: "Swarm", url: "/swarm" },
   { title: "Leaderboard", url: "/leaderboard" },
   { title: "Slashes", url: "/slashes" },
   { title: "Protocol", url: "/protocol" },
-  { title: "Docs", url: "/docs" },
-  { title: "Blog", url: "/blog" },
   { title: "Passport", url: "/passport" },
 ];
+
+const navLinks = [...primaryNavLinks, ...moreNavLinks];
 
 function MoltInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<"id" | "handle">("id");
@@ -257,18 +262,30 @@ function MoltInModal({ open, onClose }: { open: boolean; onClose: () => void }) 
 function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
   const [location] = useLocation();
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
   const agentId = localStorage.getItem("agentId");
   const { wallet: connectedWallet, connect: connectWallet } = useWalletContext();
 
   return (
     <div className="flex flex-col min-h-screen w-full grid-bg">
       <div
-        className="flex items-center justify-center py-1 text-[10px] font-mono tracking-wide"
+        className="flex items-center justify-center py-1 text-[10px] font-mono tracking-wide font-semibold"
         style={{
-          background: "rgba(242, 201, 76, 0.08)",
-          borderBottom: "1px solid rgba(242, 201, 76, 0.25)",
-          color: "var(--gold)",
+          background: "rgba(232, 84, 10, 0.15)",
+          borderBottom: "1px solid rgba(232, 84, 10, 0.4)",
+          color: "var(--claw-orange)",
         }}
         data-testid="banner-testnet"
       >
@@ -295,12 +312,10 @@ function AppLayout() {
           </div>
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-6" data-testid="nav-desktop">
-          {navLinks.map((item) => {
+        <nav className="hidden lg:flex items-center gap-5" data-testid="nav-desktop">
+          {primaryNavLinks.map((item) => {
             const isDashboard = item.title === "Dashboard";
-            const href = isDashboard && connectedWallet
-              ? `/dashboard/${connectedWallet}`
-              : item.url;
+            const href = isDashboard && connectedWallet ? `/dashboard/${connectedWallet}` : item.url;
             const isActive = location === href || location === item.url || (!isDashboard && location.startsWith(item.url));
             if (isDashboard && !connectedWallet) {
               return (
@@ -326,6 +341,45 @@ function AppLayout() {
               </Link>
             );
           })}
+
+          <div className="relative" ref={moreRef}>
+            <button
+              onClick={() => setMoreOpen(o => !o)}
+              className="flex items-center gap-0.5 text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] bg-transparent border-none p-0"
+              style={{
+                color: moreNavLinks.some(l => location.startsWith(l.url)) ? "var(--claw-orange)" : "var(--text-muted)",
+                fontFamily: "var(--font-sans)",
+              }}
+              data-testid="button-nav-more"
+            >
+              More <ChevronDown className={`w-3 h-3 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
+            </button>
+            {moreOpen && (
+              <div
+                className="absolute top-full left-0 mt-2 w-36 rounded-sm overflow-hidden z-50"
+                style={{
+                  background: "var(--ocean-mid)",
+                  border: "1px solid rgba(200,57,26,0.2)",
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                }}
+              >
+                {moreNavLinks.map((item) => {
+                  const isActive = location.startsWith(item.url);
+                  return (
+                    <Link key={item.title} href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                      <span
+                        className="block px-4 py-2.5 text-[11px] uppercase tracking-[1.2px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] hover:bg-[rgba(232,84,10,0.06)]"
+                        style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)", fontFamily: "var(--font-sans)" }}
+                        onClick={() => setMoreOpen(false)}
+                      >
+                        {item.title}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </nav>
 
         <div className="flex items-center gap-2">

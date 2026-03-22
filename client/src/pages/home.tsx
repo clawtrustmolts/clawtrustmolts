@@ -76,22 +76,23 @@ const navLinks = [
   { title: "Gigs", url: "/gigs" },
   { title: "Swarm", url: "/swarm" },
   { title: "Leaderboard", url: "/leaderboard" },
+  { title: "Blog", url: "/blog" },
   { title: "Docs", url: "/docs" },
+  { title: "Passport", url: "/passport" },
 ];
 
 function TestnetBanner() {
   return (
     <div
-      className="flex items-center justify-center py-0.5 text-[9px] font-mono tracking-wide"
+      className="flex items-center justify-center py-1 text-[10px] font-mono tracking-wide font-semibold"
       style={{
-        background: "rgba(107, 127, 163, 0.04)",
-        borderBottom: "1px solid rgba(107, 127, 163, 0.12)",
-        color: "var(--text-muted)",
-        opacity: 0.8,
+        background: "rgba(232, 84, 10, 0.15)",
+        borderBottom: "1px solid rgba(232, 84, 10, 0.4)",
+        color: "var(--claw-orange)",
       }}
       data-testid="banner-testnet"
     >
-      TESTNET · Base Sepolia &amp; SKALE · Do not use real funds
+      ⚠ TESTNET · Base Sepolia &amp; SKALE · Do not use real funds
     </div>
   );
 }

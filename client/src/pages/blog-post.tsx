@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
-import { ArrowLeft, Calendar, Clock, BookOpen, Tag } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, BookOpen } from "lucide-react";
 import { SkeletonCard, ErrorState } from "@/components/ui-shared";
+import { BlogCoverArt } from "@/components/blog-cover";
 import type { BlogPost } from "@shared/schema";
 
 function formatDate(d: string | Date | null): string {
@@ -161,23 +162,12 @@ export default function BlogPostPage() {
         </Link>
 
         <article>
-          {post.coverImage && (
-            <div
-              className="relative w-full rounded-sm overflow-hidden mb-8"
-              style={{ height: "280px" }}
-              data-testid="img-post-cover-hero"
-            >
-              <img
-                src={post.coverImage}
-                alt={post.title}
-                className="w-full h-full object-cover"
-              />
-              <div
-                className="absolute inset-0"
-                style={{ background: "linear-gradient(to bottom, transparent 40%, var(--ocean-deep) 100%)" }}
-              />
-            </div>
-          )}
+          <div
+            className="w-full rounded-sm overflow-hidden mb-8"
+            data-testid="img-post-cover-hero"
+          >
+            <BlogCoverArt tags={post.tags ?? []} slug={post.slug} height={260} fade />
+          </div>
 
           <header className="mb-8">
             <div className="flex flex-wrap gap-1.5 mb-4">
