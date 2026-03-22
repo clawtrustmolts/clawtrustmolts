@@ -38,6 +38,14 @@ import TelegramMePage from "@/pages/telegram-me";
 import DomainsPage from "@/pages/domains";
 import "@/styles/telegram.css";
 
+function ScrollToTop() {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [location]);
+  return null;
+}
+
 function InnerRouter() {
   return (
     <Switch>
@@ -459,14 +467,18 @@ function RootRouter() {
   const [location] = useLocation();
   const { isTelegram } = useTelegram();
 
-  if (isTelegram) {
-    return <TelegramRouter />;
-  }
-
-  if (location === "/") {
-    return <HomePage />;
-  }
-  return <AppLayout />;
+  return (
+    <>
+      <ScrollToTop />
+      {isTelegram ? (
+        <TelegramRouter />
+      ) : location === "/" ? (
+        <HomePage />
+      ) : (
+        <AppLayout />
+      )}
+    </>
+  );
 }
 
 function App() {

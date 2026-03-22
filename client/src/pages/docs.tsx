@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useRoute } from "wouter";
+import { useEffect, useState, useRef } from "react";
+import { Link, useRoute, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,74 +24,152 @@ import {
   AlertTriangle,
   Activity,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
   Search,
   XCircle,
   ShoppingCart,
+  Hash,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ClawButton } from "@/components/ui-shared";
 
-function copyToClipboard(text: string, toast: any) {
-  navigator.clipboard.writeText(text).then(() => {
-    toast({ title: "Copied to clipboard" });
-  });
-}
-
 function CodeBlock({ code, language = "typescript" }: { code: string; language?: string }) {
   const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      toast({ title: "Copied to clipboard" });
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
   return (
-    <div className="relative group">
+    <div className="rounded-sm overflow-hidden" style={{ border: "1px solid rgba(107,127,163,0.18)" }}>
+      <div
+        className="flex items-center justify-between px-4 py-1.5"
+        style={{ background: "rgba(0,0,0,0.28)", borderBottom: "1px solid rgba(107,127,163,0.12)" }}
+      >
+        <span className="text-[10px] font-mono tracking-wider" style={{ color: "rgba(107,127,163,0.65)" }}>
+          {language}
+        </span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-sm transition-all"
+          style={{
+            color: copied ? "var(--teal-glow)" : "var(--text-muted)",
+            background: copied ? "rgba(10,236,184,0.08)" : "transparent",
+          }}
+          data-testid="button-copy-code"
+        >
+          {copied ? <CheckCircle2 className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
       <pre
-        className="rounded-sm p-4 overflow-x-auto text-sm font-mono leading-relaxed"
-        style={{ background: "var(--ocean-surface)", border: "1px solid rgba(0,0,0,0.06)" }}
+        className="p-4 overflow-x-auto text-sm font-mono leading-relaxed"
+        style={{ background: "var(--ocean-surface)", margin: 0 }}
       >
         <code style={{ color: "var(--shell-cream)" }}>{code}</code>
       </pre>
-      <Button
-        size="icon"
-        variant="ghost"
-        className="absolute top-2 right-2 invisible group-hover:visible transition-opacity"
-        onClick={() => copyToClipboard(code, toast)}
-        data-testid="button-copy-code"
-      >
-        <Copy className="w-3.5 h-3.5" />
-      </Button>
     </div>
   );
 }
 
+const DOC_GROUPS = [
+  {
+    group: "Getting Started",
+    items: [
+      { id: "overview", label: "Overview", icon: BookOpen },
+      { id: "lifecycle", label: "Agent Lifecycle", icon: Zap },
+    ],
+  },
+  {
+    group: "Reference",
+    items: [
+      { id: "sdk", label: "SDK Reference", icon: Terminal },
+      { id: "api", label: "API Reference", icon: Globe },
+    ],
+  },
+  {
+    group: "Standards & Protocol",
+    items: [
+      { id: "erc8183", label: "ERC-8183 Commerce", icon: ShoppingCart },
+      { id: "contracts", label: "Smart Contracts", icon: FileCode },
+      { id: "skill-trust", label: "Skill Trust", icon: ShieldCheck },
+      { id: "domains", label: "Domains", icon: Globe },
+    ],
+  },
+];
+
+const ALL_DOC_SECTIONS = DOC_GROUPS.flatMap((g) => g.items);
+
 function SideNav({ active }: { active: string }) {
-  const sections = [
-    { id: "overview", label: "Overview", icon: BookOpen },
-    { id: "lifecycle", label: "Agent Lifecycle", icon: Zap },
-    { id: "sdk", label: "SDK Reference", icon: Terminal },
-    { id: "api", label: "API Reference", icon: Globe },
-    { id: "erc8183", label: "ERC-8183 Commerce", icon: ShoppingCart },
-    { id: "contracts", label: "Smart Contracts", icon: FileCode },
-    { id: "skill-trust", label: "Skill Trust", icon: ShieldCheck },
-    { id: "domains", label: "Domains", icon: Globe },
-  ];
+  const [search, setSearch] = useState("");
+
+  const filtered = DOC_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) => !search || item.label.toLowerCase().includes(search.toLowerCase())
+    ),
+  })).filter((group) => group.items.length > 0);
 
   return (
-    <nav className="space-y-1" data-testid="docs-sidenav">
-      {sections.map((s) => (
-        <Link key={s.id} href={`/docs/${s.id}`}>
-          <div
-            className="flex items-center gap-2.5 px-3 py-2 rounded-sm cursor-pointer text-sm transition-colors"
-            style={{
-              background: active === s.id ? "rgba(232, 84, 10, 0.1)" : "transparent",
-              color: active === s.id ? "var(--claw-orange)" : "var(--text-muted)",
-              border: active === s.id ? "1px solid rgba(232, 84, 10, 0.25)" : "1px solid transparent",
-            }}
-            data-testid={`link-docs-${s.id}`}
-          >
-            <s.icon className="w-4 h-4 flex-shrink-0" />
-            <span className="font-display text-xs uppercase tracking-wider">{s.label}</span>
+    <nav data-testid="docs-sidenav">
+      <div className="relative mb-4">
+        <Search
+          className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
+          style={{ color: "var(--text-muted)" }}
+        />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search docs…"
+          className="w-full pl-8 pr-3 py-1.5 rounded-sm text-xs font-mono"
+          style={{
+            background: "var(--ocean-surface)",
+            border: "1px solid rgba(107,127,163,0.18)",
+            color: "var(--shell-cream)",
+            outline: "none",
+          }}
+          data-testid="input-docs-search"
+        />
+      </div>
+
+      <div className="space-y-5">
+        {filtered.map((group) => (
+          <div key={group.group}>
+            <p
+              className="text-[9px] font-mono uppercase tracking-widest mb-1.5 px-1"
+              style={{ color: "rgba(107,127,163,0.5)" }}
+            >
+              {group.group}
+            </p>
+            <div className="space-y-0.5">
+              {group.items.map((s) => (
+                <Link key={s.id} href={`/docs/${s.id}`}>
+                  <div
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-sm cursor-pointer transition-all text-xs"
+                    style={{
+                      background: active === s.id ? "rgba(232, 84, 10, 0.08)" : "transparent",
+                      color: active === s.id ? "var(--claw-orange)" : "var(--text-muted)",
+                      borderLeft: active === s.id ? "2px solid var(--claw-orange)" : "2px solid transparent",
+                      marginLeft: "-2px",
+                    }}
+                    data-testid={`link-docs-${s.id}`}
+                  >
+                    <s.icon className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{s.label}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
-        </Link>
-      ))}
+        ))}
+      </div>
     </nav>
   );
 }
@@ -2206,9 +2284,47 @@ if (trustCheck.recommendation === "CAUTION") {
   );
 }
 
+function useTableOfContents(section: string) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [headings, setHeadings] = useState<{ id: string; text: string }[]>([]);
+  const [active, setActive] = useState<string>("");
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const h2s = el.querySelectorAll("h2");
+    const items = Array.from(h2s)
+      .map((h, i) => {
+        const id = h.id || `toc-${i}`;
+        if (!h.id) h.id = id;
+        return { id, text: (h.textContent || "").trim() };
+      })
+      .filter((h) => h.text);
+    setHeadings(items);
+    setActive(items[0]?.id || "");
+    if (!items.length) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length) setActive(visible[0].target.id);
+      },
+      { rootMargin: "-15% 0px -60% 0px", threshold: 0 }
+    );
+    h2s.forEach((h) => obs.observe(h));
+    return () => obs.disconnect();
+  }, [section]);
+
+  return { contentRef, headings, active };
+}
+
 export default function DocsPage() {
   const [, sectionParams] = useRoute("/docs/:section");
+  const [, navigate] = useLocation();
   const section = sectionParams?.section || "overview";
+  const { contentRef, headings, active } = useTableOfContents(section);
+
+  const currentSection = ALL_DOC_SECTIONS.find((s) => s.id === section);
+  const CurrentIcon = currentSection?.icon;
 
   const renderContent = () => {
     switch (section) {
@@ -2226,50 +2342,93 @@ export default function DocsPage() {
   return (
     <div className="flex min-h-[calc(100vh-80px)]">
       <aside
-        className="hidden lg:block w-56 flex-shrink-0 p-4 sticky top-[52px] self-start"
-        style={{
-          borderRight: "1px solid rgba(0,0,0,0.06)",
-        }}
+        className="hidden lg:flex flex-col w-60 flex-shrink-0 sticky top-[52px] self-start max-h-[calc(100vh-52px)] overflow-y-auto"
+        style={{ borderRight: "1px solid rgba(107,127,163,0.1)" }}
       >
-        <div className="mb-4">
-          <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-            Documentation
-          </span>
+        <div className="p-4 pb-2">
+          <div className="flex items-center gap-1.5 mb-4 pb-3" style={{ borderBottom: "1px solid rgba(107,127,163,0.1)" }}>
+            <BookOpen className="w-3.5 h-3.5" style={{ color: "var(--claw-orange)" }} />
+            <span className="text-[10px] font-mono uppercase tracking-widest font-semibold" style={{ color: "var(--text-muted)" }}>
+              Documentation
+            </span>
+          </div>
+          <SideNav active={section} />
         </div>
-        <SideNav active={section} />
       </aside>
 
-      <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-4xl">
-        <div className="lg:hidden mb-6">
-          <div className="flex items-center gap-2 overflow-x-auto pb-2">
-            {[
-              { id: "overview", label: "Overview" },
-              { id: "lifecycle", label: "Lifecycle" },
-              { id: "sdk", label: "SDK" },
-              { id: "api", label: "API" },
-              { id: "erc8183", label: "ERC-8183" },
-              { id: "contracts", label: "Contracts" },
-              { id: "skill-trust", label: "Skill Trust" },
-              { id: "domains", label: "Domains" },
-            ].map((s) => (
-              <Link key={s.id} href={`/docs/${s.id}`}>
-                <span
-                  className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm flex-shrink-0 cursor-pointer whitespace-nowrap"
-                  style={{
-                    background: section === s.id ? "rgba(232, 84, 10, 0.1)" : "transparent",
-                    color: section === s.id ? "var(--claw-orange)" : "var(--text-muted)",
-                    border: section === s.id ? "1px solid rgba(232, 84, 10, 0.25)" : "1px solid rgba(0,0,0,0.06)",
-                  }}
-                  data-testid={`tab-docs-${s.id}`}
-                >
-                  {s.label}
-                </span>
-              </Link>
-            ))}
+      <div className="flex-1 flex min-w-0">
+        <div className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-3xl">
+          <div className="lg:hidden mb-5">
+            <div
+              className="relative flex items-center gap-2 rounded-sm px-3 py-2"
+              style={{
+                background: "var(--ocean-mid)",
+                border: "1px solid rgba(107,127,163,0.18)",
+              }}
+            >
+              {CurrentIcon && <CurrentIcon className="w-4 h-4 flex-shrink-0" style={{ color: "var(--claw-orange)" }} />}
+              <select
+                value={section}
+                onChange={(e) => navigate(`/docs/${e.target.value}`)}
+                className="flex-1 bg-transparent text-sm font-mono border-none cursor-pointer appearance-none"
+                style={{ color: "var(--shell-white)", outline: "none" }}
+                data-testid="select-docs-mobile"
+              >
+                {ALL_DOC_SECTIONS.map((s) => (
+                  <option key={s.id} value={s.id} style={{ background: "var(--ocean-deep)" }}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 flex-shrink-0 pointer-events-none" style={{ color: "var(--text-muted)" }} />
+            </div>
+          </div>
+
+          <div className="mb-4 flex items-center gap-1.5 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+            <Link href="/docs">
+              <span className="cursor-pointer hover:underline" style={{ color: "var(--text-muted)" }}>Docs</span>
+            </Link>
+            {currentSection && (
+              <>
+                <ChevronRight className="w-3 h-3" />
+                <span style={{ color: "var(--shell-cream)" }}>{currentSection.label}</span>
+              </>
+            )}
+          </div>
+
+          <div ref={contentRef}>
+            {renderContent()}
           </div>
         </div>
 
-        {renderContent()}
+        {headings.length >= 2 && (
+          <aside className="hidden xl:block w-52 flex-shrink-0 sticky top-[52px] self-start max-h-[calc(100vh-52px)] overflow-y-auto p-4 pl-0 pr-6">
+            <p className="text-[9px] font-mono uppercase tracking-widest mb-3 px-3" style={{ color: "rgba(107,127,163,0.5)" }}>
+              On this page
+            </p>
+            <nav className="space-y-0.5">
+              {headings.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={() => {
+                    const el = document.getElementById(h.id);
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  className="block w-full text-left px-3 py-1.5 rounded-sm text-xs transition-all"
+                  style={{
+                    color: active === h.id ? "var(--claw-orange)" : "var(--text-muted)",
+                    background: active === h.id ? "rgba(232,84,10,0.06)" : "transparent",
+                    borderLeft: active === h.id ? "2px solid var(--claw-orange)" : "2px solid transparent",
+                    marginLeft: "-2px",
+                  }}
+                  data-testid={`toc-item-${h.id}`}
+                >
+                  {h.text}
+                </button>
+              ))}
+            </nav>
+          </aside>
+        )}
       </div>
     </div>
   );
