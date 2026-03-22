@@ -21,7 +21,9 @@ import { baseSepolia } from "viem/chains";
 import { setTimeout as sleep } from "node:timers/promises";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const BASE_URL   = process.argv[2] || process.env.BASE_URL || "http://localhost:5000";
+// Accept either "https://clawtrust.org" OR "https://clawtrust.org/api" — normalize to domain root.
+const _rawInput  = process.argv[2] || process.env.BASE_URL || "http://localhost:5000";
+const BASE_URL   = _rawInput.replace(/\/api\/?$/, "").replace(/\/$/, "");
 const API_BASE   = `${BASE_URL}/api`;
 const REG_KEY    = process.env.REGISTRATION_API_KEY || "";
 const E2E_SECRET = process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass";
@@ -693,6 +695,7 @@ const SG  = (s) => s === "PASS" ? "✓" : s === "SKIP" ? "↷" : "✗";
 
 // ─── Report ────────────────────────────────────────────────────────────────────
 function renderReport(baseOut, skaleOut, elapsed) {
+  // W is the inner box width (between ║ borders); total visual width = W + 2
   const W    = 82;
   const LINE = "═".repeat(W);
 
@@ -702,39 +705,55 @@ function renderReport(baseOut, skaleOut, elapsed) {
   const [sP, sSk, sF] = [sR.pass(), sR.skips(), sR.fails()];
   const combined       = bP + sP;
 
-  const verdict = (p) => p >= 20 ? "FULLY PROVEN" : p >= 18 ? "PROVEN" : "NOT PROVEN";
-  const bV = verdict(bP), sV = verdict(sP);
-  const cV = combined >= 40 ? "FULLY PROVEN" : combined >= 36 ? "PROVEN" : "NOT PROVEN";
+  const chVerdict = (p) => p >= 20 ? "FULLY PROVEN" : p >= 18 ? "PROVEN" : "NOT PROVEN";
+  const bV = chVerdict(bP), sV = chVerdict(sP);
+  // SYSTEM PROVEN requires BOTH chains individually ≥18/20 AND combined ≥36/40
+  const bothOk = bP >= 18 && sP >= 18;
+  const cV = (bothOk && combined >= 40) ? "FULLY PROVEN"
+           : (bothOk && combined >= 36) ? "PROVEN"
+           : "NOT PROVEN";
   const vC = (v) => v === "NOT PROVEN" ? RED : GRN;
 
-  const row = (txt) => `${BLD}║${RST} ${txt}`;
+  // visLen — visible string length (strips ANSI escape codes)
+  const visLen = (s) => s.replace(/\x1b\[[^m]*m/g, "").length;
+
+  // boxLine — pads content to W-1 visible chars (leading space already in txt) then adds right ║
+  const boxLine = (txt) => {
+    const pad = Math.max(0, W - 1 - visLen(txt));
+    return `${BLD}║${RST} ${txt}${" ".repeat(pad)}${BLD}║${RST}`;
+  };
 
   console.log(`\n${BLD}╔${LINE}╗${RST}`);
-  console.log(row(`ClawTrust Dual-Chain System Proof`));
-  console.log(row(`Run ID: ${RUN_ID}  │  Elapsed: ${(elapsed/1000).toFixed(1)}s  │  Target: ${BASE_URL}`));
-  console.log(row(`Chains: Base Sepolia (84532)  +  SKALE Base Sepolia (324705682)`));
+  console.log(boxLine(`ClawTrust Dual-Chain System Proof`));
+  console.log(boxLine(`Run ID: ${RUN_ID}  │  Elapsed: ${(elapsed/1000).toFixed(1)}s  │  Target: ${BASE_URL}`));
+  console.log(boxLine(`Chains: Base Sepolia (84532)  +  SKALE Base Sepolia (324705682)`));
   console.log(`${BLD}╠${LINE}╣${RST}`);
-  console.log(row(` ${"#".padStart(2)}  ${"STEP".padEnd(50)} ${"BASE".padEnd(15)} SKALE`));
+  console.log(boxLine(` ${"#".padStart(2)}  ${"STEP".padEnd(50)} ${"BASE".padEnd(15)} SKALE`));
   console.log(`${BLD}╠${LINE}╣${RST}`);
 
   for (let i = 0; i < 20; i++) {
     const b = bAll[i] || { n: i+1, label: "—", state: "FAIL", detail: "" };
     const s = sAll[i] || { n: i+1, label: "—", state: "FAIL", detail: "" };
-    const label = (b.label || s.label).slice(0, 50);
-    const bc = `${SC(b.state)}${SG(b.state)} ${b.state.padEnd(11)}${RST}`;
-    const sc = `${SC(s.state)}${SG(s.state)} ${s.state}${RST}`;
-    console.log(`${BLD}║${RST} ${String(b.n).padStart(2)}  ${label.padEnd(50)} ${bc}${sc}`);
-    if (b.detail) console.log(`${BLD}║${RST}     ${DIM}BASE : ${b.detail.slice(0, W-12)}${RST}`);
-    if (s.detail) console.log(`${BLD}║${RST}     ${DIM}SKALE: ${s.detail.slice(0, W-12)}${RST}`);
+    const label = (b.label || s.label).slice(0, 50).padEnd(50);
+    // State tags: fixed visible width: "✓ PASS       " = 13 chars for BASE, "✓ PASS" = 6 chars for SKALE
+    const bTag  = `${SC(b.state)}${SG(b.state)} ${b.state}${RST}`;
+    const sTag  = `${SC(s.state)}${SG(s.state)} ${s.state}${RST}`;
+    const bTagW = visLen(bTag);
+    // Pad bTag to 13 visible chars so SKALE aligns
+    const bPad  = Math.max(0, 13 - bTagW);
+    const stepLine = `${String(b.n).padStart(2)}  ${label} ${bTag}${" ".repeat(bPad)}${sTag}`;
+    console.log(boxLine(stepLine));
+    if (b.detail) console.log(boxLine(`    ${DIM}BASE : ${b.detail.slice(0, W-14)}${RST}`));
+    if (s.detail) console.log(boxLine(`    ${DIM}SKALE: ${s.detail.slice(0, W-14)}${RST}`));
   }
 
   // System Findings
   const findings = [...new Set([...baseOut.findings, ...skaleOut.findings])];
   if (findings.length > 0) {
     console.log(`${BLD}╠${LINE}╣${RST}`);
-    console.log(row(`${BLD}System Findings:${RST}`));
+    console.log(boxLine(`${BLD}System Findings:${RST}`));
     for (const f of findings) {
-      console.log(`${BLD}║${RST}  ${YLW}▶${RST} ${DIM}${f.slice(0, W-4)}${RST}`);
+      console.log(boxLine(`  ${YLW}▶${RST} ${DIM}${f.slice(0, W-5)}${RST}`));
     }
   }
 
@@ -742,23 +761,23 @@ function renderReport(baseOut, skaleOut, elapsed) {
   const allLinks = [...baseOut.proofLinks, ...skaleOut.proofLinks];
   if (allLinks.length > 0) {
     console.log(`${BLD}╠${LINE}╣${RST}`);
-    console.log(row(`${BLD}On-chain Proof Links:${RST}`));
+    console.log(boxLine(`${BLD}On-chain Proof Links:${RST}`));
     for (const { label, explorer, hash, contract } of allLinks) {
       const url = contract
         ? `${explorer}/address/${contract}`
         : `${explorer}/tx/${hash}`;
-      console.log(`${BLD}║${RST}  ${GRN}⛓${RST} ${label}`);
-      console.log(`${BLD}║${RST}     ${DIM}${url}${RST}`);
+      console.log(boxLine(`  ${GRN}⛓${RST} ${label}`));
+      console.log(boxLine(`     ${DIM}${url.slice(0, W-7)}${RST}`));
     }
   }
 
   // Summary
   console.log(`${BLD}╠${LINE}╣${RST}`);
-  console.log(row(`BASE SEPOLIA  │ PASS=${bP}/20  SKIP=${bSk}  FAIL=${bF}  │ ${vC(bV)}${BLD}${bV}${RST}`));
-  console.log(row(`SKALE TESTNET │ PASS=${sP}/20  SKIP=${sSk}  FAIL=${sF}  │ ${vC(sV)}${BLD}${sV}${RST}`));
+  console.log(boxLine(`BASE SEPOLIA  │ PASS=${bP}/20  SKIP=${bSk}  FAIL=${bF}  │ ${vC(bV)}${BLD}${bV}${RST}`));
+  console.log(boxLine(`SKALE TESTNET │ PASS=${sP}/20  SKIP=${sSk}  FAIL=${sF}  │ ${vC(sV)}${BLD}${sV}${RST}`));
   console.log(`${BLD}╠${LINE}╣${RST}`);
-  console.log(row(`COMBINED: PASS=${combined}/40  SKIP=${bSk+sSk}  FAIL=${bF+sF}  (threshold ≥36/40)`));
-  console.log(`${BLD}║${RST} ${vC(cV)}${BLD}◈  SYSTEM ${cV}${RST}`);
+  console.log(boxLine(`COMBINED: PASS=${combined}/40  SKIP=${bSk+sSk}  FAIL=${bF+sF}  (threshold: both chains ≥18/20 + total ≥36/40)`));
+  console.log(boxLine(`${vC(cV)}${BLD}◈  SYSTEM ${cV}${RST}`));
   console.log(`${BLD}╚${LINE}╝${RST}\n`);
 
   return cV === "NOT PROVEN" ? 1 : 0;
