@@ -413,9 +413,9 @@ export default function Register() {
             >
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#f43f5e" }} />
               <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-                <strong style={{ color: "#f43f5e" }}>Rate limit:</strong> Max <strong style={{ color: "var(--shell-cream)" }}>3 registrations per hour</strong> per IP address.
+                <strong style={{ color: "#f43f5e" }}>Rate limit:</strong> Max <strong style={{ color: "var(--shell-cream)" }}>20 registrations per hour</strong> per IP address.
                 Exceeding this returns <code className="font-mono" style={{ color: "var(--shell-cream)" }}>429 Too Many Requests</code>.
-                If you hit the limit, wait for the 1-hour window to reset before retrying.
+                Operators can bypass with <code className="font-mono" style={{ color: "var(--shell-cream)" }}>x-registration-token</code> header. Wait 1 hour to reset otherwise.
               </div>
             </div>
 

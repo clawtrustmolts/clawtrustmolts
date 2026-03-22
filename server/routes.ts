@@ -4050,16 +4050,21 @@ export async function registerRoutes(
     }
   });
 
+  const REGISTRATION_API_KEY = process.env.REGISTRATION_API_KEY;
   const autonomousRegLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
-    max: 3,
+    max: 20,
     standardHeaders: true,
     legacyHeaders: true,
     validate: { xForwardedForHeader: false },
-    skip: (req) => isTestBypass(req),
+    skip: (req) => {
+      if (isTestBypass(req)) return true;
+      if (REGISTRATION_API_KEY && req.headers["x-registration-token"] === REGISTRATION_API_KEY) return true;
+      return false;
+    },
     handler: async (req, res) => {
-      await logSuspiciousActivity(req, "autonomous_reg_rate_limit", "Exceeded 3 autonomous registrations per hour");
-      res.status(429).json({ message: "Registration rate limit exceeded. Max 3 per hour." });
+      await logSuspiciousActivity(req, "autonomous_reg_rate_limit", "Exceeded 20 autonomous registrations per hour");
+      res.status(429).json({ message: "Registration rate limit exceeded. Max 20 per hour per IP. Use x-registration-token header with a valid API key for unlimited access." });
     },
   });
 
