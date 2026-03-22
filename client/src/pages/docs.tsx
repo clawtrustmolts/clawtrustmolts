@@ -35,6 +35,43 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ClawButton } from "@/components/ui-shared";
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function syntaxHighlight(raw: string, language: string): string {
+  const placeholders: string[] = [];
+  const ph = (text: string, color: string) => {
+    const key = `\x00${placeholders.length}\x00`;
+    placeholders.push(`<span style="color:${color}">${escapeHtml(text)}</span>`);
+    return key;
+  };
+
+  let s = raw;
+
+  if (language === "bash" || language === "shell") {
+    s = s.replace(/#[^\n]*/g, (m) => ph(m, "#6b7fa3"));
+    s = s.replace(/"[^"]*"|'[^']*'/g, (m) => ph(m, "#fbbf24"));
+    s = s.replace(/https?:\/\/\S+/g, (m) => ph(m, "#fbbf24"));
+    s = s.replace(/--[\w-]+/g, (m) => ph(m, "#2dd4bf"));
+    s = s.replace(/\$[\w]+/g, (m) => ph(m, "#4ade80"));
+    s = s.replace(/\b(curl|npm|npx|node|POST|GET|PUT|PATCH|DELETE|true|false|null)\b/g, (m) => ph(m, "#a78bfa"));
+  } else if (language === "typescript" || language === "javascript") {
+    s = s.replace(/\/\/[^\n]*/g, (m) => ph(m, "#6b7fa3"));
+    s = s.replace(/`[^`]*`|"[^"]*"|'[^']*'/g, (m) => ph(m, "#fbbf24"));
+    s = s.replace(/\b(const|let|var|import|export|from|async|await|function|return|if|else|type|interface|new|class|extends|true|false|null|undefined|void|string|number|boolean)\b/g, (m) => ph(m, "#a78bfa"));
+    s = s.replace(/\b\d+\.?\d*\b/g, (m) => ph(m, "#fb923c"));
+  } else if (language === "json") {
+    s = s.replace(/"(?:[^"\\]|\\.)*"(?=\s*:)/g, (m) => ph(m, "#60a5fa"));
+    s = s.replace(/"(?:[^"\\]|\\.)*"/g, (m) => ph(m, "#fbbf24"));
+    s = s.replace(/\b(true|false|null)\b/g, (m) => ph(m, "#2dd4bf"));
+    s = s.replace(/\b\d+\.?\d*\b/g, (m) => ph(m, "#fb923c"));
+  }
+
+  const escaped = escapeHtml(s).replace(/\x00(\d+)\x00/g, (_, i) => placeholders[parseInt(i)]);
+  return escaped;
+}
+
 function CodeBlock({ code, language = "typescript" }: { code: string; language?: string }) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
@@ -46,6 +83,8 @@ function CodeBlock({ code, language = "typescript" }: { code: string; language?:
       setTimeout(() => setCopied(false), 2000);
     });
   }
+
+  const highlighted = syntaxHighlight(code, language);
 
   return (
     <div className="rounded-sm overflow-hidden" style={{ border: "1px solid rgba(107,127,163,0.18)" }}>
@@ -73,7 +112,7 @@ function CodeBlock({ code, language = "typescript" }: { code: string; language?:
         className="p-4 overflow-x-auto text-sm font-mono leading-relaxed"
         style={{ background: "var(--ocean-surface)", margin: 0 }}
       >
-        <code style={{ color: "var(--shell-cream)" }}>{code}</code>
+        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
       </pre>
     </div>
   );
@@ -109,6 +148,7 @@ const ALL_DOC_SECTIONS = DOC_GROUPS.flatMap((g) => g.items);
 
 function SideNav({ active }: { active: string }) {
   const [search, setSearch] = useState("");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const filtered = DOC_GROUPS.map((group) => ({
     ...group,
@@ -116,6 +156,10 @@ function SideNav({ active }: { active: string }) {
       (item) => !search || item.label.toLowerCase().includes(search.toLowerCase())
     ),
   })).filter((group) => group.items.length > 0);
+
+  function toggleGroup(group: string) {
+    setCollapsed((prev) => ({ ...prev, [group]: !prev[group] }));
+  }
 
   return (
     <nav data-testid="docs-sidenav">
@@ -139,36 +183,54 @@ function SideNav({ active }: { active: string }) {
         />
       </div>
 
-      <div className="space-y-5">
-        {filtered.map((group) => (
-          <div key={group.group}>
-            <p
-              className="text-[9px] font-mono uppercase tracking-widest mb-1.5 px-1"
-              style={{ color: "rgba(107,127,163,0.5)" }}
-            >
-              {group.group}
-            </p>
-            <div className="space-y-0.5">
-              {group.items.map((s) => (
-                <Link key={s.id} href={`/docs/${s.id}`}>
-                  <div
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-sm cursor-pointer transition-all text-xs"
-                    style={{
-                      background: active === s.id ? "rgba(232, 84, 10, 0.08)" : "transparent",
-                      color: active === s.id ? "var(--claw-orange)" : "var(--text-muted)",
-                      borderLeft: active === s.id ? "2px solid var(--claw-orange)" : "2px solid transparent",
-                      marginLeft: "-2px",
-                    }}
-                    data-testid={`link-docs-${s.id}`}
-                  >
-                    <s.icon className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>{s.label}</span>
-                  </div>
-                </Link>
-              ))}
+      <div className="space-y-4">
+        {filtered.map((group) => {
+          const isCollapsed = collapsed[group.group];
+          return (
+            <div key={group.group}>
+              <button
+                onClick={() => toggleGroup(group.group)}
+                className="w-full flex items-center justify-between px-1 mb-1.5 group"
+                data-testid={`button-docs-group-${group.group.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <p
+                  className="text-[9px] font-mono uppercase tracking-widest"
+                  style={{ color: "rgba(107,127,163,0.5)" }}
+                >
+                  {group.group}
+                </p>
+                <ChevronDown
+                  className="w-3 h-3 transition-transform"
+                  style={{
+                    color: "rgba(107,127,163,0.35)",
+                    transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                  }}
+                />
+              </button>
+              {!isCollapsed && (
+                <div className="space-y-0.5">
+                  {group.items.map((s) => (
+                    <Link key={s.id} href={`/docs/${s.id}`}>
+                      <div
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-sm cursor-pointer transition-all text-xs"
+                        style={{
+                          background: active === s.id ? "rgba(232, 84, 10, 0.08)" : "transparent",
+                          color: active === s.id ? "var(--claw-orange)" : "var(--text-muted)",
+                          borderLeft: active === s.id ? "2px solid var(--claw-orange)" : "2px solid transparent",
+                          marginLeft: "-2px",
+                        }}
+                        data-testid={`link-docs-${s.id}`}
+                      >
+                        <s.icon className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>{s.label}</span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </nav>
   );
@@ -2297,12 +2359,29 @@ function useTableOfContents(section: string) {
       .map((h, i) => {
         const id = h.id || `toc-${i}`;
         if (!h.id) h.id = id;
-        return { id, text: (h.textContent || "").trim() };
+
+        if (!h.querySelector("[data-anchor]")) {
+          const a = document.createElement("a");
+          a.href = `#${id}`;
+          a.setAttribute("data-anchor", "true");
+          a.className = "docs-anchor-icon";
+          a.textContent = "#";
+          a.addEventListener("click", (e) => {
+            e.preventDefault();
+            h.scrollIntoView({ behavior: "smooth", block: "start" });
+            history.replaceState(null, "", `#${id}`);
+          });
+          h.appendChild(a);
+        }
+
+        return { id, text: h.textContent?.replace(/#\s*$/, "").trim() || "" };
       })
       .filter((h) => h.text);
+
     setHeadings(items);
     setActive(items[0]?.id || "");
     if (!items.length) return;
+
     const obs = new IntersectionObserver(
       (entries) => {
         const visible = entries.filter((e) => e.isIntersecting);
@@ -2396,7 +2475,7 @@ export default function DocsPage() {
             )}
           </div>
 
-          <div ref={contentRef}>
+          <div ref={contentRef} key={section} className="docs-section-enter">
             {renderContent()}
           </div>
         </div>
