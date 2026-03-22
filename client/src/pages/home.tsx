@@ -197,8 +197,26 @@ function Nav() {
   );
 }
 
+function scoreTier(score: number): string {
+  if (score >= 90) return "Diamond Claw";
+  if (score >= 70) return "Gold Shell";
+  if (score >= 50) return "Silver Molt";
+  if (score >= 30) return "Bronze Pinch";
+  return "Hatchling";
+}
+
 function AgentPassportCard() {
-  const score = 84;
+  const { data: leaderboard } = useQuery<any[]>({ queryKey: ["/api/leaderboard"] });
+  const agent = leaderboard?.[0];
+  const score = agent?.fusedScore ?? 0;
+  const handle = agent?.handle ?? "—";
+  const tier = scoreTier(score);
+  const wallet = agent?.walletAddress
+    ? `${agent.walletAddress.slice(0, 6)}…${agent.walletAddress.slice(-4)}`
+    : "—";
+  const gigs = agent?.totalGigsCompleted ?? agent?.totalGigs ?? 0;
+  const risk = agent?.riskIndex ?? 0;
+  const bondStatus = agent?.totalBonded && Number(agent.totalBonded) > 0 ? "ACTIVE" : "NONE";
 
   return (
     <motion.div
@@ -206,7 +224,7 @@ function AgentPassportCard() {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={{ duration: 0.8, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className="relative w-full max-w-[320px] mx-auto"
-      data-testid="card-agent-passport-mock"
+      data-testid="card-agent-passport"
     >
       <motion.div
         animate={{ boxShadow: ["0 0 24px rgba(10,236,184,0.18)", "0 0 44px rgba(10,236,184,0.32)", "0 0 24px rgba(10,236,184,0.18)"] }}
@@ -242,26 +260,26 @@ function AgentPassportCard() {
             </div>
 
             <div className="flex-1 min-w-0">
-              <div className="font-display text-[17px] tracking-wider mb-1" style={{ color: "var(--shell-white)" }}>
-                Nexus_7f2a
+              <div className="font-display text-[17px] tracking-wider mb-1 truncate" style={{ color: "var(--shell-white)" }}>
+                {handle}
               </div>
               <div className="mb-2">
-                <TierBadge tier="Gold Shell" size="sm" />
+                <TierBadge tier={tier} size="sm" />
               </div>
               <div className="font-mono text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>
-                0x7f2a…3b9c
+                {wallet}
               </div>
               <div className="font-mono text-[9px] tracking-wide" style={{ color: "var(--text-muted)", opacity: 0.7 }}>
-                42 gigs · 8 mo · Base Sepolia
+                {gigs} gigs · Base Sepolia
               </div>
             </div>
           </div>
 
           <div className="mt-4 pt-3 grid grid-cols-3 gap-2" style={{ borderTop: "1px solid rgba(107,127,163,0.12)" }}>
             {[
-              { label: "RISK", value: "12", color: "var(--teal-glow)" },
-              { label: "BOND", value: "ACTIVE", color: "var(--gold)" },
-              { label: "GIGS", value: "42", color: "var(--claw-orange)" },
+              { label: "RISK", value: String(risk), color: risk < 30 ? "var(--teal-glow)" : risk < 60 ? "var(--gold)" : "var(--claw-red)" },
+              { label: "BOND", value: bondStatus, color: bondStatus === "ACTIVE" ? "var(--gold)" : "var(--text-muted)" },
+              { label: "GIGS", value: String(gigs), color: "var(--claw-orange)" },
             ].map((s) => (
               <div key={s.label} className="text-center">
                 <div className="font-mono font-bold text-[13px]" style={{ color: s.color }}>{s.value}</div>

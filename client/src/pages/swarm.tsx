@@ -5,14 +5,7 @@ import { formatUSDC, SkeletonCard, ErrorState } from "@/components/ui-shared";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-const validatorNodes = [
-  { angle: 0, label: "V1" },
-  { angle: 60, label: "V2" },
-  { angle: 120, label: "V3" },
-  { angle: 180, label: "V4" },
-  { angle: 240, label: "V5" },
-  { angle: 300, label: "V6" },
-];
+const NODE_ANGLES = [0, 60, 120, 180, 240, 300];
 
 function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { bg: string; color: string; pulse: boolean }> = {
@@ -267,6 +260,45 @@ export default function SwarmPage() {
   const pendingCount = validations?.filter((v: any) => v.status === "pending").length ?? 0;
   const releasedUSD = stats?.totalEscrowUSD ?? 0;
 
+  const totalSettled = validations
+    ? validations.filter((v: any) => v.status === "approved" || v.status === "rejected").length
+    : 0;
+  const totalApproved = validations
+    ? validations.filter((v: any) => v.status === "approved").length
+    : 0;
+  const consensusRate = totalSettled > 0
+    ? `${Math.round((totalApproved / totalSettled) * 100)}%`
+    : "—";
+
+  const topValidatorNodes = agents
+    ? [...agents]
+        .sort((a: any, b: any) => (b.fusedScore ?? 0) - (a.fusedScore ?? 0))
+        .slice(0, 6)
+        .map((a: any, i: number) => ({
+          angle: NODE_ANGLES[i],
+          label: a.handle ? a.handle.slice(0, 4).toUpperCase() : `V${i + 1}`,
+        }))
+    : NODE_ANGLES.map((angle, i) => ({ angle, label: `V${i + 1}` }));
+
+  const myAgent = myAgentId && agents
+    ? agents.find((a: any) => a.id === myAgentId)
+    : null;
+
+  const eligibility = [
+    {
+      label: "TrustScore ≥ 70",
+      pass: myAgent ? (myAgent.fusedScore ?? 0) >= 70 : null,
+    },
+    {
+      label: "Risk Index < 60",
+      pass: myAgent ? (myAgent.riskIndex ?? 100) < 60 : null,
+    },
+    {
+      label: "Agent registered",
+      pass: myAgent ? true : null,
+    },
+  ];
+
   const displayValidations = validations && validations.length > 0
     ? validations.map((v: any) => ({
         id: v.id,
@@ -298,14 +330,8 @@ export default function SwarmPage() {
   const statCards = [
     { label: "Active Validators", value: activeValidators, icon: Users },
     { label: "Pending Validations", value: pendingCount, icon: Clock },
-    { label: "Consensus Rate", value: "94%", icon: TrendingUp },
+    { label: "Consensus Rate", value: consensusRate, icon: TrendingUp },
     { label: "USDC Released Today", value: `$${releasedUSD.toLocaleString()}`, icon: DollarSign },
-  ];
-
-  const eligibility = [
-    { label: "TrustScore \u2265 70", pass: true },
-    { label: "Risk Index < 60", pass: true },
-    { label: "Active heartbeat < 1hr", pass: false },
   ];
 
   return (
@@ -407,7 +433,7 @@ export default function SwarmPage() {
             data-testid="swarm-outer-ring"
           />
 
-          {validatorNodes.map((node, i) => {
+          {topValidatorNodes.map((node, i) => {
             const rad = (node.angle * Math.PI) / 180;
             const radius = 110;
             const x = 150 + radius * Math.cos(rad);
@@ -525,6 +551,11 @@ export default function SwarmPage() {
         <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
           To participate as a swarm validator, you must meet all requirements:
         </p>
+        {!myAgentId && (
+          <p className="text-xs font-mono mb-3" style={{ color: "var(--claw-amber)" }}>
+            Connect your wallet to see your eligibility status.
+          </p>
+        )}
         <div className="flex flex-col sm:flex-row gap-4">
           {eligibility.map((req) => (
             <div
@@ -532,12 +563,19 @@ export default function SwarmPage() {
               className="flex items-center gap-2"
               data-testid={`eligibility-${req.label.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`}
             >
-              {req.pass ? (
+              {req.pass === null ? (
+                <ShieldCheck className="w-4 h-4 flex-shrink-0" style={{ color: "var(--text-muted)" }} />
+              ) : req.pass ? (
                 <ShieldCheck className="w-4 h-4 flex-shrink-0" style={{ color: "#22c55e" }} />
               ) : (
                 <ShieldX className="w-4 h-4 flex-shrink-0" style={{ color: "var(--claw-red)" }} />
               )}
-              <span className="text-xs font-mono" style={{ color: req.pass ? "#22c55e" : "var(--claw-red)" }}>
+              <span
+                className="text-xs font-mono"
+                style={{
+                  color: req.pass === null ? "var(--text-muted)" : req.pass ? "#22c55e" : "var(--claw-red)",
+                }}
+              >
                 {req.label}
               </span>
             </div>
