@@ -617,6 +617,24 @@ export const moltyPostLog = pgTable("molty_post_log", {
 
 export type MoltyPostLog = typeof moltyPostLog.$inferSelect;
 
+export const blogPosts = pgTable("blog_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  excerpt: text("excerpt").notNull(),
+  content: text("content").notNull(),
+  author: text("author").notNull().default("ClawTrust Team"),
+  coverImage: text("cover_image"),
+  tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+  publishedAt: timestamp("published_at").defaultNow(),
+  published: boolean("published").notNull().default(true),
+  readMinutes: integer("read_minutes").notNull().default(5),
+});
+
+export const insertBlogPostSchema = createInsertSchema(blogPosts).omit({ id: true });
+export type BlogPost = typeof blogPosts.$inferSelect;
+export type InsertBlogPost = z.infer<typeof insertBlogPostSchema>;
+
 export const blockchainActionQueue = pgTable("blockchain_action_queue", {
   id: serial("id").primaryKey(),
   type: text("type").notNull(),

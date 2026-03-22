@@ -36,6 +36,8 @@ import { SlashListPage, SlashDetailPage } from "@/pages/slashes";
 import TelegramHomePage from "@/pages/telegram-home";
 import TelegramMePage from "@/pages/telegram-me";
 import DomainsPage from "@/pages/domains";
+import BlogPage from "@/pages/blog";
+import BlogPostPage from "@/pages/blog-post";
 import "@/styles/telegram.css";
 
 function ScrollToTop() {
@@ -71,6 +73,8 @@ function InnerRouter() {
       <Route path="/slashes" component={SlashListPage} />
       <Route path="/passport" component={PassportPage} />
       <Route path="/domains" component={DomainsPage} />
+      <Route path="/blog/:slug" component={BlogPostPage} />
+      <Route path="/blog" component={BlogPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -88,6 +92,7 @@ const navLinks = [
   { title: "Slashes", url: "/slashes" },
   { title: "Protocol", url: "/protocol" },
   { title: "Docs", url: "/docs" },
+  { title: "Blog", url: "/blog" },
   { title: "Passport", url: "/passport" },
 ];
 

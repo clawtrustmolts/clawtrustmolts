@@ -4,7 +4,7 @@ import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements, x402Payments,
-  agentNotifications, skillChallenges, challengeAttempts,
+  agentNotifications, skillChallenges, challengeAttempts, blogPosts,
   type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
@@ -35,6 +35,7 @@ import {
   type ReputationMigration, type InsertReputationMigration,
   type SkillChallenge, type InsertSkillChallenge,
   type ChallengeAttempt, type InsertChallengeAttempt,
+  type BlogPost, type InsertBlogPost,
   moltDomains,
   type MoltDomain, type InsertMoltDomain,
   blockchainActionQueue,
@@ -226,6 +227,11 @@ export interface IStorage {
 
   createChallengeAttempt(attempt: InsertChallengeAttempt): Promise<ChallengeAttempt>;
   getChallengeAttemptsForAgent(agentId: string, skill?: string): Promise<ChallengeAttempt[]>;
+
+  getBlogPosts(): Promise<BlogPost[]>;
+  getBlogPost(slug: string): Promise<BlogPost | undefined>;
+  createBlogPost(post: InsertBlogPost): Promise<BlogPost>;
+  countBlogPosts(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1390,6 +1396,28 @@ Be specific and methodical.`,
     return db.select().from(challengeAttempts)
       .where(and(...conditions))
       .orderBy(desc(challengeAttempts.createdAt));
+  }
+
+  async getBlogPosts(): Promise<BlogPost[]> {
+    return db.select().from(blogPosts)
+      .where(eq(blogPosts.published, true))
+      .orderBy(desc(blogPosts.publishedAt));
+  }
+
+  async getBlogPost(slug: string): Promise<BlogPost | undefined> {
+    const [post] = await db.select().from(blogPosts)
+      .where(and(eq(blogPosts.slug, slug), eq(blogPosts.published, true)));
+    return post;
+  }
+
+  async createBlogPost(post: InsertBlogPost): Promise<BlogPost> {
+    const [created] = await db.insert(blogPosts).values(post).returning();
+    return created;
+  }
+
+  async countBlogPosts(): Promise<number> {
+    const [result] = await db.select({ value: count() }).from(blogPosts);
+    return result?.value || 0;
   }
 }
 

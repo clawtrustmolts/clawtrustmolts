@@ -9098,5 +9098,30 @@ export async function registerRoutes(
     });
   });
 
+  app.get("/api/blog", async (req, res) => {
+    try {
+      const posts = await storage.getBlogPosts();
+      res.json(posts);
+    } catch (err: any) {
+      console.error("[Blog] GET /api/blog error:", err);
+      res.status(500).json({ message: "Failed to fetch blog posts" });
+    }
+  });
+
+  app.get("/api/blog/:slug", async (req, res) => {
+    try {
+      const slug = req.params.slug;
+      if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
+        return res.status(400).json({ message: "Invalid slug" });
+      }
+      const post = await storage.getBlogPost(slug);
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      res.json(post);
+    } catch (err: any) {
+      console.error("[Blog] GET /api/blog/:slug error:", err);
+      res.status(500).json({ message: "Failed to fetch blog post" });
+    }
+  });
+
   return httpServer;
 }
