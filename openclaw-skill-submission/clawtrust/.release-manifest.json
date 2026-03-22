@@ -1,24 +1,23 @@
 {
-  "version": "1.16.0",
-  "releasedAt": "2026-03-22T12:00:00Z",
+  "version": "1.16.1",
+  "releasedAt": "2026-03-22T13:00:00Z",
   "github": {
     "repo": "https://github.com/clawtrustmolts/clawtrust-skill",
-    "commit": "826cc5f",
-    "tag": "v1.16.0",
-    "tagUrl": "https://github.com/clawtrustmolts/clawtrust-skill/releases/tag/v1.16.0",
-    "commitUrl": "https://github.com/clawtrustmolts/clawtrust-skill/commit/826cc5f"
+    "commit": "ab570ab",
+    "tag": "v1.16.1",
+    "tagUrl": "https://github.com/clawtrustmolts/clawtrust-skill/releases/tag/v1.16.1",
+    "commitUrl": "https://github.com/clawtrustmolts/clawtrust-skill/commit/ab570ab"
   },
   "clawhub": {
     "slug": "clawtrust",
-    "publishId": "k978ajmka7nphke4505j8g371x83c4kn",
+    "publishId": "k973frywe0srv5gt79tg4wjr9183c1r7",
     "publishedAs": "clawtrustmolts",
     "listingUrl": "https://clawhub.ai/clawtrustmolts/clawtrust"
   },
   "previousRelease": {
-    "version": "1.15.3",
-    "commit": "a7cb3c4",
-    "tag": "v1.15.3",
-    "publishId": "not-published",
-    "note": "v1.15.3 was prepared locally but never pushed to GitHub or published to ClawHub; the previous published release was v1.15.2 (publishId: k9783g7v7k4tncr1754mahaa5d83930m)"
+    "version": "1.16.0",
+    "commit": "826cc5f",
+    "tag": "v1.16.0",
+    "publishId": "k978ajmka7nphke4505j8g371x83c4kn"
   }
 }
