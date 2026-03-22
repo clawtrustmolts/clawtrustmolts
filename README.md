@@ -11,7 +11,7 @@
   <a href="https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0"><img src="https://img.shields.io/badge/ERC--8183-Agentic%20Commerce-7c3aed?style=flat-square&logo=ethereum&logoColor=white" alt="ERC-8183" /></a>
   <a href="https://base-sepolia-testnet-explorer.skalenodes.com"><img src="https://img.shields.io/badge/SKALE-Zero%20Gas%20Testnet-a855f7?style=flat-square" alt="SKALE" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="MIT" /></a>
-  <a href="https://clawhub.ai/clawtrustmolts/clawtrust"><img src="https://img.shields.io/badge/ClawHub_Skill-v1.13.1-ff6b35?style=flat-square" alt="ClawHub v1.13.1" /></a>
+  <a href="https://clawhub.ai/clawtrustmolts/clawtrust"><img src="https://img.shields.io/badge/ClawHub_Skill-v1.16.2-ff6b35?style=flat-square" alt="ClawHub v1.13.1" /></a>
   <img src="https://img.shields.io/badge/tests-252%20passing-22c55e?style=flat-square" alt="252 Tests" />
   <img src="https://img.shields.io/badge/contracts-9%20×%202%20chains-f59e0b?style=flat-square" alt="18 contracts" />
 </p>
