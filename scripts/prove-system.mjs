@@ -208,7 +208,7 @@ async function lightBoost(agent) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // runChain — 20 proof steps for one chain
 // ═══════════════════════════════════════════════════════════════════════════════
-async function runChain(chain, agents) {
+async function runChain(chain, agents, regSuccess) {
   const { poster, worker, validator } = agents;
   const R          = makeResults();
   const findings   = [];
@@ -239,12 +239,23 @@ async function runChain(chain, agents) {
   } catch (e) { fail(1, "ERC-8004/MCP agent discovery (agents.json)", e.message); }
 
   // ── STEP 02 ─ Agent Registration (×3) with chain param ───────────────────────
+  // Uses explicit per-role success flags from the parallel registration phase —
+  // not the stub id check, which would mask failures as PASS.
   try {
-    if (!poster?.id || !worker?.id || !validator?.id)
-      throw new Error("One or more agents failed to register");
-    pass(2, "Agent registration (×3, with chain param)",
-      `chain=${chain.apiParam} poster=${poster.handle} worker=${worker.handle} validator=${validator.handle} moltDomain=${poster.moltDomain || "—"}`);
-  } catch (e) { fail(2, `Agent registration (×3, chain=${chain.apiParam})`, e.message); }
+    const allOk = regSuccess.poster && regSuccess.worker && regSuccess.validator;
+    if (!allOk) {
+      const failed = [
+        !regSuccess.poster    ? "poster"    : null,
+        !regSuccess.worker    ? "worker"    : null,
+        !regSuccess.validator ? "validator" : null,
+      ].filter(Boolean);
+      fail(2, "Agent registration (×3, with chain param)",
+        `FAILED roles: [${failed.join(", ")}] on chain=${chain.apiParam}`);
+    } else {
+      pass(2, "Agent registration (×3, with chain param)",
+        `chain=${chain.apiParam} poster=${poster.handle} worker=${worker.handle} validator=${validator.handle} moltDomain=${poster.moltDomain || "—"}`);
+    }
+  } catch (e) { fail(2, "Agent registration (×3, with chain param)", e.message); }
 
   // ── STEP 03 ─ Heartbeat ────────────────────────────────────────────────────────
   try {
@@ -285,8 +296,9 @@ async function runChain(chain, agents) {
         baseClient.readContract({ address: nftAddr, abi: ERC721_ABI, functionName: "balanceOf", args: [poster.walletAddress] }),
         baseClient.readContract({ address: nftAddr, abi: ERC721_ABI, functionName: "name" }).catch(() => "ClawCardNFT"),
       ]);
+      const mintStatus = balance > 0n ? "minted ✓" : "pending (NFT minting is async — not a failure)";
       pass(5, "ERC-8004 on-chain registration (viem readContract)",
-        `contract=${nftAddr.slice(0,10)}… (${contractName}) balance=${balance} wallet=${poster.walletAddress.slice(0,10)}… chain=baseSepolia(84532)`);
+        `contract=${nftAddr.slice(0,10)}… (${contractName}) balance=${balance} ${mintStatus} chain=baseSepolia(84532)`);
     } else {
       // SKALE — RepAdapter.fusedScores(wallet) view call proves on-chain accessibility
       const repAddr = SKALE_TESTNET_CONFIG.contracts.repAdapter;
@@ -311,8 +323,8 @@ async function runChain(chain, agents) {
       pass(6, "ERC-8004 passport scan (by .molt domain / wallet)",
         `identifier=${identifier.slice(0,30)} valid=${r.data.valid} contract=${r.data.contract?.clawCardNFT?.slice(0,10) || "—"}…`);
     } else if (r.ok && r.data?.valid === false) {
-      pass(6, "ERC-8004 passport scan (by .molt domain / wallet)",
-        `not yet minted on-chain (NFT minting async) — identifier=${identifier.slice(0,30)}`);
+      skip(6, "ERC-8004 passport scan (by .molt domain / wallet)",
+        `NFT not yet minted on-chain (async) — identifier=${identifier.slice(0,30)}`);
     } else {
       fail(6, "ERC-8004 passport scan (by .molt domain / wallet)",
         `${r.status}: ${r.data?.message || JSON.stringify(r.data).slice(0,80)}`);
@@ -819,16 +831,22 @@ regs.forEach((s, i) => {
   }
 });
 
-const stub = (l) => ({ id: "00000000-0000-0000-0000-000000000000", handle: `failed-${l}`, walletAddress: "0x0000000000000000000000000000000000000000", fusedScore: 0, moltDomain: null });
-const pick  = (res, l) => res.status === "fulfilled" ? res.value : stub(l);
+// stub: placeholder agent for a failed registration; id is null to prevent masking FAILs as PASSes
+const stub = (l) => ({ id: null, handle: `failed-${l}`, walletAddress: "0x0000000000000000000000000000000000000000", fusedScore: 0, moltDomain: null });
+const ok   = (res) => res.status === "fulfilled";
+const pick  = (res, l) => ok(res) ? res.value : stub(l);
 
-const baseAgents  = { poster: pick(regs[0],"b-po"), worker: pick(regs[1],"b-wo"), validator: pick(regs[2],"b-va") };
-const skaleAgents = { poster: pick(regs[3],"s-po"), worker: pick(regs[4],"s-wo"), validator: pick(regs[5],"s-va") };
+const baseAgents   = { poster: pick(regs[0],"b-po"), worker: pick(regs[1],"b-wo"), validator: pick(regs[2],"b-va") };
+const skaleAgents  = { poster: pick(regs[3],"s-po"), worker: pick(regs[4],"s-wo"), validator: pick(regs[5],"s-va") };
+
+// Explicit success flags per role — passed into runChain so step 2 reports honest outcomes
+const baseSuccess  = { poster: ok(regs[0]), worker: ok(regs[1]), validator: ok(regs[2]) };
+const skaleSuccess = { poster: ok(regs[3]), worker: ok(regs[4]), validator: ok(regs[5]) };
 
 console.log(`\n── Running 20-step proof (both chains parallel) ──────────────────────────────\n`);
 const [bRun, sRun] = await Promise.allSettled([
-  runChain(BASE_SEPOLIA_CONFIG,  baseAgents),
-  runChain(SKALE_TESTNET_CONFIG, skaleAgents),
+  runChain(BASE_SEPOLIA_CONFIG,  baseAgents,  baseSuccess),
+  runChain(SKALE_TESTNET_CONFIG, skaleAgents, skaleSuccess),
 ]);
 
 const noResults = () => ({ results: makeResults(), findings: [], proofLinks: [] });
