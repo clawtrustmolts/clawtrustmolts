@@ -22,7 +22,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 // Accept either "https://clawtrust.org" OR "https://clawtrust.org/api" — normalize to domain root.
-const _rawInput  = process.argv[2] || process.env.BASE_URL || "http://localhost:5000";
+const _rawInput  = process.argv[2] || process.env.BASE_URL || "https://clawtrust.org/api";
 const BASE_URL   = _rawInput.replace(/\/api\/?$/, "").replace(/\/$/, "");
 const API_BASE   = `${BASE_URL}/api`;
 const REG_KEY    = process.env.REGISTRATION_API_KEY || "";
@@ -143,16 +143,20 @@ async function apiReq(method, path, body, extra = {}) {
     ...(E2E_SECRET ? { "x-e2e-test-secret": E2E_SECRET } : {}),
     ...extra,
   };
-  const opts = { method, headers };
+  const ac   = new AbortController();
+  const tid  = setTimeout(() => ac.abort(), 45_000); // 45s per-request timeout
+  const opts = { method, headers, signal: ac.signal };
   if (body !== undefined) opts.body = JSON.stringify(body);
   try {
     const res  = await fetch(url, opts);
+    clearTimeout(tid);
     const ct   = res.headers.get("content-type") || "";
     let data;
     try { data = ct.includes("application/json") ? await res.json() : await res.text(); }
     catch { data = null; }
     return { ok: res.ok, status: res.status, data };
   } catch (e) {
+    clearTimeout(tid);
     return { ok: false, status: 0, data: null, err: e.message };
   }
 }
@@ -180,12 +184,17 @@ function makeResults() {
   };
 }
 
-// ─── Register one agent ────────────────────────────────────────────────────────
+// ─── Register one agent (with 409 dedup + 1 retry on network timeout) ──────────
 async function registerAgent(handle, skills, bio, chain) {
-  const r = await apiReq("POST", "/agent-register", { handle, skills, bio, chain });
+  let r = await apiReq("POST", "/agent-register", { handle, skills, bio, chain });
+  // If network/timeout error (status=0), wait 5s and retry once — server may be under load
+  if (r.status === 0 && !r.ok) {
+    await sleep(5_000);
+    r = await apiReq("POST", "/agent-register", { handle, skills, bio, chain });
+  }
   if (r.ok && r.data?.agent?.id) return r.data.agent;
   if (r.status === 409) {
-    const list   = await apiReq("GET", "/agents?limit=300");
+    const list   = await apiReq("GET", "/agents?limit=500");
     const agents = Array.isArray(list.data) ? list.data : (list.data?.agents || []);
     const found  = agents.find(a => a.handle === handle);
     if (found) {
@@ -293,8 +302,13 @@ async function runChain(chain, agents, regSuccess) {
       // Resolve: scan by the claimed domain name to verify round-trip
       const rr = await apiReq("GET", `/passport/scan/${encodeURIComponent(claimedDomain)}`);
       const resolveOk = rr.ok && (rr.data?.valid === true || rr.data?.standard === "ERC-8004");
-      pass(4, ".molt domain claim + resolve",
-        `claimed=${claimedDomain} resolve=${resolveOk ? "ok" : "pending"} agentHandle=${poster.handle}`);
+      if (resolveOk) {
+        pass(4, ".molt domain claim + resolve",
+          `claimed=${claimedDomain} resolve=ok agentHandle=${poster.handle}`);
+      } else {
+        fail(4, ".molt domain claim + resolve",
+          `resolve failed: ${rr.status} ${rr.data?.message?.slice(0,60) || JSON.stringify(rr.data).slice(0,60)}`);
+      }
     }
   } catch (e) { fail(4, ".molt domain claim + resolve", e.message); }
 
@@ -673,14 +687,15 @@ async function runChain(chain, agents, regSuccess) {
     }
 
     const combinedDetail = [syncMsg, onChainMsg].filter(Boolean).join(" | ");
-    if (onChainOk) {
-      pass(19, "SKALE sync + on-chain verification (viem)", combinedDetail);
-    } else if (syncOk) {
+    if (onChainOk || syncOk) {
+      // PASS if either the API sync succeeded OR viem could verify on-chain state.
+      // The SKALE RPC testnet limitation blocks eth_sendRawTransaction but readContract still works.
       pass(19, "SKALE sync + on-chain verification (viem)", combinedDetail);
     } else {
-      // Both failed
-      skip(19, "SKALE sync + on-chain verification (viem)",
-        `sync: ${syncMsg} | onChain: ${onChainMsg}`);
+      // Both sub-checks failed — this is a genuine FAIL, not a known testnet limitation.
+      // (SKIP is only granted when SKALE RPC explicitly blocks eth_sendRawTransaction
+      //  which the API side handles and is surfaced in syncMsg)
+      fail(19, "SKALE sync + on-chain verification (viem)", combinedDetail);
     }
   } catch (e) { fail(19, "SKALE sync + on-chain verification (viem)", e.message); }
 
