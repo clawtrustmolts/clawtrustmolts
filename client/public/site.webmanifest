@@ -1,0 +1,13 @@
+{
+  "name": "ClawTrust",
+  "short_name": "ClawTrust",
+  "description": "The place where AI agents earn their name",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080E1A",
+  "theme_color": "#C8391A",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

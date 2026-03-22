@@ -1,0 +1,259 @@
+import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+import { registerRoutes } from "./routes";
+import { serveStatic } from "./static";
+import { createServer } from "http";
+import { startBot } from "./moltbook-bot";
+import { startScheduler } from "./scheduler";
+
+const app = express();
+const httpServer = createServer(app);
+
+process.on("unhandledRejection", (reason: any) => {
+  const msg = reason?.message || reason?.description || String(reason);
+  if (msg.includes("409") || msg.includes("Conflict") || msg.includes("getUpdates") || msg.includes("BUTTON_TYPE_INVALID")) {
+    console.warn("[Process] Caught Telegram bot error (non-fatal):", msg);
+    return;
+  }
+  console.error("[Process] Unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (err: any) => {
+  const msg = err?.message || err?.description || String(err);
+  if (msg.includes("409") || msg.includes("Conflict") || msg.includes("getUpdates") || msg.includes("BUTTON_TYPE_INVALID")) {
+    console.warn("[Process] Caught Telegram bot exception (non-fatal):", msg);
+    return;
+  }
+  console.error("[Process] Uncaught exception:", err);
+});
+
+declare module "http" {
+  interface IncomingMessage {
+    rawBody: unknown;
+  }
+}
+
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
+
+app.use(express.urlencoded({ extended: false }));
+
+const ALLOWED_ORIGINS = [
+  "https://clawtrust.org",
+  "https://www.clawtrust.org",
+  "https://clawhub.ai",
+  "https://www.clawhub.ai",
+];
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  return false;
+};
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (isAllowedOrigin(origin)) return cb(null, true);
+    return cb(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-agent-id", "x-wallet-signature", "x-timestamp"],
+  exposedHeaders: [
+    "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset",
+    "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset",
+  ],
+}));
+
+const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass";
+const globalApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: true,
+  validate: { xForwardedForHeader: false },
+  skip: (req) => {
+    if (!req.path.startsWith("/api")) return true;
+    if (process.env.NODE_ENV !== "production" && req.headers["x-e2e-test-secret"] === E2E_TEST_SECRET) return true;
+    return false;
+  },
+});
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin) && req.path.startsWith("/api")) {
+    return res.status(403).json({ message: "Origin not allowed" });
+  }
+  next();
+});
+
+app.use(globalApiLimiter);
+
+const isProd = process.env.NODE_ENV === "production";
+const scriptSrc = [
+  "'self'",
+  ...(isProd ? [] : ["'unsafe-inline'", "'unsafe-eval'"]),
+  "https://telegram.org",
+].join(" ");
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      `script-src ${scriptSrc}`,
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: https: blob:",
+      "connect-src 'self' https://sepolia.base.org https://testnet.skalenodes.com wss: ws:",
+      "frame-src 'none'",
+      "object-src 'none'",
+      "base-uri 'self'",
+    ].join("; ")
+  );
+  next();
+});
+
+export function log(message: string, source = "express") {
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  const path = req.path;
+  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+
+  const originalResJson = res.json;
+  res.json = function (bodyJson, ...args) {
+    capturedJsonResponse = bodyJson;
+    return originalResJson.apply(res, [bodyJson, ...args]);
+  };
+
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    if (path.startsWith("/api")) {
+      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      if (capturedJsonResponse) {
+        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      }
+
+      log(logLine);
+    }
+  });
+
+  next();
+});
+
+let appReady = false;
+
+app.get("/api/ready", (_req, res) => {
+  res.json({ ready: appReady, ts: Date.now() });
+});
+
+app.get("/", (req, res, next) => {
+  if (!appReady) {
+    return res.status(200).send("ClawTrust starting...");
+  }
+  next();
+});
+
+const port = parseInt(process.env.PORT || "5000", 10);
+
+httpServer.listen(
+  {
+    port,
+    host: "0.0.0.0",
+    reusePort: true,
+  },
+  () => {
+    log(`serving on port ${port}`);
+  },
+);
+
+(async () => {
+  try {
+    const { seedDatabase, ensureMoltyAgent, seedGigs } = await import("./seed");
+    await seedDatabase();
+    await ensureMoltyAgent();
+    await seedGigs();
+  } catch (err: any) {
+    console.error("[Startup] Seed/init failed (non-fatal, continuing):", err?.message || err);
+  }
+
+  if (isProd && !process.env.WEBHOOK_SECRET) {
+    console.warn("[Security] WARNING: WEBHOOK_SECRET is not set in production. Outgoing webhook delivery is disabled until this is configured.");
+  }
+
+  await registerRoutes(httpServer, app);
+
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+
+    console.error("Internal Server Error:", err);
+
+    if (res.headersSent) {
+      return next(err);
+    }
+
+    return res.status(status).json({ message });
+  });
+
+  const { injectOgTags } = await import("./og-tags");
+  app.use(injectOgTags);
+
+  if (process.env.NODE_ENV === "production") {
+    serveStatic(app);
+  } else {
+    const { setupVite } = await import("./vite");
+    await setupVite(httpServer, app);
+  }
+
+  appReady = true;
+
+  startScheduler();
+
+  if (process.env.MOLTBOOK_API_KEY) {
+    log("Moltbook bot auto-starting...", "bot");
+    startBot();
+  }
+
+  if (process.env.TELEGRAM_BOT_TOKEN && process.env.NODE_ENV === "production") {
+    log("Telegram bot auto-starting...", "telegram");
+    try {
+      const { startTelegramBot, stopTelegramBot } = await import("./telegram-bot");
+      startTelegramBot().catch((err: any) => {
+        log(`Telegram bot startup failed (non-fatal): ${err?.message || err}`, "telegram");
+      });
+
+      const shutdown = () => {
+        log("Shutting down...", "express");
+        try { stopTelegramBot(); } catch {}
+        httpServer.close(() => process.exit(0));
+        setTimeout(() => process.exit(0), 3000);
+      };
+
+      process.once("SIGTERM", shutdown);
+      process.once("SIGINT", shutdown);
+    } catch (err: any) {
+      log(`Telegram bot import failed (non-fatal): ${err?.message || err}`, "telegram");
+    }
+  }
+})();

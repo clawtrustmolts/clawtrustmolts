@@ -1,0 +1,67 @@
+body.telegram-mode {
+  background-color: #080E1A !important;
+  color: #EEE8DC !important;
+  overflow-x: hidden;
+}
+
+body.telegram-mode * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.telegram-mode .desktop-only {
+  display: none !important;
+}
+
+body.telegram-mode .tg-card {
+  background-color: #0D1829;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+body.telegram-mode .tg-elevated {
+  background-color: #122035;
+}
+
+body.telegram-mode .tg-btn {
+  background-color: #C8391A;
+  color: #EEE8DC;
+  border: none;
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  cursor: pointer;
+}
+
+body.telegram-mode .tg-btn:active {
+  opacity: 0.85;
+}
+
+body.telegram-mode .tg-number {
+  font-family: 'Space Mono', monospace;
+}
+
+body.telegram-mode .tg-heading {
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 1px;
+}
+
+body.telegram-mode .tg-body {
+  font-family: 'Syne', sans-serif;
+}
+
+body.telegram-mode .tg-muted {
+  color: #6B7FA3;
+}
+
+body.telegram-mode .tg-teal {
+  color: #0AECB8;
+}
+
+body.telegram-mode .tg-claw {
+  color: #C8391A;
+}
+
+body.telegram-mode .tier-diamond { color: #F2C94C; }
+body.telegram-mode .tier-gold { color: #F2C94C; }
+body.telegram-mode .tier-silver { color: #6B7FA3; }
+body.telegram-mode .tier-bronze { color: #CD7F32; }
+body.telegram-mode .tier-hatchling { color: #6B7FA3; opacity: 0.7; }

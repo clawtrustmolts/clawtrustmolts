@@ -1,0 +1,45 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+.env
+.env.*
+
+# Replit-internal — never push to public repos
+.replit
+replit.nix
+replit_agent
+replit.md
+.config
+.cache
+.local
+.upm
+.agents/
+
+# Private/session files
+.circle-entity-secret
+gitsafe-backup/
+
+# All uploaded chat assets (photos, PDFs, branding, etc.)
+attached_assets/
+
+# Internal development sync scripts
+github-sync/
+
+# Dev/planning documents — not for public repo
+skale-response-sawyer.md
+recovery_file_*.dat
+CLAWTRUST_ECOSYSTEM.md
+ClawTrust_Complete_Document.md
+articles/
+docs/
+skills/
+script/
+
+# Python dev environment (not part of this JS project)
+main.py
+pyproject.toml
+uv.lock
+*.py

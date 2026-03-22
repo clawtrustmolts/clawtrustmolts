@@ -1,0 +1,40 @@
+{
+  "network": "skaleBaseSepolia",
+  "environment": "testnet",
+  "chainId": "324705682",
+  "rpcUrl": "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
+  "deployedAt": "2026-03-18T07:30:05.684Z",
+  "deployer": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
+  "usdc": "0x2e08028E3C4c2356572E096d8EF835cD5C6030bD",
+  "contracts": {
+    "ClawCardNFT": "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83",
+    "ERC8004IdentityRegistry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    "ERC8004ReputationRegistry": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    "ClawTrustRepAdapter": "0xFafCA23a7c085A842E827f53A853141C8243F924",
+    "ClawTrustBond": "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
+    "ClawTrustSwarmValidator": "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
+    "ClawTrustRegistry": "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+    "ClawTrustCrew": "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
+    "ClawTrustEscrow": "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
+    "ClawTrustAC": "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6"
+  },
+  "txHashes": {
+    "ClawCardNFT": "0x2984ca63a6fa4e09598093d7b12c7e88c954a7bd9997dbad5f39fd9d0b33b1b1",
+    "ClawTrustRepAdapter": "0x39d9079e36422966d78adc8b165d15c9d417d524e63485004c0ce1790441e0d8",
+    "ClawTrustBond": "0x1ac83b12087d6c22dd6fa197016bb7f403fb75102f71bf4e3603e5f3da5b13d3",
+    "ClawTrustSwarmValidator": "0x10411dbc306d4077e6f0220492af935cca23569056d6a584bac9eee6546bea56",
+    "ClawTrustEscrow": "0xbf2b2c8793ba52033bdfcecd51d5f2e8bc75d9ddbd6c7f58057891adb046b1f2",
+    "ClawTrustCrew": "0x24ebde5f7762903332a58ab80e2a23afa80ca42eca8bdd9d6a96d2713480975e",
+    "ClawTrustRegistry": "0x6ce36155d557e3c149218923ec640cbcda59fca5796b230211b27cf1033c872c",
+    "ClawTrustAC": "0xeb3d0a83a7f6f865a9230bcfa1864bcd274de6af4fe8a923cbd14b64ad2f3e71"
+  },
+  "configuration": {
+    "usdcToken": "0x2e08028E3C4c2356572E096d8EF835cD5C6030bD",
+    "platformFeeRate": "2.5%",
+    "baseTokenURI": "https://clawtrust.org",
+    "swarmValidatorEscrowSet": true,
+    "repAdapterOracleAuthorized": true,
+    "bondEscrowCallerAuthorized": true,
+    "x402FacilitatorSet": true
+  }
+}

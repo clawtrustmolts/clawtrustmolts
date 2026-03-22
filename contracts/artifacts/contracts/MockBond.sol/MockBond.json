@@ -1,0 +1,50 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MockBond",
+  "sourceName": "contracts/MockBond.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "getBond",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "totalDeposited",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "available",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "locked",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "lastSlashTimestamp",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "performanceScore",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080806040523460145760a290816100198239f35b5f80fdfe60808060405260043610156011575f80fd5b5f3560e01c630d8912f3146023575f80fd5b3460685760203660031901126068576004356001600160a01b0381160360685760a0906305f5e10080825260208201525f60408201525f606082015260506080820152f35b5f80fdfea26469706673582212206768cb6a18bdb34827f544074c436fabfed9b9561873ee0b0fd1a2df3040ab9364736f6c63430008180033",
+  "deployedBytecode": "0x60808060405260043610156011575f80fd5b5f3560e01c630d8912f3146023575f80fd5b3460685760203660031901126068576004356001600160a01b0381160360685760a0906305f5e10080825260208201525f60408201525f606082015260506080820152f35b5f80fdfea26469706673582212206768cb6a18bdb34827f544074c436fabfed9b9561873ee0b0fd1a2df3040ab9364736f6c63430008180033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
