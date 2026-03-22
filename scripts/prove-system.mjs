@@ -416,21 +416,19 @@ async function runChain(chain, agents, regSuccess) {
   } catch (e) { fail(9, "Score formula (0.35P+0.30C+0.20B+0.15E)", e.message); }
 
   // ── STEP 10 ─ Post Gig ─────────────────────────────────────────────────────────
-  // SYSTEM FINDING: gigs.chain DB enum is BASE_SEPOLIA|SOL_DEVNET — SKALE_TESTNET not supported.
-  // Both chains post gigs on BASE_SEPOLIA; SKALE identity/reputation proved via sync steps.
+  // gigs.chain DB enum now includes SKALE_TESTNET — use the real chain for each run.
   try {
-    if (isSkale) findings.push("gigs.chain DB enum: SKALE_TESTNET unsupported — gig settlement falls back to BASE_SEPOLIA");
     const r = await apiReq("POST", "/gigs", {
       posterId:       boostedPoster.id,
       title:          `[${chain.shortName}] Proof gig ${RUN_ID}`,
       description:    `Dual-chain proof. Target: ${chain.name}. Run: ${RUN_ID}.`,
-      budget:         10, currency: "USDC", chain: "BASE_SEPOLIA",
+      budget:         10, currency: "USDC", chain: chain.apiParam,
       skillsRequired: ["solidity"],
     }, { "x-agent-id": boostedPoster.id, "x-wallet-address": boostedPoster.walletAddress });
     if (r.ok && r.data?.id) {
       gigId = r.data.id;
       pass(10, `Post gig (${chain.shortName} ecosystem)`,
-        `gigId=${gigId.slice(0,8)}… budget=10 USDC${isSkale ? " [chain=BASE_SEPOLIA, SKALE_TESTNET not in DB enum]" : ""}`);
+        `gigId=${gigId.slice(0,8)}… budget=10 USDC chain=${chain.apiParam}`);
     } else {
       fail(10, `Post gig (${chain.shortName} ecosystem)`,
         `${r.status}: ${r.data?.message || JSON.stringify(r.data).slice(0,80)}`);

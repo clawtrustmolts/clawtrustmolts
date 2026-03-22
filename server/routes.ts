@@ -1646,12 +1646,14 @@ export async function registerRoutes(
           walletId: circleWallet.walletId,
           depositAddress: circleWallet.address,
           blockchain: circleWallet.blockchain,
-          note: `Send ${gig.budget} USDC to ${circleWallet.address} on ${chain === "SOL_DEVNET" ? "Solana Devnet" : "Base Sepolia"} to fund escrow`,
+          note: `Send ${gig.budget} USDC to ${circleWallet.address} on ${chain === "SOL_DEVNET" ? "Solana Devnet" : chain === "SKALE_TESTNET" ? "SKALE Testnet" : "Base Sepolia"} to fund escrow`,
         } : null,
         chain,
         note: circleWallet
-          ? `Circle escrow wallet created on ${chain === "SOL_DEVNET" ? "Solana Devnet" : "Base Sepolia"}. Send USDC to the deposit address to lock funds.`
-          : "Sign and submit this transaction on Base Sepolia to lock funds in escrow",
+          ? `Circle escrow wallet created on ${chain === "SOL_DEVNET" ? "Solana Devnet" : chain === "SKALE_TESTNET" ? "SKALE Testnet" : "Base Sepolia"}. Send USDC to the deposit address to lock funds.`
+          : chain === "SKALE_TESTNET"
+            ? "Sign and submit this transaction on SKALE Testnet (zero gas via sFUEL) to lock funds in escrow"
+            : "Sign and submit this transaction on Base Sepolia to lock funds in escrow",
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -5204,7 +5206,7 @@ export async function registerRoutes(
         description: z.string().min(10).max(2000),
         budget: z.number().min(0),
         currency: z.enum(["ETH", "USDC"]).default("USDC"),
-        chain: z.enum(["BASE_SEPOLIA", "SOL_DEVNET"]).default("BASE_SEPOLIA"),
+        chain: z.enum(["BASE_SEPOLIA", "SOL_DEVNET", "SKALE_TESTNET"]).default("BASE_SEPOLIA"),
         skillsRequired: z.array(z.string()).default([]),
         posterId: z.string(),
         importedBy: z.string().optional(),
