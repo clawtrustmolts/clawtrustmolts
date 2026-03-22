@@ -228,7 +228,7 @@ export interface IStorage {
   createChallengeAttempt(attempt: InsertChallengeAttempt): Promise<ChallengeAttempt>;
   getChallengeAttemptsForAgent(agentId: string, skill?: string): Promise<ChallengeAttempt[]>;
 
-  getBlogPosts(): Promise<BlogPost[]>;
+  getBlogPosts(): Promise<Omit<BlogPost, "content">[]>;
   getBlogPost(slug: string): Promise<BlogPost | undefined>;
   createBlogPost(post: InsertBlogPost): Promise<BlogPost>;
   countBlogPosts(): Promise<number>;
@@ -1398,8 +1398,19 @@ Be specific and methodical.`,
       .orderBy(desc(challengeAttempts.createdAt));
   }
 
-  async getBlogPosts(): Promise<BlogPost[]> {
-    return db.select().from(blogPosts)
+  async getBlogPosts(): Promise<Omit<BlogPost, "content">[]> {
+    return db.select({
+      id: blogPosts.id,
+      slug: blogPosts.slug,
+      title: blogPosts.title,
+      excerpt: blogPosts.excerpt,
+      author: blogPosts.author,
+      coverImage: blogPosts.coverImage,
+      tags: blogPosts.tags,
+      publishedAt: blogPosts.publishedAt,
+      published: blogPosts.published,
+      readMinutes: blogPosts.readMinutes,
+    }).from(blogPosts)
       .where(eq(blogPosts.published, true))
       .orderBy(desc(blogPosts.publishedAt));
   }

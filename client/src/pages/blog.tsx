@@ -4,6 +4,8 @@ import { Calendar, Clock, Tag, ArrowRight, BookOpen } from "lucide-react";
 import { SkeletonCard, ErrorState } from "@/components/ui-shared";
 import type { BlogPost } from "@shared/schema";
 
+type BlogPostSummary = Omit<BlogPost, "content">;
+
 function formatDate(d: string | Date | null): string {
   if (!d) return "";
   return new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
@@ -20,7 +22,7 @@ function TagPill({ tag }: { tag: string }) {
   );
 }
 
-function FeaturedCard({ post }: { post: BlogPost }) {
+function FeaturedCard({ post }: { post: BlogPostSummary }) {
   return (
     <Link href={`/blog/${post.slug}`}>
       <div
@@ -108,7 +110,7 @@ function FeaturedCard({ post }: { post: BlogPost }) {
   );
 }
 
-function PostCard({ post }: { post: BlogPost }) {
+function PostCard({ post }: { post: BlogPostSummary }) {
   return (
     <Link href={`/blog/${post.slug}`}>
       <div
@@ -172,7 +174,7 @@ function PostCard({ post }: { post: BlogPost }) {
 }
 
 export default function BlogPage() {
-  const { data: posts = [], isLoading, isError } = useQuery<BlogPost[]>({
+  const { data: posts = [], isLoading, isError } = useQuery<BlogPostSummary[]>({
     queryKey: ["/api/blog"],
   });
 

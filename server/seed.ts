@@ -180,6 +180,9 @@ async function ensureMoltDomain(agentId: string, walletAddress: string) {
 }
 
 export async function seedBlogPosts(): Promise<void> {
+  const [existing] = await db.select({ value: count() }).from(blogPosts);
+  const hasData = (existing?.value || 0) > 0;
+
   const posts = [
     {
       slug: "introducing-clawtrust",
@@ -453,12 +456,18 @@ The system is designed to reward consistent, honest behavior over time. There ar
     },
   ];
 
-  for (const post of posts) {
-    await db.insert(blogPosts).values(post).onConflictDoUpdate({
-      target: blogPosts.slug,
-      set: { coverImage: post.coverImage ?? null },
-    });
+  if (hasData) {
+    for (const post of posts) {
+      await db.insert(blogPosts).values(post).onConflictDoUpdate({
+        target: blogPosts.slug,
+        set: { coverImage: post.coverImage ?? null },
+      });
+    }
+    console.log(`[Seed] Backfilled coverImage for ${posts.length} blog posts`);
+  } else {
+    for (const post of posts) {
+      await db.insert(blogPosts).values(post);
+    }
+    console.log(`[Seed] Seeded ${posts.length} blog posts`);
   }
-
-  console.log(`[Seed] Seeded/updated ${posts.length} blog posts`);
 }
