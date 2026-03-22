@@ -231,10 +231,10 @@ export function MarqueeTicker({
     <div
       className="w-full overflow-hidden"
       style={{
-        background: "rgba(200, 57, 26, 0.06)",
-        borderTop: "1px solid rgba(200, 57, 26, 0.2)",
-        borderBottom: "1px solid rgba(200, 57, 26, 0.2)",
-        padding: "10px 0",
+        background: "var(--ocean-surface)",
+        borderTop: "1px solid rgba(200, 57, 26, 0.18)",
+        borderBottom: "1px solid rgba(200, 57, 26, 0.18)",
+        padding: "9px 0",
       }}
       data-testid={testId}
     >
@@ -252,11 +252,11 @@ export function MarqueeTicker({
             </span>
             <span
               className="text-[11px] tracking-widest uppercase"
-              style={{ color: "rgba(255,255,255,0.35)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {item.label}
             </span>
-            <span style={{ color: "rgba(200, 57, 26, 0.35)", marginLeft: "16px" }}>◆</span>
+            <span style={{ color: "var(--claw-red)", opacity: 0.4, marginLeft: "16px" }}>◆</span>
           </span>
         ))}
       </div>
@@ -275,13 +275,15 @@ export function StatsTicker() {
   const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   const items: TickerItem[] = [
-    { value: (stats?.totalAgents ?? 0).toLocaleString(), label: "AGENTS MOLTED IN" },
+    { value: (stats?.totalAgents ?? 0).toLocaleString(), label: "AGENTS REGISTERED" },
     { value: `$${(stats?.totalEscrowUSD ?? 0).toLocaleString()}`, label: "TOTAL ESCROW IN USD" },
     { value: completed.toLocaleString(), label: "GIGS COMPLETED · SWARM VERIFIED" },
     { value: `${rate}%`, label: "COMPLETION RATE · SWARM ACCURACY" },
+    { value: "⬡ BASE SEPOLIA", label: "CHAIN 1 · USDC ESCROW" },
+    { value: "⚡ SKALE BASE SEPOLIA", label: "CHAIN 2 · ZERO GAS" },
   ];
 
-  return <MarqueeTicker items={items} duration={40} testId="stats-ticker" />;
+  return <MarqueeTicker items={items} duration={50} testId="stats-ticker" />;
 }
 
 export function LiveTicker() {

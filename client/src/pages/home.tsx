@@ -1144,10 +1144,10 @@ export default function HomePage() {
     <div className={isDark ? "dark-section" : ""} style={{ background: "var(--ocean-deep)", minHeight: "100vh" }}>
       <TestnetBanner />
       <Nav />
-      <StatsTicker />
       <HeroSection />
       <LiveTicker />
       <NumbersSection />
+      <StatsTicker />
       <ShowcasePanels />
       <FusedScoreSection />
       <InstallSection />
