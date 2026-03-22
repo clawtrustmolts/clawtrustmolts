@@ -28,10 +28,26 @@ function FeaturedCard({ post }: { post: BlogPost }) {
         style={{ border: "1px solid rgba(232,84,10,0.25)", background: "var(--ocean-mid)" }}
         data-testid={`card-featured-post-${post.slug}`}
       >
-        <div
-          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-          style={{ background: "linear-gradient(135deg, rgba(232,84,10,0.06), transparent)" }}
-        />
+        {post.coverImage && (
+          <div className="relative w-full overflow-hidden" style={{ height: "240px" }}>
+            <img
+              src={post.coverImage}
+              alt={post.title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              data-testid={`img-featured-cover-${post.slug}`}
+            />
+            <div
+              className="absolute inset-0"
+              style={{ background: "linear-gradient(to bottom, transparent 30%, var(--ocean-mid) 100%)" }}
+            />
+          </div>
+        )}
+        {!post.coverImage && (
+          <div
+            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+            style={{ background: "linear-gradient(135deg, rgba(232,84,10,0.06), transparent)" }}
+          />
+        )}
         <div className="p-6 sm:p-8 relative z-10">
           <div className="flex items-center gap-2 mb-3">
             <span
@@ -100,10 +116,16 @@ function PostCard({ post }: { post: BlogPost }) {
         style={{ border: "1px solid rgba(200,57,26,0.2)", background: "var(--ocean-mid)" }}
         data-testid={`card-post-${post.slug}`}
       >
-        <div
-          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-sm"
-          style={{ background: "rgba(232,84,10,0.04)" }}
-        />
+        {post.coverImage && (
+          <div className="w-full overflow-hidden" style={{ height: "140px" }}>
+            <img
+              src={post.coverImage}
+              alt={post.title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              data-testid={`img-post-cover-${post.slug}`}
+            />
+          </div>
+        )}
         <div className="p-5 flex flex-col flex-1 relative">
           <div className="flex flex-wrap gap-1.5 mb-3">
             {(post.tags || []).slice(0, 3).map(tag => (

@@ -34,8 +34,8 @@ function renderMarkdown(content: string): string {
     if (!tableRows.length) return;
     const [header, , ...body] = tableRows;
     let t = `<div style="overflow-x:auto;margin:1.25rem 0"><table style="width:100%;border-collapse:collapse;font-size:13px">`;
-    t += `<thead><tr>${header.map(h => `<th style="text-align:left;padding:8px 12px;border-bottom:1px solid rgba(232,84,10,0.3);color:var(--claw-orange);font-family:var(--font-display);font-size:11px;letter-spacing:1px;text-transform:uppercase">${h.trim()}</th>`).join("")}</tr></thead>`;
-    t += `<tbody>${body.map((row, i) => `<tr style="border-bottom:1px solid rgba(200,57,26,0.1);background:${i % 2 === 0 ? "transparent" : "rgba(200,57,26,0.04)"}">${row.map(c => `<td style="padding:8px 12px;color:var(--text-muted);font-family:var(--font-mono);font-size:12px">${c.trim()}</td>`).join("")}</tr>`).join("")}</tbody>`;
+    t += `<thead><tr>${header.map(h => `<th style="text-align:left;padding:8px 12px;border-bottom:1px solid rgba(232,84,10,0.3);color:var(--claw-orange);font-family:var(--font-display);font-size:11px;letter-spacing:1px;text-transform:uppercase">${esc(h.trim())}</th>`).join("")}</tr></thead>`;
+    t += `<tbody>${body.map((row, i) => `<tr style="border-bottom:1px solid rgba(200,57,26,0.1);background:${i % 2 === 0 ? "transparent" : "rgba(200,57,26,0.04)"}">${row.map(c => `<td style="padding:8px 12px;color:var(--text-muted);font-family:var(--font-mono);font-size:12px">${processInline(c.trim())}</td>`).join("")}</tr>`).join("")}</tbody>`;
     t += `</table></div>`;
     html.push(t);
     tableRows = [];
@@ -161,6 +161,24 @@ export default function BlogPostPage() {
         </Link>
 
         <article>
+          {post.coverImage && (
+            <div
+              className="relative w-full rounded-sm overflow-hidden mb-8"
+              style={{ height: "280px" }}
+              data-testid="img-post-cover-hero"
+            >
+              <img
+                src={post.coverImage}
+                alt={post.title}
+                className="w-full h-full object-cover"
+              />
+              <div
+                className="absolute inset-0"
+                style={{ background: "linear-gradient(to bottom, transparent 40%, var(--ocean-deep) 100%)" }}
+              />
+            </div>
+          )}
+
           <header className="mb-8">
             <div className="flex flex-wrap gap-1.5 mb-4">
               {(post.tags || []).map(tag => (

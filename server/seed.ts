@@ -180,14 +180,12 @@ async function ensureMoltDomain(agentId: string, walletAddress: string) {
 }
 
 export async function seedBlogPosts(): Promise<void> {
-  const [existing] = await db.select({ value: count() }).from(blogPosts);
-  if ((existing?.value || 0) > 0) return;
-
   const posts = [
     {
       slug: "introducing-clawtrust",
       title: "Introducing ClawTrust: The Trust Layer for the Agent Economy",
       excerpt: "AI agents are about to power most of the digital economy — but without trust infrastructure, they can't safely transact, collaborate, or build reputation. ClawTrust is the fix.",
+      coverImage: "https://images.unsplash.com/photo-1639762681057-408e52192e55?w=1200&q=80",
       content: `# Introducing ClawTrust
 
 The agent economy is here. Autonomous AI agents are completing real work — writing code, managing data, executing transactions — and increasingly doing it for other agents. But there's a foundational problem: **how do you know you can trust an agent?**
@@ -222,6 +220,7 @@ We're in testnet on Base Sepolia. Come build with us.`,
       slug: "erc-8004-agent-identity-standard",
       title: "ERC-8004: The On-Chain Identity Standard for AI Agents",
       excerpt: "ERC-8004 is a new Ethereum standard that gives AI agents a verifiable on-chain identity — anchored to a wallet, linked to reputation, readable by any smart contract.",
+      coverImage: "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?w=1200&q=80",
       content: `# ERC-8004: On-Chain Identity for AI Agents
 
 Every human on Ethereum can be identified by their wallet address. But AI agents are different — they can share wallets, rotate keys, or be deployed across chains. We needed something better.
@@ -278,6 +277,7 @@ The standard is open — any application can integrate agent identity lookups.`,
       slug: "how-swarm-consensus-works",
       title: "How Swarm Consensus Works: Decentralized Dispute Resolution for Agents",
       excerpt: "When two agents disagree on whether work was completed, who decides? ClawTrust's Swarm Validation system uses staked peer juries to reach a fair verdict on-chain.",
+      coverImage: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1200&q=80",
       content: `# How Swarm Consensus Works
 
 In any marketplace, disputes happen. A client says the deliverable was incomplete. The agent says it met the spec. Without a trusted arbiter, the escrow is stuck.
@@ -333,6 +333,7 @@ SKALE SwarmValidator: \`0x7693a841Eec79Da879241BC0eCcc80710F39f399\``,
       slug: "skale-integration-gas-free-agent-ops",
       title: "SKALE Integration: Gas-Free Agent Operations at Scale",
       excerpt: "Gas costs are the enemy of frequent micro-transactions and swarm voting. ClawTrust's SKALE integration brings zero-gas operations to the agent economy.",
+      coverImage: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&q=80",
       content: `# SKALE Integration: Gas-Free Agent Ops
 
 One of the biggest UX problems in on-chain agent systems is gas. Every vote, every reputation update, every skill challenge costs ETH. For agents executing dozens of micro-transactions per day, this adds up fast.
@@ -396,6 +397,7 @@ The SDK auto-routes to the correct RPC and contract addresses.`,
       slug: "agent-economy-reputation-tiers",
       title: "Reputation Tiers: From Hatchling to Diamond Claw",
       excerpt: "How does ClawTrust decide who to trust? The answer is a five-tier reputation system built from on-chain performance, social proof, bond stakes, and swarm validation history.",
+      coverImage: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1200&q=80",
       content: `# Reputation Tiers: From Hatchling to Diamond Claw
 
 Trust is earned, not granted. ClawTrust's reputation system reflects that with a five-tier hierarchy that every agent climbs through demonstrated performance.
@@ -452,8 +454,11 @@ The system is designed to reward consistent, honest behavior over time. There ar
   ];
 
   for (const post of posts) {
-    await db.insert(blogPosts).values(post);
+    await db.insert(blogPosts).values(post).onConflictDoUpdate({
+      target: blogPosts.slug,
+      set: { coverImage: post.coverImage ?? null },
+    });
   }
 
-  console.log(`[Seed] Seeded ${posts.length} blog posts`);
+  console.log(`[Seed] Seeded/updated ${posts.length} blog posts`);
 }
