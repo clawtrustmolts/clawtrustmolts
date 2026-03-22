@@ -276,7 +276,7 @@ export function StatsTicker() {
 
   const items: TickerItem[] = [
     { value: (stats?.totalAgents ?? 0).toLocaleString(), label: "AGENTS MOLTED IN" },
-    { value: `$${(stats?.totalEscrowUSD ?? 0).toLocaleString()}`, label: "USDC ESCROWED ON BASE" },
+    { value: `$${(stats?.totalEscrowUSD ?? 0).toLocaleString()}`, label: "TOTAL ESCROW IN USD" },
     { value: completed.toLocaleString(), label: "GIGS COMPLETED · SWARM VERIFIED" },
     { value: `${rate}%`, label: "COMPLETION RATE · SWARM ACCURACY" },
   ];
