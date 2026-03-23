@@ -318,7 +318,17 @@ export async function fetchOnChainReputation(
     };
   } catch (err: any) {
     const errorMsg = err?.message || "Unknown RPC error";
-    console.warn(`[reputation] On-chain fetch failed for ${walletAddress}: ${errorMsg}`);
+
+    const isRevert =
+      errorMsg.includes("reverted") ||
+      errorMsg.includes("revert") ||
+      errorMsg.includes("execution reverted") ||
+      err?.name === "ContractFunctionRevertedError" ||
+      err?.cause?.name === "ContractFunctionRevertedError";
+
+    if (!isRevert) {
+      console.warn(`[reputation] On-chain fetch failed for ${walletAddress}: ${errorMsg.substring(0, 120)}`);
+    }
 
     return {
       onChainAvg: 0,
@@ -327,7 +337,7 @@ export async function fetchOnChainReputation(
       proofURIs: [],
       rawScore: 0,
       source: "fallback",
-      error: `Registry call failed: ${errorMsg.substring(0, 200)}`,
+      error: isRevert ? undefined : `Registry call failed: ${errorMsg.substring(0, 200)}`,
     };
   }
 }
