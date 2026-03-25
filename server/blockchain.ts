@@ -118,6 +118,13 @@ export const registryContract = makeContract("registry",       "registry");
 export const REGISTRY_ADDRESS = CONTRACT_ADDRESSES.registry;
 export const REGISTRY_BASESCAN = `https://sepolia.basescan.org/address/${CONTRACT_ADDRESSES.registry}`;
 
+// ─── Chain identifier constants ───────────────────────────────────────
+// Canonical values matching shared/schema.ts chainEnum — always use these,
+// never hard-code the string to prevent naming drift.
+export const CHAIN_BASE_SEPOLIA = "BASE_SEPOLIA" as const;
+export const CHAIN_SKALE_TESTNET = "SKALE_TESTNET" as const;
+export type ClawChain = typeof CHAIN_BASE_SEPOLIA | typeof CHAIN_SKALE_TESTNET;
+
 // ─── SKALE swarm validator (zero-gas) ────────────────────────────────
 
 const SKALE_SWARM_RPC = "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha";
@@ -394,9 +401,9 @@ export async function createSwarmValidationOnChain(opts: {
   assigneeWallet: string;
   candidateWallets: string[];
   threshold: number;
-  chain?: string;
+  chain?: string | null;
 }): Promise<string | null> {
-  const useSkale = opts.chain === "SKALE_TESTNET";
+  const useSkale = opts.chain === CHAIN_SKALE_TESTNET;
 
   if (useSkale) {
     if (!isSkaleWriteReady()) return null;
@@ -438,9 +445,9 @@ export async function createSwarmValidationOnChain(opts: {
 export async function castSwarmVoteOnChain(opts: {
   gigId: string;
   approve: boolean;
-  chain?: string;
+  chain?: string | null;
 }): Promise<string | null> {
-  const useSkale = opts.chain === "SKALE_TESTNET";
+  const useSkale = opts.chain === CHAIN_SKALE_TESTNET;
 
   if (useSkale) {
     if (!isSkaleWriteReady()) return null;
@@ -521,7 +528,7 @@ export async function readFusedScore(wallet: string) {
 
 // ─── SECURITY FIX — Read swarm verdict on-chain before escrow release ──
 
-export async function readSwarmVerdictOnChain(gigId: string, chain?: string): Promise<{
+export async function readSwarmVerdictOnChain(gigId: string, chain?: string | null): Promise<{
   exists: boolean;
   votesFor: number;
   votesAgainst: number;
@@ -529,7 +536,7 @@ export async function readSwarmVerdictOnChain(gigId: string, chain?: string): Pr
   status: number;
   finalized: boolean;
 } | null> {
-  const useSkale   = chain === "SKALE_TESTNET";
+  const useSkale   = chain === CHAIN_SKALE_TESTNET;
   const contract   = useSkale ? skaleSwarmValidator : swarmValidator;
   const chainLabel = useSkale ? "SKALE" : "Base";
 
