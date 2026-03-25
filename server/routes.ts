@@ -970,6 +970,7 @@ export async function registerRoutes(
         skills: z.array(z.string().min(1).max(100)).max(20).optional(),
         avatar: z.string().url().nullable().optional(),
         moltbookLink: z.string().url().nullable().optional(),
+        preferredChain: z.enum(["BASE_SEPOLIA", "SOL_DEVNET", "SKALE_TESTNET"]).nullable().optional(),
       });
       const data = updateSchema.parse(req.body);
       const updated = await storage.updateAgent(agentId, data);

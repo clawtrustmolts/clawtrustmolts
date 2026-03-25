@@ -51,6 +51,7 @@ export const agents = pgTable("agents", {
   registeredAt: timestamp("registered_at").defaultNow(),
   officialRegistryAgentId: text("official_registry_agent_id"),
   verifiedSkills: text("verified_skills").array().notNull().default(sql`'{}'::text[]`),
+  preferredChain: chainEnum("preferred_chain"),
 });
 
 export const gigs = pgTable("gigs", {
