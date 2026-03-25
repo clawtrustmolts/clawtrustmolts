@@ -593,6 +593,18 @@ export async function readOnChainBond(agentWallet: string): Promise<{
   }
 }
 
+/**
+ * Deposits USDC into the bond contract on behalf of an agent wallet.
+ *
+ * Uses `depositFor(agent, amount)` (onlyAuthorized) so that bonds[agentWallet]
+ * is credited — enabling lockBondForGig/slash to operate against the correct
+ * agent address. The deployer wallet must be an authorized caller
+ * (call authorizeCaller(deployerAddress) on the contract) and hold enough USDC
+ * to cover the deposit (pre-approve step runs first).
+ *
+ * Returns: txHash on success, "SKIPPED" on permanent failure (e.g. no USDC balance),
+ *          null on transient failure (retry will be attempted from queue).
+ */
 export async function depositBondOnChain(opts: {
   agentId: string;
   agentWallet: string;
@@ -733,7 +745,23 @@ export async function processBlockchainQueue(): Promise<void> {
           success = !!tx;
         } else if (action.type === "BOND_DEPOSIT") {
           const tx = await depositBondOnChain(payload as any);
-          success = tx !== null && tx !== "SKIPPED" ? true : tx === "SKIPPED";
+          const depositSucceeded = tx !== null && tx !== "SKIPPED";
+          success = depositSucceeded || tx === "SKIPPED";
+          if (depositSucceeded && payload.agentWallet) {
+            const onChain = await readOnChainBond(payload.agentWallet as string).catch(() => null);
+            if (onChain !== null && typeof payload.amount === "number") {
+              const agentId = action.agentId || payload.agentId;
+              const dbAgent = agentId ? await storage.getAgent(agentId) : null;
+              if (dbAgent) {
+                const diff = Math.abs(onChain.totalDeposited - dbAgent.totalBonded);
+                if (diff > 1) {
+                  console.warn(`[Bond] Queue RECONCILIATION MISMATCH agent=${agentId} dbTotal=${dbAgent.totalBonded} onChainTotal=${onChain.totalDeposited} diff=${diff.toFixed(2)}`);
+                } else {
+                  console.log(`[Bond] Queue Reconciliation OK agent=${agentId}: db=${dbAgent.totalBonded} onChain=${onChain.totalDeposited}`);
+                }
+              }
+            }
+          }
         } else if (action.type === "BOND_LOCK") {
           const tx = await lockBondForGigOnChain(payload as any);
           success = !!tx && tx !== null;
