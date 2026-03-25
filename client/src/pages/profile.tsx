@@ -254,6 +254,7 @@ export default function ProfilePage() {
   const [editSkillInput, setEditSkillInput] = useState("");
   const [editAvatar, setEditAvatar] = useState("");
   const [editMoltbookLink, setEditMoltbookLink] = useState("");
+  const [editPreferredChain, setEditPreferredChain] = useState<string | null>(null);
 
   const myAgentId = localStorage.getItem("agentId");
 
@@ -263,6 +264,7 @@ export default function ProfilePage() {
       if (editAvatar.startsWith("https://")) payload.avatar = editAvatar;
       else if (editAvatar === "") payload.avatar = null;
       if (editMoltbookLink) payload.moltbookLink = editMoltbookLink;
+      if (editPreferredChain !== null) payload.preferredChain = editPreferredChain || null;
       const res = await apiRequest("PATCH", `/api/agents/${agentId}`, payload, { "x-agent-id": myAgentId || "" });
       return res.json();
     },
@@ -656,6 +658,7 @@ export default function ProfilePage() {
                         setEditSkills((agent as any).skills || []);
                         setEditAvatar((agent as any).avatar || "");
                         setEditMoltbookLink((agent as any).moltbookLink || "");
+                        setEditPreferredChain((agent as any).preferredChain ?? null);
                         setShowEditModal(true);
                       }}
                       className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center transition-colors hover:opacity-80"
@@ -716,7 +719,7 @@ export default function ProfilePage() {
                       );
                     })()}
                     <TierBadge tier={tier} size="sm" />
-                    <ChainBadge chain="BASE_SEPOLIA" />
+                    <ChainBadge chain={agent.preferredChain || "BASE_SEPOLIA"} />
                     <span
                       className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
                       style={{ background: `${autoStatus.color}12`, color: autoStatus.color, border: `1px solid ${autoStatus.color}30` }}
@@ -736,6 +739,21 @@ export default function ProfilePage() {
                         <Shield className="w-2.5 h-2.5" /> ERC-8004 ↗
                       </a>
                     )}
+                    {(() => {
+                      const onBase = !!agent.erc8004TokenId || agent.preferredChain !== "SKALE_TESTNET";
+                      const onSkale = agent.preferredChain === "SKALE_TESTNET";
+                      return (
+                        <div className="inline-flex items-center rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }} data-testid="badge-chains-active">
+                          <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>ON</span>
+                          {onBase && (
+                            <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff" }} data-testid="badge-active-base">⬡ Base</span>
+                          )}
+                          {onSkale && (
+                            <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", borderLeft: onBase ? "1px solid rgba(255,255,255,0.06)" : "none" }} data-testid="badge-active-skale">⬡ SKALE</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center gap-3 text-[11px] font-mono pt-0.5">
                     {agent.registeredAt && (
@@ -1553,6 +1571,33 @@ export default function ProfilePage() {
                 placeholder="https://moltbook.xyz/agent/…"
                 data-testid="input-edit-moltbook-link"
               />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>Preferred Chain</label>
+              <div className="flex gap-2">
+                {[
+                  { value: "BASE_SEPOLIA", label: "⬡ Base Sepolia", color: "#6090ff", bg: "rgba(0,82,255,0.12)", border: "rgba(0,82,255,0.35)" },
+                  { value: "SKALE_TESTNET", label: "⬡ SKALE · Zero Gas", color: "#a78bfa", bg: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.35)" },
+                ].map((c) => {
+                  const active = (editPreferredChain ?? agent.preferredChain ?? "BASE_SEPOLIA") === c.value;
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => setEditPreferredChain(c.value)}
+                      className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-sm text-[11px] font-mono transition-colors"
+                      style={{
+                        background: active ? c.bg : "rgba(0,0,0,0.25)",
+                        color: active ? c.color : "var(--text-muted)",
+                        border: active ? `1px solid ${c.border}` : "1px solid rgba(232,84,10,0.15)",
+                      }}
+                      data-testid={`button-preferred-chain-${c.value.toLowerCase()}`}
+                    >
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div className="flex gap-2 pt-1">
               <button
