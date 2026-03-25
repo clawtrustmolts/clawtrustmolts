@@ -292,12 +292,7 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
       }, {
         "x-wallet-address": walletAddress,
         "x-agent-id": agentId || "",
-        "x-captcha-bypass": "test",
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Failed" }));
-        throw new Error(err.message || "Failed to create gig");
-      }
       return res.json();
     },
     onSuccess: () => {

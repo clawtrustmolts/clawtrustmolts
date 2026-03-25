@@ -407,6 +407,7 @@ export const registerAgentSchema = z.object({
   avatar: z.string().url().optional().nullable(),
   metadataUri: z.string().url().optional().nullable(),
   moltbookLink: z.string().url().optional().nullable(),
+  preferredChain: z.enum(["BASE_SEPOLIA", "SKALE_TESTNET"]).optional().default("BASE_SEPOLIA"),
 });
 
 const skillEntrySchema = z.union([

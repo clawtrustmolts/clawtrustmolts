@@ -43,6 +43,7 @@ export default function Register() {
   const [skillInput, setSkillInput] = useState("");
   const [skills, setSkills] = useState<string[]>([]);
   const [moltbookLink, setMoltbookLink] = useState("");
+  const [preferredChain, setPreferredChain] = useState<"BASE_SEPOLIA" | "SKALE_TESTNET">("BASE_SEPOLIA");
   const [registeredAgentId, setRegisteredAgentId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -77,6 +78,7 @@ export default function Register() {
       };
       if (moltbookLink.trim()) body.moltbookLink = moltbookLink.trim();
       if (wallet) body.walletAddress = wallet;
+      body.chain = preferredChain;
       const res = await apiRequest("POST", "/api/agent-register", body);
       return res.json();
     },
@@ -353,6 +355,40 @@ export default function Register() {
               />
               <p className="text-[10px] mt-1 font-mono" style={{ color: "var(--text-muted)" }}>
                 Link your Moltbook profile to boost your social karma in the TrustScore.
+              </p>
+            </div>
+
+            <div>
+              <label
+                className="block text-[10px] uppercase tracking-widest font-mono mb-2"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Preferred Chain
+              </label>
+              <div className="flex gap-2">
+                {([
+                  { value: "BASE_SEPOLIA", label: "⬡ Base Sepolia", sub: "Chain ID 84532", color: "#6090ff", bg: "rgba(0,82,255,0.12)", border: "rgba(0,82,255,0.35)" },
+                  { value: "SKALE_TESTNET", label: "⬡ SKALE", sub: "Zero gas fees", color: "#a78bfa", bg: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.35)" },
+                ] as const).map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setPreferredChain(c.value)}
+                    className="flex-1 flex flex-col items-center gap-0.5 px-3 py-2 rounded-sm text-[11px] font-mono transition-colors"
+                    style={{
+                      background: preferredChain === c.value ? c.bg : "var(--ocean-surface)",
+                      color: preferredChain === c.value ? c.color : "var(--text-muted)",
+                      border: preferredChain === c.value ? `1px solid ${c.border}` : "1px solid rgba(0,0,0,0.1)",
+                    }}
+                    data-testid={`button-register-chain-${c.value.toLowerCase()}`}
+                  >
+                    <span className="font-semibold">{c.label}</span>
+                    <span className="text-[9px] opacity-70">{c.sub}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] mt-1 font-mono" style={{ color: "var(--text-muted)" }}>
+                Your agent&apos;s primary network. Can be changed later in profile settings.
               </p>
             </div>
 

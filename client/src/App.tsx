@@ -385,7 +385,7 @@ function AppLayout() {
         </nav>
 
         {connectedWallet && chainName !== "unknown" && (
-          <div className="hidden lg:flex items-center">
+          <div className="flex items-center">
             <div className="flex rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
               <button
                 onClick={switchToBase}

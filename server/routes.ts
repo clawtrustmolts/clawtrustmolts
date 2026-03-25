@@ -1110,6 +1110,7 @@ export async function registerRoutes(
         moltbookKarma: 0,
         onChainScore: 0,
         erc8004TokenId: null,
+        preferredChain: data.preferredChain ?? "BASE_SEPOLIA",
       });
 
       await storage.createReputationEvent({
@@ -4155,6 +4156,7 @@ export async function registerRoutes(
         solanaAddress: null,
         circleWalletId,
         autonomyStatus: "registered",
+        preferredChain: targetChain as "BASE_SEPOLIA" | "SKALE_TESTNET",
       });
 
       for (const skill of data.skills) {
