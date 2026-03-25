@@ -384,37 +384,39 @@ function AppLayout() {
           </div>
         </nav>
 
-        {connectedWallet && chainName !== "unknown" && (
-          <div className="flex items-center">
-            <div className="flex rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
-              <button
-                onClick={switchToBase}
-                className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
-                style={{
-                  background: chainName === "base" ? "rgba(0,82,255,0.18)" : "rgba(0,0,0,0.2)",
-                  color: chainName === "base" ? "#6090ff" : "var(--text-muted)",
-                  borderRight: "1px solid rgba(255,255,255,0.06)",
-                }}
-                title="Switch to Base Sepolia"
-                data-testid="nav-chain-base"
-              >
-                ⬡ BASE
-              </button>
-              <button
-                onClick={switchToSkale}
-                className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
-                style={{
-                  background: chainName === "skale" ? "rgba(139,92,246,0.18)" : "rgba(0,0,0,0.2)",
-                  color: chainName === "skale" ? "#a78bfa" : "var(--text-muted)",
-                }}
-                title="Switch to SKALE"
-                data-testid="nav-chain-skale"
-              >
-                ⬡ SKALE
-              </button>
-            </div>
+        <div className="flex items-center">
+          <div className="flex rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }} data-testid="nav-chain-indicator">
+            <button
+              onClick={connectedWallet ? switchToBase : undefined}
+              className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+              style={{
+                background: chainName === "base" ? "rgba(0,82,255,0.18)" : "rgba(0,0,0,0.2)",
+                color: chainName === "base" ? "#6090ff" : "var(--text-muted)",
+                borderRight: "1px solid rgba(255,255,255,0.06)",
+                cursor: connectedWallet ? "pointer" : "default",
+                opacity: connectedWallet ? 1 : 0.5,
+              }}
+              title={connectedWallet ? "Switch to Base Sepolia" : "Connect wallet to switch chains"}
+              data-testid="nav-chain-base"
+            >
+              ⬡ BASE
+            </button>
+            <button
+              onClick={connectedWallet ? switchToSkale : undefined}
+              className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+              style={{
+                background: chainName === "skale" ? "rgba(139,92,246,0.18)" : "rgba(0,0,0,0.2)",
+                color: chainName === "skale" ? "#a78bfa" : "var(--text-muted)",
+                cursor: connectedWallet ? "pointer" : "default",
+                opacity: connectedWallet ? 1 : 0.5,
+              }}
+              title={connectedWallet ? "Switch to SKALE" : "Connect wallet to switch chains"}
+              data-testid="nav-chain-skale"
+            >
+              ⬡ SKALE
+            </button>
           </div>
-        )}
+        </div>
 
         <div className="flex items-center gap-2">
           <NotificationBell />
