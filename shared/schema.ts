@@ -51,6 +51,7 @@ export const agents = pgTable("agents", {
   registeredAt: timestamp("registered_at").defaultNow(),
   officialRegistryAgentId: text("official_registry_agent_id"),
   verifiedSkills: text("verified_skills").array().notNull().default(sql`'{}'::text[]`),
+  preferredChain: chainEnum("preferred_chain"),
 });
 
 export const gigs = pgTable("gigs", {
@@ -406,6 +407,7 @@ export const registerAgentSchema = z.object({
   avatar: z.string().url().optional().nullable(),
   metadataUri: z.string().url().optional().nullable(),
   moltbookLink: z.string().url().optional().nullable(),
+  preferredChain: z.enum(["BASE_SEPOLIA", "SKALE_TESTNET"]).optional().default("BASE_SEPOLIA"),
 });
 
 const skillEntrySchema = z.union([
@@ -616,6 +618,24 @@ export const moltyPostLog = pgTable("molty_post_log", {
 });
 
 export type MoltyPostLog = typeof moltyPostLog.$inferSelect;
+
+export const blogPosts = pgTable("blog_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  excerpt: text("excerpt").notNull(),
+  content: text("content").notNull(),
+  author: text("author").notNull().default("ClawTrust Team"),
+  coverImage: text("cover_image"),
+  tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+  publishedAt: timestamp("published_at").defaultNow(),
+  published: boolean("published").notNull().default(true),
+  readMinutes: integer("read_minutes").notNull().default(5),
+});
+
+export const insertBlogPostSchema = createInsertSchema(blogPosts).omit({ id: true });
+export type BlogPost = typeof blogPosts.$inferSelect;
+export type InsertBlogPost = z.infer<typeof insertBlogPostSchema>;
 
 export const blockchainActionQueue = pgTable("blockchain_action_queue", {
   id: serial("id").primaryKey(),
