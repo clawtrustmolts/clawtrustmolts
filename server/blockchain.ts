@@ -20,7 +20,7 @@ const CONTRACT_ADDRESSES = {
   escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x6B676744B8c4900F9999E9a9323728C160706126") as Address,
   swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as Address,
   repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as Address,
-  bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address,
+  bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x686E75159a7d65E4B32f7039c5AcB70454eadd7e") as Address,
   crew:                    (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address,
   registry:                (process.env.CLAW_TRUST_REGISTRY_ADDRESS       || "0x950aa4E7300e75e899d37879796868E2dd84A59c") as Address,
 };
@@ -599,6 +599,7 @@ export async function depositBondOnChain(opts: {
   amount: number;
 }): Promise<string | null> {
   if (!isWriteReady()) return null;
+  if (!isAddress(opts.agentWallet) || /^0x0+$/.test(opts.agentWallet)) return null;
   if (opts.amount <= 0) return null;
 
   const amountRaw = parseUnits(opts.amount.toFixed(6), 6);
@@ -614,20 +615,24 @@ export async function depositBondOnChain(opts: {
       })
     );
     await publicClient.waitForTransactionReceipt({ hash: approveTx });
-    console.log(`[Bond] depositOnChain: approved ${opts.amount} USDC to bond contract tx=${approveTx}`);
+    console.log(`[Bond] depositOnChain: approved ${opts.amount} USDC tx=${approveTx}`);
 
     const depositTx = await withNonceLock(() =>
-      (bondContract as any).write.deposit([amountRaw])
+      (bondContract as any).write.depositFor([
+        opts.agentWallet as Address,
+        amountRaw,
+      ])
     );
     await publicClient.waitForTransactionReceipt({ hash: depositTx });
-    console.log(`[Bond] depositOnChain agentId=${opts.agentId} wallet=${opts.agentWallet} amount=${opts.amount} tx=${depositTx}`);
+    console.log(`[Bond] depositOnChain: depositFor agent=${opts.agentWallet} amount=${opts.amount} tx=${depositTx}`);
     return depositTx;
   } catch (err: any) {
     const errMsg = err.message || "";
     const isPermanent =
       errMsg.includes("BelowMinDeposit") ||
       errMsg.includes("ERC20InsufficientBalance") ||
-      errMsg.includes("transfer amount exceeds balance") ||
+      errMsg.includes("ERC20: transfer amount exceeds balance") ||
+      errMsg.includes("InvalidAddress") ||
       errMsg.includes("insufficient funds");
     if (isPermanent) {
       console.warn(`[Bond] depositOnChain permanent skip agentId=${opts.agentId}: ${errMsg.slice(0, 120)}`);
@@ -645,9 +650,9 @@ export async function queueBlockchainAction(action: {
   agentId?: string;
   gigId?: string;
   payload: Record<string, any>;
-}): Promise<void> {
+}): Promise<number | null> {
   try {
-    await storage.queueBlockchainAction({
+    const row = await storage.queueBlockchainAction({
       type: action.type,
       agentId: action.agentId || null,
       gigId: action.gigId || null,
@@ -655,9 +660,19 @@ export async function queueBlockchainAction(action: {
       retries: 0,
       status: "pending",
     });
-    console.log(`[BlockchainQueue] Queued ${action.type} for retry`);
+    console.log(`[BlockchainQueue] Queued ${action.type} id=${row.id}`);
+    return row.id;
   } catch (err: any) {
     console.error("[BlockchainQueue] Failed to queue action:", err.message);
+    return null;
+  }
+}
+
+export async function markBlockchainActionComplete(actionId: number): Promise<void> {
+  try {
+    await storage.updateBlockchainAction(actionId, { status: "completed" });
+  } catch (err: any) {
+    console.warn(`[BlockchainQueue] Failed to mark action ${actionId} complete:`, err.message?.slice(0, 80));
   }
 }
 

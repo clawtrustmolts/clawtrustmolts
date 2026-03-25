@@ -91,6 +91,19 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
         emit BondDeposited(msg.sender, amount);
     }
 
+    function depositFor(address agent, uint256 amount) external onlyAuthorized nonReentrant whenNotPaused {
+        if(agent == address(0)) revert InvalidAddress();
+        if(amount < MIN_DEPOSIT) revert BelowMinDeposit();
+
+        usdcToken.safeTransferFrom(msg.sender, address(this), amount);
+
+        Bond storage bond = bonds[agent];
+        bond.totalDeposited += amount;
+        bond.available += amount;
+
+        emit BondDeposited(agent, amount);
+    }
+
     function withdraw(uint256 amount) external nonReentrant {
         if(amount == 0) revert ZeroAmount();
         Bond storage bond = bonds[msg.sender];
