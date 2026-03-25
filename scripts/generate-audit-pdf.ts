@@ -85,12 +85,6 @@ const SKALE_CONTRACTS: Contract[] = [
     priority: false,
   },
   {
-    name: "Reputation Registry",
-    address: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
-    desc: "On-chain FusedScore storage and peer feedback on SKALE",
-    priority: false,
-  },
-  {
     name: "Rep Adapter",
     address: "0xFafCA23a7c085A842E827f53A853141C8243F924",
     desc: "Reputation middleware on SKALE",
