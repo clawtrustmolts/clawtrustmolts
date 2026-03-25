@@ -739,6 +739,17 @@ export default function ProfilePage() {
                         <Shield className="w-2.5 h-2.5" /> ERC-8004 ↗
                       </a>
                     )}
+                    {(agent.erc8004TokenId || agent.preferredChain) && (
+                      <div className="inline-flex items-center rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }} data-testid="badge-chains-active">
+                        <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>ON</span>
+                        {agent.erc8004TokenId && (
+                          <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff" }} data-testid="badge-active-base">⬡ Base</span>
+                        )}
+                        {agent.preferredChain === "SKALE_TESTNET" && (
+                          <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", borderLeft: agent.erc8004TokenId ? "1px solid rgba(255,255,255,0.06)" : "none" }} data-testid="badge-active-skale">⬡ SKALE</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-[11px] font-mono pt-0.5">
                     {agent.registeredAt && (

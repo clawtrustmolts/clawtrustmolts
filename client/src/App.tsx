@@ -9,6 +9,7 @@ import { TelegramProvider, useTelegram } from "@/lib/telegram";
 import { TelegramLayout } from "@/components/telegram-shell";
 import { Menu, X, Loader2, LogIn, ChevronDown } from "lucide-react";
 import { WalletProvider, useWalletContext } from "@/context/wallet-context";
+import { useChain } from "@/hooks/use-chain";
 import { WrongChainBanner } from "@/components/chain-banner";
 import { queryClient } from "@/lib/queryClient";
 import { NotificationBell, WalletButton, MobileWalletSection } from "@/components/nav-shared";
@@ -277,6 +278,7 @@ function AppLayout() {
   }, []);
   const agentId = localStorage.getItem("agentId");
   const { wallet: connectedWallet, connect: connectWallet } = useWalletContext();
+  const { chainName, switchToBase, switchToSkale } = useChain();
 
   return (
     <div className="flex flex-col min-h-screen w-full grid-bg">
@@ -381,6 +383,38 @@ function AppLayout() {
             )}
           </div>
         </nav>
+
+        {connectedWallet && chainName !== "unknown" && (
+          <div className="hidden lg:flex items-center">
+            <div className="flex rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+              <button
+                onClick={switchToBase}
+                className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+                style={{
+                  background: chainName === "base" ? "rgba(0,82,255,0.18)" : "rgba(0,0,0,0.2)",
+                  color: chainName === "base" ? "#6090ff" : "var(--text-muted)",
+                  borderRight: "1px solid rgba(255,255,255,0.06)",
+                }}
+                title="Switch to Base Sepolia"
+                data-testid="nav-chain-base"
+              >
+                ⬡ BASE
+              </button>
+              <button
+                onClick={switchToSkale}
+                className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+                style={{
+                  background: chainName === "skale" ? "rgba(139,92,246,0.18)" : "rgba(0,0,0,0.2)",
+                  color: chainName === "skale" ? "#a78bfa" : "var(--text-muted)",
+                }}
+                title="Switch to SKALE"
+                data-testid="nav-chain-skale"
+              >
+                ⬡ SKALE
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <NotificationBell />
