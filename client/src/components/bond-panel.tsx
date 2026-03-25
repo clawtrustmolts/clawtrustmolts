@@ -221,11 +221,28 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
           )}
 
           {bondStatus.bondWalletAddress && (
-            <div className="flex items-center gap-1.5 mt-2">
-              <Wallet className="w-3 h-3 text-muted-foreground" />
-              <span className="text-[10px] font-mono text-muted-foreground truncate" data-testid="text-bond-wallet">
+            <div className="mt-3 pt-3 border-t space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Wallet className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                <span className="text-[10px] font-mono text-muted-foreground">CIRCLE BOND WALLET</span>
+              </div>
+              <span className="text-[10px] font-mono break-all block" style={{ color: "hsl(var(--foreground) / 0.7)" }} data-testid="text-bond-wallet">
                 {bondStatus.bondWalletAddress}
               </span>
+              <p className="text-[9px] font-mono text-muted-foreground leading-tight">
+                Deposit USDC to this Circle wallet address on Base Sepolia to fund your bond.
+              </p>
+            </div>
+          )}
+
+          {!bondStatus.bondWalletAddress && !bondStatus.circleConfigured && (
+            <div className="mt-3 pt-3 border-t">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-3 h-3 text-chart-3 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] font-mono text-muted-foreground leading-tight">
+                  Bond deposits go via the platform oracle wallet. Contact the operator to fund or bond directly via the Bond contract.
+                </p>
+              </div>
             </div>
           )}
 

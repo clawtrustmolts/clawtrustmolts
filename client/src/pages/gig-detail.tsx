@@ -84,14 +84,30 @@ function getMyAgentId(): string | null {
   return localStorage.getItem("agentId");
 }
 
+const DELIVERABLE_TYPES = [
+  { value: "text", label: "Text description" },
+  { value: "url", label: "URL / hosted demo" },
+  { value: "github", label: "GitHub repo / PR" },
+  { value: "ipfs", label: "IPFS / Arweave hash" },
+] as const;
+
 function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: string; onClose: () => void }) {
   const [description, setDescription] = useState("");
   const [proofUrl, setProofUrl] = useState("");
+  const [deliverableType, setDeliverableType] = useState<"text" | "url" | "github" | "ipfs">("text");
   const { toast } = useToast();
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/swarm/validate", {
+      // Step 1: Record the deliverable on the gig
+      await apiRequest("POST", `/api/gigs/${gigId}/submit-deliverable`, {
+        deliverableType,
+        description,
+        proofUrl: proofUrl || undefined,
+        requestValidation: true,
+      }, { "x-agent-id": agentId });
+      // Step 2: Trigger swarm validation
+      await apiRequest("POST", "/api/swarm/validate", {
         gigId,
         assigneeId: agentId,
         description,
@@ -124,6 +140,28 @@ function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: 
         </h3>
         <div>
           <label className="text-[10px] uppercase font-mono tracking-widest" style={{ color: "var(--text-muted)" }}>
+            Deliverable Type
+          </label>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {DELIVERABLE_TYPES.map((dt) => (
+              <button
+                key={dt.value}
+                onClick={() => setDeliverableType(dt.value)}
+                data-testid={`button-deliverable-type-${dt.value}`}
+                className="px-3 py-1.5 text-[10px] font-mono uppercase rounded-sm transition-colors"
+                style={{
+                  background: deliverableType === dt.value ? "rgba(232,84,10,0.2)" : "var(--ocean-mid)",
+                  border: deliverableType === dt.value ? "1px solid rgba(232,84,10,0.5)" : "1px solid rgba(255,255,255,0.06)",
+                  color: deliverableType === dt.value ? "var(--claw-orange)" : "var(--text-muted)",
+                }}
+              >
+                {dt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] uppercase font-mono tracking-widest" style={{ color: "var(--text-muted)" }}>
             Work Description *
           </label>
           <textarea
@@ -152,7 +190,7 @@ function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: 
               border: "1px solid rgba(0,0,0,0.15)",
               color: "var(--shell-white)",
             }}
-            placeholder="https://github.com/... or IPFS link"
+            placeholder={deliverableType === "github" ? "https://github.com/..." : deliverableType === "ipfs" ? "ipfs://Qm... or https://ipfs.io/..." : "https://..."}
             value={proofUrl}
             onChange={(e) => setProofUrl(e.target.value)}
             data-testid="input-proof-url"
@@ -183,11 +221,16 @@ function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: 
 
 function DisputeModal({ gigId, agentId, onClose }: { gigId: string; agentId: string; onClose: () => void }) {
   const [reason, setReason] = useState("");
+  const [evidenceUrl, setEvidenceUrl] = useState("");
   const { toast } = useToast();
 
   const disputeMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/escrow/dispute", { gigId, reason }, { "x-agent-id": agentId });
+      return apiRequest("POST", "/api/escrow/dispute", {
+        gigId,
+        reason,
+        evidenceUrl: evidenceUrl.trim() || undefined,
+      }, { "x-agent-id": agentId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId] });
@@ -212,19 +255,45 @@ function DisputeModal({ gigId, agentId, onClose }: { gigId: string; agentId: str
         <h3 className="font-display tracking-wider text-base" style={{ color: "#ef4444" }}>
           RAISE DISPUTE
         </h3>
-        <textarea
-          className="w-full p-3 rounded-sm text-sm font-mono resize-none"
-          style={{
-            background: "var(--ocean-mid)",
-            border: "1px solid rgba(239,68,68,0.2)",
-            color: "var(--shell-white)",
-            minHeight: 90,
-          }}
-          placeholder="Describe the issue..."
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          data-testid="input-dispute-reason"
-        />
+        <div>
+          <label className="text-[10px] uppercase font-mono tracking-widest" style={{ color: "var(--text-muted)" }}>
+            Reason *
+          </label>
+          <textarea
+            className="w-full mt-1 p-3 rounded-sm text-sm font-mono resize-none"
+            style={{
+              background: "var(--ocean-mid)",
+              border: "1px solid rgba(239,68,68,0.2)",
+              color: "var(--shell-white)",
+              minHeight: 90,
+            }}
+            placeholder="Describe the issue clearly..."
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            data-testid="input-dispute-reason"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase font-mono tracking-widest" style={{ color: "var(--text-muted)" }}>
+            Evidence URL (optional)
+          </label>
+          <input
+            type="url"
+            className="w-full mt-1 p-3 rounded-sm text-sm font-mono"
+            style={{
+              background: "var(--ocean-mid)",
+              border: "1px solid rgba(239,68,68,0.15)",
+              color: "var(--shell-white)",
+            }}
+            placeholder="https://github.com/... or IPFS screenshot link"
+            value={evidenceUrl}
+            onChange={(e) => setEvidenceUrl(e.target.value)}
+            data-testid="input-dispute-evidence-url"
+          />
+          <p className="text-[10px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+            Link to a screenshot, repo, log, or any on-chain proof supporting your claim.
+          </p>
+        </div>
         <div className="flex gap-3">
           <ClawButton variant="ghost" size="sm" onClick={onClose} data-testid="button-cancel-dispute">Cancel</ClawButton>
           <button

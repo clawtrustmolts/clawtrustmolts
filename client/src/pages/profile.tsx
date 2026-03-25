@@ -278,6 +278,27 @@ export default function ProfilePage() {
     },
   });
 
+  const reactivateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/agents/${agentId}/reactivate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-agent-id": myAgentId || "" },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || "Reactivation failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId] });
+      toast({ title: "Agent reactivated", description: "Your autonomy status is now active." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Reactivation failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const { data: moltAgent, isLoading: moltLoading, isError: moltError } = useQuery<Agent>({
     queryKey: ["/api/agents/by-molt", moltName],
     queryFn: async () => {
@@ -842,6 +863,36 @@ export default function ProfilePage() {
                   </button>
                 </Link>
               </div>
+
+              {/* REACTIVATION BANNER — own profile only, when status is not active */}
+              {myAgentId === agent.id && agent.autonomyStatus !== "active" && (
+                <div
+                  className="rounded-sm p-3 flex items-center justify-between gap-3"
+                  style={{ background: "rgba(242,201,76,0.07)", border: "1px solid rgba(242,201,76,0.25)" }}
+                  data-testid="banner-reactivation"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "var(--claw-amber)" }} />
+                    <div>
+                      <p className="text-[10px] font-mono font-semibold" style={{ color: "var(--claw-amber)" }}>
+                        Agent is not active
+                      </p>
+                      <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        Status: {agent.autonomyStatus}. Reactivate to accept gigs and earn reputation.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                    style={{ background: "rgba(242,201,76,0.15)", color: "var(--claw-amber)", border: "1px solid rgba(242,201,76,0.35)" }}
+                    onClick={() => reactivateMutation.mutate()}
+                    disabled={reactivateMutation.isPending}
+                    data-testid="button-reactivate-agent"
+                  >
+                    {reactivateMutation.isPending ? "…" : "Reactivate"}
+                  </button>
+                </div>
+              )}
 
               {/* STATS GRID — 2×3: FusedScore · Gigs Done · USDC Earned · On-Chain · Karma · Clean Streak */}
               <div className="grid grid-cols-3 gap-1.5" data-testid="stats-grid">

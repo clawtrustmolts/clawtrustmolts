@@ -225,7 +225,13 @@ function registrationRateLimit(req: Request, res: Response, next: NextFunction) 
 }
 
 function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
-  if (!process.env.TURNSTILE_SECRET_KEY) return next();
+  if (!process.env.TURNSTILE_SECRET_KEY) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[Security] CAPTCHA gate BLOCKED: TURNSTILE_SECRET_KEY is not set in production. Set it to enable registrations.");
+      return res.status(503).json({ message: "CAPTCHA service not configured. Platform registrations are temporarily disabled. Contact the operator." });
+    }
+    return next();
+  }
 
   const token = req.body?.captchaToken || req.headers["x-captcha-token"];
   if (!token) {
@@ -579,6 +585,45 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
+  });
+
+  // In-memory registration token store (supplements the REGISTRATION_API_KEY env var)
+  // Tokens survive server restarts only if persisted in REGISTRATION_API_KEY; issued tokens are session-scoped
+  const issuedRegistrationTokens: Map<string, { label: string; createdAt: Date; createdByWallet: string }> = new Map();
+
+  app.get("/api/admin/registration-tokens", adminAuthMiddleware, (req, res) => {
+    const tokens: Array<{ label: string; prefix: string; createdAt?: Date; primary: boolean; createdByWallet?: string }> = [];
+    const envKey = process.env.REGISTRATION_API_KEY;
+    if (envKey) {
+      tokens.push({ label: "Primary (REGISTRATION_API_KEY env var)", prefix: envKey.slice(0, 8) + "...", primary: true });
+    } else {
+      tokens.push({ label: "Primary key not set — no REGISTRATION_API_KEY env var", prefix: "(none)", primary: true });
+    }
+    for (const [token, info] of issuedRegistrationTokens) {
+      tokens.push({ label: info.label, prefix: token.slice(0, 12) + "...", createdAt: info.createdAt, primary: false, createdByWallet: info.createdByWallet });
+    }
+    res.json({ tokens, count: tokens.length, sessionTokensActive: issuedRegistrationTokens.size });
+  });
+
+  app.post("/api/admin/registration-tokens", adminAuthMiddleware, (req, res) => {
+    const { label = "Admin-issued token" } = req.body || {};
+    const token = `ct-reg-${crypto.randomBytes(20).toString("hex")}`;
+    const adminWallet = (req.headers["x-admin-wallet"] as string) || "unknown";
+    issuedRegistrationTokens.set(token, { label, createdAt: new Date(), createdByWallet: adminWallet });
+    console.log(`[Admin] Registration token issued by ${adminWallet}: label="${label}"`);
+    res.json({ token, label, message: "Store this token securely — it will not be shown again. Session-scoped: restarts clear it." });
+  });
+
+  app.delete("/api/admin/registration-tokens/:prefix", adminAuthMiddleware, (req, res) => {
+    const prefix = String(req.params.prefix);
+    let revoked = 0;
+    for (const [token] of issuedRegistrationTokens) {
+      if (token.startsWith(prefix)) {
+        issuedRegistrationTokens.delete(token);
+        revoked++;
+      }
+    }
+    res.json({ revoked, message: revoked > 0 ? `Revoked ${revoked} token(s)` : "No matching token found" });
   });
 
   app.get("/.well-known/agent-card.json", async (_req, res) => {
@@ -1000,6 +1045,32 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
       }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Agent self-reactivation — reset autonomy status to active and bump heartbeat
+  app.post("/api/agents/:id/reactivate", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only reactivate your own agent" });
+      }
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const updated = await storage.updateAgent(agentId, {
+        autonomyStatus: "active",
+        lastHeartbeat: new Date(),
+      });
+      console.log(`[Agent] Reactivated agent ${agentId} (${agent.handle})`);
+      res.json({
+        message: "Agent reactivated successfully. Send a heartbeat within 30 minutes to stay active.",
+        agentId,
+        handle: updated?.handle,
+        autonomyStatus: "active",
+        lastHeartbeat: updated?.lastHeartbeat,
+      });
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
@@ -2070,12 +2141,37 @@ export async function registerRoutes(
       if (!isCircleConfigured() && gig.assigneeId) {
         const assigneeAgent = await storage.getAgent(gig.assigneeId);
         if (assigneeAgent?.walletAddress && escrow.amount > 0) {
+          // Pre-flight: verify oracle wallet has sufficient USDC before releasing
+          try {
+            const oracleBalance = await getUSDCBalance(ORACLE_WALLET_ADDRESS);
+            const LOW_BALANCE_WARN = 5;
+            if (oracleBalance < escrow.amount) {
+              console.error(`[Escrow] Oracle wallet underfunded: ${oracleBalance.toFixed(2)} USDC available, ${escrow.amount} USDC needed for gig ${gigId}`);
+              await storage.updateEscrow(escrow.id, { status: "locked", circleTransactionId: null });
+              await storage.updateGigStatus(gigId, "pending_validation");
+              return res.status(503).json({
+                message: `Oracle wallet underfunded. Available: ${oracleBalance.toFixed(2)} USDC, needed: ${escrow.amount} USDC. Contact platform support to fund the oracle wallet.`,
+                oracleBalance,
+                required: escrow.amount,
+                oracleWallet: ORACLE_WALLET_ADDRESS,
+              });
+            }
+            if (oracleBalance < LOW_BALANCE_WARN) {
+              console.warn(`[Escrow] Oracle wallet low balance: ${oracleBalance.toFixed(2)} USDC (below ${LOW_BALANCE_WARN} USDC warning threshold)`);
+            }
+          } catch (balErr: any) {
+            console.warn("[Escrow] Could not check oracle balance before release:", balErr.message);
+          }
           try {
             onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, escrow.amount);
             await storage.updateEscrow(escrow.id, { releaseTxHash: onChainTxHash });
-            console.log(`[Escrow] On-chain USDC transfer: ${onChainTxHash}`);
+            console.log(`[Escrow] On-chain USDC transfer complete: ${onChainTxHash}`);
           } catch (txErr: any) {
-            console.error("[Escrow] On-chain USDC transfer failed (oracle may be unfunded):", txErr.message);
+            console.error("[Escrow] On-chain USDC transfer failed:", txErr.message);
+            // Revert status so the release can be retried
+            await storage.updateEscrow(escrow.id, { status: "locked" });
+            await storage.updateGigStatus(gigId, "pending_validation");
+            return res.status(503).json({ message: "On-chain payment failed. Escrow reverted to locked. Please retry or contact support.", detail: txErr.message });
           }
         }
       }
@@ -4065,7 +4161,9 @@ export async function registerRoutes(
     validate: { xForwardedForHeader: false },
     skip: (req) => {
       if (isTestBypass(req)) return true;
-      if (REGISTRATION_API_KEY && req.headers["x-registration-token"] === REGISTRATION_API_KEY) return true;
+      const incomingToken = req.headers["x-registration-token"] as string | undefined;
+      if (incomingToken && REGISTRATION_API_KEY && incomingToken === REGISTRATION_API_KEY) return true;
+      if (incomingToken && issuedRegistrationTokens.has(incomingToken)) return true;
       return false;
     },
     handler: async (req, res) => {
