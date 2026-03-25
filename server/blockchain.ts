@@ -9,6 +9,7 @@ import { baseSepolia } from "viem/chains";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { storage } from "./storage";
+import { syncScoreToSkale } from "./skale-chain";
 
 // ─── Config ──────────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ const CONTRACT_ADDRESSES = {
   escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x6B676744B8c4900F9999E9a9323728C160706126") as Address,
   swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as Address,
   repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as Address,
-  bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address,
+  bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x686E75159a7d65E4B32f7039c5AcB70454eadd7e") as Address,
   crew:                    (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address,
   registry:                (process.env.CLAW_TRUST_REGISTRY_ADDRESS       || "0x950aa4E7300e75e899d37879796868E2dd84A59c") as Address,
 };
@@ -117,6 +118,73 @@ export const registryContract = makeContract("registry",       "registry");
 
 export const REGISTRY_ADDRESS = CONTRACT_ADDRESSES.registry;
 export const REGISTRY_BASESCAN = `https://sepolia.basescan.org/address/${CONTRACT_ADDRESSES.registry}`;
+
+// ─── Chain identifier constants ───────────────────────────────────────
+// Canonical values matching shared/schema.ts chainEnum — always use these,
+// never hard-code the string to prevent naming drift.
+export const CHAIN_BASE_SEPOLIA = "BASE_SEPOLIA" as const;
+export const CHAIN_SKALE_TESTNET = "SKALE_TESTNET" as const;
+export type ClawChain = typeof CHAIN_BASE_SEPOLIA | typeof CHAIN_SKALE_TESTNET;
+
+// ─── SKALE swarm validator (zero-gas) ────────────────────────────────
+
+const SKALE_SWARM_RPC = "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha";
+const SKALE_SWARM_ADDRESS = (process.env.SKALE_SWARM_VALIDATOR_ADDRESS || "0x7693a841Eec79Da879241BC0eCcc80710F39f399") as Address;
+
+const skaleChainDef = {
+  id: 324705682,
+  name: "SKALE Base Sepolia",
+  nativeCurrency: { name: "sFUEL", symbol: "sFUEL", decimals: 18 },
+  rpcUrls: {
+    default: { http: [SKALE_SWARM_RPC] },
+    public:  { http: [SKALE_SWARM_RPC] },
+  },
+} as const;
+
+export const skaleSwarmPublicClient = createPublicClient({
+  chain: skaleChainDef as any,
+  transport: http(SKALE_SWARM_RPC, { timeout: 20_000, retryCount: 2, retryDelay: 1500 }),
+});
+
+function buildSkaleWalletClient() {
+  const raw = process.env.DEPLOYER_PRIVATE_KEY;
+  if (!raw || raw.trim() === "") return null;
+  try {
+    const pk = normalizePrivateKey(raw);
+    const account = privateKeyToAccount(pk);
+    return createWalletClient({
+      account,
+      chain: skaleChainDef as any,
+      transport: http(SKALE_SWARM_RPC, { timeout: 20_000, retryCount: 2, retryDelay: 1500 }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+const skaleWalletClient = buildSkaleWalletClient();
+
+export const skaleSwarmValidator = getContract({
+  address: SKALE_SWARM_ADDRESS,
+  abi: ABIS.swarmValidator,
+  client: { public: skaleSwarmPublicClient, wallet: skaleWalletClient ?? undefined },
+});
+
+// Separate nonce lock for SKALE chain (independent nonce sequence from Base Sepolia)
+let _skaleNonceLock: Promise<void> = Promise.resolve();
+async function withSkaleNonceLock(fn: () => any): Promise<any> {
+  const result = _skaleNonceLock.then(fn);
+  _skaleNonceLock = result.then(() => {}, () => {});
+  return result;
+}
+
+function isSkaleWriteReady(): boolean {
+  if (!skaleWalletClient) {
+    console.warn("[blockchain] skaleWalletClient not available — skipping SKALE on-chain write");
+    return false;
+  }
+  return true;
+}
 
 // ─── Utility ─────────────────────────────────────────────────────────
 
@@ -334,15 +402,27 @@ export async function createSwarmValidationOnChain(opts: {
   assigneeWallet: string;
   candidateWallets: string[];
   threshold: number;
+  chain?: string | null;
 }): Promise<string | null> {
-  if (!isWriteReady()) return null;
+  const useSkale = opts.chain === CHAIN_SKALE_TESTNET;
+
+  if (useSkale) {
+    if (!isSkaleWriteReady()) return null;
+  } else {
+    if (!isWriteReady()) return null;
+  }
 
   const gigIdBytes32 = ("0x" + Buffer.from(opts.gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
   const usdcAddress  = (process.env.USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e") as Address;
 
+  const contract  = useSkale ? skaleSwarmValidator : swarmValidator;
+  const waitClient = useSkale ? skaleSwarmPublicClient : publicClient;
+  const lockFn    = useSkale ? withSkaleNonceLock : withNonceLock;
+  const chainLabel = useSkale ? "SKALE" : "Base";
+
   try {
-    const txHash = await withNonceLock(() =>
-      (swarmValidator as any).write.createValidation([
+    const txHash = await lockFn(() =>
+      (contract as any).write.createValidation([
         gigIdBytes32,
         opts.posterWallet  as Address,
         opts.assigneeWallet as Address,
@@ -352,11 +432,11 @@ export async function createSwarmValidationOnChain(opts: {
         usdcAddress,
       ])
     );
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
-    console.log(`[Swarm] Validation created on-chain for gig ${opts.gigId} tx=${txHash}`);
+    await waitClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Swarm][${chainLabel}] Validation created on-chain for gig ${opts.gigId} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
-    console.error(`[Swarm] createValidation failed for gig ${opts.gigId}:`, err.message?.slice(0, 200));
+    console.error(`[Swarm][${chainLabel}] createValidation failed for gig ${opts.gigId}:`, err.message?.slice(0, 200));
     return null;
   }
 }
@@ -366,24 +446,36 @@ export async function createSwarmValidationOnChain(opts: {
 export async function castSwarmVoteOnChain(opts: {
   gigId: string;
   approve: boolean;
+  chain?: string | null;
 }): Promise<string | null> {
-  if (!isWriteReady()) return null;
+  const useSkale = opts.chain === CHAIN_SKALE_TESTNET;
+
+  if (useSkale) {
+    if (!isSkaleWriteReady()) return null;
+  } else {
+    if (!isWriteReady()) return null;
+  }
 
   const gigIdBytes32 = ("0x" + Buffer.from(opts.gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
   const voteType = opts.approve ? 1 : 2; // VoteType.Approve=1, Reject=2 (None=0)
 
+  const contract   = useSkale ? skaleSwarmValidator : swarmValidator;
+  const waitClient = useSkale ? skaleSwarmPublicClient : publicClient;
+  const lockFn     = useSkale ? withSkaleNonceLock : withNonceLock;
+  const chainLabel = useSkale ? "SKALE" : "Base";
+
   try {
-    const txHash = await withNonceLock(() =>
-      (swarmValidator as any).write.vote([
+    const txHash = await lockFn(() =>
+      (contract as any).write.vote([
         gigIdBytes32,
         voteType,
       ])
     );
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
-    console.log(`[Swarm] Vote ${opts.approve ? "Approve" : "Reject"} for gig ${opts.gigId} tx=${txHash}`);
+    await waitClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Swarm][${chainLabel}] Vote ${opts.approve ? "Approve" : "Reject"} for gig ${opts.gigId} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
-    console.error(`[Swarm] vote failed for gig ${opts.gigId}:`, err.message?.slice(0, 200));
+    console.error(`[Swarm][${chainLabel}] vote failed for gig ${opts.gigId}:`, err.message?.slice(0, 200));
     return null;
   }
 }
@@ -437,7 +529,7 @@ export async function readFusedScore(wallet: string) {
 
 // ─── SECURITY FIX — Read swarm verdict on-chain before escrow release ──
 
-export async function readSwarmVerdictOnChain(gigId: string): Promise<{
+export async function readSwarmVerdictOnChain(gigId: string, chain?: string | null): Promise<{
   exists: boolean;
   votesFor: number;
   votesAgainst: number;
@@ -445,15 +537,19 @@ export async function readSwarmVerdictOnChain(gigId: string): Promise<{
   status: number;
   finalized: boolean;
 } | null> {
+  const useSkale   = chain === CHAIN_SKALE_TESTNET;
+  const contract   = useSkale ? skaleSwarmValidator : swarmValidator;
+  const chainLabel = useSkale ? "SKALE" : "Base";
+
   const gigIdBytes32 = ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
 
   try {
-    const exists = await (swarmValidator as any).read.validationExists([gigIdBytes32]);
+    const exists = await (contract as any).read.validationExists([gigIdBytes32]);
     if (!exists) {
       return { exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, status: 0, finalized: false };
     }
 
-    const result = await (swarmValidator as any).read.aggregateVotes([gigIdBytes32]);
+    const result = await (contract as any).read.aggregateVotes([gigIdBytes32]);
     return {
       exists: true,
       votesFor: Number(result[0]),
@@ -463,7 +559,194 @@ export async function readSwarmVerdictOnChain(gigId: string): Promise<{
       finalized: Boolean(result[4]),
     };
   } catch (err: any) {
-    console.error(`[Swarm] readSwarmVerdictOnChain failed for gig ${gigId}:`, err.message?.slice(0, 200));
+    console.error(`[Swarm][${chainLabel}] readSwarmVerdictOnChain failed for gig ${gigId}:`, err.message?.slice(0, 200));
+    return null;
+  }
+}
+
+// ─── Bond contract on-chain functions ────────────────────────────────
+
+function gigIdToBytes32(gigId: string): `0x${string}` {
+  return ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
+}
+
+export async function updatePerformanceScoreOnChain(opts: {
+  agentWallet: string;
+  score: number;
+}): Promise<string | null> {
+  if (!isWriteReady()) return null;
+  if (!isAddress(opts.agentWallet) || /^0x0+$/.test(opts.agentWallet)) return null;
+
+  const clampedScore = Math.min(100, Math.max(0, Math.round(opts.score)));
+
+  try {
+    const txHash = await withNonceLock(() =>
+      (bondContract as any).write.updatePerformanceScore([
+        opts.agentWallet as Address,
+        BigInt(clampedScore),
+      ])
+    );
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Bond] updatePerformanceScore ${opts.agentWallet} => ${clampedScore} tx=${txHash}`);
+    return txHash;
+  } catch (err: any) {
+    const errMsg = err.message || "";
+    if (errMsg.includes("reverted") || errMsg.includes("ScoreOutOfRange") || errMsg.includes("NotAuthorizedCaller")) {
+      console.warn(`[Bond] updatePerformanceScore skipped for ${opts.agentWallet}: ${errMsg.slice(0, 120)}`);
+    } else {
+      console.error(`[Bond] updatePerformanceScore failed for ${opts.agentWallet}:`, errMsg.slice(0, 200));
+    }
+    return null;
+  }
+}
+
+export async function lockBondForGigOnChain(opts: {
+  agentWallet: string;
+  gigId: string;
+  amount: number;
+}): Promise<string | null> {
+  if (!isWriteReady()) return null;
+  if (!isAddress(opts.agentWallet) || /^0x0+$/.test(opts.agentWallet)) return null;
+  if (opts.amount <= 0) return null;
+
+  const gigIdBytes32 = gigIdToBytes32(opts.gigId);
+  const amountRaw = parseUnits(opts.amount.toFixed(6), 6);
+
+  try {
+    const txHash = await withNonceLock(() =>
+      (bondContract as any).write.lockBondForGig([
+        gigIdBytes32,
+        opts.agentWallet as Address,
+        amountRaw,
+      ])
+    );
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Bond] lockBondForGig gig=${opts.gigId} agent=${opts.agentWallet} amount=${opts.amount} tx=${txHash}`);
+    return txHash;
+  } catch (err: any) {
+    const errMsg = err.message || "";
+    const isPermanent =
+      errMsg.includes("InsufficientBond") ||
+      errMsg.includes("GigAlreadyExists") ||
+      errMsg.includes("ScoreTooLow") ||
+      errMsg.includes("ZeroAmount");
+    if (isPermanent) {
+      console.warn(`[Bond] lockBondForGig permanent skip gig=${opts.gigId}: ${errMsg.slice(0, 120)}`);
+      return "SKIPPED";
+    }
+    console.error(`[Bond] lockBondForGig failed for gig ${opts.gigId}:`, errMsg.slice(0, 200));
+    return null;
+  }
+}
+
+export async function slashBondOnChain(opts: {
+  gigId: string;
+}): Promise<string | null> {
+  if (!isWriteReady()) return null;
+
+  const gigIdBytes32 = gigIdToBytes32(opts.gigId);
+
+  try {
+    const txHash = await withNonceLock(() =>
+      (bondContract as any).write.adminFinalize([
+        gigIdBytes32,
+        false,
+      ])
+    );
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Bond] slashBondOnChain gig=${opts.gigId} tx=${txHash}`);
+    return txHash;
+  } catch (err: any) {
+    const errMsg = err.message || "";
+    const isPermanent =
+      errMsg.includes("GigNotFound") ||
+      errMsg.includes("GigAlreadyFinalized") ||
+      errMsg.includes("reverted");
+    if (isPermanent) {
+      console.warn(`[Bond] slashBondOnChain permanent skip gig=${opts.gigId}: ${errMsg.slice(0, 120)}`);
+      return "SKIPPED";
+    }
+    console.error(`[Bond] slashBondOnChain failed for gig ${opts.gigId}:`, errMsg.slice(0, 200));
+    return null;
+  }
+}
+
+export async function readOnChainBond(agentWallet: string): Promise<{
+  totalDeposited: number;
+  available: number;
+  locked: number;
+} | null> {
+  if (!isAddress(agentWallet) || /^0x0+$/.test(agentWallet)) return null;
+  try {
+    const result = await (bondContract as any).read.getBond([agentWallet as Address]);
+    return {
+      totalDeposited: Number(result[0]) / 1e6,
+      available: Number(result[1]) / 1e6,
+      locked: Number(result[2]) / 1e6,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deposits USDC into the bond contract on behalf of an agent wallet.
+ *
+ * Uses `depositFor(agent, amount)` (onlyAuthorized) so that bonds[agentWallet]
+ * is credited — enabling lockBondForGig/slash to operate against the correct
+ * agent address. The deployer wallet must be an authorized caller
+ * (call authorizeCaller(deployerAddress) on the contract) and hold enough USDC
+ * to cover the deposit (pre-approve step runs first).
+ *
+ * Returns: txHash on success, "SKIPPED" on permanent failure (e.g. no USDC balance),
+ *          null on transient failure (retry will be attempted from queue).
+ */
+export async function depositBondOnChain(opts: {
+  agentId: string;
+  agentWallet: string;
+  amount: number;
+}): Promise<string | null> {
+  if (!isWriteReady()) return null;
+  if (!isAddress(opts.agentWallet) || /^0x0+$/.test(opts.agentWallet)) return null;
+  if (opts.amount <= 0) return null;
+
+  const amountRaw = parseUnits(opts.amount.toFixed(6), 6);
+  const bondContractAddress = CONTRACT_ADDRESSES.bond;
+
+  try {
+    const approveTx = await withNonceLock(() =>
+      walletClient!.writeContract({
+        address: USDC_ADDRESS,
+        abi: USDC_ABI,
+        functionName: "approve",
+        args: [bondContractAddress, amountRaw],
+      })
+    );
+    await publicClient.waitForTransactionReceipt({ hash: approveTx });
+    console.log(`[Bond] depositOnChain: approved ${opts.amount} USDC tx=${approveTx}`);
+
+    const depositTx = await withNonceLock(() =>
+      (bondContract as any).write.depositFor([
+        opts.agentWallet as Address,
+        amountRaw,
+      ])
+    );
+    await publicClient.waitForTransactionReceipt({ hash: depositTx });
+    console.log(`[Bond] depositOnChain: depositFor agent=${opts.agentWallet} amount=${opts.amount} tx=${depositTx}`);
+    return depositTx;
+  } catch (err: any) {
+    const errMsg = err.message || "";
+    const isPermanent =
+      errMsg.includes("BelowMinDeposit") ||
+      errMsg.includes("ERC20InsufficientBalance") ||
+      errMsg.includes("ERC20: transfer amount exceeds balance") ||
+      errMsg.includes("InvalidAddress") ||
+      errMsg.includes("insufficient funds");
+    if (isPermanent) {
+      console.warn(`[Bond] depositOnChain permanent skip agentId=${opts.agentId}: ${errMsg.slice(0, 120)}`);
+      return "SKIPPED";
+    }
+    console.error(`[Bond] depositOnChain failed for agentId=${opts.agentId}:`, errMsg.slice(0, 200));
     return null;
   }
 }
@@ -471,13 +754,13 @@ export async function readSwarmVerdictOnChain(gigId: string): Promise<{
 // ─── FIX 11 — Retry queue ────────────────────────────────────────────
 
 export async function queueBlockchainAction(action: {
-  type: "MINT_PASSPORT" | "SET_MOLT_DOMAIN" | "UPDATE_REPUTATION" | "CREATE_VALIDATION" | "LOCK_ESCROW";
+  type: "MINT_PASSPORT" | "SET_MOLT_DOMAIN" | "UPDATE_REPUTATION" | "CREATE_VALIDATION" | "LOCK_ESCROW" | "BOND_DEPOSIT" | "BOND_LOCK" | "BOND_SLASH" | "BOND_PERF_SCORE" | "SKALE_REP_SYNC";
   agentId?: string;
   gigId?: string;
   payload: Record<string, any>;
-}): Promise<void> {
+}): Promise<number | null> {
   try {
-    await storage.queueBlockchainAction({
+    const row = await storage.queueBlockchainAction({
       type: action.type,
       agentId: action.agentId || null,
       gigId: action.gigId || null,
@@ -485,9 +768,19 @@ export async function queueBlockchainAction(action: {
       retries: 0,
       status: "pending",
     });
-    console.log(`[BlockchainQueue] Queued ${action.type} for retry`);
+    console.log(`[BlockchainQueue] Queued ${action.type} id=${row.id}`);
+    return row.id;
   } catch (err: any) {
     console.error("[BlockchainQueue] Failed to queue action:", err.message);
+    return null;
+  }
+}
+
+export async function markBlockchainActionComplete(actionId: number): Promise<void> {
+  try {
+    await storage.updateBlockchainAction(actionId, { status: "completed" });
+  } catch (err: any) {
+    console.warn(`[BlockchainQueue] Failed to mark action ${actionId} complete:`, err.message?.slice(0, 80));
   }
 }
 
@@ -541,11 +834,52 @@ export async function processBlockchainQueue(): Promise<void> {
           const tx = await updateReputationOnChain(payload as any);
           success = !!tx;
         } else if (action.type === "CREATE_VALIDATION") {
-          const tx = await createSwarmValidationOnChain(payload as any);
+          const tx = await createSwarmValidationOnChain({ ...(payload as any), chain: payload.chain });
           success = !!tx;
         } else if (action.type === "LOCK_ESCROW") {
           const tx = await lockEscrowOnChain(payload as any);
           success = !!tx;
+        } else if (action.type === "BOND_DEPOSIT") {
+          const tx = await depositBondOnChain(payload as any);
+          const depositSucceeded = tx !== null && tx !== "SKIPPED";
+          success = depositSucceeded || tx === "SKIPPED";
+          if (depositSucceeded && payload.agentWallet) {
+            const onChain = await readOnChainBond(payload.agentWallet as string).catch(() => null);
+            if (onChain !== null && typeof payload.amount === "number") {
+              const agentId = action.agentId || payload.agentId;
+              const dbAgent = agentId ? await storage.getAgent(agentId) : null;
+              if (dbAgent) {
+                const diff = Math.abs(onChain.totalDeposited - dbAgent.totalBonded);
+                if (diff > 1) {
+                  console.warn(`[Bond] Queue RECONCILIATION MISMATCH agent=${agentId} dbTotal=${dbAgent.totalBonded} onChainTotal=${onChain.totalDeposited} diff=${diff.toFixed(2)}`);
+                } else {
+                  console.log(`[Bond] Queue Reconciliation OK agent=${agentId}: db=${dbAgent.totalBonded} onChain=${onChain.totalDeposited}`);
+                }
+              }
+            }
+          }
+        } else if (action.type === "BOND_LOCK") {
+          const tx = await lockBondForGigOnChain(payload as any);
+          success = !!tx && tx !== null;
+        } else if (action.type === "BOND_SLASH") {
+          const tx = await slashBondOnChain(payload as any);
+          success = !!tx && tx !== null;
+        } else if (action.type === "BOND_PERF_SCORE") {
+          const tx = await updatePerformanceScoreOnChain(payload as any);
+          success = tx !== null;
+        } else if (action.type === "SKALE_REP_SYNC") {
+          const result = await syncScoreToSkale({
+            walletAddress: payload.walletAddress as string,
+            fusedScore:       Number(payload.fusedScore       || 0),
+            onChainScore:     Number(payload.onChainScore     || 0),
+            moltbookScore:    Number(payload.moltbookScore    || 0),
+            performanceScore: Number(payload.performanceScore || 0),
+            bondScore:        Number(payload.bondScore        || 0),
+          });
+          success = !("error" in result);
+          if (!success) {
+            console.error(`[BlockchainQueue] SKALE_REP_SYNC failed for ${payload.walletAddress}:`, (result as any).error);
+          }
         }
 
         if (success) {
@@ -644,6 +978,7 @@ const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address;
 const USDC_ABI = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
   "function balanceOf(address account) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
 ]);
 
 export async function transferUSDCOnChain(toAddress: string, amountUsdc: number): Promise<string> {
