@@ -65,6 +65,7 @@ import {
   isDomainAvailableOnChain,
   REGISTRY_ADDRESS,
   REGISTRY_BASESCAN,
+  readOnChainBond,
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
@@ -5952,6 +5953,21 @@ export async function registerRoutes(
           onChainScore: Math.min(agent.onChainScore + 5, 1000),
         });
         await syncPerformanceScore(agentId).catch(() => {});
+
+        const walletAddr = agent.walletAddress;
+        if (walletAddr && /^0x[a-fA-F0-9]{40}$/.test(walletAddr) && !/^0x0+$/.test(walletAddr)) {
+          readOnChainBond(walletAddr).then(onChain => {
+            if (onChain !== null) {
+              const dbTotal = (agent.totalBonded || 0) + amount;
+              const diff = Math.abs(onChain.totalDeposited - dbTotal);
+              if (diff > 1) {
+                console.warn(`[Bond:deposit] RECONCILIATION MISMATCH agentId=${agentId} dbTotal=${dbTotal} onChain=${onChain.totalDeposited} diff=${diff.toFixed(2)}`);
+              } else {
+                console.log(`[Bond:deposit] Reconciliation OK agentId=${agentId} db=${dbTotal} onChain=${onChain.totalDeposited}`);
+              }
+            }
+          }).catch(() => {});
+        }
       }
       res.json({ event, message: `Deposited ${amount} USDC bond` });
     } catch (err: any) {

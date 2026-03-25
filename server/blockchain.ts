@@ -468,10 +468,135 @@ export async function readSwarmVerdictOnChain(gigId: string): Promise<{
   }
 }
 
+// ─── Bond contract on-chain functions ────────────────────────────────
+
+function gigIdToBytes32(gigId: string): `0x${string}` {
+  return ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
+}
+
+export async function updatePerformanceScoreOnChain(opts: {
+  agentWallet: string;
+  score: number;
+}): Promise<string | null> {
+  if (!isWriteReady()) return null;
+  if (!isAddress(opts.agentWallet) || /^0x0+$/.test(opts.agentWallet)) return null;
+
+  const clampedScore = Math.min(100, Math.max(0, Math.round(opts.score)));
+
+  try {
+    const txHash = await withNonceLock(() =>
+      (bondContract as any).write.updatePerformanceScore([
+        opts.agentWallet as Address,
+        BigInt(clampedScore),
+      ])
+    );
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Bond] updatePerformanceScore ${opts.agentWallet} => ${clampedScore} tx=${txHash}`);
+    return txHash;
+  } catch (err: any) {
+    const errMsg = err.message || "";
+    if (errMsg.includes("reverted") || errMsg.includes("ScoreOutOfRange") || errMsg.includes("NotAuthorizedCaller")) {
+      console.warn(`[Bond] updatePerformanceScore skipped for ${opts.agentWallet}: ${errMsg.slice(0, 120)}`);
+    } else {
+      console.error(`[Bond] updatePerformanceScore failed for ${opts.agentWallet}:`, errMsg.slice(0, 200));
+    }
+    return null;
+  }
+}
+
+export async function lockBondForGigOnChain(opts: {
+  agentWallet: string;
+  gigId: string;
+  amount: number;
+}): Promise<string | null> {
+  if (!isWriteReady()) return null;
+  if (!isAddress(opts.agentWallet) || /^0x0+$/.test(opts.agentWallet)) return null;
+  if (opts.amount <= 0) return null;
+
+  const gigIdBytes32 = gigIdToBytes32(opts.gigId);
+  const amountRaw = parseUnits(opts.amount.toFixed(6), 6);
+
+  try {
+    const txHash = await withNonceLock(() =>
+      (bondContract as any).write.lockBondForGig([
+        gigIdBytes32,
+        opts.agentWallet as Address,
+        amountRaw,
+      ])
+    );
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Bond] lockBondForGig gig=${opts.gigId} agent=${opts.agentWallet} amount=${opts.amount} tx=${txHash}`);
+    return txHash;
+  } catch (err: any) {
+    const errMsg = err.message || "";
+    const isPermanent =
+      errMsg.includes("InsufficientBond") ||
+      errMsg.includes("GigAlreadyExists") ||
+      errMsg.includes("ScoreTooLow") ||
+      errMsg.includes("ZeroAmount");
+    if (isPermanent) {
+      console.warn(`[Bond] lockBondForGig permanent skip gig=${opts.gigId}: ${errMsg.slice(0, 120)}`);
+      return "SKIPPED";
+    }
+    console.error(`[Bond] lockBondForGig failed for gig ${opts.gigId}:`, errMsg.slice(0, 200));
+    return null;
+  }
+}
+
+export async function slashBondOnChain(opts: {
+  gigId: string;
+}): Promise<string | null> {
+  if (!isWriteReady()) return null;
+
+  const gigIdBytes32 = gigIdToBytes32(opts.gigId);
+
+  try {
+    const txHash = await withNonceLock(() =>
+      (bondContract as any).write.adminFinalize([
+        gigIdBytes32,
+        false,
+      ])
+    );
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Bond] slashBondOnChain gig=${opts.gigId} tx=${txHash}`);
+    return txHash;
+  } catch (err: any) {
+    const errMsg = err.message || "";
+    const isPermanent =
+      errMsg.includes("GigNotFound") ||
+      errMsg.includes("GigAlreadyFinalized") ||
+      errMsg.includes("reverted");
+    if (isPermanent) {
+      console.warn(`[Bond] slashBondOnChain permanent skip gig=${opts.gigId}: ${errMsg.slice(0, 120)}`);
+      return "SKIPPED";
+    }
+    console.error(`[Bond] slashBondOnChain failed for gig ${opts.gigId}:`, errMsg.slice(0, 200));
+    return null;
+  }
+}
+
+export async function readOnChainBond(agentWallet: string): Promise<{
+  totalDeposited: number;
+  available: number;
+  locked: number;
+} | null> {
+  if (!isAddress(agentWallet) || /^0x0+$/.test(agentWallet)) return null;
+  try {
+    const result = await (bondContract as any).read.getBond([agentWallet as Address]);
+    return {
+      totalDeposited: Number(result[0]) / 1e6,
+      available: Number(result[1]) / 1e6,
+      locked: Number(result[2]) / 1e6,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─── FIX 11 — Retry queue ────────────────────────────────────────────
 
 export async function queueBlockchainAction(action: {
-  type: "MINT_PASSPORT" | "SET_MOLT_DOMAIN" | "UPDATE_REPUTATION" | "CREATE_VALIDATION" | "LOCK_ESCROW";
+  type: "MINT_PASSPORT" | "SET_MOLT_DOMAIN" | "UPDATE_REPUTATION" | "CREATE_VALIDATION" | "LOCK_ESCROW" | "BOND_LOCK" | "BOND_SLASH" | "BOND_PERF_SCORE";
   agentId?: string;
   gigId?: string;
   payload: Record<string, any>;
@@ -546,6 +671,15 @@ export async function processBlockchainQueue(): Promise<void> {
         } else if (action.type === "LOCK_ESCROW") {
           const tx = await lockEscrowOnChain(payload as any);
           success = !!tx;
+        } else if (action.type === "BOND_LOCK") {
+          const tx = await lockBondForGigOnChain(payload as any);
+          success = !!tx && tx !== null;
+        } else if (action.type === "BOND_SLASH") {
+          const tx = await slashBondOnChain(payload as any);
+          success = !!tx && tx !== null;
+        } else if (action.type === "BOND_PERF_SCORE") {
+          const tx = await updatePerformanceScoreOnChain(payload as any);
+          success = tx !== null;
         }
 
         if (success) {
