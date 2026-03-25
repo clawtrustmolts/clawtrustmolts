@@ -273,10 +273,6 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
   const [bondRequired, setBondRequired] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const walletAddress = (() => {
-    try { return localStorage.getItem("walletAddress") || ""; } catch { return ""; }
-  })();
-
   const createMut = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/gigs", {
@@ -289,9 +285,6 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
         bondRequired: bondRequired ? parseFloat(bondRequired) : 0,
         posterId: agentId,
         status: "open",
-      }, {
-        "x-wallet-address": walletAddress,
-        "x-agent-id": agentId || "",
       });
       return res.json();
     },
