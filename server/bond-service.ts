@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import { createEscrowWallet, getWalletBalance, transferUSDC, isCircleConfigured, getWalletAddress } from "./circle-wallet";
 import type { Agent, BondEvent } from "@shared/schema";
 import { ON_CHAIN_WEIGHT, ECOSYSTEM_WEIGHT, PERFORMANCE_WEIGHT, BOND_RELIABILITY_WEIGHT, MAX_ON_CHAIN_SCORE, MAX_MOLTBOOK_KARMA, INACTIVITY_DECAY_THRESHOLD_DAYS, INACTIVITY_DECAY_PENALTY } from "./reputation";
-import { queueBlockchainAction, updatePerformanceScoreOnChain, lockBondForGigOnChain, slashBondOnChain, readOnChainBond } from "./blockchain";
+import { queueBlockchainAction, depositBondOnChain, updatePerformanceScoreOnChain, lockBondForGigOnChain, slashBondOnChain, readOnChainBond } from "./blockchain";
 
 const BOND_TIERS = {
   UNBONDED: { min: 0, max: 0 },
@@ -108,24 +108,33 @@ export async function depositBond(agentId: string, amount: number): Promise<Bond
   if (walletAddress && /^0x[a-fA-F0-9]{40}$/.test(walletAddress) && !/^0x0+$/.test(walletAddress)) {
     setImmediate(async () => {
       try {
-        const onChain = await readOnChainBond(walletAddress);
-        if (onChain !== null) {
-          const diff = Math.abs(onChain.totalDeposited - newTotal);
-          if (diff > 1) {
-            console.warn(`[Bond] RECONCILIATION MISMATCH agent=${agentId} wallet=${walletAddress} dbTotal=${newTotal} onChainTotal=${onChain.totalDeposited} diff=${diff.toFixed(2)}`);
-          } else {
-            console.log(`[Bond] Reconciliation OK agent=${agentId}: db=${newTotal} onChain=${onChain.totalDeposited}`);
+        const depositResult = await depositBondOnChain({ agentId, agentWallet: walletAddress, amount });
+        if (depositResult === null) {
+          await queueBlockchainAction({
+            type: "BOND_DEPOSIT",
+            agentId,
+            payload: { agentId, agentWallet: walletAddress, amount },
+          });
+          console.warn(`[Bond] depositOnChain failed for ${agentId} — queued BOND_DEPOSIT for retry`);
+        } else if (depositResult !== "SKIPPED") {
+          const onChain = await readOnChainBond(walletAddress);
+          if (onChain !== null) {
+            const diff = Math.abs(onChain.totalDeposited - newTotal);
+            if (diff > 1) {
+              console.warn(`[Bond] RECONCILIATION MISMATCH agent=${agentId} wallet=${walletAddress} dbTotal=${newTotal} onChainTotal=${onChain.totalDeposited} diff=${diff.toFixed(2)}`);
+            } else {
+              console.log(`[Bond] Reconciliation OK agent=${agentId}: db=${newTotal} onChain=${onChain.totalDeposited}`);
+            }
           }
         }
       } catch (err: any) {
-        console.warn(`[Bond] Reconciliation read failed for ${agentId}:`, err.message?.slice(0, 100));
+        console.warn(`[Bond] depositOnChain error for ${agentId}:`, err.message?.slice(0, 100));
+        await queueBlockchainAction({
+          type: "BOND_DEPOSIT",
+          agentId,
+          payload: { agentId, agentWallet: walletAddress, amount },
+        }).catch(() => {});
       }
-    });
-
-    await queueBlockchainAction({
-      type: "BOND_PERF_SCORE",
-      agentId,
-      payload: { agentWallet: walletAddress, score: 50 },
     });
   }
 

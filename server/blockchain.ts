@@ -593,10 +593,55 @@ export async function readOnChainBond(agentWallet: string): Promise<{
   }
 }
 
+export async function depositBondOnChain(opts: {
+  agentId: string;
+  agentWallet: string;
+  amount: number;
+}): Promise<string | null> {
+  if (!isWriteReady()) return null;
+  if (opts.amount <= 0) return null;
+
+  const amountRaw = parseUnits(opts.amount.toFixed(6), 6);
+  const bondContractAddress = CONTRACT_ADDRESSES.bond;
+
+  try {
+    const approveTx = await withNonceLock(() =>
+      walletClient!.writeContract({
+        address: USDC_ADDRESS,
+        abi: USDC_ABI,
+        functionName: "approve",
+        args: [bondContractAddress, amountRaw],
+      })
+    );
+    await publicClient.waitForTransactionReceipt({ hash: approveTx });
+    console.log(`[Bond] depositOnChain: approved ${opts.amount} USDC to bond contract tx=${approveTx}`);
+
+    const depositTx = await withNonceLock(() =>
+      (bondContract as any).write.deposit([amountRaw])
+    );
+    await publicClient.waitForTransactionReceipt({ hash: depositTx });
+    console.log(`[Bond] depositOnChain agentId=${opts.agentId} wallet=${opts.agentWallet} amount=${opts.amount} tx=${depositTx}`);
+    return depositTx;
+  } catch (err: any) {
+    const errMsg = err.message || "";
+    const isPermanent =
+      errMsg.includes("BelowMinDeposit") ||
+      errMsg.includes("ERC20InsufficientBalance") ||
+      errMsg.includes("transfer amount exceeds balance") ||
+      errMsg.includes("insufficient funds");
+    if (isPermanent) {
+      console.warn(`[Bond] depositOnChain permanent skip agentId=${opts.agentId}: ${errMsg.slice(0, 120)}`);
+      return "SKIPPED";
+    }
+    console.error(`[Bond] depositOnChain failed for agentId=${opts.agentId}:`, errMsg.slice(0, 200));
+    return null;
+  }
+}
+
 // ─── FIX 11 — Retry queue ────────────────────────────────────────────
 
 export async function queueBlockchainAction(action: {
-  type: "MINT_PASSPORT" | "SET_MOLT_DOMAIN" | "UPDATE_REPUTATION" | "CREATE_VALIDATION" | "LOCK_ESCROW" | "BOND_LOCK" | "BOND_SLASH" | "BOND_PERF_SCORE";
+  type: "MINT_PASSPORT" | "SET_MOLT_DOMAIN" | "UPDATE_REPUTATION" | "CREATE_VALIDATION" | "LOCK_ESCROW" | "BOND_DEPOSIT" | "BOND_LOCK" | "BOND_SLASH" | "BOND_PERF_SCORE";
   agentId?: string;
   gigId?: string;
   payload: Record<string, any>;
@@ -671,6 +716,9 @@ export async function processBlockchainQueue(): Promise<void> {
         } else if (action.type === "LOCK_ESCROW") {
           const tx = await lockEscrowOnChain(payload as any);
           success = !!tx;
+        } else if (action.type === "BOND_DEPOSIT") {
+          const tx = await depositBondOnChain(payload as any);
+          success = tx !== null && tx !== "SKIPPED" ? true : tx === "SKIPPED";
         } else if (action.type === "BOND_LOCK") {
           const tx = await lockBondForGigOnChain(payload as any);
           success = !!tx && tx !== null;
@@ -778,6 +826,7 @@ const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address;
 const USDC_ABI = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
   "function balanceOf(address account) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
 ]);
 
 export async function transferUSDCOnChain(toAddress: string, amountUsdc: number): Promise<string> {
