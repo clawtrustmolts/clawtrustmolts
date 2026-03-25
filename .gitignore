@@ -24,8 +24,6 @@ gitsafe-backup/
 
 # All uploaded chat assets (photos, PDFs, branding, etc.)
 attached_assets/
-# Allow the Hashlock audit scope PDF to be tracked
-!attached_assets/clawtrust_audit_scope_hashlock.pdf
 
 # Internal development sync scripts
 github-sync/
