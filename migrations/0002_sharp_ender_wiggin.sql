@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ADD COLUMN "preferred_chain" "chain";

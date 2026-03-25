@@ -15,6 +15,13 @@
       "when": 1774188495400,
       "tag": "0001_opposite_carmella_unuscione",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774465039897,
+      "tag": "0002_sharp_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }
