@@ -5,7 +5,8 @@ import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
 import { telegramDailyDigest, telegramBlogPost } from "./telegram-announcements";
 import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
-import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries, expireValidationOnChain } from "./blockchain";
+import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries, expireValidationOnChain, queueBlockchainAction } from "./blockchain";
+import { syncScoreToSkale } from "./skale-chain";
 import { isAddress } from "viem";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
@@ -96,13 +97,39 @@ async function runInactivityCheck() {
   }
 }
 
+// Dirty-flag cache: tracks the score snapshot from the last sync to avoid
+// pushing unchanged values on every cycle. Keyed by agent ID.
+interface ScoreSnapshot {
+  fusedScore: number;
+  onChainScore: number;
+  moltbookKarma: number;
+  performanceScore: number;
+  bondReliability: number;
+}
+const _lastSyncedScores = new Map<string, ScoreSnapshot>();
+
+function hasScoreChanged(agent: { id: string; fusedScore: number; onChainScore: number; moltbookKarma: number; performanceScore: number; bondReliability: number }): boolean {
+  const cached = _lastSyncedScores.get(agent.id);
+  if (!cached) return true;
+  return (
+    cached.fusedScore       !== agent.fusedScore       ||
+    cached.onChainScore     !== agent.onChainScore     ||
+    cached.moltbookKarma    !== agent.moltbookKarma    ||
+    cached.performanceScore !== agent.performanceScore ||
+    cached.bondReliability  !== agent.bondReliability
+  );
+}
+
 async function runScoreSync() {
   try {
     const agents = await storage.getAgents();
-    let synced = 0;
+    let baseUpdated = 0;
+    let skaleUpdated = 0;
 
     for (const agent of agents) {
-      if (isAddress(agent.walletAddress) && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
+      const hasValidWallet = isAddress(agent.walletAddress) && agent.walletAddress !== "0x0000000000000000000000000000000000000000";
+
+      if (hasValidWallet) {
         try {
           const liveOnChain = await fetchOnChainReputation(agent.walletAddress);
           if (liveOnChain.source === "live" && liveOnChain.rawScore !== agent.onChainScore) {
@@ -112,22 +139,74 @@ async function runScoreSync() {
       }
 
       await syncPerformanceScore(agent.id).catch(() => {});
-      synced++;
 
-      if (isAddress(agent.walletAddress) && agent.walletAddress !== "0x0000000000000000000000000000000000000000") {
-        const freshAgent = await storage.getAgent(agent.id);
-        updateReputationOnChain({
-          agentWallet: agent.walletAddress,
-          onChainScore: freshAgent?.onChainScore || 0,
-          moltbookKarma: freshAgent?.moltbookKarma || 0,
-          performanceScore: freshAgent?.performanceScore || 0,
-          bondScore: freshAgent?.bondReliability || 0,
+      if (!hasValidWallet) continue;
+
+      const freshAgent = await storage.getAgent(agent.id);
+      if (!freshAgent) continue;
+
+      if (!hasScoreChanged(freshAgent)) continue;
+
+      const repPayload = {
+        agentWallet:      freshAgent.walletAddress,
+        onChainScore:     freshAgent.onChainScore     || 0,
+        moltbookKarma:    freshAgent.moltbookKarma    || 0,
+        performanceScore: freshAgent.performanceScore || 0,
+        bondScore:        freshAgent.bondReliability  || 0,
+      };
+
+      // ─── Base Sepolia sync ─────────────────────────────────────────
+      const baseTx = await updateReputationOnChain(repPayload).catch(() => null);
+      if (baseTx !== null) {
+        baseUpdated++;
+      } else {
+        await queueBlockchainAction({
+          type: "UPDATE_REPUTATION",
+          agentId: freshAgent.id,
+          payload: repPayload,
         }).catch(() => {});
       }
+
+      // ─── SKALE sync (zero-gas) ─────────────────────────────────────
+      const skaleResult = await syncScoreToSkale({
+        walletAddress:    freshAgent.walletAddress,
+        fusedScore:       freshAgent.fusedScore       || 0,
+        onChainScore:     freshAgent.onChainScore     || 0,
+        moltbookScore:    freshAgent.moltbookKarma    || 0,
+        performanceScore: freshAgent.performanceScore || 0,
+        bondScore:        freshAgent.bondReliability  || 0,
+      }).catch((err: any) => ({ error: err?.message || "unknown" }));
+
+      if (!("error" in skaleResult)) {
+        skaleUpdated++;
+      } else {
+        await queueBlockchainAction({
+          type: "SKALE_REP_SYNC",
+          agentId: freshAgent.id,
+          payload: {
+            walletAddress:    freshAgent.walletAddress,
+            fusedScore:       freshAgent.fusedScore       || 0,
+            onChainScore:     freshAgent.onChainScore     || 0,
+            moltbookScore:    freshAgent.moltbookKarma    || 0,
+            performanceScore: freshAgent.performanceScore || 0,
+            bondScore:        freshAgent.bondReliability  || 0,
+          },
+        }).catch(() => {});
+      }
+
+      // Update dirty-flag cache on any attempted sync so we don't retry
+      // unchanged agents every cycle — even if on-chain failed and was queued.
+      _lastSyncedScores.set(freshAgent.id, {
+        fusedScore:       freshAgent.fusedScore,
+        onChainScore:     freshAgent.onChainScore,
+        moltbookKarma:    freshAgent.moltbookKarma,
+        performanceScore: freshAgent.performanceScore,
+        bondReliability:  freshAgent.bondReliability,
+      });
     }
 
-    if (synced > 0) {
-      console.log(`[Scheduler] Score sync: updated ${synced} agents`);
+    if (baseUpdated > 0 || skaleUpdated > 0) {
+      console.log(`[Scheduler] Score sync: updated ${baseUpdated} agents on Base, ${skaleUpdated} on SKALE`);
     }
   } catch (err: any) {
     console.error("[Scheduler] Score sync failed:", err.message);

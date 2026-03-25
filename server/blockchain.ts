@@ -9,6 +9,7 @@ import { baseSepolia } from "viem/chains";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { storage } from "./storage";
+import { syncScoreToSkale } from "./skale-chain";
 
 // ─── Config ──────────────────────────────────────────────────────────
 
@@ -753,7 +754,7 @@ export async function depositBondOnChain(opts: {
 // ─── FIX 11 — Retry queue ────────────────────────────────────────────
 
 export async function queueBlockchainAction(action: {
-  type: "MINT_PASSPORT" | "SET_MOLT_DOMAIN" | "UPDATE_REPUTATION" | "CREATE_VALIDATION" | "LOCK_ESCROW" | "BOND_DEPOSIT" | "BOND_LOCK" | "BOND_SLASH" | "BOND_PERF_SCORE";
+  type: "MINT_PASSPORT" | "SET_MOLT_DOMAIN" | "UPDATE_REPUTATION" | "CREATE_VALIDATION" | "LOCK_ESCROW" | "BOND_DEPOSIT" | "BOND_LOCK" | "BOND_SLASH" | "BOND_PERF_SCORE" | "SKALE_REP_SYNC";
   agentId?: string;
   gigId?: string;
   payload: Record<string, any>;
@@ -866,6 +867,19 @@ export async function processBlockchainQueue(): Promise<void> {
         } else if (action.type === "BOND_PERF_SCORE") {
           const tx = await updatePerformanceScoreOnChain(payload as any);
           success = tx !== null;
+        } else if (action.type === "SKALE_REP_SYNC") {
+          const result = await syncScoreToSkale({
+            walletAddress: payload.walletAddress as string,
+            fusedScore:       Number(payload.fusedScore       || 0),
+            onChainScore:     Number(payload.onChainScore     || 0),
+            moltbookScore:    Number(payload.moltbookScore    || 0),
+            performanceScore: Number(payload.performanceScore || 0),
+            bondScore:        Number(payload.bondScore        || 0),
+          });
+          success = !("error" in result);
+          if (!success) {
+            console.error(`[BlockchainQueue] SKALE_REP_SYNC failed for ${payload.walletAddress}:`, (result as any).error);
+          }
         }
 
         if (success) {
