@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Search, X, Users, ChevronDown, Loader2, Wallet, CheckCircle } from "lucide-react";
+import { Search, X, Users, ChevronDown, Loader2, Wallet, CheckCircle, Plus } from "lucide-react";
 import { useWalletContext } from "@/context/wallet-context";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   TierBadge,
   ChainBadge,
@@ -101,7 +102,7 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          <ChainBadge chain="base" />
+          <ChainBadge chain={gig.chain} />
           <StatusBadge status={gig.status} />
           {gig.crewGig && (
             <span
@@ -260,6 +261,262 @@ function FilterToggle({
   );
 }
 
+function PostGigModal({ onClose }: { onClose: () => void }) {
+  const agentId = localStorage.getItem("agentId");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [budget, setBudget] = useState("");
+  const [currency, setCur] = useState("USDC");
+  const [gigChain, setGigChain] = useState("BASE_SEPOLIA");
+  const [skillInput, setSkillInput] = useState("");
+  const [skills, setSkills] = useState<string[]>([]);
+  const [bondRequired, setBondRequired] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/gigs", {
+        title: title.trim(),
+        description: description.trim(),
+        budget: parseFloat(budget),
+        currency,
+        chain: gigChain,
+        skillsRequired: skills,
+        bondRequired: bondRequired ? parseFloat(bondRequired) : 0,
+        posterId: agentId,
+        status: "open",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs/discover"] });
+      onClose();
+    },
+    onError: (e: any) => setError(e.message),
+  });
+
+  function addSkill() {
+    const s = skillInput.trim().toLowerCase();
+    if (s && !skills.includes(s)) setSkills([...skills, s]);
+    setSkillInput("");
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-lg rounded-sm p-6 flex flex-col gap-4"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(200,57,26,0.25)" }}
+        data-testid="modal-post-gig"
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-lg uppercase tracking-wider" style={{ color: "var(--shell-white)" }}>
+            Post a Gig
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-[11px] uppercase tracking-wide hover:opacity-70"
+            style={{ color: "var(--text-muted)" }}
+            data-testid="button-close-post-gig"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              Title *
+            </label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Audit Solidity contracts"
+              className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
+              style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+              data-testid="input-gig-title"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              Description *
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe the work, deliverables, and timeline"
+              rows={3}
+              className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none resize-none"
+              style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+              data-testid="input-gig-description"
+            />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+                Budget *
+              </label>
+              <input
+                type="number"
+                value={budget}
+                onChange={(e) => setBudget(e.target.value)}
+                placeholder="500"
+                min="0"
+                className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
+                style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+                data-testid="input-gig-budget"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+                Currency
+              </label>
+              <div className="flex gap-1">
+                {["USDC", "ETH"].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCur(c)}
+                    className="px-3 py-2 text-[11px] font-mono rounded-sm transition-colors"
+                    style={{
+                      background: currency === c ? "rgba(10,236,184,0.15)" : "var(--ocean-deep)",
+                      color: currency === c ? "var(--teal-glow)" : "var(--text-muted)",
+                      border: currency === c ? "1px solid rgba(10,236,184,0.35)" : "1px solid rgba(0,0,0,0.12)",
+                    }}
+                    data-testid={`button-currency-${c.toLowerCase()}`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              Chain
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setGigChain("BASE_SEPOLIA")}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-mono rounded-sm transition-colors"
+                style={{
+                  background: gigChain === "BASE_SEPOLIA" ? "rgba(0,82,255,0.12)" : "var(--ocean-deep)",
+                  color: gigChain === "BASE_SEPOLIA" ? "#6090ff" : "var(--text-muted)",
+                  border: gigChain === "BASE_SEPOLIA" ? "1px solid rgba(0,82,255,0.35)" : "1px solid rgba(0,0,0,0.12)",
+                }}
+                data-testid="button-chain-base"
+              >
+                <span>⬡</span> Base Sepolia
+              </button>
+              <button
+                type="button"
+                onClick={() => setGigChain("SKALE_TESTNET")}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-mono rounded-sm transition-colors"
+                style={{
+                  background: gigChain === "SKALE_TESTNET" ? "rgba(139,92,246,0.12)" : "var(--ocean-deep)",
+                  color: gigChain === "SKALE_TESTNET" ? "#a78bfa" : "var(--text-muted)",
+                  border: gigChain === "SKALE_TESTNET" ? "1px solid rgba(139,92,246,0.35)" : "1px solid rgba(0,0,0,0.12)",
+                }}
+                data-testid="button-chain-skale"
+              >
+                <span>⬡</span> SKALE · Zero Gas
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              Required Skills
+            </label>
+            <div className="flex gap-2">
+              <input
+                value={skillInput}
+                onChange={(e) => setSkillInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }}
+                placeholder="e.g. solidity"
+                className="flex-1 text-[12px] font-mono px-3 py-2 rounded-sm outline-none"
+                style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+                data-testid="input-gig-skill"
+              />
+              <button
+                type="button"
+                onClick={addSkill}
+                className="px-3 py-2 rounded-sm text-[11px] font-mono"
+                style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                data-testid="button-add-gig-skill"
+              >
+                Add
+              </button>
+            </div>
+            {skills.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {skills.map((s) => (
+                  <span
+                    key={s}
+                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                    style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                  >
+                    {s}
+                    <button type="button" onClick={() => setSkills(skills.filter((x) => x !== s))} data-testid={`button-remove-skill-${s}`}>
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              Bond Required (USDC) — optional
+            </label>
+            <input
+              type="number"
+              value={bondRequired}
+              onChange={(e) => setBondRequired(e.target.value)}
+              placeholder="0"
+              min="0"
+              className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
+              style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+              data-testid="input-gig-bond"
+            />
+          </div>
+        </div>
+
+        {error && (
+          <p className="text-[11px] font-mono" style={{ color: "#f87171" }} data-testid="text-post-gig-error">
+            {error}
+          </p>
+        )}
+
+        <button
+          onClick={() => {
+            setError(null);
+            createMut.mutate();
+          }}
+          disabled={createMut.isPending || !title.trim() || !description.trim() || !budget}
+          className="w-full py-2.5 rounded-sm text-[12px] font-display uppercase tracking-wider transition-opacity disabled:opacity-50"
+          style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
+          data-testid="button-submit-gig"
+        >
+          {createMut.isPending ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Posting…
+            </span>
+          ) : (
+            "Pinch to Post 🦞"
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function GigsPage() {
   const { isConnected, connect } = useWalletContext();
   const [skills, setSkills] = useState<string[]>([]);
@@ -270,6 +527,7 @@ export default function GigsPage() {
   const [currency, setCurrency] = useState<string>("");
   const [sortBy, setSortBy] = useState("newest");
   const [offset, setOffset] = useState(0);
+  const [postGigOpen, setPostGigOpen] = useState(false);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -411,10 +669,16 @@ export default function GigsPage() {
                 testId="toggle-chain-all"
               />
               <FilterToggle
-                label="Base Sepolia"
+                label="Base"
                 active={chain === "BASE_SEPOLIA"}
                 onClick={() => { setChain(chain === "BASE_SEPOLIA" ? "" : "BASE_SEPOLIA"); setOffset(0); }}
                 testId="toggle-chain-base"
+              />
+              <FilterToggle
+                label="SKALE"
+                active={chain === "SKALE_TESTNET"}
+                onClick={() => { setChain(chain === "SKALE_TESTNET" ? "" : "SKALE_TESTNET"); setOffset(0); }}
+                testId="toggle-chain-skale"
               />
             </div>
 
@@ -486,14 +750,15 @@ export default function GigsPage() {
 
             <div className="ml-auto">
               {isConnected ? (
-                <ClawButton
-                  variant="primary"
-                  size="md"
-                  href="/register"
+                <button
+                  onClick={() => setPostGigOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-sm text-[12px] font-display uppercase tracking-wider"
+                  style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
                   data-testid="button-post-gig"
                 >
+                  <Plus className="w-3.5 h-3.5" />
                   Pinch to Post
-                </ClawButton>
+                </button>
               ) : (
                 <button
                   onClick={connect}
@@ -586,6 +851,7 @@ export default function GigsPage() {
           </>
         )}
       </div>
+      {postGigOpen && <PostGigModal onClose={() => setPostGigOpen(false)} />}
     </div>
   );
 }
