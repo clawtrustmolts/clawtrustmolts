@@ -118,6 +118,66 @@ export const registryContract = makeContract("registry",       "registry");
 export const REGISTRY_ADDRESS = CONTRACT_ADDRESSES.registry;
 export const REGISTRY_BASESCAN = `https://sepolia.basescan.org/address/${CONTRACT_ADDRESSES.registry}`;
 
+// ─── SKALE swarm validator (zero-gas) ────────────────────────────────
+
+const SKALE_SWARM_RPC = "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha";
+const SKALE_SWARM_ADDRESS = (process.env.SKALE_SWARM_VALIDATOR_ADDRESS || "0x7693a841Eec79Da879241BC0eCcc80710F39f399") as Address;
+
+const skaleChainDef = {
+  id: 324705682,
+  name: "SKALE Base Sepolia",
+  nativeCurrency: { name: "sFUEL", symbol: "sFUEL", decimals: 18 },
+  rpcUrls: {
+    default: { http: [SKALE_SWARM_RPC] },
+    public:  { http: [SKALE_SWARM_RPC] },
+  },
+} as const;
+
+export const skaleSwarmPublicClient = createPublicClient({
+  chain: skaleChainDef as any,
+  transport: http(SKALE_SWARM_RPC, { timeout: 20_000, retryCount: 2, retryDelay: 1500 }),
+});
+
+function buildSkaleWalletClient() {
+  const raw = process.env.DEPLOYER_PRIVATE_KEY;
+  if (!raw || raw.trim() === "") return null;
+  try {
+    const pk = normalizePrivateKey(raw);
+    const account = privateKeyToAccount(pk);
+    return createWalletClient({
+      account,
+      chain: skaleChainDef as any,
+      transport: http(SKALE_SWARM_RPC, { timeout: 20_000, retryCount: 2, retryDelay: 1500 }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+const skaleWalletClient = buildSkaleWalletClient();
+
+export const skaleSwarmValidator = getContract({
+  address: SKALE_SWARM_ADDRESS,
+  abi: ABIS.swarmValidator,
+  client: { public: skaleSwarmPublicClient, wallet: skaleWalletClient ?? undefined },
+});
+
+// Separate nonce lock for SKALE chain (independent nonce sequence from Base Sepolia)
+let _skaleNonceLock: Promise<void> = Promise.resolve();
+async function withSkaleNonceLock(fn: () => any): Promise<any> {
+  const result = _skaleNonceLock.then(fn);
+  _skaleNonceLock = result.then(() => {}, () => {});
+  return result;
+}
+
+function isSkaleWriteReady(): boolean {
+  if (!skaleWalletClient) {
+    console.warn("[blockchain] skaleWalletClient not available — skipping SKALE on-chain write");
+    return false;
+  }
+  return true;
+}
+
 // ─── Utility ─────────────────────────────────────────────────────────
 
 function isWriteReady(): boolean {
@@ -334,15 +394,27 @@ export async function createSwarmValidationOnChain(opts: {
   assigneeWallet: string;
   candidateWallets: string[];
   threshold: number;
+  chain?: string;
 }): Promise<string | null> {
-  if (!isWriteReady()) return null;
+  const useSkale = opts.chain === "SKALE_TESTNET";
+
+  if (useSkale) {
+    if (!isSkaleWriteReady()) return null;
+  } else {
+    if (!isWriteReady()) return null;
+  }
 
   const gigIdBytes32 = ("0x" + Buffer.from(opts.gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
   const usdcAddress  = (process.env.USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e") as Address;
 
+  const contract  = useSkale ? skaleSwarmValidator : swarmValidator;
+  const waitClient = useSkale ? skaleSwarmPublicClient : publicClient;
+  const lockFn    = useSkale ? withSkaleNonceLock : withNonceLock;
+  const chainLabel = useSkale ? "SKALE" : "Base";
+
   try {
-    const txHash = await withNonceLock(() =>
-      (swarmValidator as any).write.createValidation([
+    const txHash = await lockFn(() =>
+      (contract as any).write.createValidation([
         gigIdBytes32,
         opts.posterWallet  as Address,
         opts.assigneeWallet as Address,
@@ -352,11 +424,11 @@ export async function createSwarmValidationOnChain(opts: {
         usdcAddress,
       ])
     );
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
-    console.log(`[Swarm] Validation created on-chain for gig ${opts.gigId} tx=${txHash}`);
+    await waitClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Swarm][${chainLabel}] Validation created on-chain for gig ${opts.gigId} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
-    console.error(`[Swarm] createValidation failed for gig ${opts.gigId}:`, err.message?.slice(0, 200));
+    console.error(`[Swarm][${chainLabel}] createValidation failed for gig ${opts.gigId}:`, err.message?.slice(0, 200));
     return null;
   }
 }
@@ -366,24 +438,36 @@ export async function createSwarmValidationOnChain(opts: {
 export async function castSwarmVoteOnChain(opts: {
   gigId: string;
   approve: boolean;
+  chain?: string;
 }): Promise<string | null> {
-  if (!isWriteReady()) return null;
+  const useSkale = opts.chain === "SKALE_TESTNET";
+
+  if (useSkale) {
+    if (!isSkaleWriteReady()) return null;
+  } else {
+    if (!isWriteReady()) return null;
+  }
 
   const gigIdBytes32 = ("0x" + Buffer.from(opts.gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
   const voteType = opts.approve ? 1 : 2; // VoteType.Approve=1, Reject=2 (None=0)
 
+  const contract   = useSkale ? skaleSwarmValidator : swarmValidator;
+  const waitClient = useSkale ? skaleSwarmPublicClient : publicClient;
+  const lockFn     = useSkale ? withSkaleNonceLock : withNonceLock;
+  const chainLabel = useSkale ? "SKALE" : "Base";
+
   try {
-    const txHash = await withNonceLock(() =>
-      (swarmValidator as any).write.vote([
+    const txHash = await lockFn(() =>
+      (contract as any).write.vote([
         gigIdBytes32,
         voteType,
       ])
     );
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
-    console.log(`[Swarm] Vote ${opts.approve ? "Approve" : "Reject"} for gig ${opts.gigId} tx=${txHash}`);
+    await waitClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Swarm][${chainLabel}] Vote ${opts.approve ? "Approve" : "Reject"} for gig ${opts.gigId} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
-    console.error(`[Swarm] vote failed for gig ${opts.gigId}:`, err.message?.slice(0, 200));
+    console.error(`[Swarm][${chainLabel}] vote failed for gig ${opts.gigId}:`, err.message?.slice(0, 200));
     return null;
   }
 }
@@ -437,7 +521,7 @@ export async function readFusedScore(wallet: string) {
 
 // ─── SECURITY FIX — Read swarm verdict on-chain before escrow release ──
 
-export async function readSwarmVerdictOnChain(gigId: string): Promise<{
+export async function readSwarmVerdictOnChain(gigId: string, chain?: string): Promise<{
   exists: boolean;
   votesFor: number;
   votesAgainst: number;
@@ -445,15 +529,19 @@ export async function readSwarmVerdictOnChain(gigId: string): Promise<{
   status: number;
   finalized: boolean;
 } | null> {
+  const useSkale   = chain === "SKALE_TESTNET";
+  const contract   = useSkale ? skaleSwarmValidator : swarmValidator;
+  const chainLabel = useSkale ? "SKALE" : "Base";
+
   const gigIdBytes32 = ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
 
   try {
-    const exists = await (swarmValidator as any).read.validationExists([gigIdBytes32]);
+    const exists = await (contract as any).read.validationExists([gigIdBytes32]);
     if (!exists) {
       return { exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, status: 0, finalized: false };
     }
 
-    const result = await (swarmValidator as any).read.aggregateVotes([gigIdBytes32]);
+    const result = await (contract as any).read.aggregateVotes([gigIdBytes32]);
     return {
       exists: true,
       votesFor: Number(result[0]),
@@ -463,7 +551,7 @@ export async function readSwarmVerdictOnChain(gigId: string): Promise<{
       finalized: Boolean(result[4]),
     };
   } catch (err: any) {
-    console.error(`[Swarm] readSwarmVerdictOnChain failed for gig ${gigId}:`, err.message?.slice(0, 200));
+    console.error(`[Swarm][${chainLabel}] readSwarmVerdictOnChain failed for gig ${gigId}:`, err.message?.slice(0, 200));
     return null;
   }
 }
@@ -738,7 +826,7 @@ export async function processBlockchainQueue(): Promise<void> {
           const tx = await updateReputationOnChain(payload as any);
           success = !!tx;
         } else if (action.type === "CREATE_VALIDATION") {
-          const tx = await createSwarmValidationOnChain(payload as any);
+          const tx = await createSwarmValidationOnChain({ ...(payload as any), chain: payload.chain });
           success = !!tx;
         } else if (action.type === "LOCK_ESCROW") {
           const tx = await lockEscrowOnChain(payload as any);

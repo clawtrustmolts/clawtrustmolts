@@ -1779,7 +1779,7 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
-      const adminOnChainVerdict = await readSwarmVerdictOnChain(gigId);
+      const adminOnChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
       if (adminOnChainVerdict === null) {
         console.warn(`[Escrow] Admin-resolve: on-chain verdict check failed for gig ${gigId} — blocking as precaution`);
         return res.status(503).json({ message: "Unable to verify on-chain swarm state. Please try again." });
@@ -1977,7 +1977,7 @@ export async function registerRoutes(
       }
 
       // Check on-chain verdict; fall back to DB validation when on-chain is unavailable
-      const onChainVerdict = await readSwarmVerdictOnChain(gigId);
+      const onChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
       const dbValidation = await storage.getValidationByGig(gigId);
       const dbApproved = dbValidation?.status === "approved";
 
@@ -2380,6 +2380,7 @@ export async function registerRoutes(
           assigneeWallet: assigneeAgent?.walletAddress || posterAgent.walletAddress,
           candidateWallets: topAgents.map(a => a.walletAddress),
           threshold,
+          chain: gig.chain || undefined,
         }).catch(err => console.error("[Swarm] createValidation on-chain error:", err.message));
       }
 
@@ -2480,7 +2481,8 @@ export async function registerRoutes(
       const rewardAmount = validation.rewardPerValidator || 0;
       await storage.castVote({ validationId, voterId, vote, rewardAmount, reasoning: reasoning || null });
 
-      castSwarmVoteOnChain({ gigId: validation.gigId, approve: vote === "approve" })
+      const gigChain = gig?.chain || undefined;
+      castSwarmVoteOnChain({ gigId: validation.gigId, approve: vote === "approve", chain: gigChain })
         .catch(err => console.error("[Swarm] on-chain vote error:", err.message));
 
       const newFor = vote === "approve" ? validation.votesFor + 1 : validation.votesFor;
@@ -2504,7 +2506,7 @@ export async function registerRoutes(
 
         const escrow = await storage.getEscrowByGig(validation.gigId);
         if (escrow && escrow.status === "locked") {
-          const voteOnChainVerdict = await readSwarmVerdictOnChain(validation.gigId);
+          const voteOnChainVerdict = await readSwarmVerdictOnChain(validation.gigId, gigChain);
           let onChainGatePass = false;
           if (voteOnChainVerdict && voteOnChainVerdict.exists && voteOnChainVerdict.finalized && voteOnChainVerdict.status === 1) {
             onChainGatePass = true;
