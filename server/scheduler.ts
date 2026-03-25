@@ -156,53 +156,67 @@ async function runScoreSync() {
       };
 
       // ─── Base Sepolia sync ─────────────────────────────────────────
+      // Track whether this agent's Base sync is covered (direct or queued)
+      // so we only update the dirty-flag cache when the sync will actually happen.
+      let baseSyncCovered = false;
       const baseTx = await updateReputationOnChain(repPayload).catch(() => null);
       if (baseTx !== null) {
         baseUpdated++;
+        baseSyncCovered = true;
       } else {
-        await queueBlockchainAction({
+        const baseQueueId = await queueBlockchainAction({
           type: "UPDATE_REPUTATION",
           agentId: freshAgent.id,
           payload: repPayload,
-        }).catch(() => {});
+        }).catch(() => null);
+        if (baseQueueId !== null) {
+          baseSyncCovered = true;
+        } else {
+          console.warn(`[Scheduler] Score sync: failed to queue Base UPDATE_REPUTATION for agent ${freshAgent.id}`);
+        }
       }
 
       // ─── SKALE sync (zero-gas) ─────────────────────────────────────
-      const skaleResult = await syncScoreToSkale({
+      let skaleSyncCovered = false;
+      const skalePayload = {
         walletAddress:    freshAgent.walletAddress,
         fusedScore:       freshAgent.fusedScore       || 0,
         onChainScore:     freshAgent.onChainScore     || 0,
         moltbookScore:    freshAgent.moltbookKarma    || 0,
         performanceScore: freshAgent.performanceScore || 0,
         bondScore:        freshAgent.bondReliability  || 0,
-      }).catch((err: any) => ({ error: err?.message || "unknown" }));
+      };
+      const skaleResult = await syncScoreToSkale(skalePayload)
+        .catch((err: any) => ({ error: err?.message || "unknown" }));
 
       if (!("error" in skaleResult)) {
         skaleUpdated++;
+        skaleSyncCovered = true;
       } else {
-        await queueBlockchainAction({
+        const skaleQueueId = await queueBlockchainAction({
           type: "SKALE_REP_SYNC",
           agentId: freshAgent.id,
-          payload: {
-            walletAddress:    freshAgent.walletAddress,
-            fusedScore:       freshAgent.fusedScore       || 0,
-            onChainScore:     freshAgent.onChainScore     || 0,
-            moltbookScore:    freshAgent.moltbookKarma    || 0,
-            performanceScore: freshAgent.performanceScore || 0,
-            bondScore:        freshAgent.bondReliability  || 0,
-          },
-        }).catch(() => {});
+          payload: skalePayload,
+        }).catch(() => null);
+        if (skaleQueueId !== null) {
+          skaleSyncCovered = true;
+        } else {
+          console.warn(`[Scheduler] Score sync: failed to queue SKALE_REP_SYNC for agent ${freshAgent.id}`);
+        }
       }
 
-      // Update dirty-flag cache on any attempted sync so we don't retry
-      // unchanged agents every cycle — even if on-chain failed and was queued.
-      _lastSyncedScores.set(freshAgent.id, {
-        fusedScore:       freshAgent.fusedScore,
-        onChainScore:     freshAgent.onChainScore,
-        moltbookKarma:    freshAgent.moltbookKarma,
-        performanceScore: freshAgent.performanceScore,
-        bondReliability:  freshAgent.bondReliability,
-      });
+      // Only update the dirty-flag cache if at least one chain's sync is covered.
+      // If both direct sync and queue enqueue failed, leave the cache stale so the
+      // agent is retried on the next scheduler cycle.
+      if (baseSyncCovered || skaleSyncCovered) {
+        _lastSyncedScores.set(freshAgent.id, {
+          fusedScore:       freshAgent.fusedScore,
+          onChainScore:     freshAgent.onChainScore,
+          moltbookKarma:    freshAgent.moltbookKarma,
+          performanceScore: freshAgent.performanceScore,
+          bondReliability:  freshAgent.bondReliability,
+        });
+      }
     }
 
     if (baseUpdated > 0 || skaleUpdated > 0) {
