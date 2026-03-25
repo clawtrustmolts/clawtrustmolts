@@ -2,6 +2,7 @@ import { storage } from "./storage";
 import { createEscrowWallet, getWalletBalance, transferUSDC, isCircleConfigured, getWalletAddress } from "./circle-wallet";
 import type { Agent, BondEvent } from "@shared/schema";
 import { ON_CHAIN_WEIGHT, ECOSYSTEM_WEIGHT, PERFORMANCE_WEIGHT, BOND_RELIABILITY_WEIGHT, MAX_ON_CHAIN_SCORE, MAX_MOLTBOOK_KARMA, INACTIVITY_DECAY_THRESHOLD_DAYS, INACTIVITY_DECAY_PENALTY } from "./reputation";
+import { queueBlockchainAction, depositBondOnChain, updatePerformanceScoreOnChain, lockBondForGigOnChain, slashBondOnChain, readOnChainBond, markBlockchainActionComplete } from "./blockchain";
 
 const BOND_TIERS = {
   UNBONDED: { min: 0, max: 0 },
@@ -102,6 +103,41 @@ export async function depositBond(agentId: string, amount: number): Promise<Bond
     amount,
     reason: `Deposited ${amount} USDC bond`,
   });
+
+  const walletAddress = agent.walletAddress;
+  if (walletAddress && /^0x[a-fA-F0-9]{40}$/.test(walletAddress) && !/^0x0+$/.test(walletAddress)) {
+    const actionId = await queueBlockchainAction({
+      type: "BOND_DEPOSIT",
+      agentId,
+      payload: { agentId, agentWallet: walletAddress, amount },
+    });
+
+    setImmediate(async () => {
+      try {
+        const depositResult = await depositBondOnChain({ agentId, agentWallet: walletAddress, amount });
+        if (depositResult !== null) {
+          if (actionId !== null) {
+            await markBlockchainActionComplete(actionId);
+          }
+          if (depositResult !== "SKIPPED") {
+            const onChain = await readOnChainBond(walletAddress);
+            if (onChain !== null) {
+              const diff = Math.abs(onChain.totalDeposited - newTotal);
+              if (diff > 1) {
+                console.warn(`[Bond] RECONCILIATION MISMATCH agent=${agentId} wallet=${walletAddress} dbTotal=${newTotal} onChainTotal=${onChain.totalDeposited} diff=${diff.toFixed(2)}`);
+              } else {
+                console.log(`[Bond] Reconciliation OK agent=${agentId}: db=${newTotal} onChain=${onChain.totalDeposited}`);
+              }
+            }
+          }
+        } else {
+          console.warn(`[Bond] depositOnChain failed for ${agentId} — BOND_DEPOSIT queued id=${actionId} will retry`);
+        }
+      } catch (err: any) {
+        console.warn(`[Bond] depositOnChain error for ${agentId}:`, err.message?.slice(0, 100));
+      }
+    });
+  }
 
   console.log(`[Bond] Agent ${agentId} deposited ${amount} USDC. Total: ${newTotal}, Tier: ${newTier}`);
   return event;
@@ -266,6 +302,20 @@ export async function slashBond(agentId: string, gigId: string, reason: string):
     scoreAfter: Math.max(0, (agent.fusedScore ?? 0) - slashAmount * 0.1),
   });
 
+  const slashedAgent = await storage.getAgent(agentId);
+  const slashWallet = slashedAgent?.walletAddress;
+  if (slashWallet && /^0x[a-fA-F0-9]{40}$/.test(slashWallet) && !/^0x0+$/.test(slashWallet) && gigId) {
+    const slashResult = await slashBondOnChain({ gigId });
+    if (slashResult === null) {
+      await queueBlockchainAction({
+        type: "BOND_SLASH",
+        agentId,
+        gigId,
+        payload: { gigId },
+      });
+    }
+  }
+
   console.log(`[Bond] Agent ${agentId} slashed ${slashAmount.toFixed(2)} USDC for gig ${gigId}: ${reason}`);
   return event;
 }
@@ -413,6 +463,18 @@ export async function syncPerformanceScore(agentId: string): Promise<number> {
     fusedScore: Math.max(0, Math.min(100, fusedScore)),
   });
   console.log(`[Bond] Synced scores for ${agentId}: perf=${score}, bondRel=${bondReliability}, fused=${fusedScore}, disputeRate=${disputeRate.toFixed(2)}, repeatHireRate=${repeatHireRate.toFixed(2)}`);
+
+  if (agent.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress) && !/^0x0+$/.test(agent.walletAddress)) {
+    const tx = await updatePerformanceScoreOnChain({ agentWallet: agent.walletAddress, score });
+    if (tx === null) {
+      await queueBlockchainAction({
+        type: "BOND_PERF_SCORE",
+        agentId,
+        payload: { agentWallet: agent.walletAddress, score },
+      }).catch(() => {});
+    }
+  }
+
   return score;
 }
 
@@ -467,6 +529,21 @@ export async function lockBondForGig(agentId: string, gigId: string, bondRequire
   }
 
   await lockBond(agentId, bondRequired, gigId);
+
+  const freshAgent = await storage.getAgent(agentId);
+  const walletAddress = freshAgent?.walletAddress;
+  if (walletAddress && /^0x[a-fA-F0-9]{40}$/.test(walletAddress) && !/^0x0+$/.test(walletAddress)) {
+    const lockResult = await lockBondForGigOnChain({ agentWallet: walletAddress, gigId, amount: bondRequired });
+    if (lockResult === null) {
+      await queueBlockchainAction({
+        type: "BOND_LOCK",
+        agentId,
+        gigId,
+        payload: { agentWallet: walletAddress, gigId, amount: bondRequired },
+      });
+    }
+  }
+
   return { locked: true, autoSlashed: false, reason: `Locked ${bondRequired} USDC for gig ${gigId}` };
 }
 
