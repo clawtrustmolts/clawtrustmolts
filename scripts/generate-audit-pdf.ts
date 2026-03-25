@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const outPath = path.join(__dirname, "../attached_assets/clawtrust_audit_scope_hashlock.pdf");
+const outPath = path.join(__dirname, "../client/public/clawtrust_audit_scope_hashlock.pdf");
 
 const TEAL = "#1a9c8a";
 const DARK = "#0f1117";
@@ -13,7 +13,14 @@ const LIGHT_BG = "#f3f4f6";
 const WHITE = "#ffffff";
 const ACCENT = "#10b981";
 
-const BASE_CONTRACTS = [
+interface Contract {
+  name: string;
+  address: string;
+  desc: string;
+  priority: boolean;
+}
+
+const BASE_CONTRACTS: Contract[] = [
   {
     name: "Escrow",
     address: "0x6B676744B8c4900F9999E9a9323728C160706126",
@@ -35,13 +42,13 @@ const BASE_CONTRACTS = [
   {
     name: "ERC-8004 Identity Registry",
     address: "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF",
-    desc: "Agent NFT identity minting & metadata",
+    desc: "Agent NFT identity minting & metadata on Base Sepolia",
     priority: false,
   },
   {
     name: "Reputation Registry",
     address: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
-    desc: "On-chain scores and peer feedback storage",
+    desc: "On-chain FusedScore storage and peer feedback",
     priority: false,
   },
   {
@@ -52,7 +59,7 @@ const BASE_CONTRACTS = [
   },
 ];
 
-const SKALE_CONTRACTS = [
+const SKALE_CONTRACTS: Contract[] = [
   {
     name: "Escrow",
     address: "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
@@ -74,7 +81,7 @@ const SKALE_CONTRACTS = [
   {
     name: "ERC-8004 Identity Registry",
     address: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-    desc: "Canonical agent identity on SKALE (deployed by SKALE team, Sawyer Cutler)",
+    desc: "Canonical SKALE identity (deployed by SKALE / Sawyer Cutler)",
     priority: false,
   },
   {
@@ -100,12 +107,8 @@ doc.pipe(fs.createWriteStream(outPath));
 
 const W = doc.page.width - 100;
 
-function drawRect(x, y, w, h, color, radius = 0) {
+function drawRect(x: number, y: number, w: number, h: number, color: string, radius = 0) {
   doc.save().roundedRect(x, y, w, h, radius).fill(color).restore();
-}
-
-function mono(text) {
-  return text;
 }
 
 // ── Header bar ──────────────────────────────────────────────────────────────
@@ -160,7 +163,7 @@ doc.moveDown(0.5);
 drawRect(50, doc.y, W, 42, LIGHT_BG, 6);
 const statsY = doc.y + 10;
 const colW = W / 4;
-const stats = [
+const stats: [string, string][] = [
   ["212", "Agents Registered"],
   ["$2,210 USDC", "In Active Escrow"],
   ["122", "Gigs Posted"],
@@ -180,13 +183,13 @@ stats.forEach(([val, label], i) => {
 });
 doc.moveDown(3);
 
-// ── Section helper ───────────────────────────────────────────────────────────
-function sectionTitle(title, subtitle) {
+// ── Section title helper ─────────────────────────────────────────────────────
+function sectionTitle(title: string, subtitle?: string) {
   doc
     .font("Helvetica-Bold")
     .fontSize(13)
     .fillColor(DARK)
-    .text(title, { continued: subtitle ? false : false });
+    .text(title);
   if (subtitle) {
     doc
       .font("Helvetica")
@@ -198,13 +201,12 @@ function sectionTitle(title, subtitle) {
 }
 
 // ── Contract table helper ────────────────────────────────────────────────────
-function contractTable(contracts) {
+function contractTable(contracts: Contract[]) {
   const colWidths = [120, 220, 30, W - 120 - 220 - 30];
   const headers = ["Contract", "Address", "★", "Role"];
-  const rowH = 32;
   const headerH = 20;
+  const rowH = 32;
 
-  // Header row
   drawRect(50, doc.y, W, headerH, DARK, 4);
   let cx = 50;
   headers.forEach((h, i) => {
@@ -273,11 +275,11 @@ function contractTable(contracts) {
   doc.moveDown(1.2);
 }
 
-// ── Base Sepolia contracts ───────────────────────────────────────────────────
+// ── Base Sepolia ─────────────────────────────────────────────────────────────
 sectionTitle("Base Sepolia Contracts", "Chain ID: 84532");
 contractTable(BASE_CONTRACTS);
 
-// ── SKALE contracts ──────────────────────────────────────────────────────────
+// ── SKALE ────────────────────────────────────────────────────────────────────
 sectionTitle("SKALE Base Sepolia Contracts", "Chain ID: 324705682  ·  Zero-gas sidechain");
 contractTable(SKALE_CONTRACTS);
 
