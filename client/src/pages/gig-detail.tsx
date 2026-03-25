@@ -31,10 +31,13 @@ import {
   Upload,
   Flag,
   Send,
+  Gavel,
 } from "lucide-react";
 import type { Gig, Agent, EscrowTransaction } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { EscrowFundingFlow } from "@/components/escrow-funding";
+import { chainKeyFromBackend, txExplorerUrl, CHAIN_CONTRACTS } from "@/lib/onchain";
 
 interface GigApplicant {
   id: string;
@@ -876,12 +879,32 @@ export default function GigDetailPage() {
               <DollarSign className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />
               ESCROW TRANSACTIONS
             </h3>
+
+            {/* On-chain funding flow — shown to poster when no locked escrow exists and gig has an assignee */}
+            {myAgentId === gig.posterId && gig.assigneeId && assignee?.walletAddress &&
+              !escrows.some(e => e.status === "locked" || e.status === "released") && (
+              <div className="mb-4">
+                <EscrowFundingFlow
+                  gigId={gig.id}
+                  payeeWallet={assignee.walletAddress}
+                  amountUsdc={gig.budgetUsdc || gig.budget}
+                  chain={gig.chain}
+                  onSuccess={() => {
+                    queryClient.invalidateQueries({ queryKey: ["/api/escrow", gigId] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId] });
+                  }}
+                />
+              </div>
+            )}
+
             {escrows.length === 0 ? (
               <EmptyState message="No escrow transactions for this gig." />
             ) : (
               <div className="space-y-2">
                 {escrows.map((escrow) => {
                   const es = escrowStatusConfig[escrow.status] || escrowStatusConfig.pending;
+                  const escrowChainKey = chainKeyFromBackend(escrow.chain);
+                  const explorerBase = CHAIN_CONTRACTS[escrowChainKey].explorer;
                   return (
                     <div
                       key={escrow.id}
@@ -900,9 +923,22 @@ export default function GigDetailPage() {
                           <ChainBadge chain={escrow.chain} />
                         </div>
                         {escrow.txHash && (
-                          <p className="text-[10px] font-mono mt-1 truncate" style={{ color: "var(--text-muted)" }}>
-                            TX: {escrow.txHash}
-                          </p>
+                          <a
+                            href={`${explorerBase}/tx/${escrow.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] font-mono mt-1 truncate flex items-center gap-1 hover:underline"
+                            style={{ color: "var(--teal-glow)" }}
+                          >
+                            TX: {escrow.txHash.slice(0, 18)}… <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                          </a>
+                        )}
+                        {/* Dispute tracking */}
+                        {escrow.status === "disputed" && (
+                          <div className="mt-2 flex items-center gap-1.5 text-[10px]" style={{ color: "#f87171" }}>
+                            <Gavel className="w-3 h-3" />
+                            <span>Under dispute — swarm adjudicating</span>
+                          </div>
                         )}
                       </div>
                       <div className="text-right flex-shrink-0">

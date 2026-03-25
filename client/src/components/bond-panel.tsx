@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,8 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Shield, ArrowUpCircle, ArrowDownCircle, Lock, Unlock, AlertTriangle, Wallet, TrendingUp, Activity } from "lucide-react";
+import { Shield, ArrowUpCircle, ArrowDownCircle, Lock, Unlock, AlertTriangle, Wallet, TrendingUp, Activity, CheckCircle, Loader2, ExternalLink } from "lucide-react";
 import type { BondEvent } from "@shared/schema";
+import {
+  depositBondOnChain,
+  getUSDCBalance,
+  getWalletChainId,
+  switchToChain,
+  txExplorerUrl,
+  CHAIN_IDS,
+  type TxProgress,
+  type ChainKey,
+} from "@/lib/onchain";
 
 const TIER_CONFIG: Record<string, { label: string; className: string }> = {
   UNBONDED: { label: "Unbonded", className: "bg-muted text-muted-foreground" },
@@ -41,6 +51,55 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
   const { toast } = useToast();
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [onChainAmount, setOnChainAmount] = useState("");
+  const [onChainProgress, setOnChainProgress] = useState<TxProgress>({ step: "idle" });
+  const [walletAccount, setWalletAccount] = useState("");
+  const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+  const [wrongChain, setWrongChain] = useState(false);
+  const chainKey: ChainKey = "BASE_SEPOLIA";
+
+  const checkWallet = useCallback(async () => {
+    if (!window.ethereum) {
+      toast({ title: "No wallet found", description: "Install MetaMask to deposit on-chain.", variant: "destructive" });
+      return;
+    }
+    try {
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
+      const account = accounts[0];
+      setWalletAccount(account);
+      const chainId = await getWalletChainId();
+      if (chainId !== CHAIN_IDS[chainKey]) {
+        setWrongChain(true);
+        return;
+      }
+      setWrongChain(false);
+      const bal = await getUSDCBalance(account, chainKey);
+      setUsdcBalance(bal);
+    } catch (err: any) {
+      toast({ title: "Wallet error", description: err.message, variant: "destructive" });
+    }
+  }, [chainKey, toast]);
+
+  const handleOnChainDeposit = useCallback(async () => {
+    const amount = parseFloat(onChainAmount);
+    if (!amount || amount < 10) return;
+    const account = walletAccount;
+    if (!account) { await checkWallet(); return; }
+    try {
+      const { depositTxHash } = await depositBondOnChain(
+        { agentWallet: account, amountUsdc: amount, chainKey },
+        setOnChainProgress,
+      );
+      toast({ title: "Bond deposited on-chain", description: `TX: ${depositTxHash.slice(0, 18)}…` });
+      queryClient.invalidateQueries({ queryKey: ["/api/bond", agentId, "status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bond", agentId, "history"] });
+      setOnChainAmount("");
+      setOnChainProgress({ step: "idle" });
+    } catch (err: any) {
+      setOnChainProgress({ step: "error", error: err.message });
+      toast({ title: "On-chain deposit failed", description: err.message, variant: "destructive" });
+    }
+  }, [agentId, walletAccount, onChainAmount, chainKey, checkWallet, toast]);
 
   const { data: bondStatus, isLoading: statusLoading } = useQuery<{
     totalBonded: number;
@@ -260,9 +319,70 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
       {isOwnProfile && (
         <Card data-testid="card-bond-actions">
           <CardContent className="p-5 space-y-4">
+
+            {/* On-chain deposit via MetaMask */}
+            <div className="space-y-2 rounded-lg border border-dashed border-chart-2/40 p-3 bg-chart-2/5">
+              <label className="text-xs font-mono font-semibold flex items-center gap-1.5 text-chart-2">
+                <Wallet className="w-3.5 h-3.5" /> DEPOSIT ON-CHAIN (MetaMask)
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min="10"
+                  step="1"
+                  placeholder="Amount (min 10 USDC)"
+                  value={onChainAmount}
+                  onChange={(e) => setOnChainAmount(e.target.value)}
+                  data-testid="input-onchain-deposit-amount"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!onChainAmount || parseFloat(onChainAmount) < 10 || onChainProgress.step === "approving" || onChainProgress.step === "locking"}
+                  onClick={walletAccount ? handleOnChainDeposit : checkWallet}
+                  data-testid="button-onchain-deposit-bond"
+                >
+                  {onChainProgress.step === "approving" || onChainProgress.step === "locking"
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : walletAccount
+                      ? `Fund ${onChainAmount || "?"} USDC`
+                      : "Connect Wallet"
+                  }
+                </Button>
+              </div>
+              {walletAccount && !wrongChain && (
+                <p className="text-[10px] font-mono text-muted-foreground">
+                  Wallet: {walletAccount.slice(0,6)}…{walletAccount.slice(-4)}
+                  {usdcBalance !== null && <> · Balance: <span className={usdcBalance >= (parseFloat(onChainAmount) || 0) ? "text-chart-2" : "text-destructive"}>{usdcBalance.toFixed(2)} USDC</span></>}
+                </p>
+              )}
+              {wrongChain && (
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-3 h-3 text-chart-3 shrink-0" />
+                  <span className="text-[10px] text-chart-3">Switch to Base Sepolia</span>
+                  <Button size="sm" variant="ghost" className="h-5 text-[10px] px-2" onClick={() => switchToChain(chainKey).then(() => checkWallet())}>
+                    Switch
+                  </Button>
+                </div>
+              )}
+              {onChainProgress.step === "done" && onChainProgress.lockTxHash && (
+                <a
+                  href={txExplorerUrl(onChainProgress.lockTxHash, chainKey)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[10px] text-chart-2 hover:underline"
+                >
+                  <CheckCircle className="w-3 h-3" /> Deposited · View TX <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              )}
+              {onChainProgress.step === "error" && (
+                <p className="text-[10px] text-destructive">{onChainProgress.error}</p>
+              )}
+            </div>
+
             <div className="space-y-2">
-              <label className="text-xs font-mono font-semibold flex items-center gap-1.5">
-                <ArrowUpCircle className="w-3.5 h-3.5 text-chart-2" /> DEPOSIT USDC BOND
+              <label className="text-xs font-mono font-semibold flex items-center gap-1.5 text-muted-foreground">
+                <ArrowUpCircle className="w-3.5 h-3.5 text-chart-2" /> DEPOSIT VIA ORACLE
               </label>
               <div className="flex items-center gap-2">
                 <Input

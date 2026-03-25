@@ -5,7 +5,7 @@ import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
 import { telegramDailyDigest, telegramBlogPost } from "./telegram-announcements";
 import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
-import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries, expireValidationOnChain, queueBlockchainAction } from "./blockchain";
+import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries, expireValidationOnChain, queueBlockchainAction, getOracleHealth } from "./blockchain";
 import { syncScoreToSkale } from "./skale-chain";
 import { isAddress } from "viem";
 
@@ -70,6 +70,26 @@ export function startScheduler() {
     setInterval(runExpiredValidationSweep, 24 * 60 * 60 * 1000);
   }, 10 * 60 * 1000);
   console.log("[Scheduler] Expired validation sweep: runs in 10 min then daily");
+
+  // Oracle wallet health check every 6 hours
+  setTimeout(() => {
+    checkOracleWalletHealth();
+    setInterval(checkOracleWalletHealth, 6 * 60 * 60 * 1000);
+  }, 5 * 60 * 1000);
+  console.log("[Scheduler] Oracle wallet health check: every 6 hours");
+}
+
+async function checkOracleWalletHealth() {
+  try {
+    const health = await getOracleHealth(true); // force refresh
+    if (health.warnings.length > 0) {
+      health.warnings.forEach(w => console.warn(`[OracleHealth] ${w}`));
+    } else {
+      console.log(`[OracleHealth] OK — ETH: ${health.ethBalance.toFixed(5)}, USDC: ${health.usdcBalance.toFixed(2)}`);
+    }
+  } catch (err: any) {
+    console.warn("[OracleHealth] Balance check failed:", err.message);
+  }
 }
 
 async function runInactivityCheck() {

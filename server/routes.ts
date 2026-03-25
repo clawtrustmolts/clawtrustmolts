@@ -61,10 +61,13 @@ import {
   transferUSDCOnChain,
   getUSDCBalance,
   ORACLE_WALLET_ADDRESS,
+  getOracleHealth,
+  ORACLE_ETH_CRITICAL_THRESHOLD,
   registerDomainOnChain,
   isDomainAvailableOnChain,
   REGISTRY_ADDRESS,
   REGISTRY_BASESCAN,
+  getNetworkConfig,
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
@@ -1986,6 +1989,54 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Confirm on-chain escrow lock (frontend wallet tx) ──────────────────────
+  app.post("/api/escrow/confirm-onchain", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    const schema = z.object({
+      gigId:      z.string().min(1).max(64),
+      lockTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, "Invalid tx hash"),
+      chain:      z.string().optional(),
+    });
+    try {
+      const { gigId, lockTxHash, chain } = schema.parse(req.body);
+      const escrow = await storage.getEscrowByGig(gigId);
+      if (!escrow) {
+        // No DB escrow yet — create a record to track the on-chain lock
+        const gig = await storage.getGig(gigId);
+        if (!gig) return res.status(404).json({ message: "Gig not found" });
+        const walletAddress = (req as any).walletAddress as string;
+        const assignee = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+        const created = await storage.createEscrow({
+          gigId,
+          depositorId: walletAddress,
+          payeeId:     assignee?.walletAddress || "",
+          amount:      gig.budgetUsdc || gig.budget,
+          currency:    "USDC",
+          chain:       chain || gig.chain || "BASE_SEPOLIA",
+          status:      "locked",
+        });
+        await storage.updateEscrow(created.id, { txHash: lockTxHash });
+        await storage.updateGig(gigId, { status: "in_progress" });
+        return res.json({ status: "created", escrowId: created.id, txHash: lockTxHash });
+      }
+
+      if (escrow.status !== "pending") {
+        return res.status(400).json({ message: `Escrow already ${escrow.status}` });
+      }
+
+      await storage.updateEscrow(escrow.id, { status: "locked", txHash: lockTxHash });
+      const gig = await storage.getGig(gigId);
+      if (gig && gig.status === "open") {
+        await storage.updateGig(gigId, { status: "in_progress" });
+      }
+
+      console.log(`[Escrow] On-chain lock confirmed by wallet ${(req as any).walletAddress} for gig ${gigId} tx=${lockTxHash}`);
+      res.json({ status: "locked", escrowId: escrow.id, txHash: lockTxHash });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/circle/config", async (_req, res) => {
     res.json({
       configured: isCircleConfigured(),
@@ -2161,6 +2212,23 @@ export async function registerRoutes(
             }
           } catch (balErr: any) {
             console.warn("[Escrow] Could not check oracle balance before release:", balErr.message);
+          }
+          // Pre-flight: check oracle ETH balance for gas before attempting transfer
+          try {
+            const oracleHealth = await getOracleHealth();
+            if (oracleHealth.ethBalance < ORACLE_ETH_CRITICAL_THRESHOLD) {
+              console.error(`[Escrow] Oracle wallet ETH critically low: ${oracleHealth.ethBalance.toFixed(6)} ETH — cannot pay gas for gig ${gigId}`);
+              return res.status(503).json({
+                message: `Oracle wallet has insufficient ETH for gas (${oracleHealth.ethBalance.toFixed(6)} ETH). Contact platform operator to refill.`,
+                oracleEthBalance: oracleHealth.ethBalance,
+                oracleWallet: ORACLE_WALLET_ADDRESS,
+              });
+            }
+            if (!oracleHealth.ethOk) {
+              console.warn(`[Escrow] Oracle ETH balance low (${oracleHealth.ethBalance.toFixed(6)} ETH) — proceeding but refill needed`);
+            }
+          } catch (gasCheckErr: any) {
+            console.warn("[Escrow] Could not check oracle ETH balance before release:", gasCheckErr.message);
           }
           try {
             onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, escrow.amount);
@@ -5452,6 +5520,33 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("[gig-submolts] Sync error:", err);
       res.status(500).json({ message: "Failed to sync gig to Moltbook" });
+    }
+  });
+
+  // ─── Network / mainnet config ─────────────────────────────────────────────
+  app.get("/api/system/network", async (_req, res) => {
+    try {
+      const [networkConfig, oracleHealth] = await Promise.all([
+        Promise.resolve(getNetworkConfig()),
+        getOracleHealth(),
+      ]);
+      if (oracleHealth.warnings.length > 0) {
+        oracleHealth.warnings.forEach(w => console.warn(`[OracleHealth] ${w}`));
+      }
+      res.json({
+        ...networkConfig,
+        oracle: {
+          wallet: ORACLE_WALLET_ADDRESS,
+          ethBalance: oracleHealth.ethBalance,
+          usdcBalance: oracleHealth.usdcBalance,
+          ethOk: oracleHealth.ethOk,
+          usdcOk: oracleHealth.usdcOk,
+          warnings: oracleHealth.warnings,
+        },
+      });
+    } catch (err: any) {
+      // Fall back to static config if balance checks fail
+      res.json({ ...getNetworkConfig(), oracle: null });
     }
   });
 
