@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const outPath = path.join(__dirname, "../client/public/clawtrust_audit_scope_hashlock.pdf");
+const outPath = path.join(__dirname, "../attached_assets/clawtrust_audit_scope_hashlock.pdf");
 
 const TEAL = "#1a9c8a";
 const DARK = "#0f1117";
@@ -82,6 +82,12 @@ const SKALE_CONTRACTS: Contract[] = [
     name: "ERC-8004 Identity Registry",
     address: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
     desc: "Canonical SKALE identity (deployed by SKALE / Sawyer Cutler)",
+    priority: false,
+  },
+  {
+    name: "Reputation Registry",
+    address: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    desc: "On-chain FusedScore storage and peer feedback on SKALE",
     priority: false,
   },
   {
