@@ -970,6 +970,7 @@ export async function registerRoutes(
         skills: z.array(z.string().min(1).max(100)).max(20).optional(),
         avatar: z.string().url().nullable().optional(),
         moltbookLink: z.string().url().nullable().optional(),
+        preferredChain: z.enum(["BASE_SEPOLIA", "SOL_DEVNET", "SKALE_TESTNET"]).nullable().optional(),
       });
       const data = updateSchema.parse(req.body);
       const updated = await storage.updateAgent(agentId, data);
@@ -1109,6 +1110,7 @@ export async function registerRoutes(
         moltbookKarma: 0,
         onChainScore: 0,
         erc8004TokenId: null,
+        preferredChain: data.preferredChain ?? "BASE_SEPOLIA",
       });
 
       await storage.createReputationEvent({
@@ -1777,7 +1779,7 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
-      const adminOnChainVerdict = await readSwarmVerdictOnChain(gigId);
+      const adminOnChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
       if (adminOnChainVerdict === null) {
         console.warn(`[Escrow] Admin-resolve: on-chain verdict check failed for gig ${gigId} — blocking as precaution`);
         return res.status(503).json({ message: "Unable to verify on-chain swarm state. Please try again." });
@@ -1975,7 +1977,7 @@ export async function registerRoutes(
       }
 
       // Check on-chain verdict; fall back to DB validation when on-chain is unavailable
-      const onChainVerdict = await readSwarmVerdictOnChain(gigId);
+      const onChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
       const dbValidation = await storage.getValidationByGig(gigId);
       const dbApproved = dbValidation?.status === "approved";
 
@@ -2378,6 +2380,7 @@ export async function registerRoutes(
           assigneeWallet: assigneeAgent?.walletAddress || posterAgent.walletAddress,
           candidateWallets: topAgents.map(a => a.walletAddress),
           threshold,
+          chain: gig.chain || undefined,
         }).catch(err => console.error("[Swarm] createValidation on-chain error:", err.message));
       }
 
@@ -2478,7 +2481,8 @@ export async function registerRoutes(
       const rewardAmount = validation.rewardPerValidator || 0;
       await storage.castVote({ validationId, voterId, vote, rewardAmount, reasoning: reasoning || null });
 
-      castSwarmVoteOnChain({ gigId: validation.gigId, approve: vote === "approve" })
+      const gigChain = gig?.chain || undefined;
+      castSwarmVoteOnChain({ gigId: validation.gigId, approve: vote === "approve", chain: gigChain })
         .catch(err => console.error("[Swarm] on-chain vote error:", err.message));
 
       const newFor = vote === "approve" ? validation.votesFor + 1 : validation.votesFor;
@@ -2502,7 +2506,7 @@ export async function registerRoutes(
 
         const escrow = await storage.getEscrowByGig(validation.gigId);
         if (escrow && escrow.status === "locked") {
-          const voteOnChainVerdict = await readSwarmVerdictOnChain(validation.gigId);
+          const voteOnChainVerdict = await readSwarmVerdictOnChain(validation.gigId, gigChain);
           let onChainGatePass = false;
           if (voteOnChainVerdict && voteOnChainVerdict.exists && voteOnChainVerdict.finalized && voteOnChainVerdict.status === 1) {
             onChainGatePass = true;
@@ -2747,7 +2751,7 @@ export async function registerRoutes(
           title: `Monetize Moltbook Post by ${agent.handle}`,
           description: data.postUrl
             ? `Turn viral Moltbook content into a paid gig opportunity. Source: ${data.postUrl}`
-                       : `Create a gig from ${agent.handle.replace(/[^\w\s\-]/g, "")}'s Moltbook presence (${Number(effectiveKarma)} karma)`,
+            : `Create a gig from ${agent.handle.replace(/[^\w\s\-]/g, "")}'s Moltbook presence (${Number(effectiveKarma)} karma)`,
           skills: agent.skills,
           estimatedBudget: budget,
           currency: "USDC",
@@ -4154,6 +4158,7 @@ export async function registerRoutes(
         solanaAddress: null,
         circleWalletId,
         autonomyStatus: "registered",
+        preferredChain: targetChain as "BASE_SEPOLIA" | "SKALE_TESTNET",
       });
 
       for (const skill of data.skills) {
@@ -9096,6 +9101,31 @@ export async function registerRoutes(
       version: "v1.14.3",
       timestamp: new Date().toISOString(),
     });
+  });
+
+  app.get("/api/blog", async (req, res) => {
+    try {
+      const posts = await storage.getBlogPosts();
+      res.json(posts);
+    } catch (err: any) {
+      console.error("[Blog] GET /api/blog error:", err);
+      res.status(500).json({ message: "Failed to fetch blog posts" });
+    }
+  });
+
+  app.get("/api/blog/:slug", async (req, res) => {
+    try {
+      const slug = req.params.slug;
+      if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
+        return res.status(400).json({ message: "Invalid slug" });
+      }
+      const post = await storage.getBlogPost(slug);
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      res.json(post);
+    } catch (err: any) {
+      console.error("[Blog] GET /api/blog/:slug error:", err);
+      res.status(500).json({ message: "Failed to fetch blog post" });
+    }
   });
 
   return httpServer;
