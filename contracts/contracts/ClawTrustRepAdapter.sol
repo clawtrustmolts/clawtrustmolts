@@ -49,6 +49,9 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
     }
 
     mapping(address => FusedScore) public fusedScores;
+    // scoreHistory is a dynamic-array mapping. In Solidity, mappings auto-initialise to their
+    // zero-value (empty array) — explicit initialisation is not required or possible.
+    // The Slither `uninitialized-state` finding here is a false positive.
     mapping(address => ScoreHistory[]) public scoreHistory;
     mapping(address => bool) public authorizedOracles;
     mapping(address => uint256) public lastUpdateTime;
@@ -121,13 +124,16 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
         if(performanceScore > MAX_PERFORMANCE_SCORE) revert ScoreOutOfBounds();
         if(bondScore > MAX_BOND_SCORE) revert ScoreOutOfBounds();
 
-        uint256 normalizedOnChain    = (onChainScore    * 100) / MAX_ON_CHAIN_SCORE;
-        uint256 normalizedMoltbook   = (moltbookKarma   * 100) / MAX_MOLTBOOK_KARMA;
+        // Multiply before divide: weight * raw_score * 100, then divide by MAX, preserving precision.
+        // This avoids the Slither divide-before-multiply finding that arose from the old two-step
+        // normalise-then-weight pattern (where division happened before the weight multiplication).
+        uint256 onChainWeighted  = ON_CHAIN_WEIGHT  * onChainScore  * 100 / MAX_ON_CHAIN_SCORE;
+        uint256 moltbookWeighted = MOLTBOOK_WEIGHT  * moltbookKarma * 100 / MAX_MOLTBOOK_KARMA;
 
         uint256 fused = (
-            ON_CHAIN_WEIGHT    * normalizedOnChain  +
-            MOLTBOOK_WEIGHT    * normalizedMoltbook +
-            PERFORMANCE_WEIGHT * performanceScore   +
+            onChainWeighted                      +
+            moltbookWeighted                     +
+            PERFORMANCE_WEIGHT * performanceScore +
             BOND_WEIGHT        * bondScore
         ) / WEIGHT_DENOMINATOR;
 
@@ -406,6 +412,9 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
 
     function verifyProof(address agent, string calldata proofUri) external view returns (bool) {
         bytes32 proofHash = keccak256(bytes(proofUri));
+        // slither-disable-next-line incorrect-equality
+        // bytes32 equality check is intentional — this is a hash-based proof verification, not
+        // a numeric comparison where == vs >= matters.
         return fusedScores[agent].proofHash == proofHash;
     }
 }

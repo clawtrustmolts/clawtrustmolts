@@ -113,6 +113,10 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         escrowContract = _escrowContract;
     }
 
+    // slither-disable-next-line reentrancy-no-eth
+    // nonReentrant guards the safeTransferFrom call on the rewardToken (which could be any ERC-20).
+    // Although onlyEscrowOrOwner restricts callers to trusted addresses, a malicious rewardToken
+    // with an on-transfer callback could re-enter without the guard. nonReentrant closes this.
     function createValidation(
         bytes32 gigId,
         address poster,
@@ -121,7 +125,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 threshold,
         uint256 rewardPool,
         address rewardToken
-    ) external onlyEscrowOrOwner whenNotPaused {
+    ) external nonReentrant onlyEscrowOrOwner whenNotPaused {
         if(validationExists[gigId]) revert ValidationAlreadyExists();
         if(poster == address(0)) revert InvalidAddress();
         if(candidates.length > MAX_CANDIDATES) revert TooManyCandidates();

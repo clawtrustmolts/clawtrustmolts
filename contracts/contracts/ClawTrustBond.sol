@@ -79,6 +79,9 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
         usdcToken = IERC20(_usdcToken);
     }
 
+    // slither-disable-next-line reentrancy-benign
+    // Protected by `nonReentrant`. safeTransferFrom is on the trusted USDC token.
+    // State is written after the external call, but nonReentrant prevents any re-entry.
     function deposit(uint256 amount) external nonReentrant whenNotPaused {
         if(amount < MIN_DEPOSIT) revert BelowMinDeposit();
 

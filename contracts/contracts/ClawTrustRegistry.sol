@@ -140,6 +140,9 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     }
 
     function getDomain(uint256 tokenId) external view returns (DomainRecord memory) {
+        // slither-disable-next-line incorrect-equality
+        // `registeredAt == 0` is the canonical existence check for this mapping — a domain with
+        // registeredAt == 0 has never been registered. This is intentional and safe.
         if (domains[tokenId].registeredAt == 0) revert DomainNotFound();
         return domains[tokenId];
     }
@@ -165,12 +168,14 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     }
 
     function renew(uint256 tokenId) external onlyRole(REGISTRAR_ROLE) {
+        // slither-disable-next-line incorrect-equality
         if (domains[tokenId].registeredAt == 0) revert DomainNotFound();
         domains[tokenId].expiresAt = block.timestamp + 365 days;
         domains[tokenId].active = true;
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        // slither-disable-next-line incorrect-equality
         if (domains[tokenId].registeredAt == 0) revert DomainNotFound();
         DomainRecord storage d = domains[tokenId];
         string memory full = string(abi.encodePacked(d.name, d.tld));
