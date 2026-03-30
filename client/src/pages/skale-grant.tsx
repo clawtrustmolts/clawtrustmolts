@@ -18,7 +18,6 @@ interface GrantMetrics {
     passportsOnSkale: number;
     passportsTarget: number;
     passportSource: "on-chain" | "db";
-    clawCardNFTSupply: number;
     swarmValidationsOnSkale: number;
     swarmValidationsTarget: number;
     swarmValidationSource: "on-chain" | "db";
@@ -486,9 +485,7 @@ export default function SkaleGrantPage() {
                   label="Agents with ERC-8004 passport minted on SKALE"
                   current={metrics.tranche1.passportsOnSkale}
                   target={metrics.tranche1.passportsTarget}
-                  sourceNote={
-                    `source: ${metrics.tranche1.passportSource} · IdentityRegistry Transfer(from=0x0) mint events · ClawCardNFT.totalSupply() = ${metrics.tranche1.clawCardNFTSupply}`
-                  }
+                  sourceNote={`source: ${metrics.tranche1.passportSource} · IdentityRegistry Transfer(from=0x0) ERC-721 mint events`}
                   contractAddr={metrics.contracts.erc8004Identity}
                   explorer={metrics.explorer}
                   contractLabel="ERC-8004 IdentityRegistry"
@@ -500,7 +497,7 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.swarmValidator}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustSwarmValidator"
-                  sourceNote={`source: ${metrics.tranche1.swarmValidationSource} · ValidationResolved(approved=true) events via eth_getLogs`}
+                  sourceNote={`source: ${metrics.tranche1.swarmValidationSource} · ValidationResolved(status=Approved) events via eth_getLogs`}
                 />
               </>
             }
@@ -632,7 +629,7 @@ export default function SkaleGrantPage() {
               className="font-display tracking-wider text-sm font-bold mb-4"
               style={{ color: "var(--shell-white)" }}
             >
-              SKALE BASE SEPOLIA CONTRACTS (testnet · {metrics.chainId})
+              SKALE CONTRACTS — Testnet (chainId {metrics.chainId})
             </h2>
             <div className="space-y-0">
               {[
