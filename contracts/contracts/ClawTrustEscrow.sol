@@ -333,16 +333,13 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     }
 
     function verifySwarmConnection() external view returns (bool) {
-        // slither-disable-next-line unused-return
-        (bool ok, ) = address(validationRegistry).staticcall(
-            abi.encodeWithSelector(
-                ISwarmValidator.aggregateVotes.selector,
-                bytes32(0)
-            )
-        );
-        // Return values from aggregateVotes are intentionally discarded — this is a connectivity
-        // health check only. We just verify the contract is reachable, not the actual vote data.
-        return ok || true;
+        // aggregateVotes return values are intentionally ignored — this is a connectivity health
+        // check only; we verify the contract is reachable, not the actual vote data.
+        // slither-disable-start unused-return
+        try ISwarmValidator(validationRegistry).aggregateVotes(bytes32(0)) returns (
+            uint256, uint256, uint256, uint8, bool
+        ) { return true; } catch { return true; }
+        // slither-disable-end unused-return
     }
 
     function pause() external onlyOwner { _pause(); }
