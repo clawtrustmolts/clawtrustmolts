@@ -5553,36 +5553,33 @@ export async function registerRoutes(
   // ─── SKALE Grant Metrics — public endpoint for foundation verification ────
   app.get("/api/skale/grant-metrics", async (_req, res) => {
     try {
-      // Kick off DB reads + all 3 direct SKALE RPC/event-log reads concurrently
+      // DB reads + 3 direct SKALE RPC/event-log reads run concurrently
       const [
         agents, gigs, escrows, validations,
-        onChainPassportSupply,  // ClawCardNFT.totalSupply() via eth_call
-        onChainEscrow,          // FundsLocked event log count + USDC sum via eth_getLogs
-        onChainValidations,     // ValidationResolved approved events via eth_getLogs
+        onChainPassportSupply, // ClawCardNFT.totalSupply() via eth_call
+        onChainEscrow,         // FundsReleased events (completed gigs + USDC paid out)
+        onChainValidations,    // ValidationResolved(approved=true) events
       ] = await Promise.all([
         storage.getAgents(),
         storage.getGigs(),
         storage.getEscrowTransactions(),
         storage.getValidations(),
-        readSkalePassportTotalSupply(),        // direct SKALE RPC
-        readSkaleEscrowStats(),                // direct SKALE event logs
-        readSkaleSwarmValidationCount(),       // direct SKALE event logs
+        readSkalePassportTotalSupply(),
+        readSkaleEscrowStats(),
+        readSkaleSwarmValidationCount(),
       ]);
       const now = Date.now();
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
-      // gigs.chain and escrowTransactions.chain are typed as chainEnum:
-      // "BASE_SEPOLIA" | "SOL_DEVNET" | "SKALE_TESTNET" — no casts needed
       const skaleGigs = gigs.filter(g => g.chain === "SKALE_TESTNET");
       const skaleGigIds = new Set(skaleGigs.map(g => g.id));
       const skaleEscrows = escrows.filter(e => e.chain === "SKALE_TESTNET");
 
-      // T1 Gate 1 — All 8 ClawTrust contracts deployed on SKALE Mainnet:
-      // Each of the following env vars must be set to a valid non-zero EVM address
+      // T1G1: all 8 mainnet contract env vars must be valid non-zero addresses
       const isValidAddress = (addr: string) =>
         /^0x[a-fA-F0-9]{40}$/.test(addr) &&
         addr !== "0x0000000000000000000000000000000000000000";
-      const mainnetContractEnvVars = [
+      const mainnetContractsDeployed = [
         process.env.SKALE_MAINNET_ESCROW_ADDRESS        || "",
         process.env.SKALE_MAINNET_BOND_ADDRESS           || "",
         process.env.SKALE_MAINNET_SWARM_VALIDATOR_ADDRESS || "",
@@ -5591,14 +5588,10 @@ export async function registerRoutes(
         process.env.SKALE_MAINNET_CREW_ADDRESS           || "",
         process.env.SKALE_MAINNET_REGISTRY_ADDRESS       || "",
         process.env.SKALE_MAINNET_AC_ADDRESS             || "",
-      ];
-      const mainnetContractsDeployed = mainnetContractEnvVars.every(isValidAddress);
+      ].every(isValidAddress);
 
-      // T1 Gate 2 — ERC-8004 passport count
-      // Primary: DB count of verified agents with a non-zero erc8004TokenId.
-      //   erc8004TokenId is set by registerAgentOnSkale() which calls ERC-8004 IdentityRegistry.register().
-      // Supplementary: ClawCardNFT.totalSupply() is the on-chain PFP card count (different contract).
-      //   Shown for transparency — the IdentityRegistry has no totalRegistered() view function.
+      // T1G2: ERC-8004 passport count from DB (IdentityRegistry has no totalRegistered view)
+      // clawCardNFTSupply is ClawCardNFT.totalSupply() via eth_call — different contract, shown alongside
       const passportsOnSkale = agents.filter(
         a => a.isVerified &&
           a.erc8004TokenId !== null &&
@@ -5607,32 +5600,25 @@ export async function registerRoutes(
           a.walletAddress !== null &&
           a.walletAddress !== "0x0000000000000000000000000000000000000000"
       ).length;
-      // onChainPassportSupply is ClawCardNFT.totalSupply() — shown alongside but not the gate count
       const passportSource = "db" as const;
       const clawCardNFTSupply = onChainPassportSupply ?? 0;
 
-      // T1 Gate 3 — Swarm validations finalized on SKALE:
-      // Primary: direct eth_getLogs read of ValidationResolved(approved=true) events on SwarmValidator.
-      // Fallback: DB count of swarmValidations with status==="approved" joined via skaleGigIds set.
+      // T1G3: swarm validations — on-chain ValidationResolved events; fallback to DB
       const dbSwarmValidationsOnSkale = validations.filter(
         v => skaleGigIds.has(v.gigId) && v.status === "approved"
       ).length;
       const swarmValidationsOnSkale = onChainValidations ?? dbSwarmValidationsOnSkale;
       const swarmValidationSource = onChainValidations !== null ? "on-chain" : "db" as const;
 
-      // T2 Gate 1 — Agents with FusedScore strictly above 30 (Sybil-resistant: multi-source score)
+      // T2G1: agents with FusedScore > 30
       const agentsWithScoreAbove30 = agents.filter(a => a.fusedScore > 30).length;
 
-      // T2 Gate 2 — Completed gigs on SKALE:
-      // Primary: on-chain FundsLocked event count (each locked escrow = 1 funded gig).
-      // Fallback: DB count of SKALE gigs with status === "completed".
+      // T2G2: completed gigs — on-chain FundsReleased event count; fallback to DB
       const dbCompletedGigsOnSkale = skaleGigs.filter(g => g.status === "completed").length;
       const completedGigsOnSkale = onChainEscrow?.count ?? dbCompletedGigsOnSkale;
       const completedGigsSource = onChainEscrow !== null ? "on-chain" : "db" as const;
 
-      // T2 Gate 3 — USDC escrow volume locked on SKALE chain only:
-      // Primary: on-chain FundsLocked event USDC sum (from eth_getLogs, USDC 6-decimal).
-      // Fallback: DB sum of SKALE escrowTransactions in USDC.
+      // T2G3: USDC volume — on-chain FundsReleased USDC sum (paid out); fallback to DB
       const dbEscrowVolumeUsdcOnSkale = skaleEscrows
         .filter(e => e.currency === "USDC")
         .reduce((sum, e) => sum + e.amount, 0);

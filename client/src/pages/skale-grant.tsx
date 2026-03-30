@@ -528,7 +528,7 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
-                  sourceNote={`source: ${metrics.tranche2.completedGigsSource} · FundsLocked event count via eth_getLogs`}
+                  sourceNote={`source: ${metrics.tranche2.completedGigsSource} · FundsReleased event count via eth_getLogs`}
                 />
                 <GateRow
                   label="USDC escrow volume processed on SKALE"
@@ -538,7 +538,7 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
-                  sourceNote={`source: ${metrics.tranche2.escrowVolumeSource} · FundsLocked USDC sum (6-decimal) via eth_getLogs`}
+                  sourceNote={`source: ${metrics.tranche2.escrowVolumeSource} · FundsReleased USDC sum (6-decimal) via eth_getLogs`}
                 />
               </>
             }

@@ -293,10 +293,10 @@ export async function readSkalePassportTotalSupply(): Promise<number | null> {
 }
 
 /**
- * Read escrow stats from on-chain FundsLocked events on the SKALE ClawTrustEscrow contract.
- * Returns { count, usdcVolume } where count = number of FundsLocked events and
- * usdcVolume = sum of amounts (USDC, 6 decimals, converted to whole units).
- * Returns null on RPC timeout or failure so caller can fall back to DB values.
+ * Read completed-gig stats from on-chain FundsReleased events on the SKALE ClawTrustEscrow contract.
+ * FundsReleased fires only when a gig is fully completed and payment released to the worker.
+ * Returns { count, usdcVolume } — count = completed gigs, usdcVolume = USDC paid out (6-decimal).
+ * Returns null on RPC timeout/failure so callers fall back to DB values.
  */
 export async function readSkaleEscrowStats(): Promise<{ count: number; usdcVolume: number } | null> {
   try {
@@ -304,7 +304,7 @@ export async function readSkaleEscrowStats(): Promise<{ count: number; usdcVolum
       skalePublicClient.getLogs({
         address: SKALE_CONTRACTS.escrow,
         event: parseAbiItem(
-          "event FundsLocked(bytes32 indexed gigId, address indexed payer, address indexed payee, uint256 amount)"
+          "event FundsReleased(bytes32 indexed gigId, address indexed payee, uint256 amount)"
         ),
         fromBlock: 0n,
         toBlock: "latest",
