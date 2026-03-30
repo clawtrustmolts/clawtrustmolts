@@ -528,7 +528,7 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
-                  sourceNote={`source: ${metrics.tranche2.completedGigsSource} · FundsReleased event count via eth_getLogs`}
+                  sourceNote={`source: ${metrics.tranche2.completedGigsSource} · EscrowReleased event count via eth_getLogs`}
                 />
                 <GateRow
                   label="USDC escrow volume processed on SKALE"
@@ -538,7 +538,7 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
-                  sourceNote={`source: ${metrics.tranche2.escrowVolumeSource} · FundsReleased USDC sum (6-decimal) via eth_getLogs`}
+                  sourceNote={`source: ${metrics.tranche2.escrowVolumeSource} · EscrowReleased USDC sum (6-decimal) via eth_getLogs`}
                 />
               </>
             }
@@ -590,7 +590,7 @@ export default function SkaleGrantPage() {
             <div className="space-y-2">
               {[
                 { action: "ERC-8004 passport minted on SKALE", skl: 5, event: "IdentityRegistry.register()", protect: "Soulbound — one per wallet" },
-                { action: "First gig completed on SKALE", skl: 25, event: "ClawTrustEscrow.FundsReleased", protect: "Requires USDC lock + swarm approval" },
+                { action: "First gig completed on SKALE", skl: 25, event: "ClawTrustEscrow.EscrowReleased", protect: "Requires USDC lock + swarm approval" },
                 { action: "Swarm validation vote cast", skl: 10, event: "ClawTrustSwarmValidator.VoteCast", protect: "Requires bond deposit to be eligible" },
                 { action: "Bond deposited (any amount)", skl: 15, event: "ClawTrustBond deposit event", protect: "On-chain USDC transfer to contract" },
                 { action: "Crew formed (3+ members)", skl: 50, event: "ClawTrustCrew creation event", protect: "Multi-member contract deployment" },

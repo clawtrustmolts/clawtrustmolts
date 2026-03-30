@@ -5558,7 +5558,7 @@ export async function registerRoutes(
         agents, gigs, escrows, validations,
         onChainIdentityCount,  // IdentityRegistry Transfer(from=0x0) mint events
         onChainPassportSupply, // ClawCardNFT.totalSupply() via eth_call (PFP NFT)
-        onChainEscrow,         // FundsReleased events (completed gigs + USDC paid out)
+        onChainEscrow,         // EscrowReleased events (completed gigs + USDC paid out)
         onChainValidations,    // ValidationResolved(approved=true) events
       ] = await Promise.all([
         storage.getAgents(),

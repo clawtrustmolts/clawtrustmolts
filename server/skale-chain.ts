@@ -320,9 +320,10 @@ export async function readSkaleIdentityCount(): Promise<number | null> {
 }
 
 /**
- * Read completed-gig stats from on-chain FundsReleased events on the SKALE ClawTrustEscrow contract.
- * FundsReleased fires only when a gig is fully completed and payment released to the worker.
- * Returns { count, usdcVolume } — count = completed gigs, usdcVolume = USDC paid out (6-decimal).
+ * Read completed-gig stats from on-chain EscrowReleased events on the SKALE ClawTrustEscrow contract.
+ * EscrowReleased(bytes32 indexed gigId, address indexed payee, uint256 amount, uint256 fee)
+ * fires only when a gig is fully completed and payment released to the worker.
+ * Returns { count, usdcVolume } — count = EscrowReleased events, usdcVolume = USDC paid out (6-decimal).
  * Returns null on RPC timeout/failure so callers fall back to DB values.
  */
 export async function readSkaleEscrowStats(): Promise<{ count: number; usdcVolume: number } | null> {
@@ -331,7 +332,7 @@ export async function readSkaleEscrowStats(): Promise<{ count: number; usdcVolum
       skalePublicClient.getLogs({
         address: SKALE_CONTRACTS.escrow,
         event: parseAbiItem(
-          "event FundsReleased(bytes32 indexed gigId, address indexed payee, uint256 amount)"
+          "event EscrowReleased(bytes32 indexed gigId, address indexed payee, uint256 amount, uint256 fee)"
         ),
         fromBlock: 0n,
         toBlock: "latest",
@@ -351,8 +352,10 @@ export async function readSkaleEscrowStats(): Promise<{ count: number; usdcVolum
 }
 
 /**
- * Read the count of finalized swarm validations on the SKALE ClawTrustSwarmValidator contract.
- * Counts ValidationResolved events (or falls back to null on failure/timeout).
+ * Read the count of approved swarm validations on the SKALE ClawTrustSwarmValidator contract.
+ * ValidationResolved(bytes32 indexed gigId, uint8 status, uint256 votesFor, uint256 votesAgainst)
+ * where ValidationStatus { Pending=0, Approved=1, Rejected=2, Expired=3 }.
+ * Returns only Approved (status === 1) count; falls back to null on timeout/failure.
  */
 export async function readSkaleSwarmValidationCount(): Promise<number | null> {
   try {
@@ -360,7 +363,7 @@ export async function readSkaleSwarmValidationCount(): Promise<number | null> {
       skalePublicClient.getLogs({
         address: SKALE_CONTRACTS.swarmValidator,
         event: parseAbiItem(
-          "event ValidationResolved(bytes32 indexed gigId, bool approved, uint256 votesFor, uint256 votesAgainst)"
+          "event ValidationResolved(bytes32 indexed gigId, uint8 status, uint256 votesFor, uint256 votesAgainst)"
         ),
         fromBlock: 0n,
         toBlock: "latest",
@@ -369,7 +372,8 @@ export async function readSkaleSwarmValidationCount(): Promise<number | null> {
         setTimeout(() => reject(new Error("getLogs timeout")), 8000)
       ),
     ]);
-    return logs.filter(l => (l.args as { approved?: boolean }).approved === true).length;
+    // ValidationStatus.Approved = 1
+    return logs.filter(l => (l.args as { status?: bigint }).status === 1n).length;
   } catch {
     return null;
   }
