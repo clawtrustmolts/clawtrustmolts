@@ -634,17 +634,23 @@ export async function updatePerformanceScoreOnChain(opts: {
 
   try {
     const txHash = await withNonceLock(() =>
-      (bondContract as any).write.updatePerformanceScore([
-        opts.agentWallet as Address,
-        BigInt(clampedScore),
-      ])
+      (bondContract as any).write.updatePerformanceScore(
+        [opts.agentWallet as Address, BigInt(clampedScore)],
+        { gas: 100000n }
+      )
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Bond] updatePerformanceScore ${opts.agentWallet} => ${clampedScore} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
     const errMsg = err.message || "";
-    if (errMsg.includes("reverted") || errMsg.includes("ScoreOutOfRange") || errMsg.includes("NotAuthorizedCaller")) {
+    const isSoftError =
+      errMsg.includes("reverted") ||
+      errMsg.includes("ScoreOutOfRange") ||
+      errMsg.includes("NotAuthorizedCaller") ||
+      errMsg.toLowerCase().includes("missing or invalid") ||
+      errMsg.toLowerCase().includes("invalid parameters");
+    if (isSoftError) {
       console.warn(`[Bond] updatePerformanceScore skipped for ${opts.agentWallet}: ${errMsg.slice(0, 120)}`);
     } else {
       console.error(`[Bond] updatePerformanceScore failed for ${opts.agentWallet}:`, errMsg.slice(0, 200));
@@ -667,11 +673,10 @@ export async function lockBondForGigOnChain(opts: {
 
   try {
     const txHash = await withNonceLock(() =>
-      (bondContract as any).write.lockBondForGig([
-        gigIdBytes32,
-        opts.agentWallet as Address,
-        amountRaw,
-      ])
+      (bondContract as any).write.lockBondForGig(
+        [gigIdBytes32, opts.agentWallet as Address, amountRaw],
+        { gas: 150000n }
+      )
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Bond] lockBondForGig gig=${opts.gigId} agent=${opts.agentWallet} amount=${opts.amount} tx=${txHash}`);
@@ -701,10 +706,10 @@ export async function slashBondOnChain(opts: {
 
   try {
     const txHash = await withNonceLock(() =>
-      (bondContract as any).write.adminFinalize([
-        gigIdBytes32,
-        false,
-      ])
+      (bondContract as any).write.adminFinalize(
+        [gigIdBytes32, false],
+        { gas: 150000n }
+      )
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Bond] slashBondOnChain gig=${opts.gigId} tx=${txHash}`);
@@ -779,10 +784,10 @@ export async function depositBondOnChain(opts: {
     console.log(`[Bond] depositOnChain: approved ${opts.amount} USDC tx=${approveTx}`);
 
     const depositTx = await withNonceLock(() =>
-      (bondContract as any).write.depositFor([
-        opts.agentWallet as Address,
-        amountRaw,
-      ])
+      (bondContract as any).write.depositFor(
+        [opts.agentWallet as Address, amountRaw],
+        { gas: 150000n }
+      )
     );
     await publicClient.waitForTransactionReceipt({ hash: depositTx });
     console.log(`[Bond] depositOnChain: depositFor agent=${opts.agentWallet} amount=${opts.amount} tx=${depositTx}`);
