@@ -2133,7 +2133,12 @@ export async function registerRoutes(
           // Circuit breaker open — will attempt on-chain fallback below
           console.warn(`[Escrow] Circuit breaker open for gig ${gigId} — skipping Circle, attempting on-chain fallback`);
           circleAttemptFailed = true;
-        } else if (escrow.circleWalletId) {
+        } else if (!escrow.circleWalletId) {
+          // Circle is configured but this escrow has no Circle wallet (created before Circle or during outage)
+          // Fall through to on-chain transfer so state is only updated after confirmed payout
+          console.warn(`[Escrow] Circle configured but escrow ${escrow.id} has no circleWalletId — using on-chain fallback`);
+          circleAttemptFailed = true;
+        } else {
           const assigneeForCircle = await storage.getAgent(gig.assigneeId);
           if (assigneeForCircle) {
             const destAddress = escrow.chain === "SOL_DEVNET"

@@ -2052,18 +2052,26 @@ await test(17, "17.2 Chain selector routes registration to correct chain", async
     walletAddress: wallet,
     chain: "SKALE_TESTNET",
   });
-  assert(r.ok || r.status === 409, `SKALE_TESTNET registration failed (${r.status}): ${JSON.stringify(r.data).slice(0,100)}`);
+  // 409 means the handle already exists from a previous run — look up the existing agent
+  if (r.status === 409) {
+    const existingId = r.data?.existingAgentId || r.data?.id;
+    if (!existingId) return skip("Handle already registered and no existing agent id returned (cannot verify chain)");
+    const profile2 = await req("GET", `/agents/${existingId}`);
+    assert(profile2.ok, "Profile load failed for existing chain-selector agent");
+    const chain2 = profile2.data?.preferredChain || profile2.data?.chain;
+    assert(chain2 === "SKALE_TESTNET", `Existing agent has chain ${JSON.stringify(chain2)}, expected SKALE_TESTNET`);
+    return;
+  }
+  assert(r.ok, `SKALE_TESTNET registration failed (${r.status}): ${JSON.stringify(r.data).slice(0,100)}`);
   const agentId = r.data?.agent?.id || r.data?.id;
   assert(agentId, `Registration did not return an agent id (status=${r.status})`);
   const profile = await req("GET", `/agents/${agentId}`);
   assert(profile.ok, "Profile load failed after chain-selector registration");
-  // Chain is stored as preferredChain on the agent object
+  // Chain selector must store the requested chain on the agent
   const chain = profile.data?.preferredChain || profile.data?.chain;
-  // SKALE_TESTNET registration is accepted — may fall back to BASE_SEPOLIA when
-  // on-chain minting is unavailable (oracle wallet not authorised on SKALE testnet).
   assert(
-    chain === "SKALE_TESTNET" || chain === "BASE_SEPOLIA",
-    `Expected SKALE_TESTNET or BASE_SEPOLIA chain on registered agent, got: ${JSON.stringify(chain)}`
+    chain === "SKALE_TESTNET",
+    `Chain selector did not route to SKALE_TESTNET — expected SKALE_TESTNET, got: ${JSON.stringify(chain)}`
   );
 });
 
@@ -2121,7 +2129,7 @@ await test(17, "17.3 Admin dispute resolution flow (DB path)", async () => {
   if (!applyR.ok && applyR.status !== 400 && applyR.status !== 409) {
     return skip(`Apply failed (${applyR.status}): ${applyR.data?.message?.slice(0,80)}`);
   }
-  const acceptR = await req("POST", `/gigs/${gigId}/accept`, { applicantId: workerId },
+  const acceptR = await req("POST", `/gigs/${gigId}/accept-applicant`, { applicantId: workerId },
     { "x-wallet-address": posterWallet, "x-agent-id": posterId });
   if (!acceptR.ok && acceptR.status !== 400) {
     return skip(`Accept failed (${acceptR.status}): ${acceptR.data?.message?.slice(0,80)}`);
@@ -2134,37 +2142,48 @@ await test(17, "17.3 Admin dispute resolution flow (DB path)", async () => {
   const escrowId = escrowR.data?.escrow?.id || escrowR.data?.id;
   assert(escrowId, "escrowId missing from escrow creation");
 
-  // Raise dispute — worker must be assignee for this to succeed
+  // Raise dispute — worker must be the assignee for this to succeed
+  // Accept may have failed if gig was in wrong state, meaning worker is NOT the assignee
+  const gigStatusR = await req("GET", `/gigs/${gigId}`);
+  const assigneeId = gigStatusR.data?.assigneeId;
+  if (!assigneeId || assigneeId !== workerId) {
+    return skip(`Worker is not the assignee (assigneeId=${assigneeId}, workerId=${workerId}) — cannot test dispute`);
+  }
+
   const disputeR = await req("POST", "/escrow/dispute",
     { gigId, disputedBy: workerId, reason: "E2E dispute test" },
     { "x-wallet-address": workerWallet, "x-agent-id": workerId });
-  if (!disputeR.ok) {
-    // May fail if escrow not in lockable state — skip gracefully
-    return skip(`Dispute raise failed (${disputeR.status}): ${disputeR.data?.message?.slice(0,80)}`);
-  }
+  assert(disputeR.ok, `Dispute raise failed (${disputeR.status}): ${disputeR.data?.message?.slice(0,80)}`);
 
   // Verify escrow is now in disputed state
   const escrowStatusR = await req("GET", `/escrow/status/${gigId}`);
   assert(escrowStatusR.ok, `Escrow status check failed: ${escrowStatusR.status}`);
   const escrowStatus = escrowStatusR.data?.status;
-  // Admin resolve requires on-chain swarm validation — skip admin-resolve if disputed but no on-chain record
-  if (escrowStatus === "disputed") {
-    const adminResolveR = await req("POST", "/escrow/admin-resolve",
-      { gigId, action: "refund_to_poster" },
-      { "x-admin-wallet": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906" }
-    );
-    // Expected: either success OR blocked by missing on-chain swarm validation
-    if (adminResolveR.ok) {
-      assert(adminResolveR.data?.status === "refunded", `Expected 'refunded' status, got: ${adminResolveR.data?.status}`);
-    } else {
-      // Acceptable: blocked due to missing on-chain swarm validation (403/503) or admin not authorized (401/503)
-      const blockingCodes = [400, 401, 403, 503];
-      assert(blockingCodes.includes(adminResolveR.status),
-        `Unexpected admin-resolve status ${adminResolveR.status}: ${JSON.stringify(adminResolveR.data).slice(0,100)}`);
+  assert(escrowStatus === "disputed", `Expected escrow to be in 'disputed' state, got: ${escrowStatus}`);
+
+  // Admin resolves dispute — refund_to_poster path
+  const adminWallet = process.env.ADMIN_WALLET || "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906";
+  const adminResolveR = await req("POST", "/escrow/admin-resolve",
+    { gigId, action: "refund_to_poster" },
+    { "x-admin-wallet": adminWallet }
+  );
+  // On-chain swarm validation may be missing in testnet (requires actual swarm vote on-chain)
+  // If blocked for that reason, the dispute logic is still proven by the disputed state above
+  if (!adminResolveR.ok) {
+    const msg = adminResolveR.data?.message || "";
+    if (msg.includes("swarm") || msg.includes("validation") || adminResolveR.status === 403) {
+      // Admin resolve is correctly guarded by swarm verdict requirement
+      // The dispute flow itself (raise + status transition) is proven above
+      console.log(`[17.3] Admin resolve correctly blocked (no swarm verdict): ${msg.slice(0,80)}`);
+      return;
     }
-  } else {
-    return skip(`Escrow not in disputed state (${escrowStatus}) — cannot test admin-resolve`);
+    assert(false, `Admin resolve failed unexpectedly (${adminResolveR.status}): ${JSON.stringify(adminResolveR.data).slice(0,100)}`);
   }
+  // If resolve succeeded, verify the outcome
+  assert(
+    adminResolveR.data?.status === "refunded" || adminResolveR.data?.action === "refund_to_poster",
+    `Admin resolve returned unexpected outcome: ${JSON.stringify(adminResolveR.data).slice(0,100)}`
+  );
 });
 
 // 17.4 — System status endpoint shows all features active
