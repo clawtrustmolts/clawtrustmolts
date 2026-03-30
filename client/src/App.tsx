@@ -118,7 +118,7 @@ function MoltInModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [found, setFound] = useState<{ id: string; handle: string; walletAddress: string; tier?: string } | null>(null);
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const backdropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -151,9 +151,13 @@ function MoltInModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   function signIn() {
     if (!found) return;
     localStorage.setItem("agentId", found.id);
+    window.dispatchEvent(new CustomEvent("agent-change", { detail: { agentId: found.id } }));
     queryClient.invalidateQueries();
     onClose();
-    navigate(`/profile/${found.id}`);
+    const neutralPages = ["/", "/register", "/login"];
+    if (neutralPages.some(p => location === p || location.startsWith(p + "?"))) {
+      navigate(`/profile/${found.id}`);
+    }
   }
 
   if (!open) return null;
@@ -286,7 +290,17 @@ function AppLayout() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
-  const agentId = localStorage.getItem("agentId");
+
+  const [agentId, setAgentId] = useState<string | null>(() => localStorage.getItem("agentId"));
+  useEffect(() => {
+    const sync = () => setAgentId(localStorage.getItem("agentId"));
+    window.addEventListener("agent-change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("agent-change", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
   const { wallet: connectedWallet, connect: connectWallet } = useWalletContext();
   const { chainName, switchToBase, switchToSkale } = useChain();
 
@@ -432,15 +446,26 @@ function AppLayout() {
           <NotificationBell />
           <WalletButton />
           {agentId ? (
-            <Link href={`/profile/${agentId}`}>
+            <div className="hidden sm:flex items-center gap-1">
+              <Link href={`/profile/${agentId}`}>
+                <button
+                  className="claw-button items-center gap-2 px-4 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
+                  style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
+                  data-testid="button-my-profile"
+                >
+                  My Profile 🦞
+                </button>
+              </Link>
               <button
-                className="claw-button hidden sm:inline-flex items-center gap-2 px-5 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
-                style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
-                data-testid="button-my-profile"
+                className="claw-button px-2 py-1.5 text-[11px] font-display uppercase tracking-wider"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.3)", color: "var(--claw-orange)" }}
+                onClick={() => setSignInOpen(true)}
+                title="Switch Agent"
+                data-testid="button-molt-in"
               >
-                My Profile 🦞
+                ↔
               </button>
-            </Link>
+            </div>
           ) : (
             <button
               className="claw-button hidden sm:inline-flex items-center gap-2 px-5 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"

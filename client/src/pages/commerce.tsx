@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -66,14 +65,15 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function JobCard({ job, agentId, onRefresh }: { job: Erc8183Job; agentId: string | null; onRefresh: () => void }) {
+function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
+  job: Erc8183Job; agentId: string | null; onRefresh: () => void; onOpenApplicants: () => void;
+}) {
   const { toast } = useToast();
   const [applyOpen, setApplyOpen] = useState(false);
   const [proposal, setProposal] = useState("");
   const [submitOpen, setSubmitOpen] = useState(false);
   const [deliverableUrl, setDeliverableUrl] = useState("");
   const [deliverableNote, setDeliverableNote] = useState("");
-  const [, navigate] = useLocation();
 
   const isPoster = agentId === job.posterAgentId;
   const isAssignee = agentId === job.assigneeAgentId;
@@ -176,7 +176,7 @@ function JobCard({ job, agentId, onRefresh }: { job: Erc8183Job; agentId: string
               size="sm"
               variant="outline"
               className="h-7 text-xs"
-              onClick={() => navigate(`/commerce?job=${job.id}`)}
+              onClick={() => onOpenApplicants()}
               data-testid={`button-view-applicants-${job.id}`}
             >
               <Users className="w-3 h-3 mr-1" />Applicants
@@ -380,14 +380,24 @@ function ApplicantsPanel({ jobId, job, agentId, onClose, onRefresh }: {
 
 export default function CommercePage() {
   const { toast } = useToast();
-  const [location, navigate] = useLocation();
-  const jobId = new URLSearchParams(location.includes("?") ? location.split("?")[1] : "").get("job");
 
-  const agentId = typeof window !== "undefined" ? localStorage.getItem("agentId") : null;
+  const [agentId, setAgentId] = useState<string | null>(
+    typeof window !== "undefined" ? localStorage.getItem("agentId") : null
+  );
+  useEffect(() => {
+    const sync = () => setAgentId(localStorage.getItem("agentId"));
+    window.addEventListener("agent-change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("agent-change", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
+  const [applicantsJob, setApplicantsJob] = useState<Erc8183Job | null>(null);
 
   // Create job form
   const [form, setForm] = useState({
@@ -427,8 +437,6 @@ export default function CommercePage() {
     },
     onError: (e: any) => toast({ title: "Failed to post job", description: e.message, variant: "destructive" }),
   });
-
-  const focusedJob = jobId ? data?.jobs?.find((j) => j.id === jobId) : null;
 
   return (
     <div className="min-h-screen" style={{ background: "var(--ocean-deep)" }}>
@@ -528,19 +536,23 @@ export default function CommercePage() {
                 onRefresh={() => {
                   queryClient.invalidateQueries({ queryKey: ["/api/erc8183/jobs"] });
                 }}
+                onOpenApplicants={() => setApplicantsJob(job)}
               />
             ))}
           </div>
         )}
 
         {/* Applicants Panel */}
-        {focusedJob && (
+        {applicantsJob && (
           <ApplicantsPanel
-            jobId={focusedJob.id}
-            job={focusedJob}
+            jobId={applicantsJob.id}
+            job={applicantsJob}
             agentId={agentId}
-            onClose={() => navigate("/commerce")}
-            onRefresh={() => queryClient.invalidateQueries({ queryKey: ["/api/erc8183/jobs"] })}
+            onClose={() => setApplicantsJob(null)}
+            onRefresh={() => {
+              queryClient.invalidateQueries({ queryKey: ["/api/erc8183/jobs"] });
+              setApplicantsJob(null);
+            }}
           />
         )}
 

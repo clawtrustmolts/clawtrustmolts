@@ -9303,6 +9303,12 @@ export async function registerRoutes(
     try {
       const jobId = String(req.params.jobId);
       if (!jobId || jobId.length < 10) return res.status(400).json({ message: "Invalid jobId" });
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRe.test(jobId)) {
+        const dbJob = await storage.getErc8183Job(jobId);
+        if (!dbJob) return res.status(404).json({ message: "Job not found" });
+        return res.json(dbJob);
+      }
       const job = await getERC8183Job(jobId);
       return res.json(job);
     } catch (err: any) {
@@ -9347,7 +9353,7 @@ export async function registerRoutes(
   // POST /api/erc8183/jobs — create a new job
   app.post("/api/erc8183/jobs", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
     try {
-      const agent = req.agent;
+      const posterAgentId = (req as any).agentId as string;
       const { title, description, budgetUsdc, requiredSkills, deadlineHours } = req.body;
       if (!title || !description || !budgetUsdc) return res.status(400).json({ message: "title, description, budgetUsdc required" });
       const budget = parseFloat(String(budgetUsdc));
@@ -9366,7 +9372,7 @@ export async function registerRoutes(
       }
 
       const job = await storage.createErc8183Job({
-        posterAgentId: agent.id,
+        posterAgentId,
         title: sanitizeString(title, 200),
         description: sanitizeString(description, 2000),
         budgetUsdc: budget,
@@ -9407,7 +9413,7 @@ export async function registerRoutes(
       const { jobId } = req.params;
       const job = await storage.getErc8183Job(jobId);
       if (!job) return res.status(404).json({ message: "Job not found" });
-      if (job.posterAgentId !== req.agent.id) return res.status(403).json({ message: "Only poster can fund" });
+      if (job.posterAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only poster can fund" });
       if (job.status !== "open") return res.status(400).json({ message: `Cannot fund job in status: ${job.status}` });
 
       let txHashFunded: string | null = null;
@@ -9426,21 +9432,21 @@ export async function registerRoutes(
   app.post("/api/erc8183/jobs/:jobId/apply", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
     try {
       const { jobId } = req.params;
-      const agent = req.agent;
+      const applicantAgentId = (req as any).agentId as string;
       const { proposal } = req.body;
       if (!proposal) return res.status(400).json({ message: "proposal required" });
 
       const job = await storage.getErc8183Job(jobId);
       if (!job) return res.status(404).json({ message: "Job not found" });
-      if (job.posterAgentId === agent.id) return res.status(400).json({ message: "Cannot apply to your own job" });
+      if (job.posterAgentId === applicantAgentId) return res.status(400).json({ message: "Cannot apply to your own job" });
       if (!["open", "funded"].includes(job.status)) return res.status(400).json({ message: `Cannot apply to job in status: ${job.status}` });
 
-      const existing = await storage.getErc8183Applicant(jobId, agent.id);
+      const existing = await storage.getErc8183Applicant(jobId, applicantAgentId);
       if (existing) return res.status(409).json({ message: "Already applied" });
 
       const applicant = await storage.createErc8183Applicant({
         jobId,
-        agentId: agent.id,
+        agentId: applicantAgentId,
         proposal: sanitizeString(proposal, 1000),
       });
       return res.status(201).json(applicant);
@@ -9458,7 +9464,7 @@ export async function registerRoutes(
 
       const job = await storage.getErc8183Job(jobId);
       if (!job) return res.status(404).json({ message: "Job not found" });
-      if (job.posterAgentId !== req.agent.id) return res.status(403).json({ message: "Only poster can accept" });
+      if (job.posterAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only poster can accept" });
       if (!["open", "funded"].includes(job.status)) return res.status(400).json({ message: `Cannot accept in status: ${job.status}` });
 
       const applicantAgent = await storage.getAgent(applicantAgentId);
@@ -9487,7 +9493,7 @@ export async function registerRoutes(
 
       const job = await storage.getErc8183Job(jobId);
       if (!job) return res.status(404).json({ message: "Job not found" });
-      if (job.assigneeAgentId !== req.agent.id) return res.status(403).json({ message: "Only assignee can submit" });
+      if (job.assigneeAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only assignee can submit" });
       if (job.status !== "funded") return res.status(400).json({ message: `Cannot submit in status: ${job.status}` });
 
       const deliverableHash = `0x${Buffer.from(deliverableUrl ?? deliverableNote ?? "submitted").toString("hex").slice(0, 62).padStart(64, "0")}`;
@@ -9518,7 +9524,7 @@ export async function registerRoutes(
 
       const job = await storage.getErc8183Job(jobId);
       if (!job) return res.status(404).json({ message: "Job not found" });
-      if (job.posterAgentId !== req.agent.id) return res.status(403).json({ message: "Only poster can settle" });
+      if (job.posterAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only poster can settle" });
       if (job.status !== "submitted") return res.status(400).json({ message: `Cannot settle in status: ${job.status}` });
 
       let txHash: string | null = null;

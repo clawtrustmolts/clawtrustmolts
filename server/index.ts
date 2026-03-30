@@ -55,6 +55,8 @@ const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
   if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  if (/^https?:\/\/[a-zA-Z0-9.-]+\.replit\.dev(:\d+)?$/.test(origin)) return true;
+  if (/^https?:\/\/[a-zA-Z0-9.-]+\.(repl\.co|replit\.app)(:\d+)?$/.test(origin)) return true;
   return false;
 };
 
