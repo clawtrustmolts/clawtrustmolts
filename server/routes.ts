@@ -5571,24 +5571,26 @@ export async function registerRoutes(
       );
       const passportsOnSkale = agentsWithWallet.filter(a => a.erc8004TokenId && a.isVerified).length;
 
-      // T1 Gate 3 — Swarm validations on SKALE
+      // T1 Gate 3 — Swarm validations on SKALE (any SKALE chain variant)
+      const SKALE_CHAINS_SET = new Set(["SKALE_TESTNET", "skale", "SKALE_MAINNET"]);
       const swarmValidationsOnSkale = validations.filter(v =>
-        (v as any).chain === "SKALE_TESTNET" || (v as any).chain === "skale"
+        SKALE_CHAINS_SET.has((v as any).chain)
       ).length;
 
-      // T2 Gate 1 — Agents with FusedScore > 30
-      const agentsWithScoreAbove30 = agents.filter(a => a.fusedScore >= 30).length;
+      // T2 Gate 1 — Agents with FusedScore strictly above 30 (Sybil-resistant: multi-source score)
+      const agentsWithScoreAbove30 = agents.filter(a => a.fusedScore > 30).length;
 
       // T2 Gate 2 — Completed gigs on SKALE
+      const skaleChains = new Set(["SKALE_TESTNET", "skale", "SKALE_MAINNET"]);
       const completedGigsOnSkale = gigs.filter(g =>
         g.status === "completed" &&
-        ((g as any).chain === "SKALE_TESTNET" || (g as any).chain === "skale")
+        skaleChains.has((g as any).chain)
       ).length;
 
-      // T2 Gate 3 — USDC escrow volume on SKALE
+      // T2 Gate 3 — USDC escrow volume locked on SKALE chain only
       const escrowVolumeUsdcOnSkale = escrows
         .filter(e =>
-          ((e as any).chain === "SKALE_TESTNET" || (e as any).chain === "skale") &&
+          skaleChains.has((e as any).chain) &&
           e.currency === "USDC"
         )
         .reduce((sum, e) => sum + e.amount, 0);
@@ -5598,13 +5600,22 @@ export async function registerRoutes(
         a.lastHeartbeat && (now - new Date(a.lastHeartbeat).getTime()) < thirtyDaysMs
       ).length;
 
-      // T3 Gate 2 — Cumulative USDC escrow volume on SKALE (same as T2 but cumulative all time)
+      // T3 Gate 2 — Cumulative USDC escrow volume on SKALE chain only (mirrors T2G3 but targets $50K)
       const cumulativeEscrowVolumeUsdc = escrows
-        .filter(e => e.currency === "USDC")
+        .filter(e =>
+          skaleChains.has((e as any).chain) &&
+          e.currency === "USDC"
+        )
         .reduce((sum, e) => sum + e.amount, 0);
 
-      // T3 Gate 3 — Leaderboard live (always true, page exists at /leaderboard)
-      const leaderboardLive = true;
+      // T3 Gate 3 — Leaderboard live: computed as true when ≥1 agent has a SKALE-registered ERC-8004 passport
+      const leaderboardLive = agents.some(a => a.erc8004TokenId && a.isVerified);
+
+      // T1 Gate 1 — Mainnet contracts deployed: check env var SKALE_MAINNET_ESCROW_ADDRESS is a real address
+      const skaleMainnetEscrow = process.env.SKALE_MAINNET_ESCROW_ADDRESS || "";
+      const mainnetContractsDeployed =
+        /^0x[a-fA-F0-9]{40}$/.test(skaleMainnetEscrow) &&
+        skaleMainnetEscrow !== "0x0000000000000000000000000000000000000000";
 
       // Total stats
       const totalAgents = agents.length;
@@ -5615,7 +5626,7 @@ export async function registerRoutes(
         totalAgents,
         totalGigsCompleted,
         tranche1: {
-          mainnetContractsDeployed: false,
+          mainnetContractsDeployed,
           passportsOnSkale,
           passportsTarget: 500,
           swarmValidationsOnSkale,
