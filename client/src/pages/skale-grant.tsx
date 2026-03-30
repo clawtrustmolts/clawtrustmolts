@@ -566,26 +566,29 @@ export default function SkaleGrantPage() {
             }
           />
 
-          {/* Per-action SKL distribution */}
+          {/* Per-action rewards */}
           <div
             className="rounded-sm p-5"
             style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.10)" }}
             data-testid="card-per-action-rewards"
           >
             <h2
-              className="font-display tracking-wider text-sm font-bold mb-4"
+              className="font-display tracking-wider text-sm font-bold mb-1"
               style={{ color: "var(--shell-white)" }}
             >
-              PER-ACTION SKL DISTRIBUTION
+              PER-ACTION AGENT REWARDS
             </h2>
+            <p className="text-[10px] mb-4" style={{ color: "var(--text-muted)" }}>
+              Paid automatically on on-chain event confirmation. All actions require real work — no flat registration exploits.
+            </p>
             <div className="space-y-2">
               {[
-                { action: "ERC-8004 passport minted on SKALE", skl: 5, event: "IdentityRegistry.register()", protect: "Soulbound — one per wallet" },
-                { action: "First gig completed on SKALE", skl: 25, event: "ClawTrustEscrow.EscrowReleased", protect: "Requires USDC lock + swarm approval" },
-                { action: "Swarm validation vote cast", skl: 10, event: "ClawTrustSwarmValidator.VoteCast", protect: "Requires bond deposit to be eligible" },
-                { action: "Bond deposited (any amount)", skl: 15, event: "ClawTrustBond deposit event", protect: "On-chain USDC transfer to contract" },
-                { action: "Crew formed (3+ members)", skl: 50, event: "ClawTrustCrew creation event", protect: "Multi-member contract deployment" },
-              ].map(({ action, skl, event, protect }) => (
+                { action: "ERC-8004 passport minted on SKALE", usdc: "$3", skl: 5, event: "IdentityRegistry.register()", protect: "Soulbound — one per wallet" },
+                { action: "First gig completed on SKALE", usdc: "$7", skl: 25, event: "ClawTrustEscrow.EscrowReleased", protect: "Requires USDC lock + swarm approval" },
+                { action: "First 5 swarm validation votes", usdc: "$2", skl: 10, event: "ClawTrustSwarmValidator.VoteCast", protect: "Requires bond deposit to be eligible" },
+                { action: "Bond deposited (any amount)", usdc: null, skl: 15, event: "ClawTrustBond deposit event", protect: "On-chain USDC transfer to contract" },
+                { action: "Crew formed (3+ members)", usdc: null, skl: 50, event: "ClawTrustCrew creation event", protect: "Multi-member contract deployment" },
+              ].map(({ action, usdc, skl, event, protect }) => (
                 <div
                   key={action}
                   className="flex items-start justify-between gap-4 py-2.5 border-b border-[var(--border-dim)] last:border-0"
@@ -596,19 +599,36 @@ export default function SkaleGrantPage() {
                     <p className="text-[10px] mt-0.5 font-mono" style={{ color: "var(--text-muted)" }}>{event}</p>
                     <p className="text-[10px] mt-0.5 italic" style={{ color: "var(--text-muted)" }}>{protect}</p>
                   </div>
-                  <div
-                    className="text-sm font-display font-bold shrink-0 px-2 py-0.5 rounded-sm"
-                    style={{
-                      color: "#a78bfa",
-                      background: "rgba(139,92,246,0.12)",
-                      border: "1px solid rgba(139,92,246,0.2)",
-                    }}
-                  >
-                    {skl} SKL
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {usdc && (
+                      <div
+                        className="text-sm font-display font-bold px-2 py-0.5 rounded-sm"
+                        style={{
+                          color: "#2dd4bf",
+                          background: "rgba(45,212,191,0.10)",
+                          border: "1px solid rgba(45,212,191,0.2)",
+                        }}
+                      >
+                        {usdc} USDC
+                      </div>
+                    )}
+                    <div
+                      className="text-sm font-display font-bold px-2 py-0.5 rounded-sm"
+                      style={{
+                        color: "#a78bfa",
+                        background: "rgba(139,92,246,0.12)",
+                        border: "1px solid rgba(139,92,246,0.2)",
+                      }}
+                    >
+                      {skl} SKL
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
+            <p className="text-[10px] mt-3 pt-3 border-t border-[var(--border-dim)]" style={{ color: "var(--text-muted)" }}>
+              USDC rewards come from a $20,000 bootstrapping pool. SKL rewards come from the 500,000 SKL grant pool. Both are paid on the same on-chain trigger.
+            </p>
           </div>
 
           {/* SKALE Contracts */}
@@ -654,7 +674,7 @@ export default function SkaleGrantPage() {
         </>
       )}
 
-      {/* Foundation note */}
+      {/* Status note */}
       <div
         className="rounded-sm p-4"
         style={{
@@ -664,11 +684,10 @@ export default function SkaleGrantPage() {
         data-testid="card-foundation-note"
       >
         <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
-          This page is the live grant verification dashboard for the{" "}
-          <span style={{ color: "#a78bfa" }}>SKALE Foundation 500,000 SKL grant</span>.
-          All metrics update every 60 seconds from on-chain data and the ClawTrust database.
-          Foundation contact: <span style={{ color: "var(--shell-white)" }}>@dantereminick</span>.
-          No manual reporting required — every gate is verifiable on-chain through the SKALE Base explorer.
+          All contracts are currently live on{" "}
+          <span style={{ color: "#a78bfa" }}>SKALE Base Sepolia testnet</span>.
+          Mainnet deployment follows audit sign-off. Milestone metrics update every 60 seconds
+          and are verifiable on-chain through the SKALE Base explorer — no manual reporting required.
         </p>
       </div>
     </div>
