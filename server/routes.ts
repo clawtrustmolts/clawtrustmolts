@@ -72,7 +72,7 @@ import {
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS } from "./skale-chain";
-import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS } from "./chain-client";
+import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS, getWalletClient } from "./chain-client";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -5759,12 +5759,22 @@ export async function registerRoutes(
         : "Set X402_PAY_TO_ADDRESS to enable micropayment gating on reputation endpoints",
     };
 
-    const deployerKey = process.env.DEPLOYER_PRIVATE_KEY;
-    const deployerReady = !!deployerKey && deployerKey !== "0x0000000000000000000000000000000000000000000000000000000000000001";
+    let deployerReady = false;
+    let deployerAddress: string | null = null;
+    try {
+      const wc = getWalletClient();
+      if (wc) {
+        deployerReady = true;
+        const [addr] = await wc.getAddresses();
+        deployerAddress = addr || null;
+      }
+    } catch {
+      deployerReady = false;
+    }
     checks.deployerWallet = {
       status: deployerReady ? "ready" : "unavailable",
       details: deployerReady
-        ? "Wallet client initialized for on-chain oracle writes (reputation, escrow)"
+        ? `Wallet client active — oracle address: ${deployerAddress ? deployerAddress.slice(0, 10) + "..." : "unknown"}`
         : "Set DEPLOYER_PRIVATE_KEY to enable backend on-chain writes",
     };
 
@@ -5781,8 +5791,18 @@ export async function registerRoutes(
     const x402PayTo = process.env.X402_PAY_TO_ADDRESS || "";
     const x402IsEnabled = !!(x402PayTo && x402PayTo !== "0x0000000000000000000000000000000000000000");
 
-    const deployerKey = process.env.DEPLOYER_PRIVATE_KEY;
-    const deployerReady = !!deployerKey && deployerKey !== "0x0000000000000000000000000000000000000000000000000000000000000001";
+    let deployerReady = false;
+    let deployerAddress: string | null = null;
+    try {
+      const wc = getWalletClient();
+      if (wc) {
+        deployerReady = true;
+        const [addr] = await wc.getAddresses();
+        deployerAddress = addr || null;
+      }
+    } catch {
+      deployerReady = false;
+    }
 
     res.json({
       timestamp: new Date().toISOString(),
@@ -5799,7 +5819,8 @@ export async function registerRoutes(
       },
       deployerWallet: {
         ready: deployerReady,
-        details: deployerReady ? "Wallet client initialized for on-chain oracle writes" : "DEPLOYER_PRIVATE_KEY not configured",
+        address: deployerAddress,
+        details: deployerReady ? "Wallet client active for on-chain oracle writes" : "DEPLOYER_PRIVATE_KEY not configured",
       },
       chains: {
         baseSepolia: { chainId: 84532, rpc: process.env.BASE_RPC_URL || "https://sepolia.base.org", status: "configured" },
@@ -5817,6 +5838,31 @@ export async function registerRoutes(
         x402Micropayments: x402IsEnabled ? "active" : "inactive",
         onChainWrites: deployerReady ? "active" : "inactive",
       },
+      contracts: await (async () => {
+        const contractAddresses: Record<string, `0x${string}`> = {
+          ClawCardNFT:             (process.env.CLAW_CARD_NFT_ADDRESS              || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4") as `0x${string}`,
+          ClawTrustEscrow:         (process.env.CLAW_TRUST_ESCROW_ADDRESS          || "0x6B676744B8c4900F9999E9a9323728C160706126") as `0x${string}`,
+          ClawTrustRepAdapter:     (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS     || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as `0x${string}`,
+          ClawTrustSwarmValidator: (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as `0x${string}`,
+          ClawTrustBond:           (process.env.CLAW_TRUST_BOND_ADDRESS            || "0x686E75159a7d65E4B32f7039c5AcB70454eadd7e") as `0x${string}`,
+          ClawTrustCrew:           (process.env.CLAW_TRUST_CREW_ADDRESS            || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as `0x${string}`,
+          ERC8004IdentityRegistry: "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF" as `0x${string}`,
+          ClawTrustAC:             "0x1933D67CDB911653765e84758f47c60A1E868bC0" as `0x${string}`,
+          ClawTrustRegistry:       "0x950aa4E7300e75e899d37879796868E2dd84A59c" as `0x${string}`,
+        };
+        const liveness: Record<string, { address: string; live: boolean; error?: string }> = {};
+        await Promise.all(
+          Object.entries(contractAddresses).map(async ([name, addr]) => {
+            try {
+              const code = await publicClient.getCode({ address: addr });
+              liveness[name] = { address: addr, live: !!code && code !== "0x" };
+            } catch (e: any) {
+              liveness[name] = { address: addr, live: false, error: e.message?.slice(0, 80) };
+            }
+          })
+        );
+        return liveness;
+      })(),
     });
   });
 
@@ -8406,8 +8452,8 @@ export async function registerRoutes(
           ? currentVerified
           : [...currentVerified, skill];
 
-        const updatedAgent = { ...agent, verifiedSkills: newVerifiedSkills };
-        const newFusedScore = getScoreBreakdown(updatedAgent as any).fusedScore;
+        const updatedAgent: typeof agent = { ...agent, verifiedSkills: newVerifiedSkills };
+        const newFusedScore = getScoreBreakdown(updatedAgent).fusedScore;
 
         await storage.updateAgent(agentId, {
           verifiedSkills: newVerifiedSkills,
