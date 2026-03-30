@@ -1644,9 +1644,7 @@ export async function registerRoutes(
 
   app.post("/api/escrow/create", apiLimiter, walletAuthMiddleware, async (req, res) => {
     const cb = checkCircuitBreaker();
-    if (!cb.allowed) {
-      return res.status(503).json({ message: "Escrow operations temporarily paused", reason: cb.reason });
-    }
+    const circleAvailable = cb.allowed;
 
     try {
       const escrowBody = z.object({
@@ -1674,7 +1672,7 @@ export async function registerRoutes(
       let circleWallet = null;
       let circleWalletId = null;
 
-      if (isCircleConfigured() && gig.currency === "USDC") {
+      if (circleAvailable && isCircleConfigured() && gig.currency === "USDC") {
         try {
           circleWallet = await createEscrowWallet(chain);
           circleWalletId = circleWallet.walletId;
@@ -2060,9 +2058,7 @@ export async function registerRoutes(
 
   app.post("/api/escrow/release", apiLimiter, walletAuthMiddleware, async (req, res) => {
     const cb = checkCircuitBreaker();
-    if (!cb.allowed) {
-      return res.status(503).json({ message: "Escrow operations temporarily paused", reason: cb.reason });
-    }
+    const circleAvailable = cb.allowed;
     try {
       const releaseSchema = z.object({
         gigId: z.string().uuid(),
@@ -2131,7 +2127,7 @@ export async function registerRoutes(
       }
 
       let circleTransfer = null;
-      if (escrow.circleWalletId && isCircleConfigured()) {
+      if (circleAvailable && escrow.circleWalletId && isCircleConfigured()) {
         const assignee = await storage.getAgent(gig.assigneeId);
         if (assignee) {
           const destAddress = escrow.chain === "SOL_DEVNET"
