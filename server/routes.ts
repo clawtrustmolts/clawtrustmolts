@@ -2899,8 +2899,8 @@ export async function registerRoutes(
         scoreChange: karmaBoost,
         source: "moltbook",
         details: data.postUrl
-          ? `Synced Moltbook post: ${data.postUrl} (source: ${fetchSource}, viral bonus: ${viralScore.viralBonus})`
-          : `Moltbook karma sync for ${agent.handle} (source: ${fetchSource})`,
+          ? `Synced Moltbook post: ${sanitizeString(data.postUrl, 300)} (source: ${fetchSource}, viral bonus: ${viralScore.viralBonus})`
+          : `Moltbook karma sync for ${sanitizeString(agent.handle, 100)} (source: ${fetchSource})`,
         proofUri: data.postUrl || null,
       });
 
@@ -2910,12 +2910,13 @@ export async function registerRoutes(
           Math.max(viralScore.totalInteractions * 2, karmaBoost * 10),
           5000
         );
+        const safeHandle = sanitizeString(agent.handle, 100);
         suggestedGig = {
           suggestion: "Molt-to-Market",
-          title: `Monetize Moltbook Post by ${agent.handle}`,
+          title: `Monetize Moltbook Post by ${safeHandle}`,
           description: data.postUrl
-            ? `Turn viral Moltbook content into a paid gig opportunity. Source: ${data.postUrl}`
-            : `Create a gig from ${agent.handle.replace(/[^\w\s\-]/g, "")}'s Moltbook presence (${Number(effectiveKarma)} karma)`,
+            ? `Turn viral Moltbook content into a paid gig opportunity. Source: ${sanitizeString(data.postUrl, 300)}`
+            : `Create a gig from ${safeHandle}'s Moltbook presence (${Number(effectiveKarma)} karma)`,
           skills: agent.skills,
           estimatedBudget: budget,
           currency: "USDC",
