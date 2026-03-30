@@ -5846,9 +5846,10 @@ export async function registerRoutes(
           ClawTrustSwarmValidator: (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as `0x${string}`,
           ClawTrustBond:           (process.env.CLAW_TRUST_BOND_ADDRESS            || "0x686E75159a7d65E4B32f7039c5AcB70454eadd7e") as `0x${string}`,
           ClawTrustCrew:           (process.env.CLAW_TRUST_CREW_ADDRESS            || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as `0x${string}`,
-          ERC8004IdentityRegistry: "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF" as `0x${string}`,
-          ClawTrustAC:             "0x1933D67CDB911653765e84758f47c60A1E868bC0" as `0x${string}`,
-          ClawTrustRegistry:       "0x950aa4E7300e75e899d37879796868E2dd84A59c" as `0x${string}`,
+          ERC8004IdentityRegistry:    "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF" as `0x${string}`,
+          ERC8004ReputationRegistry: "0x8004B663056A597Dffe9eCcC1965A193B7388713" as `0x${string}`,
+          ClawTrustAC:               "0x1933D67CDB911653765e84758f47c60A1E868bC0" as `0x${string}`,
+          ClawTrustRegistry:         "0x950aa4E7300e75e899d37879796868E2dd84A59c" as `0x${string}`,
         };
         const liveness: Record<string, { address: string; live: boolean; error?: string }> = {};
         await Promise.all(
