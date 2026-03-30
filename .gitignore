@@ -15,6 +15,7 @@ replit.md
 .config
 .cache
 .local
+!.local/SKALE_GRANT_PLAN.md
 .upm
 .agents/
 

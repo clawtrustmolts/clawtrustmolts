@@ -5570,11 +5570,22 @@ export async function registerRoutes(
       const skaleGigIds = new Set(skaleGigs.map(g => g.id));
       const skaleEscrows = escrows.filter(e => e.chain === "SKALE_TESTNET");
 
-      // T1 Gate 1 — Mainnet contracts deployed: set SKALE_MAINNET_ESCROW_ADDRESS env var post-audit
-      const skaleMainnetEscrow = process.env.SKALE_MAINNET_ESCROW_ADDRESS || "";
-      const mainnetContractsDeployed =
-        /^0x[a-fA-F0-9]{40}$/.test(skaleMainnetEscrow) &&
-        skaleMainnetEscrow !== "0x0000000000000000000000000000000000000000";
+      // T1 Gate 1 — All 8 ClawTrust contracts deployed on SKALE Mainnet:
+      // Each of the following env vars must be set to a valid non-zero EVM address
+      const isValidAddress = (addr: string) =>
+        /^0x[a-fA-F0-9]{40}$/.test(addr) &&
+        addr !== "0x0000000000000000000000000000000000000000";
+      const mainnetContractEnvVars = [
+        process.env.SKALE_MAINNET_ESCROW_ADDRESS        || "",
+        process.env.SKALE_MAINNET_BOND_ADDRESS           || "",
+        process.env.SKALE_MAINNET_SWARM_VALIDATOR_ADDRESS || "",
+        process.env.SKALE_MAINNET_REP_ADAPTER_ADDRESS    || "",
+        process.env.SKALE_MAINNET_CLAW_CARD_NFT_ADDRESS  || "",
+        process.env.SKALE_MAINNET_CREW_ADDRESS           || "",
+        process.env.SKALE_MAINNET_REGISTRY_ADDRESS       || "",
+        process.env.SKALE_MAINNET_AC_ADDRESS             || "",
+      ];
+      const mainnetContractsDeployed = mainnetContractEnvVars.every(isValidAddress);
 
       // T1 Gate 2 — ERC-8004 passport count
       // Primary: DB count of verified agents with a non-zero erc8004TokenId.
@@ -5593,10 +5604,11 @@ export async function registerRoutes(
       const passportSource = "db" as const;
       const clawCardNFTSupply = onChainPassportSupply ?? 0;
 
-      // T1 Gate 3 — Swarm validations on SKALE: validations whose gigId belongs to a SKALE gig
-      // (swarmValidations has no chain field; we infer from the associated gig's chain)
+      // T1 Gate 3 — Swarm validations finalized (approved) on SKALE: validations whose gigId belongs
+      // to a SKALE gig AND status === "approved" (validationStatusEnum: pending | approved | rejected)
+      // swarmValidations has no chain field; chain inferred from the associated gig
       const swarmValidationsOnSkale = validations.filter(
-        v => skaleGigIds.has(v.gigId)
+        v => skaleGigIds.has(v.gigId) && v.status === "approved"
       ).length;
 
       // T2 Gate 1 — Agents with FusedScore strictly above 30 (Sybil-resistant: multi-source score)
