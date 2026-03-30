@@ -5636,10 +5636,12 @@ export async function registerRoutes(
         (now - new Date(a.lastHeartbeat).getTime()) < thirtyDaysMs
       ).length;
 
-      // T3 Gate 2 — Cumulative USDC escrow volume on SKALE chain only (target: $50K)
-      const cumulativeEscrowVolumeUsdc = skaleEscrows
+      // T3G2: cumulative USDC volume — same EscrowReleased source as T2G3 (higher target: $50K)
+      const dbCumulativeEscrowVolumeUsdc = skaleEscrows
         .filter(e => e.currency === "USDC")
         .reduce((sum, e) => sum + e.amount, 0);
+      const cumulativeEscrowVolumeUsdc = onChainEscrow?.usdcVolume ?? dbCumulativeEscrowVolumeUsdc;
+      const cumulativeEscrowSource = onChainEscrow !== null ? "on-chain" : "db" as const;
 
       // T3 Gate 3 — Leaderboard live: true once ≥1 verified ERC-8004 agent exists on SKALE
       const leaderboardLive = agents.some(
@@ -5658,33 +5660,28 @@ export async function registerRoutes(
           mainnetContractsDeployed,
           passportsOnSkale,
           passportsTarget: 500,
-          // passportSource is always "db": ERC-8004 IdentityRegistry has no totalRegistered() view.
-          // erc8004TokenId is set by registerAgentOnSkale() which calls IdentityRegistry.register().
-          passportSource,
-          // clawCardNFTSupply: ClawCardNFT.totalSupply() via eth_call — different from passport count (PFP NFT)
-          clawCardNFTSupply,
+          passportSource,      // "on-chain" (IdentityRegistry mint events) | "db" (fallback)
+          clawCardNFTSupply,   // ClawCardNFT.totalSupply() via eth_call — reference PFP count
           swarmValidationsOnSkale,
           swarmValidationsTarget: 10,
-          // swarmValidationSource: "on-chain" when ValidationResolved events read via eth_getLogs succeeded
-          swarmValidationSource,
+          swarmValidationSource, // "on-chain" (ValidationResolved Approved=1) | "db" (fallback)
         },
         tranche2: {
           agentsWithScoreAbove30,
           agentsWithScoreTarget: 1000,
           completedGigsOnSkale,
           completedGigsTarget: 100,
-          // completedGigsSource: "on-chain" when FundsLocked events read via eth_getLogs succeeded
-          completedGigsSource,
+          completedGigsSource,   // "on-chain" (EscrowReleased count) | "db" (fallback)
           escrowVolumeUsdcOnSkale: Math.round(escrowVolumeUsdcOnSkale * 100) / 100,
           escrowVolumeTarget: 10000,
-          // escrowVolumeSource: "on-chain" when FundsLocked USDC sum read via eth_getLogs succeeded
-          escrowVolumeSource,
+          escrowVolumeSource,    // "on-chain" (EscrowReleased amount sum) | "db" (fallback)
         },
         tranche3: {
           activeAgents30d,
           activeAgentsTarget: 2500,
           cumulativeEscrowVolumeUsdc: Math.round(cumulativeEscrowVolumeUsdc * 100) / 100,
           cumulativeEscrowTarget: 50000,
+          cumulativeEscrowSource, // "on-chain" (EscrowReleased amount sum) | "db" (fallback)
           leaderboardLive,
         },
         contracts: {

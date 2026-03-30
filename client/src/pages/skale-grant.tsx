@@ -38,6 +38,7 @@ interface GrantMetrics {
     activeAgentsTarget: number;
     cumulativeEscrowVolumeUsdc: number;
     cumulativeEscrowTarget: number;
+    cumulativeEscrowSource: "on-chain" | "db";
     leaderboardLive: boolean;
   };
   contracts: {
@@ -565,6 +566,7 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
+                  sourceNote={`source: ${metrics.tranche3.cumulativeEscrowSource} · EscrowReleased USDC sum via eth_getLogs`}
                 />
                 <BoolGateRow
                   label="Public FusedScore leaderboard live with SKALE-native data"
