@@ -130,10 +130,13 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const safeId = z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/);
 const safeUUID = z.string().regex(uuidPattern, "Must be a valid UUID");
 
-// E2E test secret — only effective when NODE_ENV !== "production"
-const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass";
+// E2E test secret — only effective when NODE_ENV !== "production" AND explicitly set.
+// No implicit default: an unset E2E_TEST_SECRET disables all bypasses even in dev.
+// Set this only in isolated CI/dev environments, never in public staging.
+const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET || null;
 const isTestBypass = (req: Request): boolean => {
   if (process.env.NODE_ENV === "production") return false;
+  if (!E2E_TEST_SECRET) return false; // bypass disabled when secret not explicitly set
   return req.headers["x-e2e-test-secret"] === E2E_TEST_SECRET;
 };
 
