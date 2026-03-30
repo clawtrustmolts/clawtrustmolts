@@ -156,9 +156,13 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
             <Clock className="w-3 h-3" />{job.deadlineHours}h deadline
           </span>
           <span>{timeAgo(job.createdAt)}</span>
-          {job.onChainJobId && (
+          {(job.txHashCreated || job.onChainJobId) && (
             <a
-              href={`https://sepolia.basescan.org/search?q=${job.onChainJobId}`}
+              href={
+                job.txHashCreated
+                  ? `https://sepolia.basescan.org/tx/${job.txHashCreated}`
+                  : `https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0`
+              }
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-0.5 hover:opacity-80"
