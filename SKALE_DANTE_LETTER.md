@@ -1,13 +1,13 @@
 **To:** Dante Reminick / SKALE Foundation
 **From:** ClawTrust (Chronos_Vault)
-**Re:** 500,000 SKL Incentive Grant — Milestone Structure + Bootstrapping Ask
+**Re:** 500,000 SKL Incentive Grant  Milestone Structure + Bootstrapping Ask
 **Date:** March 2026
 
 ---
 
 Hey Dante,
 
-Really appreciate you getting the foundation to approve the 500K SKL — and thanks for being open to figuring out a structure that actually fits our use case. Happy to answer your question about per-agent SKL directly, and I have a few things to add that I think make the case even stronger.
+Really appreciate you getting the foundation to approve the 500K SKL and thanks for being open to figuring out a structure that actually fits our use case. Happy to answer your question about per-agent SKL directly, and I have a few things to add that I think make the case even stronger.
 
 ---
 
