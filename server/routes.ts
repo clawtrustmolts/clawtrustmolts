@@ -5750,12 +5750,73 @@ export async function registerRoutes(
         : `Failures: ${escrowCircuitBreaker.failureCount}/${escrowCircuitBreaker.threshold}`,
     };
 
+    const x402PayTo = process.env.X402_PAY_TO_ADDRESS || "";
+    const x402IsEnabled = x402PayTo && x402PayTo !== "0x0000000000000000000000000000000000000000";
+    checks.x402 = {
+      status: x402IsEnabled ? "enabled" : "disabled",
+      details: x402IsEnabled
+        ? `x402 payment middleware active — pay_to: ${x402PayTo.slice(0, 10)}... (trust-check: $0.001, reputation: $0.002 USDC on Base Sepolia)`
+        : "Set X402_PAY_TO_ADDRESS to enable micropayment gating on reputation endpoints",
+    };
+
+    const deployerKey = process.env.DEPLOYER_PRIVATE_KEY;
+    const deployerReady = !!deployerKey && deployerKey !== "0x0000000000000000000000000000000000000000000000000000000000000001";
+    checks.deployerWallet = {
+      status: deployerReady ? "ready" : "unavailable",
+      details: deployerReady
+        ? "Wallet client initialized for on-chain oracle writes (reputation, escrow)"
+        : "Set DEPLOYER_PRIVATE_KEY to enable backend on-chain writes",
+    };
+
     const allHealthy = checks.database?.status === "healthy";
     res.status(allHealthy ? 200 : 503).json({
       status: allHealthy ? "healthy" : "degraded",
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       checks,
+    });
+  });
+
+  app.get("/api/system/status", async (_req, res) => {
+    const x402PayTo = process.env.X402_PAY_TO_ADDRESS || "";
+    const x402IsEnabled = !!(x402PayTo && x402PayTo !== "0x0000000000000000000000000000000000000000");
+
+    const deployerKey = process.env.DEPLOYER_PRIVATE_KEY;
+    const deployerReady = !!deployerKey && deployerKey !== "0x0000000000000000000000000000000000000000000000000000000000000001";
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      x402: {
+        enabled: x402IsEnabled,
+        payToAddress: x402IsEnabled ? x402PayTo : null,
+        routes: x402IsEnabled ? {
+          "GET /api/trust-check/*": "$0.001 USDC",
+          "GET /api/reputation/*": "$0.002 USDC",
+          "GET /api/agents/*/erc8004": "$0.001 USDC",
+        } : null,
+        network: "base-sepolia",
+      },
+      deployerWallet: {
+        ready: deployerReady,
+        details: deployerReady ? "Wallet client initialized for on-chain oracle writes" : "DEPLOYER_PRIVATE_KEY not configured",
+      },
+      chains: {
+        baseSepolia: { chainId: 84532, rpc: process.env.BASE_RPC_URL || "https://sepolia.base.org", status: "configured" },
+        skaleBaseSepolia: { chainId: 324705682, rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha", status: "configured" },
+      },
+      features: {
+        fusedScore: "active",
+        swarmValidation: "active",
+        escrowGigMarketplace: "active",
+        skillVerification: "active",
+        nameService: "active",
+        agenticCommerce: "active",
+        bondSystem: "active",
+        crews: "active",
+        x402Micropayments: x402IsEnabled ? "active" : "inactive",
+        onChainWrites: deployerReady ? "active" : "inactive",
+      },
     });
   });
 
@@ -8341,13 +8402,20 @@ export async function registerRoutes(
         });
 
         const currentVerified = agent.verifiedSkills || [];
-        if (!currentVerified.map((s: string) => s.toLowerCase()).includes(skill)) {
-          await storage.updateAgent(agentId, {
-            verifiedSkills: [...currentVerified, skill],
-          });
-        }
+        const newVerifiedSkills = currentVerified.map((s: string) => s.toLowerCase()).includes(skill)
+          ? currentVerified
+          : [...currentVerified, skill];
+
+        const updatedAgent = { ...agent, verifiedSkills: newVerifiedSkills };
+        const newFusedScore = getScoreBreakdown(updatedAgent as any).fusedScore;
+
+        await storage.updateAgent(agentId, {
+          verifiedSkills: newVerifiedSkills,
+          fusedScore: newFusedScore,
+        });
       }
 
+      const finalAgent = await storage.getAgent(agentId);
       res.json({
         attemptId: attempt.id,
         score,
@@ -8356,8 +8424,10 @@ export async function registerRoutes(
         passThreshold: challenge.passThreshold,
         details,
         breakdown: details,
+        fusedScore: finalAgent?.fusedScore,
+        verifiedSkillsCount: (finalAgent?.verifiedSkills || []).length,
         message: passed
-          ? `Congratulations! You scored ${score}/100 — skill '${skill}' is now verified.`
+          ? `Congratulations! You scored ${score}/100 — skill '${skill}' is now verified. FusedScore updated to ${finalAgent?.fusedScore}.`
           : `Score: ${score}/100 (need ${challenge.passThreshold} to pass). Review the grading details and try again.`,
       });
     } catch (err: any) {

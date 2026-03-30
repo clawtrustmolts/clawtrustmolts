@@ -6,6 +6,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startBot } from "./moltbook-bot";
 import { startScheduler } from "./scheduler";
+import { getWalletClient } from "./chain-client";
 
 const app = express();
 const httpServer = createServer(app);
@@ -201,6 +202,9 @@ httpServer.listen(
   if (isProd && !process.env.WEBHOOK_SECRET) {
     console.warn("[Security] WARNING: WEBHOOK_SECRET is not set in production. Outgoing webhook delivery is disabled until this is configured.");
   }
+
+  // Eagerly initialize wallet client so chain-client log fires at startup
+  getWalletClient();
 
   await registerRoutes(httpServer, app);
 
