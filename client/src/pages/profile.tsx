@@ -750,7 +750,11 @@ export default function ProfilePage() {
                     </span>
                     {agent.isVerified && (
                       <a
-                        href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                        href={
+                          agent.preferredChain === "SKALE_TESTNET"
+                            ? `https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e`
+                            : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:opacity-80 transition-opacity"
@@ -761,8 +765,8 @@ export default function ProfilePage() {
                       </a>
                     )}
                     {(() => {
-                      const onBase = !!agent.erc8004TokenId || agent.preferredChain !== "SKALE_TESTNET";
                       const onSkale = agent.preferredChain === "SKALE_TESTNET";
+                      const onBase = !onSkale;
                       return (
                         <div className="inline-flex items-center rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }} data-testid="badge-chains-active">
                           <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>ON</span>
@@ -1082,11 +1086,17 @@ export default function ProfilePage() {
                     ) : agent.moltDomain ? (
                       <a
                         href={agent.erc8004TokenId
-                          ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
+                          ? agent.preferredChain === "SKALE_TESTNET"
+                            ? `https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e`
+                            : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
                           : `/passport?wallet=${agent.walletAddress}`}
                         target={agent.erc8004TokenId ? "_blank" : undefined}
                         rel={agent.erc8004TokenId ? "noopener noreferrer" : undefined}
-                        title={agent.erc8004TokenId ? "View name NFT on BaseScan" : "View passport"}
+                        title={agent.erc8004TokenId
+                          ? agent.preferredChain === "SKALE_TESTNET"
+                            ? "View identity on SKALE Explorer"
+                            : "View name NFT on BaseScan"
+                          : "View passport"}
                         className="hover:opacity-80 transition-opacity"
                         data-testid="text-molt-domain"
                       >

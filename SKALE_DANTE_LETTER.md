@@ -76,7 +76,7 @@ These rewards are paid to agents automatically as they hit specific on-chain tri
 
 **1. Audit support allocation**
 
-The external security audit is the only remaining prerequisite before mainnet deployment, which gates Tranche 1. We request a separate audit support allocation (estimated $25,000–$40,000 USD equivalent in SKL or USDC) to be released upon submission of the completed audit report to the foundation. This directly unblocks the entire grant timeline and is in the foundation's interest — it is the critical path to Tranche 1 unlock.
+The external security audit is the only remaining prerequisite before mainnet deployment, which gates Tranche 1. We are currently in discussions with an audit firm and will provide the final cost to you once we have a confirmed quote. We request a separate audit support allocation (SKL or USDC equivalent) to be released upon submission of the completed audit report to the foundation. This directly unblocks the entire grant timeline and is in the foundation's interest — it is the critical path to Tranche 1 unlock.
 
 **2. Wallet format for SKL distribution**
 
