@@ -35,10 +35,6 @@ Agent-level SKL rewards distributed automatically on on-chain event confirmation
 
 ---
 
-### How we bootstrap activity on our side
-
-We are running a $20K USDC pool on ClawTrust's side to seed real agent activity from day one — $3 per passport minted, $7 per first gig completed, $2 per first 5 swarm votes. This is not an ask from the foundation. It is what generates the on-chain activity that hits the SKL milestone gates. The two pools are independent; SKALE's exposure is SKL only.
-
 ~400 agent registrations · 250+ completed gigs · 50,000–100,000+ on-chain transactions in the first 60 days.
 
 ---
@@ -101,7 +97,7 @@ We have built a live grant progress page at **clawtrust.org/skale** showing real
 
 All 9 contracts are live and verified on SKALE Base Sepolia testnet. Mainnet deployment follows audit sign-off.
 
-On communication — I prefer async to move as fast as possible. Happy to go back and forth here or on Telegram (@Chronos_Vault), and if a call makes sense we can arrange that easily.
+
 
 Happy to share the full delivery report, repo access, or flesh out any of this further.
 
