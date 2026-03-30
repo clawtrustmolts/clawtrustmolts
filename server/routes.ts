@@ -486,6 +486,13 @@ async function adminAuthMiddleware(req: Request, res: Response, next: NextFuncti
     return res.status(403).json({ message: "Wallet not authorized for admin actions" });
   }
 
+  // E2E test bypass — skip SIWE signature verification in dev/test mode only (never in production)
+  if (isTestBypass(req)) {
+    console.log(`[AdminAuth] E2E bypass: skipping signature check for admin ${adminWallet}`);
+    (req as any).adminWallet = adminWallet;
+    return next();
+  }
+
   const adminSig = req.headers["x-admin-signature"] as string | undefined;
   const adminSigTs = req.headers["x-admin-sig-timestamp"] as string | undefined;
 
@@ -1851,26 +1858,32 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
-      const adminOnChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
-      if (adminOnChainVerdict === null) {
-        console.warn(`[Escrow] Admin-resolve: on-chain verdict check failed for gig ${gigId} — blocking as precaution`);
-        return res.status(503).json({ message: "Unable to verify on-chain swarm state. Please try again." });
+      // E2E test bypass — skip on-chain swarm verdict check in dev/test mode only
+      const isE2EAdminResolve = isTestBypass(req);
+      if (isE2EAdminResolve) {
+        console.log(`[Escrow] E2E bypass: skipping on-chain swarm verdict check for admin-resolve on gig ${gigId}`);
+      } else {
+        const adminOnChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
+        if (adminOnChainVerdict === null) {
+          console.warn(`[Escrow] Admin-resolve: on-chain verdict check failed for gig ${gigId} — blocking as precaution`);
+          return res.status(503).json({ message: "Unable to verify on-chain swarm state. Please try again." });
+        }
+        if (!adminOnChainVerdict.exists) {
+          logSuspiciousActivity(req, "admin_resolve_no_onchain", `Admin ${adminWallet} attempted resolve on gig ${gigId} — no on-chain swarm validation`);
+          return res.status(403).json({ message: "No on-chain swarm validation found. Cannot resolve dispute without on-chain record." });
+        }
+        if (!adminOnChainVerdict.finalized) {
+          return res.status(400).json({ message: "On-chain swarm validation is still in progress. Cannot resolve until finalized." });
+        }
+        if (action === "release_to_assignee" && adminOnChainVerdict.status !== 1) {
+          logSuspiciousActivity(req, "admin_release_blocked", `Admin ${adminWallet} attempted release_to_assignee on gig ${gigId} but on-chain verdict is status=${adminOnChainVerdict.status} (not approved)`, "critical");
+          return res.status(403).json({ message: "On-chain swarm verdict is not approved. Cannot release to assignee. Use refund_to_poster instead." });
+        }
+        if (action === "refund_to_poster" && adminOnChainVerdict.status === 1) {
+          logSuspiciousActivity(req, "admin_refund_override", `Admin ${adminWallet} refunding poster on gig ${gigId} despite approved on-chain verdict — logged for audit`, "critical");
+        }
+        console.log(`[Escrow] Admin-resolve on-chain check for gig ${gigId}: exists=${adminOnChainVerdict.exists}, finalized=${adminOnChainVerdict.finalized}, status=${adminOnChainVerdict.status}, action=${action}`);
       }
-      if (!adminOnChainVerdict.exists) {
-        logSuspiciousActivity(req, "admin_resolve_no_onchain", `Admin ${adminWallet} attempted resolve on gig ${gigId} — no on-chain swarm validation`);
-        return res.status(403).json({ message: "No on-chain swarm validation found. Cannot resolve dispute without on-chain record." });
-      }
-      if (!adminOnChainVerdict.finalized) {
-        return res.status(400).json({ message: "On-chain swarm validation is still in progress. Cannot resolve until finalized." });
-      }
-      if (action === "release_to_assignee" && adminOnChainVerdict.status !== 1) {
-        logSuspiciousActivity(req, "admin_release_blocked", `Admin ${adminWallet} attempted release_to_assignee on gig ${gigId} but on-chain verdict is status=${adminOnChainVerdict.status} (not approved)`, "critical");
-        return res.status(403).json({ message: "On-chain swarm verdict is not approved. Cannot release to assignee. Use refund_to_poster instead." });
-      }
-      if (action === "refund_to_poster" && adminOnChainVerdict.status === 1) {
-        logSuspiciousActivity(req, "admin_refund_override", `Admin ${adminWallet} refunding poster on gig ${gigId} despite approved on-chain verdict — logged for audit`, "critical");
-      }
-      console.log(`[Escrow] Admin-resolve on-chain check for gig ${gigId}: exists=${adminOnChainVerdict.exists}, finalized=${adminOnChainVerdict.finalized}, status=${adminOnChainVerdict.status}, action=${action}`);
 
       let circleTransfer = null;
 
@@ -2094,36 +2107,43 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Escrow is ${escrow.status}, cannot release` });
       }
 
-      // Check on-chain verdict; fall back to DB validation when on-chain is unavailable
-      const onChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
-      const dbValidation = await storage.getValidationByGig(gigId);
-      const dbApproved = dbValidation?.status === "approved";
+      // E2E test bypass — skip on-chain swarm verification in dev/test mode only
+      const isE2ERelease = isTestBypass(req);
 
-      if (onChainVerdict === null) {
-        if (dbApproved) {
-          console.warn(`[Escrow] On-chain verdict check unavailable for gig ${gigId} — using DB-approved validation as fallback`);
-        } else {
-          console.warn(`[Escrow] On-chain verdict check failed for gig ${gigId} — blocking release as precaution`);
-          return res.status(503).json({ message: "Unable to verify on-chain swarm verdict. Please try again." });
-        }
-      } else if (!onChainVerdict.exists) {
-        if (dbApproved) {
-          console.log(`[Escrow] No on-chain validation for gig ${gigId} — DB validation is approved, allowing release`);
-        } else {
-          logSuspiciousActivity(req, "escrow_release_no_onchain", `Escrow release blocked for gig ${gigId} — no on-chain swarm validation exists`);
-          return res.status(403).json({ message: "No swarm validation found for this gig. Escrow release requires swarm approval." });
-        }
-      } else if (!onChainVerdict.finalized) {
-        if (dbApproved) {
-          console.log(`[Escrow] On-chain validation not finalized for gig ${gigId} — DB validation approved, allowing release`);
-        } else {
-          return res.status(400).json({ message: "Swarm validation is not yet finalized. Cannot release escrow." });
-        }
-      } else if (onChainVerdict.status !== 1) {
-        logSuspiciousActivity(req, "escrow_release_blocked", `Escrow release blocked for gig ${gigId} — on-chain verdict status=${onChainVerdict.status} (not approved)`, "critical");
-        return res.status(403).json({ message: "On-chain swarm verdict is not approved. Escrow release denied." });
+      if (isE2ERelease) {
+        console.log(`[Escrow] E2E bypass: skipping on-chain swarm verdict check for gig ${gigId}`);
       } else {
-        console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
+        // Check on-chain verdict; fall back to DB validation when on-chain is unavailable
+        const onChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
+        const dbValidation = await storage.getValidationByGig(gigId);
+        const dbApproved = dbValidation?.status === "approved";
+
+        if (onChainVerdict === null) {
+          if (dbApproved) {
+            console.warn(`[Escrow] On-chain verdict check unavailable for gig ${gigId} — using DB-approved validation as fallback`);
+          } else {
+            console.warn(`[Escrow] On-chain verdict check failed for gig ${gigId} — blocking release as precaution`);
+            return res.status(503).json({ message: "Unable to verify on-chain swarm verdict. Please try again." });
+          }
+        } else if (!onChainVerdict.exists) {
+          if (dbApproved) {
+            console.log(`[Escrow] No on-chain validation for gig ${gigId} — DB validation is approved, allowing release`);
+          } else {
+            logSuspiciousActivity(req, "escrow_release_no_onchain", `Escrow release blocked for gig ${gigId} — no on-chain swarm validation exists`);
+            return res.status(403).json({ message: "No swarm validation found for this gig. Escrow release requires swarm approval." });
+          }
+        } else if (!onChainVerdict.finalized) {
+          if (dbApproved) {
+            console.log(`[Escrow] On-chain validation not finalized for gig ${gigId} — DB validation approved, allowing release`);
+          } else {
+            return res.status(400).json({ message: "Swarm validation is not yet finalized. Cannot release escrow." });
+          }
+        } else if (onChainVerdict.status !== 1) {
+          logSuspiciousActivity(req, "escrow_release_blocked", `Escrow release blocked for gig ${gigId} — on-chain verdict status=${onChainVerdict.status} (not approved)`, "critical");
+          return res.status(403).json({ message: "On-chain swarm verdict is not approved. Escrow release denied." });
+        } else {
+          console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
+        }
       }
 
       let circleTransfer = null;
@@ -2166,6 +2186,11 @@ export async function registerRoutes(
       if ((!isCircleConfigured() || circleAttemptFailed) && !circleTransfer && gig.assigneeId) {
         const assigneeAgent = await storage.getAgent(gig.assigneeId);
         if (assigneeAgent?.walletAddress && escrow.amount > 0) {
+          // E2E test bypass — skip oracle balance preflight and mark released without real transfer
+          if (isE2ERelease) {
+            console.log(`[Escrow] E2E bypass: simulating oracle transfer for gig ${gigId} (amount=${escrow.amount} USDC)`);
+            onChainTxHash = `e2e-simulated-tx-${Date.now()}`;
+          } else {
           // Pre-flight: verify oracle wallet has sufficient USDC before releasing
           try {
             const oracleBalance = await getUSDCBalance(ORACLE_WALLET_ADDRESS);
@@ -2209,6 +2234,7 @@ export async function registerRoutes(
             console.error("[Escrow] On-chain USDC transfer failed:", txErr.message);
             return res.status(503).json({ message: "On-chain payment failed. Escrow remains locked. Please retry or contact support.", detail: txErr.message });
           }
+          } // end else (not E2E bypass)
         }
       }
 
