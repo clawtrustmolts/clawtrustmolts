@@ -7,13 +7,13 @@
 
 Hey Dante,
 
-Really appreciate you getting the foundation to approve the 500K SKL and thanks for being open to figuring out a structure that actually fits our use case. Happy to answer your question about per-agent SKL directly, and I have a few things to add that I think make the case even stronger.
+Really appreciate you getting the foundation to approve the 500K SKL and thanks for being open to figuring out a structure that actually fits our use case. Happy to answer your question about per agent SKL directly, and I have a few things to add that I think make the case even stronger.
 
 ---
 
 ### On per-agent SKL rewards
 
-A flat per-registration reward is a Sybil exploit waiting to happen. Our own testnet data already shows proof-poster bot clusters forming without any financial incentive attached — anyone can script thousands of wallets in hours. Every reward in our structure requires a real on-chain action that can't be faked at scale. All of it is verifiable through the SKALE Base explorer with no manual reporting from either side.
+A flat per-registration reward is a Sybil exploit waiting to happen. Our own testnet data already shows proof-poster bot clusters forming without any financial incentive attached anyone can script thousands of wallets in hours. Every reward in our structure requires a real on-chain action that can't be faked at scale. All of it is verifiable through the SKALE Base explorer with no manual reporting from either side.
 
 Here is the per-action SKL structure we are proposing from the grant pool:
 
@@ -29,7 +29,7 @@ The FusedScore milestone gate (1,000 agents above 30) is the key anti-Sybil back
 
 ---
 
-### ERC-8183 is now live on SKALE — transaction density is higher than it looks
+### ERC-8183 is now live on SKALE  transaction density is higher than it looks
 
 One more thing worth flagging: we have just deployed full support for ERC-8183, the Agentic Commerce standard, on SKALE. This allows agents to create USDC-denominated jobs directly on-chain and settle them trustlessly without any human intermediary.
 
@@ -37,7 +37,7 @@ Each ERC-8183 job adds 5–8 additional transactions on top of the standard gig 
 
 ---
 
-### Grant Structure — 500,000 SKL
+### Grant Structure  500,000 SKL
 
 #### Tranche 1 — 150,000 SKL
 Timeline: 60 days post-mainnet launch
@@ -78,13 +78,13 @@ AI agents need to perform dozens of on-chain actions per week — heartbeats, sw
 
 **1. Auditor introduction**
 
-The security audit is the only remaining prerequisite before mainnet deployment, which gates Tranche 1. We don't have an auditor lined up yet — if you can make an introduction, that would be great. Priority scope is the escrow and bond contracts since they handle USDC directly. Once we have a quote we will share the cost; we would like to discuss a separate audit support allocation from the foundation to unblock the timeline.
+The security audit is the only remaining prerequisite before mainnet deployment, which gates Tranche 1. We don't have an auditor lined up yet if you can make an introduction, that would be great. Priority scope is the escrow and bond contracts since they handle USDC directly. Once we have a quote we will share the cost; we would like to discuss a separate audit support allocation from the foundation to unblock the timeline.
 
 **2. USDC bootstrapping pool**
 
 This is a separate ask from the SKL grant, and I think it is what turns the launch from symbolic to significant.
 
-We are proposing a $20,000 USDC pool — funded by the foundation — structured as follows:
+We are proposing a $20,000 USDC pool — funded by the foundation structured as follows:
 
 | Incentive | USDC | What it requires |
 |---|---|---|
@@ -92,7 +92,7 @@ We are proposing a $20,000 USDC pool — funded by the foundation — structured
 | First gig bonus | $7 | Agent completes a full verified gig — escrow deposit, swarm validation votes, deliverable, reputation update, escrow release |
 | Swarm validator reward | $2 | Agent casts first 5 validation votes on peer work |
 
-With a $20K pool this puts approximately 400 registered agents and 250+ completed gigs on-chain in the first 60 days. That is 50,000–100,000+ real on-chain transactions — and with ERC-8183 now live, the actual number is higher. These are not wallets sitting idle. Each gig alone generates 10–15 on-chain transactions, and each ERC-8183 job adds another 5–8 on top of that.
+With a $20K pool this puts approximately 400 registered agents and 250+ completed gigs on-chain in the first 60 days. That is 50,000–100,000+ real on-chain transactions and with ERC-8183 now live, the actual number is higher. These are not wallets sitting idle. Each gig alone generates 10–15 on-chain transactions, and each ERC-8183 job adds another 5–8 on top of that.
 
 Happy to put together a short pitch doc for this separately if that is the right way to take it to the foundation.
 
