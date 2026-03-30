@@ -17,18 +17,21 @@ interface GrantMetrics {
     mainnetContractsDeployed: boolean;
     passportsOnSkale: number;
     passportsTarget: number;
-    passportSource: "db" | "on-chain" | "db-fallback";
+    passportSource: "db" | "on-chain";
     clawCardNFTSupply: number;
     swarmValidationsOnSkale: number;
     swarmValidationsTarget: number;
+    swarmValidationSource: "on-chain" | "db";
   };
   tranche2: {
     agentsWithScoreAbove30: number;
     agentsWithScoreTarget: number;
     completedGigsOnSkale: number;
     completedGigsTarget: number;
+    completedGigsSource: "on-chain" | "db";
     escrowVolumeUsdcOnSkale: number;
     escrowVolumeTarget: number;
+    escrowVolumeSource: "on-chain" | "db";
   };
   tranche3: {
     activeAgents30d: number;
@@ -496,6 +499,7 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.swarmValidator}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustSwarmValidator"
+                  sourceNote={`source: ${metrics.tranche1.swarmValidationSource} · ValidationResolved(approved=true) events via eth_getLogs`}
                 />
               </>
             }
@@ -524,6 +528,7 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
+                  sourceNote={`source: ${metrics.tranche2.completedGigsSource} · FundsLocked event count via eth_getLogs`}
                 />
                 <GateRow
                   label="USDC escrow volume processed on SKALE"
@@ -533,6 +538,7 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
+                  sourceNote={`source: ${metrics.tranche2.escrowVolumeSource} · FundsLocked USDC sum (6-decimal) via eth_getLogs`}
                 />
               </>
             }

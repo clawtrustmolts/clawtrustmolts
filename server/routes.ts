@@ -71,7 +71,7 @@ import {
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
-import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, SKALE_CONTRACTS } from "./skale-chain";
+import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS } from "./skale-chain";
 import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS } from "./chain-client";
 import {
   createEscrowWallet,
@@ -5553,13 +5553,20 @@ export async function registerRoutes(
   // ─── SKALE Grant Metrics — public endpoint for foundation verification ────
   app.get("/api/skale/grant-metrics", async (_req, res) => {
     try {
-      // Kick off DB reads and on-chain SKALE read concurrently
-      const [agents, gigs, escrows, validations, onChainPassportSupply] = await Promise.all([
+      // Kick off DB reads + all 3 direct SKALE RPC/event-log reads concurrently
+      const [
+        agents, gigs, escrows, validations,
+        onChainPassportSupply,  // ClawCardNFT.totalSupply() via eth_call
+        onChainEscrow,          // FundsLocked event log count + USDC sum via eth_getLogs
+        onChainValidations,     // ValidationResolved approved events via eth_getLogs
+      ] = await Promise.all([
         storage.getAgents(),
         storage.getGigs(),
         storage.getEscrowTransactions(),
         storage.getValidations(),
-        readSkalePassportTotalSupply(),  // direct SKALE RPC: ClawCardNFT.totalSupply()
+        readSkalePassportTotalSupply(),        // direct SKALE RPC
+        readSkaleEscrowStats(),                // direct SKALE event logs
+        readSkaleSwarmValidationCount(),       // direct SKALE event logs
       ]);
       const now = Date.now();
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -5604,23 +5611,33 @@ export async function registerRoutes(
       const passportSource = "db" as const;
       const clawCardNFTSupply = onChainPassportSupply ?? 0;
 
-      // T1 Gate 3 — Swarm validations finalized (approved) on SKALE: validations whose gigId belongs
-      // to a SKALE gig AND status === "approved" (validationStatusEnum: pending | approved | rejected)
-      // swarmValidations has no chain field; chain inferred from the associated gig
-      const swarmValidationsOnSkale = validations.filter(
+      // T1 Gate 3 — Swarm validations finalized on SKALE:
+      // Primary: direct eth_getLogs read of ValidationResolved(approved=true) events on SwarmValidator.
+      // Fallback: DB count of swarmValidations with status==="approved" joined via skaleGigIds set.
+      const dbSwarmValidationsOnSkale = validations.filter(
         v => skaleGigIds.has(v.gigId) && v.status === "approved"
       ).length;
+      const swarmValidationsOnSkale = onChainValidations ?? dbSwarmValidationsOnSkale;
+      const swarmValidationSource = onChainValidations !== null ? "on-chain" : "db" as const;
 
       // T2 Gate 1 — Agents with FusedScore strictly above 30 (Sybil-resistant: multi-source score)
       const agentsWithScoreAbove30 = agents.filter(a => a.fusedScore > 30).length;
 
-      // T2 Gate 2 — Completed gigs on SKALE (typed chainEnum comparison)
-      const completedGigsOnSkale = skaleGigs.filter(g => g.status === "completed").length;
+      // T2 Gate 2 — Completed gigs on SKALE:
+      // Primary: on-chain FundsLocked event count (each locked escrow = 1 funded gig).
+      // Fallback: DB count of SKALE gigs with status === "completed".
+      const dbCompletedGigsOnSkale = skaleGigs.filter(g => g.status === "completed").length;
+      const completedGigsOnSkale = onChainEscrow?.count ?? dbCompletedGigsOnSkale;
+      const completedGigsSource = onChainEscrow !== null ? "on-chain" : "db" as const;
 
-      // T2 Gate 3 — USDC escrow volume locked on SKALE chain only
-      const escrowVolumeUsdcOnSkale = skaleEscrows
+      // T2 Gate 3 — USDC escrow volume locked on SKALE chain only:
+      // Primary: on-chain FundsLocked event USDC sum (from eth_getLogs, USDC 6-decimal).
+      // Fallback: DB sum of SKALE escrowTransactions in USDC.
+      const dbEscrowVolumeUsdcOnSkale = skaleEscrows
         .filter(e => e.currency === "USDC")
         .reduce((sum, e) => sum + e.amount, 0);
+      const escrowVolumeUsdcOnSkale = onChainEscrow?.usdcVolume ?? dbEscrowVolumeUsdcOnSkale;
+      const escrowVolumeSource = onChainEscrow !== null ? "on-chain" : "db" as const;
 
       // T3 Gate 1 — Active agents (heartbeat < 30 days)
       const activeAgents30d = agents.filter(a =>
@@ -5650,18 +5667,27 @@ export async function registerRoutes(
           mainnetContractsDeployed,
           passportsOnSkale,
           passportsTarget: 500,
+          // passportSource is always "db": ERC-8004 IdentityRegistry has no totalRegistered() view.
+          // erc8004TokenId is set by registerAgentOnSkale() which calls IdentityRegistry.register().
           passportSource,
+          // clawCardNFTSupply: ClawCardNFT.totalSupply() via eth_call — different from passport count (PFP NFT)
           clawCardNFTSupply,
           swarmValidationsOnSkale,
           swarmValidationsTarget: 10,
+          // swarmValidationSource: "on-chain" when ValidationResolved events read via eth_getLogs succeeded
+          swarmValidationSource,
         },
         tranche2: {
           agentsWithScoreAbove30,
           agentsWithScoreTarget: 1000,
           completedGigsOnSkale,
           completedGigsTarget: 100,
+          // completedGigsSource: "on-chain" when FundsLocked events read via eth_getLogs succeeded
+          completedGigsSource,
           escrowVolumeUsdcOnSkale: Math.round(escrowVolumeUsdcOnSkale * 100) / 100,
           escrowVolumeTarget: 10000,
+          // escrowVolumeSource: "on-chain" when FundsLocked USDC sum read via eth_getLogs succeeded
+          escrowVolumeSource,
         },
         tranche3: {
           activeAgents30d,
