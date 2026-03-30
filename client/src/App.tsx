@@ -97,7 +97,6 @@ const primaryNavLinks = [
 ];
 
 const moreNavLinks = [
-  { title: "Mainnet", url: "/mainnet" },
   { title: "SKALE Grant", url: "/skale" },
   { title: "Crews", url: "/crews" },
   { title: "Domains", url: "/domains" },

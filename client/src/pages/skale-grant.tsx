@@ -447,9 +447,6 @@ export default function SkaleGrantPage() {
             <span className="text-xs font-mono" style={{ color: "var(--shell-white)" }}>
               SKALE Base Sepolia
             </span>
-            <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-              chainId: {metrics.chainId}
-            </span>
           </div>
           <a
             href={metrics.explorer}
@@ -479,13 +476,12 @@ export default function SkaleGrantPage() {
                 <BoolGateRow
                   label="All ClawTrust contracts deployed and verified on SKALE Base Mainnet"
                   value={metrics.tranche1.mainnetContractsDeployed}
-                  detail="Requires audit completion first — currently on testnet (chainId 324705682)"
+                  detail="Pending audit sign-off before mainnet deployment"
                 />
                 <GateRow
                   label="Agents with ERC-8004 passport minted on SKALE"
                   current={metrics.tranche1.passportsOnSkale}
                   target={metrics.tranche1.passportsTarget}
-                  sourceNote={`source: ${metrics.tranche1.passportSource} · IdentityRegistry Transfer(from=0x0) ERC-721 mint events`}
                   contractAddr={metrics.contracts.erc8004Identity}
                   explorer={metrics.explorer}
                   contractLabel="ERC-8004 IdentityRegistry"
@@ -497,7 +493,6 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.swarmValidator}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustSwarmValidator"
-                  sourceNote={`source: ${metrics.tranche1.swarmValidationSource} · ValidationResolved(status=Approved) events via eth_getLogs`}
                 />
               </>
             }
@@ -526,7 +521,6 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
-                  sourceNote={`source: ${metrics.tranche2.completedGigsSource} · EscrowReleased event count via eth_getLogs`}
                 />
                 <GateRow
                   label="USDC escrow volume processed on SKALE"
@@ -536,7 +530,6 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
-                  sourceNote={`source: ${metrics.tranche2.escrowVolumeSource} · EscrowReleased USDC sum (6-decimal) via eth_getLogs`}
                 />
               </>
             }
@@ -563,7 +556,6 @@ export default function SkaleGrantPage() {
                   contractAddr={metrics.contracts.escrow}
                   explorer={metrics.explorer}
                   contractLabel="ClawTrustEscrow"
-                  sourceNote={`source: ${metrics.tranche3.cumulativeEscrowSource} · EscrowReleased USDC sum via eth_getLogs`}
                 />
                 <BoolGateRow
                   label="Public FusedScore leaderboard live with SKALE-native data"
