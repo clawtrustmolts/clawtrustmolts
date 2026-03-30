@@ -72,10 +72,10 @@ export function WalletConnectModal({ state, errorMessage, onClose, onRetry }: Wa
             <Loader2 className="w-8 h-8 mx-auto animate-spin" style={{ color: "var(--claw-orange)" }} />
             <div>
               <p className="text-sm font-display" style={{ color: "var(--shell-white)" }}>
-                Connecting to MetaMask…
+                Detecting wallet…
               </p>
               <p className="text-[11px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
-                Approve the connection in your wallet
+                Waiting for wallet extension to respond
               </p>
             </div>
           </div>
@@ -144,28 +144,36 @@ export function WalletConnectModal({ state, errorMessage, onClose, onRetry }: Wa
           <div className="space-y-4" data-testid="modal-state-not-found">
             <div>
               <p className="text-sm font-display" style={{ color: "var(--shell-white)" }}>
-                Wallet not detected
+                Wallet not responding
               </p>
               <p className="text-[11px] font-mono mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                If you already have MetaMask installed, click <strong style={{ color: "var(--shell-cream)" }}>Try Again</strong> — it may not have loaded yet.
+                MetaMask is installed but didn't respond in time. This is usually fixed by refreshing the page — it wakes the wallet extension up.
               </p>
             </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-sm text-sm font-display uppercase tracking-wider transition-opacity hover:opacity-80"
+              style={{ background: "var(--claw-orange)", color: "white" }}
+              data-testid="button-refresh-page"
+            >
+              Refresh page
+            </button>
             {onRetry && (
               <button
                 onClick={onRetry}
-                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-sm text-sm font-display uppercase tracking-wider transition-opacity hover:opacity-80"
-                style={{ background: "var(--claw-orange)", color: "white" }}
+                className="flex items-center justify-center gap-2 w-full py-2 rounded-sm text-sm font-mono transition-opacity hover:opacity-80"
+                style={{ background: "rgba(107,127,163,0.1)", color: "var(--text-muted)", border: "1px solid rgba(107,127,163,0.2)" }}
                 data-testid="button-retry-connect"
               >
-                Try Again
+                Try again without refresh
               </button>
             )}
             <a
               href="https://metamask.io/download/"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-2 rounded-sm text-sm font-mono transition-opacity hover:opacity-80"
-              style={{ background: "rgba(107,127,163,0.1)", color: "var(--text-muted)", border: "1px solid rgba(107,127,163,0.2)" }}
+              className="flex items-center justify-center gap-2 w-full py-2 rounded-sm text-[10px] font-mono transition-opacity hover:opacity-60"
+              style={{ color: "var(--text-muted)" }}
               data-testid="link-install-metamask"
             >
               Don't have MetaMask? Install it <ExternalLink className="w-3 h-3" />

@@ -31,8 +31,20 @@ function getStoredSig(): { address: string; sig: string; timestamp: number } | n
   }
 }
 
-async function detectEthereum(timeoutMs = 2500): Promise<boolean> {
+async function detectEthereum(timeoutMs = 5000): Promise<boolean> {
   if (window.ethereum) return true;
+  // EIP-6963: listen for wallet announcements
+  const eip6963Promise = new Promise<boolean>((resolve) => {
+    const handler = () => { resolve(true); };
+    window.addEventListener("eip6963:announceProvider", handler, { once: true });
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+    setTimeout(() => {
+      window.removeEventListener("eip6963:announceProvider", handler);
+      resolve(false);
+    }, 500);
+  });
+  if (await eip6963Promise) return true;
+  // Fallback: poll for window.ethereum (handles MV3 service-worker wake-up delay)
   return new Promise((resolve) => {
     const interval = 100;
     const attempts = Math.ceil(timeoutMs / interval);
@@ -115,6 +127,13 @@ export function useWallet() {
       if (err?.code === 4001) {
         setModalState("error");
         setModalError("Connection rejected. Please approve the MetaMask request.");
+      } else if (
+        err?.message?.toLowerCase().includes("failed to connect to metamask") ||
+        err?.message?.toLowerCase().includes("could not establish connection") ||
+        (err?.message?.toLowerCase().includes("metamask") && err?.message?.toLowerCase().includes("connect"))
+      ) {
+        // MetaMask MV3 service worker sleeping — refresh wakes it up
+        setModalState("not-found");
       } else {
         setModalState("error");
         setModalError(err?.message || "Wallet connection failed. Please try again.");
