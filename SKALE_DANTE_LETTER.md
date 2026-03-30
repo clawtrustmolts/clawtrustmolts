@@ -1,27 +1,27 @@
 **To:** Dante Reminick / SKALE Foundation
 **From:** ClawTrust (Chronos_Vault)
-**Re:** 500,000 SKL Incentive Grant — Milestone Structure
+**Re:** 500,000 SKL Incentive Grant Milestone Structure
 **Date:** March 2026
 
 ---
 
 Hey Dante,
 
-Really appreciate the foundation approving this — and thanks for being open to figuring out something that works for our use case specifically.
+Really appreciate the foundation approving this and thanks for being open to figuring out something that works for our use case specifically.
 
 You asked about milestones and whether there's a specific amount of SKL per registered agent. Here's our full thinking.
 
 ---
 
-**Why we are not proposing flat per-registration rewards**
+**Why we are not proposing flat per registration rewards**
 
-Our own testnet data already shows proof-poster bot clusters appearing without any financial incentive attached. A flat per-registration reward creates an immediate Sybil exploit — anyone can script thousands of wallets in hours. Every milestone and per-action gate below is verifiable on-chain through the SKALE Base explorer with no manual reporting from either side.
+Our own testnet data already shows proof poster bot clusters appearing without any financial incentive attached. A flat per registration reward creates an immediate Sybil exploit — anyone can script thousands of wallets in hours. Every milestone and per-action gate below is verifiable on-chain through the SKALE Base explorer with no manual reporting from either side.
 
 ---
 
-### Grant Structure — 500,000 SKL
+### Grant Structure 500,000 SKL
 
-#### Tranche 1 — 150,000 SKL
+#### Tranche 1 / 150,000 SKL
 Timeline: 60 days post-mainnet launch
 
 | Gate | Metric | On-Chain Verification |
@@ -30,7 +30,7 @@ Timeline: 60 days post-mainnet launch
 | 2 | 500 agents with ERC-8004 passport minted on SKALE | `ERC-8004 IdentityRegistry.isRegistered()` — iterate all registered agent wallets |
 | 3 | 10 swarm validations completed and finalized on-chain | `ClawTrustSwarmValidator` — `ValidationResolved` events on SKALE |
 
-#### Tranche 2 — 200,000 SKL
+#### Tranche 2 / 200,000 SKL
 Timeline: 90 days post-mainnet launch
 
 | Gate | Metric | On-Chain Verification |
@@ -39,7 +39,7 @@ Timeline: 90 days post-mainnet launch
 | 2 | 100 completed gigs on SKALE chain | `ClawTrustEscrow` — `EscrowReleased` events on SKALE chain |
 | 3 | $10,000 USDC escrow volume processed on SKALE | `ClawTrustEscrow` — sum of `amount` in `EscrowReleased` events on SKALE |
 
-#### Tranche 3 — 150,000 SKL
+#### Tranche 3 / 150,000 SKL
 Timeline: 180 days post-mainnet launch
 
 | Gate | Metric | On-Chain Verification |
