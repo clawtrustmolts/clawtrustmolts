@@ -500,6 +500,16 @@ export default function ProfilePage() {
     enabled: !!displayAgent?.walletAddress && activeTab === "commerce",
   });
 
+  const { data: erc8183AgentJobs, isLoading: isErc8183JobsLoading } = useQuery<{ posted: any[]; taken: any[] }>({
+    queryKey: ["/api/erc8183/agents", agentId, "jobs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/erc8183/agents/${agentId}/jobs`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!agentId && activeTab === "commerce",
+  });
+
   if (isAgentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
@@ -1527,8 +1537,9 @@ export default function ProfilePage() {
               agentCheck={erc8183AgentCheck}
               postedGigs={postedGigs}
               assignedGigs={assignedGigs}
+              erc8183Jobs={erc8183AgentJobs}
               isOwnProfile={myAgentId === agent.id}
-              isLoading={isErc8183StatsLoading || isErc8183InfoLoading || isErc8183AgentCheckLoading}
+              isLoading={isErc8183StatsLoading || isErc8183InfoLoading || isErc8183AgentCheckLoading || isErc8183JobsLoading}
             />
           )}
           {activeTab === "social" && (
@@ -3642,6 +3653,7 @@ function CommerceTab({
   agentCheck,
   postedGigs,
   assignedGigs,
+  erc8183Jobs,
   isOwnProfile,
   isLoading,
 }: {
@@ -3667,6 +3679,7 @@ function CommerceTab({
   agentCheck?: { wallet: string; isRegisteredAgent: boolean };
   postedGigs: Gig[];
   assignedGigs: Gig[];
+  erc8183Jobs?: { posted: any[]; taken: any[] };
   isOwnProfile: boolean;
   isLoading: boolean;
 }) {
@@ -3687,10 +3700,18 @@ function CommerceTab({
     expired: { label: "Expired", bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" },
   };
 
-  const totalJobsCompleted = postedGigs.filter((g) => g.status === "completed").length + assignedGigs.filter((g) => g.status === "completed").length;
-  const totalEarnedFromGigs = assignedGigs
-    .filter((g) => g.status === "completed")
-    .reduce((sum, g) => sum + (g.budget || 0), 0);
+  const realPosted = erc8183Jobs?.posted ?? [];
+  const realTaken = erc8183Jobs?.taken ?? [];
+  const displayPosted = realPosted.length > 0 ? realPosted : postedGigs;
+  const displayTaken = realTaken.length > 0 ? realTaken : assignedGigs;
+  const isRealData = realPosted.length > 0 || realTaken.length > 0;
+
+  const totalJobsCompleted = (isRealData
+    ? realPosted.filter((j: any) => j.status === "completed").length + realTaken.filter((j: any) => j.status === "completed").length
+    : postedGigs.filter((g) => g.status === "completed").length + assignedGigs.filter((g) => g.status === "completed").length);
+  const totalEarnedFromGigs = (isRealData
+    ? realTaken.filter((j: any) => j.status === "completed").reduce((sum: number, j: any) => sum + (j.budgetUsdc || 0), 0)
+    : assignedGigs.filter((g) => g.status === "completed").reduce((sum, g) => sum + (g.budget || 0), 0));
 
   if (isLoading) {
     return (
@@ -3862,7 +3883,7 @@ function CommerceTab({
             }}
             data-testid="toggle-commerce-posted"
           >
-            POSTED ({postedGigs.length})
+            POSTED ({displayPosted.length})
           </button>
           <button
             onClick={() => setCommerceSubTab("taken")}
@@ -3874,42 +3895,49 @@ function CommerceTab({
             }}
             data-testid="toggle-commerce-taken"
           >
-            TAKEN ({assignedGigs.length})
+            TAKEN ({displayTaken.length})
           </button>
         </div>
 
-        {(commerceSubTab === "posted" ? postedGigs : assignedGigs).length === 0 ? (
+        {(commerceSubTab === "posted" ? displayPosted : displayTaken).length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3" data-testid="commerce-empty-state">
             <span className="text-4xl">🦞</span>
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>
               {commerceSubTab === "posted" ? "No jobs posted yet." : "No jobs taken yet."}
             </p>
             {isOwnProfile && commerceSubTab === "posted" ? (
-              <ClawButton variant="ghost" size="sm" href="/gigs?action=post" data-testid="button-post-job-commerce">
-                <Briefcase className="w-3.5 h-3.5" /> Post a Job
+              <ClawButton variant="ghost" size="sm" href="/commerce" data-testid="button-post-job-commerce">
+                <Briefcase className="w-3.5 h-3.5" /> Post on Marketplace
               </ClawButton>
             ) : (
-              <ClawButton variant="ghost" size="sm" href="/gigs" data-testid="button-browse-gigs-commerce">
-                <Briefcase className="w-3.5 h-3.5" /> Browse Gig Board
+              <ClawButton variant="ghost" size="sm" href="/commerce" data-testid="button-browse-gigs-commerce">
+                <Briefcase className="w-3.5 h-3.5" /> Browse Marketplace
               </ClawButton>
             )}
           </div>
         ) : (
           <div className="space-y-3">
-            {(commerceSubTab === "posted" ? postedGigs : assignedGigs).map((gig) => {
-              const mapped = erc8183StatusMap[gig.status] || { label: gig.status, bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" };
+            {(commerceSubTab === "posted" ? displayPosted : displayTaken).map((item: any) => {
+              const status = item.status || "open";
+              const mapped = erc8183StatusMap[status] || { label: status, bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" };
+              const budget = item.budgetUsdc ?? item.budget;
+              const currency = item.budgetUsdc != null ? "USDC" : (item.currency ?? "USDC");
+              const href = isRealData ? `/commerce?job=${item.id}` : `/gig/${item.id}`;
+              const basescanHref = item.txHashCreated
+                ? `https://sepolia.basescan.org/tx/${item.txHashCreated}`
+                : `https://sepolia.basescan.org/address/${contractAddress}`;
 
               return (
                 <div
-                  key={gig.id}
+                  key={item.id}
                   className="flex items-center justify-between p-3 rounded-sm transition-all hover:brightness-110"
                   style={{
                     background: "var(--ocean-surface)",
                     border: "1px solid rgba(0,0,0,0.06)",
                   }}
-                  data-testid={`commerce-job-${gig.id}`}
+                  data-testid={`commerce-job-${item.id}`}
                 >
-                  <Link href={`/gig/${gig.id}`} className="flex-1 min-w-0 cursor-pointer">
+                  <Link href={href} className="flex-1 min-w-0 cursor-pointer">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span
                         className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-sm"
@@ -3920,30 +3948,30 @@ function CommerceTab({
                       <span
                         className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm"
                         style={{ background: mapped.bg, color: mapped.color }}
-                        data-testid={`commerce-status-${gig.id}`}
+                        data-testid={`commerce-status-${item.id}`}
                       >
                         {mapped.label}
                       </span>
                     </div>
                     <p className="text-sm font-semibold mt-1 truncate" style={{ color: "var(--shell-white)" }}>
-                      {gig.title}
+                      {item.title}
                     </p>
                     <div className="flex items-center gap-3 mt-1">
                       <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
-                        {gig.budget} {gig.currency}
+                        ${budget} {currency}
                       </span>
                       <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                        {timeAgo(gig.createdAt ?? new Date())}
+                        {timeAgo(item.createdAt ?? item.updatedAt ?? new Date())}
                       </span>
                     </div>
                   </Link>
                   <a
-                    href={`https://sepolia.basescan.org/address/${contractAddress}`}
+                    href={basescanHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex-shrink-0 ml-2 p-1 rounded-sm transition-opacity hover:opacity-70"
                     title="View on Basescan"
-                    data-testid={`commerce-basescan-${gig.id}`}
+                    data-testid={`commerce-basescan-${item.id}`}
                   >
                     <ExternalLink className="w-3.5 h-3.5" style={{ color: "#0052FF" }} />
                   </a>

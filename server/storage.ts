@@ -5,6 +5,9 @@ import {
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements, x402Payments,
   agentNotifications, skillChallenges, challengeAttempts, blogPosts,
+  erc8183Jobs, erc8183Applicants,
+  type Erc8183Job, type InsertErc8183Job,
+  type Erc8183Applicant, type InsertErc8183Applicant,
   type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
@@ -232,6 +235,17 @@ export interface IStorage {
   getBlogPost(slug: string): Promise<BlogPost | undefined>;
   createBlogPost(post: InsertBlogPost): Promise<BlogPost>;
   countBlogPosts(): Promise<number>;
+
+  // ERC-8183 Agentic Commerce
+  createErc8183Job(job: InsertErc8183Job): Promise<Erc8183Job>;
+  getErc8183Job(id: string): Promise<Erc8183Job | undefined>;
+  getErc8183Jobs(filters?: { status?: string; posterAgentId?: string; assigneeAgentId?: string; limit?: number; offset?: number }): Promise<Erc8183Job[]>;
+  updateErc8183Job(id: string, data: Partial<Erc8183Job>): Promise<Erc8183Job | undefined>;
+  getErc8183JobsByAgent(agentId: string): Promise<{ posted: Erc8183Job[]; taken: Erc8183Job[] }>;
+  createErc8183Applicant(applicant: InsertErc8183Applicant): Promise<Erc8183Applicant>;
+  getErc8183Applicants(jobId: string): Promise<Erc8183Applicant[]>;
+  getErc8183Applicant(jobId: string, agentId: string): Promise<Erc8183Applicant | undefined>;
+  countErc8183Jobs(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1428,6 +1442,67 @@ Be specific and methodical.`,
 
   async countBlogPosts(): Promise<number> {
     const [result] = await db.select({ value: count() }).from(blogPosts);
+    return result?.value || 0;
+  }
+
+  // ─── ERC-8183 AGENTIC COMMERCE ───────────────────────────────────────────
+  async createErc8183Job(job: InsertErc8183Job): Promise<Erc8183Job> {
+    const [created] = await db.insert(erc8183Jobs).values(job).returning();
+    return created;
+  }
+
+  async getErc8183Job(id: string): Promise<Erc8183Job | undefined> {
+    const [job] = await db.select().from(erc8183Jobs).where(eq(erc8183Jobs.id, id));
+    return job;
+  }
+
+  async getErc8183Jobs(filters?: { status?: string; posterAgentId?: string; assigneeAgentId?: string; limit?: number; offset?: number }): Promise<Erc8183Job[]> {
+    const conditions: any[] = [];
+    if (filters?.status) conditions.push(eq(erc8183Jobs.status, filters.status));
+    if (filters?.posterAgentId) conditions.push(eq(erc8183Jobs.posterAgentId, filters.posterAgentId));
+    if (filters?.assigneeAgentId) conditions.push(eq(erc8183Jobs.assigneeAgentId, filters.assigneeAgentId));
+    const query = db.select().from(erc8183Jobs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(erc8183Jobs.createdAt))
+      .limit(filters?.limit ?? 50)
+      .offset(filters?.offset ?? 0);
+    return query;
+  }
+
+  async updateErc8183Job(id: string, data: Partial<Erc8183Job>): Promise<Erc8183Job | undefined> {
+    const [updated] = await db.update(erc8183Jobs).set(data).where(eq(erc8183Jobs.id, id)).returning();
+    return updated;
+  }
+
+  async getErc8183JobsByAgent(agentId: string): Promise<{ posted: Erc8183Job[]; taken: Erc8183Job[] }> {
+    const posted = await db.select().from(erc8183Jobs)
+      .where(eq(erc8183Jobs.posterAgentId, agentId))
+      .orderBy(desc(erc8183Jobs.createdAt));
+    const taken = await db.select().from(erc8183Jobs)
+      .where(eq(erc8183Jobs.assigneeAgentId, agentId))
+      .orderBy(desc(erc8183Jobs.createdAt));
+    return { posted, taken };
+  }
+
+  async createErc8183Applicant(applicant: InsertErc8183Applicant): Promise<Erc8183Applicant> {
+    const [created] = await db.insert(erc8183Applicants).values(applicant).returning();
+    return created;
+  }
+
+  async getErc8183Applicants(jobId: string): Promise<Erc8183Applicant[]> {
+    return db.select().from(erc8183Applicants)
+      .where(eq(erc8183Applicants.jobId, jobId))
+      .orderBy(asc(erc8183Applicants.appliedAt));
+  }
+
+  async getErc8183Applicant(jobId: string, agentId: string): Promise<Erc8183Applicant | undefined> {
+    const [row] = await db.select().from(erc8183Applicants)
+      .where(and(eq(erc8183Applicants.jobId, jobId), eq(erc8183Applicants.agentId, agentId)));
+    return row;
+  }
+
+  async countErc8183Jobs(): Promise<number> {
+    const [result] = await db.select({ value: count() }).from(erc8183Jobs);
     return result?.value || 0;
   }
 }

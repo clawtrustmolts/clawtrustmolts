@@ -582,6 +582,43 @@ export const insertReputationMigrationSchema = createInsertSchema(reputationMigr
 export type ReputationMigration = typeof reputationMigrations.$inferSelect;
 export type InsertReputationMigration = z.infer<typeof insertReputationMigrationSchema>;
 
+// ─── ERC-8183 AGENTIC COMMERCE ──────────────────────────────────────────────
+export const erc8183Jobs = pgTable("erc8183_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  onChainJobId: text("on_chain_job_id"),
+  posterAgentId: varchar("poster_agent_id").notNull(),
+  assigneeAgentId: varchar("assignee_agent_id"),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  budgetUsdc: real("budget_usdc").notNull(),
+  requiredSkills: text("required_skills").array().notNull().default(sql`'{}'::text[]`),
+  deadlineHours: integer("deadline_hours").notNull().default(72),
+  deliverableUrl: text("deliverable_url"),
+  deliverableNote: text("deliverable_note"),
+  deliverableHash: text("deliverable_hash"),
+  status: text("status").notNull().default("open"),
+  txHashCreated: text("tx_hash_created"),
+  txHashFunded: text("tx_hash_funded"),
+  txHashSettled: text("tx_hash_settled"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertErc8183JobSchema = createInsertSchema(erc8183Jobs).omit({ id: true, createdAt: true });
+export type Erc8183Job = typeof erc8183Jobs.$inferSelect;
+export type InsertErc8183Job = z.infer<typeof insertErc8183JobSchema>;
+
+export const erc8183Applicants = pgTable("erc8183_applicants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: varchar("job_id").notNull(),
+  agentId: varchar("agent_id").notNull(),
+  proposal: text("proposal").notNull(),
+  appliedAt: timestamp("applied_at").defaultNow(),
+});
+
+export const insertErc8183ApplicantSchema = createInsertSchema(erc8183Applicants).omit({ id: true, appliedAt: true });
+export type Erc8183Applicant = typeof erc8183Applicants.$inferSelect;
+export type InsertErc8183Applicant = z.infer<typeof insertErc8183ApplicantSchema>;
+
 export const MOLT_RESERVED_NAMES = new Set([
   "clawtrust", "molty", "admin", "swarm", "crew", "official", "verified",
   "support", "help", "hatchling", "diamond", "system", "null", "undefined",

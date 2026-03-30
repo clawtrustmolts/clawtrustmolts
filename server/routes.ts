@@ -9246,7 +9246,7 @@ export async function registerRoutes(
 
   // ─── ERC-8183 AGENTIC COMMERCE ─────────────────────────────────────────────
 
-  const { getERC8183Stats, getERC8183Job, oracleCompleteJob, oracleRejectJob, isRegisteredAgent: isRegisteredERC8183, getClawTrustACAddress } = await import("./erc8183-service");
+  const { getERC8183Stats, getERC8183Job, oracleCompleteJob, oracleRejectJob, isRegisteredAgent: isRegisteredERC8183, getClawTrustACAddress, oracleCreateJob, oracleFundJob, oracleAssignProvider, oracleSubmitDeliverable, oracleCancelJob } = await import("./erc8183-service");
 
   app.get("/api/erc8183/stats", apiLimiter, async (_req, res) => {
     try {
@@ -9339,6 +9339,240 @@ export async function registerRoutes(
       return res.json({ wallet, isRegisteredAgent: registered, standard: "ERC-8004" });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to check registration", error: err.message });
+    }
+  });
+
+  // ─── MARKETPLACE CRUD ROUTES (9 new routes) ──────────────────────────────
+
+  // POST /api/erc8183/jobs — create a new job
+  app.post("/api/erc8183/jobs", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const agent = req.agent;
+      const { title, description, budgetUsdc, requiredSkills, deadlineHours } = req.body;
+      if (!title || !description || !budgetUsdc) return res.status(400).json({ message: "title, description, budgetUsdc required" });
+      const budget = parseFloat(String(budgetUsdc));
+      if (isNaN(budget) || budget <= 0) return res.status(400).json({ message: "Invalid budgetUsdc" });
+      const hours = parseInt(String(deadlineHours ?? 72), 10);
+      const skills: string[] = Array.isArray(requiredSkills) ? requiredSkills.map(String) : [];
+
+      let onChainJobId: string | null = null;
+      let txHashCreated: string | null = null;
+      try {
+        const result = await oracleCreateJob(description.slice(0, 200), budget, hours);
+        onChainJobId = result.jobId;
+        txHashCreated = result.txHash;
+      } catch (chainErr: any) {
+        console.warn("[ERC-8183] on-chain create skipped:", chainErr.message);
+      }
+
+      const job = await storage.createErc8183Job({
+        posterAgentId: agent.id,
+        title: sanitizeString(title, 200),
+        description: sanitizeString(description, 2000),
+        budgetUsdc: budget,
+        requiredSkills: skills,
+        deadlineHours: hours,
+        status: "open",
+        onChainJobId,
+        txHashCreated,
+      });
+
+      return res.status(201).json(job);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to create job", error: err.message });
+    }
+  });
+
+  // GET /api/erc8183/jobs — list all jobs with filters
+  app.get("/api/erc8183/jobs", apiLimiter, async (req, res) => {
+    try {
+      const status = req.query.status ? String(req.query.status) : undefined;
+      const posterAgentId = req.query.posterAgentId ? String(req.query.posterAgentId) : undefined;
+      const limit = Math.min(parseInt(String(req.query.limit ?? "20"), 10), 100);
+      const offset = parseInt(String(req.query.offset ?? "0"), 10);
+      const jobs = await storage.getErc8183Jobs({ status, posterAgentId, limit, offset });
+      const total = await storage.countErc8183Jobs();
+      return res.json({ jobs, total, limit, offset });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to list jobs", error: err.message });
+    }
+  });
+
+  // GET /api/erc8183/jobs/:jobId — single job (already exists for on-chain; add DB fallback)
+  // (kept above, adding db-backed version)
+
+  // POST /api/erc8183/jobs/:jobId/fund — oracle funds the escrow
+  app.post("/api/erc8183/jobs/:jobId/fund", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId !== req.agent.id) return res.status(403).json({ message: "Only poster can fund" });
+      if (job.status !== "open") return res.status(400).json({ message: `Cannot fund job in status: ${job.status}` });
+
+      let txHashFunded: string | null = null;
+      if (job.onChainJobId) {
+        try { txHashFunded = await oracleFundJob(job.onChainJobId); } catch (e: any) { console.warn("[ERC-8183] fund skipped:", e.message); }
+      }
+
+      const updated = await storage.updateErc8183Job(jobId, { status: "funded", txHashFunded });
+      return res.json({ success: true, job: updated, txHash: txHashFunded });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fund job", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/apply — agent applies for a job
+  app.post("/api/erc8183/jobs/:jobId/apply", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const agent = req.agent;
+      const { proposal } = req.body;
+      if (!proposal) return res.status(400).json({ message: "proposal required" });
+
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId === agent.id) return res.status(400).json({ message: "Cannot apply to your own job" });
+      if (!["open", "funded"].includes(job.status)) return res.status(400).json({ message: `Cannot apply to job in status: ${job.status}` });
+
+      const existing = await storage.getErc8183Applicant(jobId, agent.id);
+      if (existing) return res.status(409).json({ message: "Already applied" });
+
+      const applicant = await storage.createErc8183Applicant({
+        jobId,
+        agentId: agent.id,
+        proposal: sanitizeString(proposal, 1000),
+      });
+      return res.status(201).json(applicant);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to apply", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/accept — poster accepts an applicant
+  app.post("/api/erc8183/jobs/:jobId/accept", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const { applicantAgentId } = req.body;
+      if (!applicantAgentId) return res.status(400).json({ message: "applicantAgentId required" });
+
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId !== req.agent.id) return res.status(403).json({ message: "Only poster can accept" });
+      if (!["open", "funded"].includes(job.status)) return res.status(400).json({ message: `Cannot accept in status: ${job.status}` });
+
+      const applicantAgent = await storage.getAgent(applicantAgentId);
+      if (!applicantAgent) return res.status(404).json({ message: "Applicant agent not found" });
+
+      let txHash: string | null = null;
+      if (job.onChainJobId && applicantAgent.walletAddress) {
+        try { txHash = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress); } catch (e: any) { console.warn("[ERC-8183] assignProvider skipped:", e.message); }
+      }
+
+      const updated = await storage.updateErc8183Job(jobId, {
+        assigneeAgentId: applicantAgentId,
+        status: "funded",
+      });
+      return res.json({ success: true, job: updated, txHash });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to accept applicant", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/submit — assignee submits deliverable
+  app.post("/api/erc8183/jobs/:jobId/submit", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const { deliverableUrl, deliverableNote } = req.body;
+
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.assigneeAgentId !== req.agent.id) return res.status(403).json({ message: "Only assignee can submit" });
+      if (job.status !== "funded") return res.status(400).json({ message: `Cannot submit in status: ${job.status}` });
+
+      const deliverableHash = `0x${Buffer.from(deliverableUrl ?? deliverableNote ?? "submitted").toString("hex").slice(0, 62).padStart(64, "0")}`;
+
+      let txHash: string | null = null;
+      if (job.onChainJobId) {
+        try { txHash = await oracleSubmitDeliverable(job.onChainJobId, deliverableHash); } catch (e: any) { console.warn("[ERC-8183] submit skipped:", e.message); }
+      }
+
+      const updated = await storage.updateErc8183Job(jobId, {
+        status: "submitted",
+        deliverableUrl: deliverableUrl ? sanitizeString(deliverableUrl, 500) : job.deliverableUrl,
+        deliverableNote: deliverableNote ? sanitizeString(deliverableNote, 1000) : job.deliverableNote,
+        deliverableHash,
+      });
+      return res.json({ success: true, job: updated, txHash });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to submit deliverable", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/settle — poster settles (complete or reject)
+  app.post("/api/erc8183/jobs/:jobId/settle", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const { action, reason } = req.body; // action: "complete" | "reject"
+      if (!["complete", "reject"].includes(action)) return res.status(400).json({ message: "action must be complete or reject" });
+
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId !== req.agent.id) return res.status(403).json({ message: "Only poster can settle" });
+      if (job.status !== "submitted") return res.status(400).json({ message: `Cannot settle in status: ${job.status}` });
+
+      let txHash: string | null = null;
+      const newStatus = action === "complete" ? "completed" : "rejected";
+      const reasonHex = "0x535741524d5f415050524f564544000000000000000000000000000000000000";
+
+      if (job.onChainJobId) {
+        try {
+          if (action === "complete") txHash = await oracleCompleteJob(job.onChainJobId, reasonHex);
+          else txHash = await oracleRejectJob(job.onChainJobId, reasonHex);
+        } catch (e: any) { console.warn("[ERC-8183] settle skipped:", e.message); }
+      }
+
+      const updated = await storage.updateErc8183Job(jobId, { status: newStatus, txHashSettled: txHash });
+
+      if (action === "complete" && job.assigneeAgentId) {
+        const assignee = await storage.getAgent(job.assigneeAgentId);
+        if (assignee) {
+          await storage.updateAgent(assignee.id, {
+            totalGigsCompleted: (assignee.totalGigsCompleted ?? 0) + 1,
+            onChainScore: Math.min((assignee.onChainScore ?? 0) + 10, 1000),
+          });
+        }
+      }
+
+      return res.json({ success: true, job: updated, txHash });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to settle job", error: err.message });
+    }
+  });
+
+  // GET /api/erc8183/jobs/:jobId/applicants — list applicants
+  app.get("/api/erc8183/jobs/:jobId/applicants", apiLimiter, async (req, res) => {
+    try {
+      const { jobId } = req.params;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      const applicants = await storage.getErc8183Applicants(jobId);
+      return res.json({ applicants, total: applicants.length });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to list applicants", error: err.message });
+    }
+  });
+
+  // GET /api/erc8183/agents/:agentId/jobs — per-agent job history
+  app.get("/api/erc8183/agents/:agentId/jobs", apiLimiter, async (req, res) => {
+    try {
+      const { agentId } = req.params;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const history = await storage.getErc8183JobsByAgent(agentId);
+      return res.json(history);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch agent jobs", error: err.message });
     }
   });
 

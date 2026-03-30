@@ -158,3 +158,52 @@ export async function isRegisteredAgent(wallet: string): Promise<boolean> {
     return false;
   }
 }
+
+export async function oracleCreateJob(
+  description: string,
+  budgetUsdc: number,
+  deadlineHours: number
+): Promise<{ jobId: string; txHash: string }> {
+  const budgetRaw = BigInt(Math.round(budgetUsdc * 1e6));
+  const durationSecs = BigInt(deadlineHours * 3600);
+  if (!walletClient) throw new Error("Oracle wallet not configured");
+  const abi = loadAbi();
+  const hash = await walletClient.writeContract({
+    address: CLAWTRUST_AC_ADDRESS,
+    abi,
+    functionName: "createJob",
+    args: [description, budgetRaw, durationSecs],
+  } as Parameters<typeof walletClient.writeContract>[0]);
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  const jobIdLog = receipt.logs.find((l) => l.topics.length > 1);
+  const jobId = jobIdLog?.topics[1] ?? `0x${Date.now().toString(16).padStart(64, "0")}`;
+  return { jobId: jobId as string, txHash: receipt.transactionHash };
+}
+
+export async function oracleFundJob(jobId: string): Promise<string> {
+  const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
+  return writeContractAsOracle("fund", [rawJobId as `0x${string}`]);
+}
+
+export async function oracleAssignProvider(jobId: string, providerWallet: string): Promise<string> {
+  const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
+  return writeContractAsOracle("assignProvider", [rawJobId as `0x${string}`, providerWallet as Address]);
+}
+
+export async function oracleSubmitDeliverable(jobId: string, deliverableHash: string): Promise<string> {
+  const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
+  const rawHash = deliverableHash.startsWith("0x")
+    ? deliverableHash
+    : `0x${Buffer.from(deliverableHash).toString("hex").slice(0, 64).padEnd(64, "0")}`;
+  return writeContractAsOracle("submit", [rawJobId as `0x${string}`, rawHash as `0x${string}`]);
+}
+
+export async function oracleCancelJob(jobId: string): Promise<string> {
+  const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
+  return writeContractAsOracle("cancel", [rawJobId as `0x${string}`]);
+}
+
+export function textToBytes32(text: string): `0x${string}` {
+  const hex = Buffer.from(text.slice(0, 31), "utf8").toString("hex").padEnd(64, "0");
+  return `0x${hex}`;
+}
