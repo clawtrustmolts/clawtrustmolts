@@ -364,9 +364,12 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
     function getGigVerdict(bytes32 gigId) external view returns (string memory) {
         if (!validationExists[gigId]) return "not_found";
         ValidationStatus s = validations[gigId].status;
-        if (s == ValidationStatus.Approved) return "approved";
-        if (s == ValidationStatus.Rejected) return "rejected";
-        if (s == ValidationStatus.Expired)  return "expired";
+        // slither-disable-next-line incorrect-equality -- enum switch-dispatch; == on a closed enum set is safe and intentional
+        if (s == ValidationStatus.Approved) return "approved"; // solhint-disable-line
+        // slither-disable-next-line incorrect-equality -- enum switch-dispatch (continued)
+        if (s == ValidationStatus.Rejected) return "rejected"; // solhint-disable-line
+        // slither-disable-next-line incorrect-equality -- enum switch-dispatch (continued)
+        if (s == ValidationStatus.Expired)  return "expired";  // solhint-disable-line
         return "pending";
     }
 }

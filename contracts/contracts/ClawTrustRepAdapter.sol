@@ -49,9 +49,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
     }
 
     mapping(address => FusedScore) public fusedScores;
-    // scoreHistory is a dynamic-array mapping. In Solidity, mappings auto-initialise to their
-    // zero-value (empty array) — explicit initialisation is not required or possible.
-    // The Slither `uninitialized-state` finding here is a false positive.
+    // slither-disable-next-line uninitialized-state -- Solidity mappings auto-init to zero-value (empty array); explicit init not required or possible; false positive
     mapping(address => ScoreHistory[]) public scoreHistory;
     mapping(address => bool) public authorizedOracles;
     mapping(address => uint256) public lastUpdateTime;
@@ -412,9 +410,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
 
     function verifyProof(address agent, string calldata proofUri) external view returns (bool) {
         bytes32 proofHash = keccak256(bytes(proofUri));
-        // slither-disable-next-line incorrect-equality
-        // bytes32 equality check is intentional — this is a hash-based proof verification, not
-        // a numeric comparison where == vs >= matters.
+        // slither-disable-next-line incorrect-equality -- bytes32 hash equality is intentional (proof verification, not numeric comparison)
         return fusedScores[agent].proofHash == proofHash;
     }
 }
