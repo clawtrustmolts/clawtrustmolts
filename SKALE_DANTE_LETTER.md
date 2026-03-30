@@ -80,7 +80,7 @@ The external security audit is the only remaining prerequisite before mainnet de
 
 **2. Wallet format for SKL distribution**
 
-We will use a Gnosis Safe multisig (standard EVM address, 2-of-3) for all SKL distributions. Using a single-key wallet for a 500K SKL grant is insufficient — the multisig provides both operational protection and signals maturity to the foundation. Please confirm whether to send the multisig address directly to you or through an intermediate arrangement.
+We will use a Gnosis Safe multisig (standard EVM address, 2-of-3) for all SKL distributions. Using a single-key wallet for a 500K SKL grant is insufficient the multisig provides both operational protection and signals maturity to the foundation. Please confirm whether to send the multisig address directly to you or through an intermediate arrangement.
 
 ---
 
