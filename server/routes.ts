@@ -2127,65 +2127,38 @@ export async function registerRoutes(
       }
 
       let circleTransfer = null;
-      if (circleAvailable && escrow.circleWalletId && isCircleConfigured()) {
-        const assignee = await storage.getAgent(gig.assigneeId);
-        if (assignee) {
-          const destAddress = escrow.chain === "SOL_DEVNET"
-            ? assignee.solanaAddress || assignee.walletAddress
-            : assignee.walletAddress;
-          try {
-            circleTransfer = await transferUSDC({
-              sourceWalletId: escrow.circleWalletId,
-              destinationAddress: destAddress,
-              amount: escrow.amount.toString(),
-              chain: escrow.chain || "BASE_SEPOLIA",
-            });
-          } catch (err: any) {
-            console.error("[Escrow] Circle release failed:", err.message);
-            recordCircuitFailure("Circle USDC transfer failed on release");
+      let circleAttemptFailed = false;
+      if (isCircleConfigured()) {
+        if (!circleAvailable) {
+          // Circuit breaker open — will attempt on-chain fallback below
+          console.warn(`[Escrow] Circuit breaker open for gig ${gigId} — skipping Circle, attempting on-chain fallback`);
+          circleAttemptFailed = true;
+        } else if (escrow.circleWalletId) {
+          const assigneeForCircle = await storage.getAgent(gig.assigneeId);
+          if (assigneeForCircle) {
+            const destAddress = escrow.chain === "SOL_DEVNET"
+              ? assigneeForCircle.solanaAddress || assigneeForCircle.walletAddress
+              : assigneeForCircle.walletAddress;
+            try {
+              circleTransfer = await transferUSDC({
+                sourceWalletId: escrow.circleWalletId,
+                destinationAddress: destAddress,
+                amount: escrow.amount.toString(),
+                chain: escrow.chain || "BASE_SEPOLIA",
+              });
+            } catch (err: any) {
+              console.error("[Escrow] Circle release failed:", err.message);
+              recordCircuitFailure("Circle USDC transfer failed on release");
+              circleAttemptFailed = true;
+              console.warn(`[Escrow] Circle failed for gig ${gigId} — attempting on-chain fallback`);
+            }
           }
         }
       }
 
-      await storage.updateEscrow(escrow.id, {
-        status: "released",
-        circleTransactionId: circleTransfer?.transactionId || null,
-      });
-      await storage.updateGigStatus(gigId, "completed");
-
-      const assignee = await storage.getAgent(gig.assigneeId);
-      if (assignee) {
-        await storage.createReputationEvent({
-          agentId: gig.assigneeId,
-          eventType: "Gig Completed",
-          scoreChange: 10,
-          source: "escrow",
-          details: `Completed gig "${gig.title}" - ${escrow.amount} ${escrow.currency} released`,
-          proofUri: null,
-        });
-        await storage.updateAgent(gig.assigneeId, {
-          totalGigsCompleted: (assignee.totalGigsCompleted || 0) + 1,
-          totalEarned: (assignee.totalEarned || 0) + escrow.amount,
-        });
-
-        if (gig.bondLocked && gig.bondRequired > 0) {
-          await unlockBondForGig(gig.assigneeId, gigId);
-          await storage.updateGig(gigId, { bondLocked: false });
-          console.log(`[Bond-Gig] Unlocked bond for completed gig ${gigId}`);
-        }
-        await syncPerformanceScore(gig.assigneeId);
-
-        moltyAnnounceGigCompletion(
-          { id: gig.id, title: gig.title, budget: gig.budget, currency: gig.currency },
-          { id: assignee.id, handle: assignee.handle }
-        );
-        tryPostToMoltbook(`✅ Gig completed on ClawTrust. ${gig.budget} ${gig.currency} released. Swarm validated. The agent economy works. clawtrust.org`);
-        notifyAgent(gig.assigneeId, "escrow_released", "Escrow Released", `${escrow.amount} ${escrow.currency} has been released for: ${gig.title}`, { gigId }).catch(() => {});
-        notifyAgent(gig.posterId, "gig_completed", "Gig Completed", `${assignee.handle} completed "${gig.title}" — trust receipt ready.`, { gigId }).catch(() => {});
-      }
-
+      // ── On-chain fallback (no Circle, or Circle failed) ─────────────────
       let onChainTxHash: string | undefined;
-      if (!isCircleConfigured() && gig.assigneeId) {
+      if ((!isCircleConfigured() || circleAttemptFailed) && !circleTransfer && gig.assigneeId) {
         const assigneeAgent = await storage.getAgent(gig.assigneeId);
         if (assigneeAgent?.walletAddress && escrow.amount > 0) {
           // Pre-flight: verify oracle wallet has sufficient USDC before releasing
@@ -2194,8 +2167,6 @@ export async function registerRoutes(
             const LOW_BALANCE_WARN = 5;
             if (oracleBalance < escrow.amount) {
               console.error(`[Escrow] Oracle wallet underfunded: ${oracleBalance.toFixed(2)} USDC available, ${escrow.amount} USDC needed for gig ${gigId}`);
-              await storage.updateEscrow(escrow.id, { status: "locked", circleTransactionId: null });
-              await storage.updateGigStatus(gigId, "pending_validation");
               return res.status(503).json({
                 message: `Oracle wallet underfunded. Available: ${oracleBalance.toFixed(2)} USDC, needed: ${escrow.amount} USDC. Contact platform support to fund the oracle wallet.`,
                 oracleBalance,
@@ -2228,16 +2199,52 @@ export async function registerRoutes(
           }
           try {
             onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, escrow.amount);
-            await storage.updateEscrow(escrow.id, { releaseTxHash: onChainTxHash });
             console.log(`[Escrow] On-chain USDC transfer complete: ${onChainTxHash}`);
           } catch (txErr: any) {
             console.error("[Escrow] On-chain USDC transfer failed:", txErr.message);
-            // Revert status so the release can be retried
-            await storage.updateEscrow(escrow.id, { status: "locked" });
-            await storage.updateGigStatus(gigId, "pending_validation");
-            return res.status(503).json({ message: "On-chain payment failed. Escrow reverted to locked. Please retry or contact support.", detail: txErr.message });
+            return res.status(503).json({ message: "On-chain payment failed. Escrow remains locked. Please retry or contact support.", detail: txErr.message });
           }
         }
+      }
+
+      // ── Payment confirmed — update state atomically ───────────────────────
+      await storage.updateEscrow(escrow.id, {
+        status: "released",
+        circleTransactionId: circleTransfer?.transactionId || null,
+        ...(onChainTxHash ? { releaseTxHash: onChainTxHash } : {}),
+      });
+      await storage.updateGigStatus(gigId, "completed");
+
+      // ── Post-release side effects ─────────────────────────────────────────
+      const assignee = await storage.getAgent(gig.assigneeId);
+      if (assignee) {
+        await storage.createReputationEvent({
+          agentId: gig.assigneeId,
+          eventType: "Gig Completed",
+          scoreChange: 10,
+          source: "escrow",
+          details: `Completed gig "${gig.title}" - ${escrow.amount} ${escrow.currency} released`,
+          proofUri: null,
+        });
+        await storage.updateAgent(gig.assigneeId, {
+          totalGigsCompleted: (assignee.totalGigsCompleted || 0) + 1,
+          totalEarned: (assignee.totalEarned || 0) + escrow.amount,
+        });
+
+        if (gig.bondLocked && gig.bondRequired > 0) {
+          await unlockBondForGig(gig.assigneeId, gigId);
+          await storage.updateGig(gigId, { bondLocked: false });
+          console.log(`[Bond-Gig] Unlocked bond for completed gig ${gigId}`);
+        }
+        await syncPerformanceScore(gig.assigneeId);
+
+        moltyAnnounceGigCompletion(
+          { id: gig.id, title: gig.title, budget: gig.budget, currency: gig.currency },
+          { id: assignee.id, handle: assignee.handle }
+        );
+        tryPostToMoltbook(`✅ Gig completed on ClawTrust. ${gig.budget} ${gig.currency} released. Swarm validated. The agent economy works. clawtrust.org`);
+        notifyAgent(gig.assigneeId, "escrow_released", "Escrow Released", `${escrow.amount} ${escrow.currency} has been released for: ${gig.title}`, { gigId }).catch(() => {});
+        notifyAgent(gig.posterId, "gig_completed", "Gig Completed", `${assignee.handle} completed "${gig.title}" — trust receipt ready.`, { gigId }).catch(() => {});
       }
 
       res.json({
