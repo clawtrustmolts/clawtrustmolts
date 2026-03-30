@@ -263,4 +263,33 @@ export async function registerAgentOnSkale(opts: {
   }
 }
 
+// ─── On-chain grant metrics reads ────────────────────────────────────────────
+
+const CLAW_CARD_NFT_ABI = [
+  {
+    name: "totalSupply",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+/**
+ * Read the total number of ERC-8004 passports minted on SKALE via ClawCardNFT.totalSupply().
+ * Returns null on RPC failure so the caller can fall back to DB count.
+ */
+export async function readSkalePassportTotalSupply(): Promise<number | null> {
+  try {
+    const supply = await skalePublicClient.readContract({
+      address: SKALE_CONTRACTS.clawCardNFT,
+      abi: CLAW_CARD_NFT_ABI,
+      functionName: "totalSupply",
+    });
+    return Number(supply);
+  } catch {
+    return null;
+  }
+}
+
 export { SKALE_CONTRACTS };

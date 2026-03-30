@@ -17,6 +17,8 @@ interface GrantMetrics {
     mainnetContractsDeployed: boolean;
     passportsOnSkale: number;
     passportsTarget: number;
+    passportSource: "db" | "on-chain" | "db-fallback";
+    clawCardNFTSupply: number;
     swarmValidationsOnSkale: number;
     swarmValidationsTarget: number;
   };
@@ -95,6 +97,7 @@ function GateRow({
   contractAddr,
   explorer,
   contractLabel,
+  sourceNote,
 }: {
   label: string;
   current: number;
@@ -103,6 +106,7 @@ function GateRow({
   contractAddr?: string;
   explorer?: string;
   contractLabel?: string;
+  sourceNote?: string;
 }) {
   const status = gateStatus(current, target);
   const p = pct(current, target);
@@ -144,6 +148,12 @@ function GateRow({
       </div>
 
       <ProgressBar pct={p} status={status} />
+
+      {sourceNote && (
+        <span className="text-[10px] font-mono italic" style={{ color: "var(--text-muted)" }}>
+          {sourceNote}
+        </span>
+      )}
 
       {contractAddr && explorer && (
         <a
@@ -472,6 +482,9 @@ export default function SkaleGrantPage() {
                   label="Agents with ERC-8004 passport minted on SKALE"
                   current={metrics.tranche1.passportsOnSkale}
                   target={metrics.tranche1.passportsTarget}
+                  sourceNote={
+                    `source: ERC-8004 IdentityRegistry registrations (db) · ClawCardNFT.totalSupply() = ${metrics.tranche1.clawCardNFTSupply}`
+                  }
                   contractAddr={metrics.contracts.erc8004Identity}
                   explorer={metrics.explorer}
                   contractLabel="ERC-8004 IdentityRegistry"

@@ -71,7 +71,7 @@ import {
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
-import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, SKALE_CONTRACTS } from "./skale-chain";
+import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, SKALE_CONTRACTS } from "./skale-chain";
 import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS } from "./chain-client";
 import {
   createEscrowWallet,
@@ -5553,10 +5553,14 @@ export async function registerRoutes(
   // ─── SKALE Grant Metrics — public endpoint for foundation verification ────
   app.get("/api/skale/grant-metrics", async (_req, res) => {
     try {
-      const agents = await storage.getAgents();
-      const gigs = await storage.getGigs();
-      const escrows = await storage.getEscrowTransactions();
-      const validations = await storage.getValidations();
+      // Kick off DB reads and on-chain SKALE read concurrently
+      const [agents, gigs, escrows, validations, onChainPassportSupply] = await Promise.all([
+        storage.getAgents(),
+        storage.getGigs(),
+        storage.getEscrowTransactions(),
+        storage.getValidations(),
+        readSkalePassportTotalSupply(),  // direct SKALE RPC: ClawCardNFT.totalSupply()
+      ]);
       const now = Date.now();
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
@@ -5572,7 +5576,11 @@ export async function registerRoutes(
         /^0x[a-fA-F0-9]{40}$/.test(skaleMainnetEscrow) &&
         skaleMainnetEscrow !== "0x0000000000000000000000000000000000000000";
 
-      // T1 Gate 2 — ERC-8004 passports on SKALE: verified agents with a minted erc8004TokenId
+      // T1 Gate 2 — ERC-8004 passport count
+      // Primary: DB count of verified agents with a non-zero erc8004TokenId.
+      //   erc8004TokenId is set by registerAgentOnSkale() which calls ERC-8004 IdentityRegistry.register().
+      // Supplementary: ClawCardNFT.totalSupply() is the on-chain PFP card count (different contract).
+      //   Shown for transparency — the IdentityRegistry has no totalRegistered() view function.
       const passportsOnSkale = agents.filter(
         a => a.isVerified &&
           a.erc8004TokenId !== null &&
@@ -5581,9 +5589,12 @@ export async function registerRoutes(
           a.walletAddress !== null &&
           a.walletAddress !== "0x0000000000000000000000000000000000000000"
       ).length;
+      // onChainPassportSupply is ClawCardNFT.totalSupply() — shown alongside but not the gate count
+      const passportSource = "db" as const;
+      const clawCardNFTSupply = onChainPassportSupply ?? 0;
 
       // T1 Gate 3 — Swarm validations on SKALE: validations whose gigId belongs to a SKALE gig
-      // (swarmValidations has no chain field; we infer from the associated gig)
+      // (swarmValidations has no chain field; we infer from the associated gig's chain)
       const swarmValidationsOnSkale = validations.filter(
         v => skaleGigIds.has(v.gigId)
       ).length;
@@ -5627,6 +5638,8 @@ export async function registerRoutes(
           mainnetContractsDeployed,
           passportsOnSkale,
           passportsTarget: 500,
+          passportSource,
+          clawCardNFTSupply,
           swarmValidationsOnSkale,
           swarmValidationsTarget: 10,
         },
@@ -5646,12 +5659,12 @@ export async function registerRoutes(
           leaderboardLive,
         },
         contracts: {
-          escrow: "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
-          bond: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
-          swarmValidator: "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
-          repAdapter: "0xFafCA23a7c085A842E827f53A853141C8243F924",
-          erc8004Identity: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-          clawCardNFT: "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83",
+          escrow: SKALE_CONTRACTS.escrow,
+          bond: SKALE_CONTRACTS.bond,
+          swarmValidator: SKALE_CONTRACTS.swarmValidator,
+          repAdapter: SKALE_CONTRACTS.repAdapter,
+          erc8004Identity: SKALE_CONTRACTS.erc8004IdentityRegistry,
+          clawCardNFT: SKALE_CONTRACTS.clawCardNFT,
         },
         explorer: "https://base-sepolia-testnet-explorer.skalenodes.com",
         rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
