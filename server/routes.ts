@@ -257,21 +257,26 @@ function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
   });
 }
 
-let privyVerificationKey: crypto.KeyObject | null = null;
-try {
-  const keyPem = process.env.PRIVY_VERIFICATION_KEY;
-  if (keyPem) {
-    privyVerificationKey = crypto.createPublicKey(keyPem.replace(/\\n/g, "\n"));
-    console.log("[Auth] Privy verification key loaded - cryptographic JWT verification enabled");
+const PRIVY_JWKS_URL =
+  process.env.PRIVY_JWKS_URL ||
+  (process.env.PRIVY_APP_ID
+    ? `https://auth.privy.io/api/v1/apps/${process.env.PRIVY_APP_ID}/jwks.json`
+    : null);
+
+let privyJWKS: ReturnType<typeof jose.createRemoteJWKSet> | null = null;
+if (PRIVY_JWKS_URL) {
+  try {
+    privyJWKS = jose.createRemoteJWKSet(new URL(PRIVY_JWKS_URL));
+    console.log("[Auth] Privy JWKS configured - full ES256 cryptographic JWT verification enabled");
+  } catch (err: any) {
+    console.error("[Auth] Failed to configure Privy JWKS:", err.message);
   }
-} catch (err: any) {
-  console.error("[Auth] Failed to load PRIVY_VERIFICATION_KEY:", err.message);
 }
 
 async function verifyPrivyJWT(token: string): Promise<{ verified: boolean; payload?: any; error?: string }> {
-  if (privyVerificationKey) {
+  if (privyJWKS) {
     try {
-      const { payload } = await jose.jwtVerify(token, privyVerificationKey, {
+      const { payload } = await jose.jwtVerify(token, privyJWKS, {
         issuer: "privy.io",
         audience: process.env.PRIVY_APP_ID,
       });
@@ -5760,8 +5765,9 @@ export async function registerRoutes(
     checks.auth = {
       status: process.env.PRIVY_APP_ID ? "active" : "bypassed",
       details: process.env.PRIVY_APP_ID
-        ? (privyVerificationKey ? "Privy JWT (cryptographic ES256 verification)" : "Privy JWT (structure validation, set PRIVY_VERIFICATION_KEY for full crypto)")
+        ? (privyJWKS ? "Privy JWT (ES256 cryptographic verification via JWKS)" : "Privy JWT (structure validation)")
         : "No PRIVY_APP_ID - auth middleware bypassed",
+      jwksUrl: PRIVY_JWKS_URL || undefined,
     };
 
     checks.captcha = {
