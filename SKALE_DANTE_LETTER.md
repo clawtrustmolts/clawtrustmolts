@@ -9,41 +9,21 @@ Hey Dante,
 
 Really appreciate you getting the foundation to approve the 500K SKL — and thanks for being open to figuring out a structure that fits our use case.
 
-You asked about milestones and whether there is a specific amount of SKL per registered agent. Before I get into the structure, I want to give you two options for how we run this, because it depends on what works better on your end. Let me know which you prefer and we will go with that.
+You asked whether there is a specific amount of SKL per registered agent. Here is the full structure.
+
+To be clear upfront: the only ask from the SKALE Foundation is the 500K SKL grant on the milestone structure below. The USDC bootstrapping pool is something we are funding on our side — I mention it only to explain how agent activity gets seeded and why the transaction projections are realistic.
 
 ---
 
 ### Why we are not doing flat per-registration rewards
 
-Our own testnet data already shows proof-poster bot clusters forming without any financial incentive attached. A flat per-registration reward is an immediate Sybil exploit — anyone can script thousands of wallets in hours. Every reward in either option below requires a real on-chain action that cannot be faked at scale, and all of it is verifiable through the SKALE Base explorer with no manual reporting from either side.
+Our own testnet data already shows proof-poster bot clusters forming without any financial incentive attached. A flat per-registration reward is an immediate Sybil exploit — anyone can script thousands of wallets in hours. Every reward below requires a real on-chain action that cannot be faked at scale, and all of it is verifiable through the SKALE explorer with no manual reporting from either side.
 
 ---
 
-### Option A — One integrated program
+### SKL reward structure — 500,000 SKL grant
 
-The 500K SKL grant and a $20,000 USDC bootstrapping pool run as a single program. The USDC seeds real agent activity from day one. That activity hits the SKL milestone gates. The two parts fuel each other.
-
-**Agent rewards (automatic on on-chain event confirmation):**
-
-| Action | USDC | SKL | On-Chain Trigger | Sybil Protection |
-|---|---|---|---|---|
-| ERC-8004 passport minted on SKALE | $3 | 5 SKL | `IdentityRegistry.register()` | Soulbound NFT — one per wallet |
-| First gig completed on SKALE | $7 | 25 SKL | `ClawTrustEscrow.EscrowReleased` | Requires USDC locked + swarm approval |
-| First 5 swarm validation votes cast | $2 | 10 SKL per vote | `ClawTrustSwarmValidator.VoteCast` | Requires bond deposit to vote |
-| Bond deposited | — | 15 SKL | `ClawTrustBond` deposit event | On-chain USDC transfer to contract |
-| Crew formed (3+ members) | — | 50 SKL | `ClawTrustCrew` creation event | Multi-member contract deployment |
-
-The $20K USDC pool covers approximately 400 registered agents and 250+ completed gigs in the first 60 days — the same activity that unlocks Tranche 1 of the SKL grant.
-
----
-
-### Option B — Two separate programs
-
-The 500K SKL grant runs on its own milestone structure. The $20,000 USDC bootstrapping pool is a separate allocation from the foundation, paid directly to agents. Cleaner accounting on both sides, and the foundation can approve them independently.
-
-**Program 1 — 500,000 SKL grant (milestone-based, paid to ClawTrust)**
-
-Agent-level SKL rewards from the grant pool:
+Agent-level SKL rewards distributed automatically on on-chain event confirmation:
 
 | Action | SKL Reward | On-Chain Trigger | Sybil Protection |
 |---|---|---|---|
@@ -53,21 +33,17 @@ Agent-level SKL rewards from the grant pool:
 | Bond deposited | 15 SKL | `ClawTrustBond` deposit event | On-chain USDC transfer to contract |
 | Crew formed (3+ members) | 50 SKL | `ClawTrustCrew` creation event | Multi-member contract deployment |
 
-**Program 2 — $20,000 USDC bootstrapping pool (paid directly to agents)**
+---
 
-| Action | USDC | What it generates |
-|---|---|---|
-| ERC-8004 passport minted on SKALE | $3 | 2–3 on-chain transactions |
-| First gig completed on SKALE | $7 | 10–15 on-chain transactions |
-| First 5 swarm validation votes | $2 | 5–10 on-chain transactions |
+### How we bootstrap activity on our side
+
+We are running a $20K USDC pool on ClawTrust's side to seed real agent activity from day one — $3 per passport minted, $7 per first gig completed, $2 per first 5 swarm votes. This is not an ask from the foundation. It is what generates the on-chain activity that hits the SKL milestone gates. The two pools are independent; SKALE's exposure is SKL only.
 
 ~400 agent registrations · 250+ completed gigs · 50,000–100,000+ on-chain transactions in the first 60 days.
 
 ---
 
-### Foundation milestone gates (same for both options)
-
-Regardless of which structure you prefer, the SKL tranches unlock on the same gates:
+### Foundation milestone gates
 
 #### Tranche 1 — 150,000 SKL at 60 days
 
@@ -127,7 +103,7 @@ All 9 contracts are live and verified on SKALE Base Sepolia testnet. Mainnet dep
 
 On communication — I prefer async to move as fast as possible. Happy to go back and forth here or on Telegram (@Chronos_Vault), and if a call makes sense we can arrange that easily.
 
-Happy to share the full delivery report, repo access, or flesh out either option further.
+Happy to share the full delivery report, repo access, or flesh out any of this further.
 
 Ready to move fast on your timeline.
 
