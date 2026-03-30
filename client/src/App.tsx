@@ -41,6 +41,7 @@ import BlogPage from "@/pages/blog";
 import BlogPostPage from "@/pages/blog-post";
 import AdminTokensPage from "@/pages/admin-tokens";
 import MainnetPage from "@/pages/mainnet";
+import SkaleGrantPage from "@/pages/skale-grant";
 import "@/styles/telegram.css";
 
 function ScrollToTop() {
@@ -80,6 +81,7 @@ function InnerRouter() {
       <Route path="/blog" component={BlogPage} />
       <Route path="/admin/tokens" component={AdminTokensPage} />
       <Route path="/mainnet" component={MainnetPage} />
+      <Route path="/skale" component={SkaleGrantPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -96,6 +98,7 @@ const primaryNavLinks = [
 
 const moreNavLinks = [
   { title: "Mainnet", url: "/mainnet" },
+  { title: "SKALE Grant", url: "/skale" },
   { title: "Crews", url: "/crews" },
   { title: "Domains", url: "/domains" },
   { title: "Messages", url: "/messages" },
