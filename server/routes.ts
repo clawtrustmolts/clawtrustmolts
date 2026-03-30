@@ -71,7 +71,7 @@ import {
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
-import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS } from "./skale-chain";
+import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS } from "./skale-chain";
 import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS } from "./chain-client";
 import {
   createEscrowWallet,
@@ -5553,10 +5553,11 @@ export async function registerRoutes(
   // ─── SKALE Grant Metrics — public endpoint for foundation verification ────
   app.get("/api/skale/grant-metrics", async (_req, res) => {
     try {
-      // DB reads + 3 direct SKALE RPC/event-log reads run concurrently
+      // DB reads + 4 direct SKALE RPC/event-log reads run concurrently
       const [
         agents, gigs, escrows, validations,
-        onChainPassportSupply, // ClawCardNFT.totalSupply() via eth_call
+        onChainIdentityCount,  // IdentityRegistry Transfer(from=0x0) mint events
+        onChainPassportSupply, // ClawCardNFT.totalSupply() via eth_call (PFP NFT)
         onChainEscrow,         // FundsReleased events (completed gigs + USDC paid out)
         onChainValidations,    // ValidationResolved(approved=true) events
       ] = await Promise.all([
@@ -5564,6 +5565,7 @@ export async function registerRoutes(
         storage.getGigs(),
         storage.getEscrowTransactions(),
         storage.getValidations(),
+        readSkaleIdentityCount(),
         readSkalePassportTotalSupply(),
         readSkaleEscrowStats(),
         readSkaleSwarmValidationCount(),
@@ -5590,9 +5592,10 @@ export async function registerRoutes(
         process.env.SKALE_MAINNET_AC_ADDRESS             || "",
       ].every(isValidAddress);
 
-      // T1G2: ERC-8004 passport count from DB (IdentityRegistry has no totalRegistered view)
-      // clawCardNFTSupply is ClawCardNFT.totalSupply() via eth_call — different contract, shown alongside
-      const passportsOnSkale = agents.filter(
+      // T1G2: ERC-8004 passport count
+      // Primary: on-chain Transfer(from=0x0) mint event count on IdentityRegistry (ERC-721 soulbound).
+      // Fallback: DB count of verified agents with a non-zero erc8004TokenId set by registerAgentOnSkale().
+      const dbPassportsOnSkale = agents.filter(
         a => a.isVerified &&
           a.erc8004TokenId !== null &&
           a.erc8004TokenId !== "" &&
@@ -5600,7 +5603,9 @@ export async function registerRoutes(
           a.walletAddress !== null &&
           a.walletAddress !== "0x0000000000000000000000000000000000000000"
       ).length;
-      const passportSource = "db" as const;
+      const passportsOnSkale = onChainIdentityCount ?? dbPassportsOnSkale;
+      const passportSource = onChainIdentityCount !== null ? "on-chain" : "db" as const;
+      // clawCardNFTSupply: ClawCardNFT.totalSupply() (PFP NFT — different contract, shown for reference)
       const clawCardNFTSupply = onChainPassportSupply ?? 0;
 
       // T1G3: swarm validations — on-chain ValidationResolved events; fallback to DB

@@ -17,7 +17,7 @@ interface GrantMetrics {
     mainnetContractsDeployed: boolean;
     passportsOnSkale: number;
     passportsTarget: number;
-    passportSource: "db" | "on-chain";
+    passportSource: "on-chain" | "db";
     clawCardNFTSupply: number;
     swarmValidationsOnSkale: number;
     swarmValidationsTarget: number;
@@ -70,14 +70,14 @@ function boolStatus(val: boolean): "done" | "empty" {
 function GateIcon({ status }: { status: "done" | "progress" | "empty" }) {
   if (status === "done") return <CheckCircle className="w-4 h-4 text-teal-400 shrink-0" />;
   if (status === "progress") return <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />;
-  return <XCircle className="w-4 h-4 text-[var(--text-muted)] shrink-0" />;
+  return <XCircle className="w-4 h-4 text-red-500 shrink-0" />;
 }
 
 function ProgressBar({ pct: p, status }: { pct: number; status: "done" | "progress" | "empty" }) {
   const color =
     status === "done" ? "#2dd4bf" :
     status === "progress" ? "#f59e0b" :
-    "rgba(255,255,255,0.1)";
+    "rgba(239,68,68,0.3)";
   return (
     <div
       className="w-full h-1.5 rounded-full overflow-hidden"
@@ -129,7 +129,7 @@ function GateRow({
           ? "1px solid rgba(45,212,191,0.25)"
           : status === "progress"
           ? "1px solid rgba(245,158,11,0.2)"
-          : "1px solid rgba(255,255,255,0.05)",
+          : "1px solid rgba(239,68,68,0.2)",
       }}
       data-testid={`card-gate-${label.toLowerCase().replace(/\s+/g, "-")}`}
     >
@@ -143,7 +143,7 @@ function GateRow({
         <span
           className="text-xs font-mono font-bold shrink-0"
           style={{
-            color: status === "done" ? "#2dd4bf" : status === "progress" ? "#f59e0b" : "var(--text-muted)",
+            color: status === "done" ? "#2dd4bf" : status === "progress" ? "#f59e0b" : "#ef4444",
           }}
         >
           {displayCurrent} / {displayTarget}
@@ -486,7 +486,7 @@ export default function SkaleGrantPage() {
                   current={metrics.tranche1.passportsOnSkale}
                   target={metrics.tranche1.passportsTarget}
                   sourceNote={
-                    `source: ERC-8004 IdentityRegistry registrations (db) · ClawCardNFT.totalSupply() = ${metrics.tranche1.clawCardNFTSupply}`
+                    `source: ${metrics.tranche1.passportSource} · IdentityRegistry Transfer(from=0x0) mint events · ClawCardNFT.totalSupply() = ${metrics.tranche1.clawCardNFTSupply}`
                   }
                   contractAddr={metrics.contracts.erc8004Identity}
                   explorer={metrics.explorer}

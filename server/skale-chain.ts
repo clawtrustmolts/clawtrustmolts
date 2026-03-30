@@ -293,6 +293,33 @@ export async function readSkalePassportTotalSupply(): Promise<number | null> {
 }
 
 /**
+ * Read the number of ERC-8004 passports registered on SKALE via IdentityRegistry Transfer (mint) events.
+ * ERC-8004 IdentityRegistry is ERC-721-based (soulbound); mints emit Transfer(from=0x0, to=wallet, tokenId).
+ * Returns null on RPC timeout/failure so callers fall back to DB count.
+ */
+export async function readSkaleIdentityCount(): Promise<number | null> {
+  try {
+    const logs = await Promise.race([
+      skalePublicClient.getLogs({
+        address: SKALE_CONTRACTS.erc8004IdentityRegistry,
+        event: parseAbiItem(
+          "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+        ),
+        args: { from: "0x0000000000000000000000000000000000000000" as Address },
+        fromBlock: 0n,
+        toBlock: "latest",
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("getLogs timeout")), 8000)
+      ),
+    ]);
+    return logs.length;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Read completed-gig stats from on-chain FundsReleased events on the SKALE ClawTrustEscrow contract.
  * FundsReleased fires only when a gig is fully completed and payment released to the worker.
  * Returns { count, usdcVolume } — count = completed gigs, usdcVolume = USDC paid out (6-decimal).
