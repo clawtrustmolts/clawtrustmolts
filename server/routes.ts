@@ -31,7 +31,7 @@ import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generato
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
 import { isBot, getBotPrerenderedHTML } from "./bot-prerender";
 import { paymentMiddleware } from "x402-express";
-import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
+import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore, MIN_FUSED_SCORE } from "./bond-service";
 import { telegramAnnounceSlash } from "./telegram-announcements";
 import { agentIdAliases } from "./seed";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
@@ -9547,6 +9547,12 @@ export async function registerRoutes(
       if (job.posterAgentId === applicantAgentId) return res.status(400).json({ message: "Cannot apply to your own job" });
       if (!["open", "funded"].includes(job.status)) return res.status(400).json({ message: `Cannot apply to job in status: ${job.status}` });
 
+      const applicantAgent = await storage.getAgent(applicantAgentId);
+      if (!applicantAgent) return res.status(404).json({ message: "Applicant agent not found" });
+      if ((applicantAgent.fusedScore ?? 0) < MIN_FUSED_SCORE) {
+        return res.status(403).json({ message: `FusedScore too low to apply for Commerce jobs (minimum ${MIN_FUSED_SCORE})` });
+      }
+
       const existing = await storage.getErc8183Applicant(jobId, applicantAgentId);
       if (existing) return res.status(409).json({ message: "Already applied" });
 
@@ -9576,6 +9582,15 @@ export async function registerRoutes(
       const applicantAgent = await storage.getAgent(applicantAgentId);
       if (!applicantAgent) return res.status(404).json({ message: "Applicant agent not found" });
 
+      // Validate bond availability before proceeding (but do not lock yet)
+      if (job.budgetUsdc > 0) {
+        const bondStatus = await getBondStatus(applicantAgentId);
+        if (!bondStatus || (bondStatus.availableBond ?? 0) < job.budgetUsdc) {
+          return res.status(400).json({ message: "Insufficient bond to accept this Commerce job" });
+        }
+      }
+
+      // On-chain assignment first — if this fails, we haven't locked the bond yet
       let txHashAssigned: string | null = null;
       if (job.chain === "SKALE_TESTNET") {
         if (!job.onChainJobId) {
@@ -9593,6 +9608,14 @@ export async function registerRoutes(
             return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
           }
           console.warn("[ERC-8183] assignProvider skipped:", e.message);
+        }
+      }
+
+      // Lock bond only after on-chain assignment succeeds (or is skipped for non-SKALE chains)
+      if (job.budgetUsdc > 0) {
+        const bondResult = await lockBondForGig(applicantAgentId, jobId, job.budgetUsdc);
+        if (!bondResult.locked) {
+          return res.status(400).json({ message: `Bond lock failed: ${bondResult.reason}` });
         }
       }
 
@@ -9620,6 +9643,80 @@ export async function registerRoutes(
 
       const deliverableHash = `0x${Buffer.from(deliverableUrl ?? deliverableNote ?? "submitted").toString("hex").slice(0, 62).padStart(64, "0")}`;
 
+      // === STEP 1: Select validators BEFORE persisting status change ===
+      // This prevents deadlock: if selection fails, job stays at "funded" and assignee can retry.
+      const existingValidation = await storage.getValidationByGig(jobId);
+      let selectedValidatorIds: string[] = [];
+      if (!existingValidation) {
+        const COMMERCE_VALIDATOR_MIN_FUSED_SCORE = 5;
+        const COMMERCE_VALIDATOR_MIN_AGE_DAYS = 7;
+        const COMMERCE_VALIDATOR_COUNT = 3;
+        const COMMERCE_THRESHOLD = COMMERCE_VALIDATOR_COUNT;
+
+        const excludeIds = [job.posterAgentId, ...(job.assigneeAgentId ? [job.assigneeAgentId] : [])];
+        const ageThreshold = Date.now() - COMMERCE_VALIDATOR_MIN_AGE_DAYS * 24 * 60 * 60 * 1000;
+        const topAgentCandidates = await storage.getTopAgentsByFusedScore(COMMERCE_VALIDATOR_COUNT * 4, excludeIds);
+
+        let eligible = topAgentCandidates.filter(a => {
+          if (a.riskIndex > 60) return false;
+          if ((a.fusedScore ?? 0) < COMMERCE_VALIDATOR_MIN_FUSED_SCORE) return false;
+          if (a.registeredAt && new Date(a.registeredAt).getTime() > ageThreshold) return false;
+          return true;
+        });
+
+        // Deduplicate by wallet address
+        const seenWallets = new Set<string>();
+        eligible = eligible.filter(a => {
+          const wallet = a.walletAddress.toLowerCase();
+          if (seenWallets.has(wallet)) return false;
+          seenWallets.add(wallet);
+          return true;
+        });
+
+        // Exclude Commerce applicants (conflict of interest) and social connections
+        const commerceApplicants = await storage.getErc8183Applicants(jobId);
+        const applicantIds = new Set(commerceApplicants.map(a => a.agentId));
+        eligible = eligible.filter(a => !applicantIds.has(a.id));
+
+        const posterFollowing = await storage.getFollowing(job.posterAgentId);
+        const assigneeFollowing = job.assigneeAgentId ? await storage.getFollowing(job.assigneeAgentId) : [];
+        const socialConnections = new Set([
+          ...posterFollowing.map(f => f.followedAgentId),
+          ...assigneeFollowing.map(f => f.followedAgentId),
+        ]);
+        eligible = eligible.filter(a => !socialConnections.has(a.id));
+
+        // Skill-aware selection: prefer validators with matching verified skills
+        const jobSkills = job.requiredSkills && job.requiredSkills.length > 0 ? job.requiredSkills : [];
+        if (jobSkills.length > 0) {
+          const jobSkillSet = new Set(jobSkills.map((s: string) => s.toLowerCase()));
+          const withMatch: typeof eligible = [];
+          const generalValidators: typeof eligible = [];
+          const withMismatch: typeof eligible = [];
+          for (const agent of eligible) {
+            const agentVerified = (agent.verifiedSkills || []).map((s: string) => s.toLowerCase());
+            if (agentVerified.length === 0) {
+              generalValidators.push(agent);
+            } else if (agentVerified.some(s => jobSkillSet.has(s))) {
+              withMatch.push(agent);
+            } else {
+              withMismatch.push(agent);
+            }
+          }
+          eligible = [...withMatch, ...generalValidators, ...withMismatch];
+        }
+
+        selectedValidatorIds = eligible.slice(0, COMMERCE_VALIDATOR_COUNT).map(a => a.id);
+
+        // Fail before any state mutation if not enough validators — job stays at "funded"
+        if (selectedValidatorIds.length < COMMERCE_THRESHOLD) {
+          return res.status(400).json({
+            message: `Not enough eligible validators for swarm (found ${selectedValidatorIds.length}, need ${COMMERCE_THRESHOLD}). Try again when more agents meet eligibility criteria.`,
+          });
+        }
+      }
+
+      // === STEP 2: On-chain submission ===
       let txHashSubmitted: string | null = null;
       if (job.onChainJobId) {
         try {
@@ -9634,6 +9731,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot submit without a valid chain record", skaleError: true });
       }
 
+      // === STEP 3: Persist job status change ===
       const updated = await storage.updateErc8183Job(jobId, {
         status: "submitted",
         deliverableUrl: deliverableUrl ? sanitizeString(deliverableUrl, 500) : job.deliverableUrl,
@@ -9641,6 +9739,26 @@ export async function registerRoutes(
         deliverableHash,
         txHashSubmitted,
       });
+
+      // === STEP 4: Create swarm validation (validators already selected above) ===
+      if (!existingValidation && selectedValidatorIds.length > 0) {
+        const COMMERCE_THRESHOLD = 3;
+        const validation = await storage.createValidation({
+          gigId: jobId,
+          status: "pending",
+          threshold: COMMERCE_THRESHOLD,
+          selectedValidators: selectedValidatorIds,
+          totalRewardPool: 0,
+          rewardPerValidator: 0,
+        });
+
+        for (const validatorId of selectedValidatorIds) {
+          notifyAgent(validatorId, "swarm_vote_needed", "Commerce Swarm Validation", `Your vote is needed to validate a Commerce deliverable`, { gigId: jobId }).catch(() => {});
+        }
+
+        console.log(`[ERC-8183] Swarm validation created ${validation.id} for job ${jobId} with ${selectedValidatorIds.length} validators`);
+      }
+
       return res.json({ success: true, job: updated, txHash: txHashSubmitted });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to submit deliverable", error: err.message });
@@ -9658,6 +9776,12 @@ export async function registerRoutes(
       if (!job) return res.status(404).json({ message: "Job not found" });
       if (job.posterAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only poster can settle" });
       if (job.status !== "submitted") return res.status(400).json({ message: `Cannot settle in status: ${job.status}` });
+
+      // Swarm consensus is required before settlement
+      const swarmValidation = await storage.getValidationByGig(jobId);
+      if (!swarmValidation || swarmValidation.status === "pending") {
+        return res.status(400).json({ message: "Swarm validation must reach consensus before settlement" });
+      }
 
       let txHash: string | null = null;
       const newStatus = action === "complete" ? "completed" : "rejected";
@@ -9687,16 +9811,17 @@ export async function registerRoutes(
             onChainScore: Math.min((assignee.onChainScore ?? 0) + 10, 1000),
           });
         }
+        // Unlock bond on completion
+        try {
+          await unlockBondForGig(job.assigneeAgentId, jobId);
+        } catch (bondErr: any) {
+          console.warn("[ERC-8183] unlockBondForGig skipped:", bondErr.message);
+        }
         // Auto-generate commerce receipt on completion
         try {
           const existing = await storage.getCommerceReceiptByJob(jobId);
           if (!existing) {
-            // Determine swarm verdict:
-            // ORACLE_ASSISTED = poster manually settled and oracle confirmed on-chain
-            // N/A = no on-chain job (off-chain only)
-            const receiptVerdict: string = job.onChainJobId
-              ? (txHash ? "ORACLE_ASSISTED" : "ORACLE_ASSISTED")
-              : "N/A";
+            const receiptVerdict: string = job.onChainJobId ? "ORACLE_ASSISTED" : "N/A";
             await storage.createTrustReceipt({
               gigId: jobId,
               agentId: job.assigneeAgentId,
@@ -9713,6 +9838,33 @@ export async function registerRoutes(
             });
           }
         } catch (e: any) { console.warn("[ERC-8183] receipt creation skipped:", e.message); }
+
+        // Sync performance score and FusedScore after Commerce completion (same as gig completion)
+        try {
+          await syncPerformanceScore(job.assigneeAgentId);
+        } catch (syncErr: any) {
+          console.warn("[ERC-8183] syncPerformanceScore skipped:", syncErr.message);
+        }
+      }
+
+      if (action === "reject" && job.assigneeAgentId) {
+        // Slash bond and record risk event on rejection
+        try {
+          await slashBond(job.assigneeAgentId, jobId, reason || "Commerce job rejected by swarm");
+        } catch (slashErr: any) {
+          console.warn("[ERC-8183] slashBond skipped:", slashErr.message);
+        }
+        try {
+          await recordRiskEvent(job.assigneeAgentId, "FAILED_GIG", 25, "Commerce job rejected by swarm");
+        } catch (riskErr: any) {
+          console.warn("[ERC-8183] recordRiskEvent skipped:", riskErr.message);
+        }
+        // Sync performance score after rejection too (risk events affect fusedScore)
+        try {
+          await syncPerformanceScore(job.assigneeAgentId);
+        } catch (syncErr: any) {
+          console.warn("[ERC-8183] syncPerformanceScore (reject) skipped:", syncErr.message);
+        }
       }
 
       return res.json({ success: true, job: updated, txHash });

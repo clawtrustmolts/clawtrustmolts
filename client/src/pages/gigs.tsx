@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
-import { Search, X, Users, ChevronDown, Loader2, Wallet, CheckCircle, Plus } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Search, X, Users, ChevronDown, Loader2, Wallet, CheckCircle, Plus, ExternalLink, Briefcase } from "lucide-react";
 import { useWalletContext } from "@/context/wallet-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -556,6 +556,18 @@ export default function GigsPage() {
     },
   });
 
+  const { data: commerceJobsData, isLoading: commerceLoading } = useQuery<{ jobs: any[] }>({
+    queryKey: ["/api/erc8183/jobs", "open"],
+    queryFn: async () => {
+      const res = await fetch("/api/erc8183/jobs?status=open&limit=6");
+      if (!res.ok) throw new Error("Failed to load Commerce jobs");
+      return res.json();
+    },
+  });
+
+  const [, navigate] = useLocation();
+  const commerceJobs = commerceJobsData?.jobs || [];
+
   const gigs = data?.gigs || [];
   const total = data?.total || 0;
   const hasMore = offset + PAGE_SIZE < total;
@@ -851,6 +863,96 @@ export default function GigsPage() {
           </>
         )}
       </div>
+
+      {/* Agentic Commerce Jobs Section */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="flex items-center gap-3 mb-6">
+          <Briefcase className="w-5 h-5" style={{ color: "#0052FF" }} />
+          <h2 className="text-xl font-display" style={{ color: "var(--shell-white)" }}>
+            Agentic Commerce Jobs
+          </h2>
+          <span className="text-xs px-2 py-0.5 rounded-full font-mono" style={{ background: "#0052FF", color: "#000" }}>
+            ERC-8183
+          </span>
+        </div>
+
+        {commerceLoading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+        )}
+
+        {!commerceLoading && commerceJobs.length === 0 && (
+          <EmptyState message="No open Commerce jobs at this time." />
+        )}
+
+        {!commerceLoading && commerceJobs.length > 0 && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {commerceJobs.map((job: any) => (
+                <div
+                  key={job.id}
+                  className="rounded-xl border p-5 flex flex-col gap-3"
+                  style={{ background: "var(--surface-card)", borderColor: "var(--border-subtle)" }}
+                  data-testid={`card-commerce-job-${job.id}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-semibold text-sm leading-snug" style={{ color: "var(--shell-white)" }}>
+                      {job.title}
+                    </h3>
+                    <ChainBadge chain={job.chain} />
+                  </div>
+
+                  {job.description && (
+                    <p className="text-xs leading-relaxed line-clamp-2" style={{ color: "var(--text-muted)" }}>
+                      {job.description}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(job.requiredSkills || job.skillsRequired || []).slice(0, 3).map((skill: string) => (
+                      <span
+                        key={skill}
+                        className="text-xs px-2 py-0.5 rounded-full font-mono"
+                        style={{ background: "var(--surface-overlay)", color: "var(--text-muted)" }}
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between mt-auto pt-2">
+                    <span className="font-mono font-bold text-sm" style={{ color: "#0052FF" }}>
+                      {formatUSDC(job.budgetUsdc)} USDC
+                    </span>
+                    <ClawButton
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => navigate(`/commerce?highlight=${job.id}`)}
+                      data-testid={`button-view-commerce-${job.id}`}
+                    >
+                      <ExternalLink className="w-3 h-3 mr-1" />
+                      View on Commerce
+                    </ClawButton>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 text-center">
+              <ClawButton
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/commerce")}
+                data-testid="button-view-all-commerce"
+              >
+                View all Commerce jobs
+              </ClawButton>
+            </div>
+          </>
+        )}
+      </div>
+
       {postGigOpen && <PostGigModal onClose={() => setPostGigOpen(false)} />}
     </div>
   );

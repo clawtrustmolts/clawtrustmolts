@@ -507,7 +507,7 @@ export default function ProfilePage() {
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    enabled: !!agentId && activeTab === "commerce",
+    enabled: !!agentId && (activeTab === "commerce" || activeTab === "overview"),
   });
 
   if (isAgentLoading) {
@@ -915,8 +915,8 @@ export default function ProfilePage() {
                   <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>FusedScore</p>
                 </div>
                 <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-base font-mono font-bold" style={{ color: "var(--shell-white)" }}>{agent.totalGigsCompleted}</p>
-                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Gigs Done</p>
+                  <p className="text-base font-mono font-bold" style={{ color: "var(--shell-white)" }} data-testid="stat-jobs-done">{agent.totalGigsCompleted}</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Jobs Done</p>
                 </div>
                 <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <p className="text-base font-mono font-bold" style={{ color: "var(--teal-glow)" }}>{formatUSDC(agent.totalEarned)}</p>
@@ -1498,6 +1498,8 @@ export default function ProfilePage() {
               events={events}
               erc8004={repData?.erc8004}
               mcpSkills={mcpSkills}
+              gigs={gigs}
+              commerceJobs={erc8183AgentJobs}
             />
           )}
           {activeTab === "gigs" && (
@@ -2271,6 +2273,8 @@ function OverviewTab({
   events,
   erc8004,
   mcpSkills,
+  gigs,
+  commerceJobs,
 }: {
   agent: Agent;
   breakdown?: RepData["breakdown"];
@@ -2278,6 +2282,8 @@ function OverviewTab({
   events: ReputationEvent[];
   erc8004?: RepData["erc8004"];
   mcpSkills: AgentSkill[];
+  gigs?: any[];
+  commerceJobs?: { posted: any[]; taken: any[] };
 }) {
   const [formulaOpen, setFormulaOpen] = useState(false);
 
@@ -2417,6 +2423,89 @@ function OverviewTab({
           </div>
         </SectionCard>
       )}
+
+      {/* UNIFIED ACTIVITY FEED — Completed Gigs + Commerce Jobs (chronological, newest first) */}
+      {(() => {
+        type FeedItem = { id: string; title: string; type: "Gig" | "Commerce"; role: string; timestamp: Date | null };
+        const items: FeedItem[] = [];
+
+        // Add completed gigs only
+        (gigs || []).forEach((g: any) => {
+          if (g.status !== "completed") return;
+          if (g.posterId === agent.id || g.assigneeId === agent.id) {
+            items.push({
+              id: `gig-${g.id}`,
+              title: g.title || "Untitled Gig",
+              type: "Gig",
+              role: g.posterId === agent.id ? "poster" : "assignee",
+              timestamp: g.updatedAt ? new Date(g.updatedAt) : (g.createdAt ? new Date(g.createdAt) : null),
+            });
+          }
+        });
+
+        // Add completed commerce jobs only
+        const allCommerce = [...(commerceJobs?.posted || []), ...(commerceJobs?.taken || [])];
+        allCommerce.forEach((j: any) => {
+          if (j.status !== "completed") return;
+          items.push({
+            id: `commerce-${j.id}`,
+            title: j.title || "Untitled Commerce Job",
+            type: "Commerce",
+            role: j.posterAgentId === agent.id ? "poster" : "assignee",
+            timestamp: j.updatedAt ? new Date(j.updatedAt) : (j.createdAt ? new Date(j.createdAt) : null),
+          });
+        });
+
+        if (items.length === 0) return null;
+
+        // Sort chronologically (newest first), deduplicate by id
+        const seen = new Set<string>();
+        const sorted = items
+          .filter(item => { if (seen.has(item.id)) return false; seen.add(item.id); return true; })
+          .sort((a, b) => (b.timestamp?.getTime() ?? 0) - (a.timestamp?.getTime() ?? 0))
+          .slice(0, 10);
+
+        return (
+          <SectionCard testId="card-activity-feed">
+            <SectionTitle icon={<Activity className="w-4 h-4" style={{ color: "#0052FF" }} />}>
+              ACTIVITY FEED
+            </SectionTitle>
+            <div className="space-y-2" data-testid="unified-activity-feed">
+              {sorted.map(item => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 p-3 rounded-sm"
+                  style={{ background: "rgba(0,0,0,0.03)" }}
+                  data-testid={`activity-item-${item.id}`}
+                >
+                  <span
+                    className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm flex-shrink-0"
+                    style={{
+                      background: item.type === "Commerce" ? "rgba(0,82,255,0.1)" : "rgba(232,84,10,0.08)",
+                      color: item.type === "Commerce" ? "#0052FF" : "var(--claw-orange)",
+                      border: `1px solid ${item.type === "Commerce" ? "rgba(0,82,255,0.2)" : "rgba(232,84,10,0.2)"}`,
+                    }}
+                  >
+                    {item.type}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate" style={{ color: "var(--shell-white)" }}>{item.title}</p>
+                    <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>{item.role}</p>
+                  </div>
+                  <span className="text-[10px] font-mono flex-shrink-0" style={{ color: "var(--teal-glow)" }}>
+                    completed
+                  </span>
+                  {item.timestamp && (
+                    <span className="text-[9px] font-mono flex-shrink-0" style={{ color: "var(--text-muted)" }}>
+                      {timeAgo(item.timestamp.toISOString())}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        );
+      })()}
 
       {/* REPUTATION EVENTS */}
       <SectionCard testId="card-rep-events">

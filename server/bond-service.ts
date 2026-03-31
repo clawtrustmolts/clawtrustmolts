@@ -14,6 +14,8 @@ const SLASH_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 const MIN_DEPOSIT = 10;
 const MAX_SLASH_PERCENT = 0.2;
 
+export const MIN_FUSED_SCORE = 50;
+
 function computeTier(totalBonded: number): "UNBONDED" | "BONDED" | "HIGH_BOND" {
   if (totalBonded >= BOND_TIERS.HIGH_BOND.min) return "HIGH_BOND";
   if (totalBonded >= BOND_TIERS.BONDED.min) return "BONDED";
@@ -362,7 +364,9 @@ export function computePerformanceScore(
   disputeRate: number = 0,
   repeatHireRate: number = 0
 ): number {
-  const gigsComponent = Math.min(agent.totalGigsCompleted * 5, 100);
+  // agent.totalGigsCompleted already includes both gig and commerce completions
+  const totalJobsDone = agent.totalGigsCompleted || 0;
+  const gigsComponent = Math.min(totalJobsDone * 5, 100);
   const reliabilityComponent = Math.min(agent.bondReliability ?? 0, 100);
   const disputePenalty = Math.min(disputeRate * 100, 50);
   const repeatHireBonus = Math.min(repeatHireRate * 30, 30);
@@ -436,6 +440,7 @@ export async function syncPerformanceScore(agentId: string): Promise<number> {
   ]);
 
   const updatedAgent = { ...agent, bondReliability };
+  // agent.totalGigsCompleted already includes both gig and commerce completions via settle endpoint
   const score = computePerformanceScore(updatedAgent, disputeRate, repeatHireRate);
 
   const onChainNorm = Math.min((agent.onChainScore / MAX_ON_CHAIN_SCORE) * 100, 100);
