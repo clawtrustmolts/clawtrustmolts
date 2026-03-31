@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import {
   Search, X, Users, Loader2, Wallet, CheckCircle, Plus,
   ExternalLink, Briefcase, Shield, Lock, DollarSign, Clock,
+  ChevronDown, Vote, ArrowUpRight, AlertCircle,
 } from "lucide-react";
 import { useWalletContext } from "@/context/wallet-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -522,7 +523,207 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function BondStatusWidget({ agentId }: { agentId: string }) {
+function PostCommerceJobModal({ onClose }: { onClose: () => void }) {
+  const agentId = localStorage.getItem("agentId");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [budget, setBudget] = useState("");
+  const [deadlineHours, setDeadlineHours] = useState("72");
+  const [chain, setChain] = useState("BASE_SEPOLIA");
+  const [skillInput, setSkillInput] = useState("");
+  const [skills, setSkills] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/erc8183/jobs", {
+        posterAgentId: agentId,
+        title: title.trim(),
+        description: description.trim(),
+        budgetUsdc: parseFloat(budget),
+        deadlineHours: parseInt(deadlineHours, 10) || 72,
+        requiredSkills: skills,
+        chain,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/erc8183/jobs"] });
+      onClose();
+    },
+    onError: (e: any) => setError(e.message),
+  });
+
+  function addSkill() {
+    const s = skillInput.trim().toLowerCase();
+    if (s && !skills.includes(s)) setSkills([...skills, s]);
+    setSkillInput("");
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-lg rounded-sm p-6 flex flex-col gap-4"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(59,130,246,0.3)" }}
+        data-testid="modal-post-commerce-job"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-display text-lg uppercase tracking-wider" style={{ color: "var(--shell-white)" }}>
+              Post Commerce Job
+            </h2>
+            <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>ERC-8183 Agentic Commerce</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[11px] uppercase tracking-wide hover:opacity-70"
+            style={{ color: "var(--text-muted)" }}
+            data-testid="button-close-post-commerce"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Title *</label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Integrate Stripe payments API"
+              className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
+              style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+              data-testid="input-commerce-title"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Description *</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe the task, deliverables, and acceptance criteria"
+              rows={3}
+              className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none resize-none"
+              style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+              data-testid="input-commerce-description"
+            />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Budget (USDC) *</label>
+              <input
+                type="number"
+                value={budget}
+                onChange={(e) => setBudget(e.target.value)}
+                placeholder="500"
+                min="0"
+                className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
+                style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+                data-testid="input-commerce-budget"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Deadline (hours)</label>
+              <input
+                type="number"
+                value={deadlineHours}
+                onChange={(e) => setDeadlineHours(e.target.value)}
+                placeholder="72"
+                min="1"
+                className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
+                style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+                data-testid="input-commerce-deadline"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Chain</label>
+            <div className="flex gap-2">
+              {[
+                { id: "BASE_SEPOLIA", label: "Base Sepolia", color: "#6090ff" },
+                { id: "SKALE_TESTNET", label: "SKALE · Zero Gas", color: "#a78bfa" },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setChain(c.id)}
+                  className="flex-1 px-3 py-2 text-[11px] font-mono rounded-sm transition-colors"
+                  style={{
+                    background: chain === c.id ? `${c.color}20` : "var(--ocean-deep)",
+                    color: chain === c.id ? c.color : "var(--text-muted)",
+                    border: chain === c.id ? `1px solid ${c.color}50` : "1px solid rgba(0,0,0,0.12)",
+                  }}
+                  data-testid={`button-commerce-chain-${c.id.toLowerCase()}`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Required Skills</label>
+            <div className="flex gap-2">
+              <input
+                value={skillInput}
+                onChange={(e) => setSkillInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }}
+                placeholder="e.g. typescript"
+                className="flex-1 text-[12px] font-mono px-3 py-2 rounded-sm outline-none"
+                style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
+                data-testid="input-commerce-skill"
+              />
+              <button
+                type="button"
+                onClick={addSkill}
+                className="px-3 py-2 rounded-sm text-[11px] font-mono"
+                style={{ background: "rgba(59,130,246,0.1)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+                data-testid="button-add-commerce-skill"
+              >Add</button>
+            </div>
+            {skills.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {skills.map((s) => (
+                  <span
+                    key={s}
+                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                    style={{ background: "rgba(59,130,246,0.08)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+                  >
+                    {s}
+                    <button type="button" onClick={() => setSkills(skills.filter((x) => x !== s))}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <p className="text-[11px] font-mono" style={{ color: "#f87171" }} data-testid="text-post-commerce-error">{error}</p>
+        )}
+
+        <button
+          onClick={() => { setError(null); createMut.mutate(); }}
+          disabled={createMut.isPending || !title.trim() || !description.trim() || !budget}
+          className="w-full py-2.5 rounded-sm text-[12px] font-display uppercase tracking-wider transition-opacity disabled:opacity-50"
+          style={{ background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff" }}
+          data-testid="button-submit-commerce-job"
+        >
+          {createMut.isPending ? (
+            <span className="flex items-center justify-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Posting…</span>
+          ) : "Post Commerce Job"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BondStatusWidget({ agentId, showDeposit = false }: { agentId: string; showDeposit?: boolean }) {
   const { data, isLoading } = useQuery<{
     bondBalance: number;
     lockedBond: number;
@@ -548,7 +749,7 @@ function BondStatusWidget({ agentId }: { agentId: string }) {
         <Shield className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />
         <span className="text-xs font-mono font-semibold" style={{ color: "var(--text-primary)" }}>Bond</span>
       </div>
-      <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
+      <div className="flex items-center gap-4 text-xs font-mono flex-wrap flex-1">
         <span>
           <span style={{ color: "var(--text-muted)" }}>Total: </span>
           <span style={{ color: "var(--claw-orange)" }} data-testid="bond-total">${data.bondBalance.toFixed(2)}</span>
@@ -567,6 +768,17 @@ function BondStatusWidget({ agentId }: { agentId: string }) {
           <TierBadge tier={data.tierLabel} />
         )}
       </div>
+      {showDeposit && (
+        <Link href={`/agents/${agentId}`}>
+          <span
+            className="text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 hover:opacity-80 shrink-0"
+            style={{ color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)", padding: "2px 8px", borderRadius: "2px" }}
+            data-testid="link-bond-deposit"
+          >
+            Deposit <ArrowUpRight className="w-3 h-3" />
+          </span>
+        </Link>
+      )}
     </div>
   );
 }
@@ -574,15 +786,21 @@ function BondStatusWidget({ agentId }: { agentId: string }) {
 function MyWorkTab({ agentId }: { agentId: string }) {
   const [, navigate] = useLocation();
 
-  const { data: myPostedJobs, isLoading: loadingPosted } = useQuery<{ jobs: any[]; total: number }>({
-    queryKey: ["/api/erc8183/jobs", "poster", agentId],
-    queryFn: () => fetch(`/api/erc8183/jobs?posterAgentId=${agentId}&limit=20`).then((r) => r.json()),
+  const { data: agentJobsData, isLoading: loadingJobs } = useQuery<{ posted: any[]; taken: any[] }>({
+    queryKey: ["/api/erc8183/agents", agentId, "jobs"],
+    queryFn: () => fetch(`/api/erc8183/agents/${agentId}/jobs`).then((r) => r.json()),
     staleTime: 30000,
   });
 
-  const { data: myAssignedJobs, isLoading: loadingAssigned } = useQuery<{ jobs: any[]; total: number }>({
-    queryKey: ["/api/erc8183/jobs", "assignee", agentId],
-    queryFn: () => fetch(`/api/erc8183/jobs?assigneeAgentId=${agentId}&limit=20`).then((r) => r.json()),
+  const { data: applicationsData, isLoading: loadingApps } = useQuery<{ applications: any[]; total: number }>({
+    queryKey: ["/api/erc8183/agents", agentId, "applications"],
+    queryFn: () => fetch(`/api/erc8183/agents/${agentId}/applications`).then((r) => r.json()),
+    staleTime: 30000,
+  });
+
+  const { data: validationsData, isLoading: loadingValidations } = useQuery<{ validations: any[]; total: number }>({
+    queryKey: ["/api/swarm/validations/agent", agentId],
+    queryFn: () => fetch(`/api/swarm/validations/agent/${agentId}`).then((r) => r.json()),
     staleTime: 30000,
   });
 
@@ -592,9 +810,11 @@ function MyWorkTab({ agentId }: { agentId: string }) {
     staleTime: 30000,
   });
 
-  const postedJobs = myPostedJobs?.jobs ?? [];
-  const assignedJobs = myAssignedJobs?.jobs ?? [];
-  const myGigs = myGigsData?.gigs ?? [];
+  const postedJobs: any[] = agentJobsData?.posted ?? [];
+  const takenJobs: any[] = agentJobsData?.taken ?? [];
+  const applications: any[] = applicationsData?.applications ?? [];
+  const validations: any[] = validationsData?.validations ?? [];
+  const myGigs: any[] = myGigsData?.gigs ?? [];
   const myPostedGigs = myGigs.filter((g: any) => g.posterId === agentId);
   const myAssignedGigs = myGigs.filter((g: any) => g.assigneeId === agentId);
 
@@ -608,70 +828,185 @@ function MyWorkTab({ agentId }: { agentId: string }) {
     expired: "#6b7280",
   };
 
-  return (
-    <div className="flex flex-col gap-6">
-      <BondStatusWidget agentId={agentId} />
+  const ACTIVE_STATUSES = ["funded", "open"];
+  const PENDING_STATUSES = ["submitted"];
+  const HISTORY_STATUSES = ["completed", "rejected", "cancelled", "expired"];
 
-      {/* My Commerce Jobs — Poster */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-            <Briefcase className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />
-            Commerce Jobs I Posted
-          </h3>
-          <button
-            className="text-xs font-mono hover:opacity-80"
-            style={{ color: "var(--claw-orange)" }}
-            onClick={() => navigate("/gigs?tab=commerce")}
-            data-testid="link-view-all-commerce"
-          >
-            + Post new
-          </button>
+  const activePostedJobs = postedJobs.filter((j) => ACTIVE_STATUSES.includes(j.status));
+  const activeTakenJobs = takenJobs.filter((j) => ACTIVE_STATUSES.includes(j.status));
+  const pendingPostedJobs = postedJobs.filter((j) => PENDING_STATUSES.includes(j.status));
+  const pendingTakenJobs = takenJobs.filter((j) => PENDING_STATUSES.includes(j.status));
+  const historyJobs = [
+    ...postedJobs.filter((j) => HISTORY_STATUSES.includes(j.status)),
+    ...takenJobs.filter((j) => HISTORY_STATUSES.includes(j.status)),
+  ];
+  const pendingValidations = validations.filter((v) => v.status === "pending");
+  const pendingApps = applications.filter((a) => a.job && !["completed", "cancelled", "rejected", "expired"].includes(a.job.status) && a.job.assigneeAgentId !== agentId);
+
+  const isLoading = loadingJobs || loadingApps || loadingValidations || loadingGigs;
+
+  function JobRow({ job, role, borderColor }: { job: any; role: "poster" | "worker"; borderColor: string }) {
+    return (
+      <div
+        className="rounded-sm p-3 flex items-center justify-between gap-3"
+        style={{ background: "var(--ocean-mid)", border: `1px solid ${borderColor}` }}
+        data-testid={`mywork-job-${job.id}`}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,0,0,0.15)", color: "var(--text-muted)" }}>
+              {role === "poster" ? "poster" : "worker"}
+            </span>
+            <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{job.title}</span>
+            <span className="text-xs font-mono px-1.5 py-0.5 rounded-sm" style={{ color: statusColors8183[job.status] ?? "#6b7280", background: `${statusColors8183[job.status] ?? "#6b7280"}1a`, border: `1px solid ${statusColors8183[job.status] ?? "#6b7280"}33` }}>
+              {job.status}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+            <DollarSign className="w-3 h-3" />${job.budgetUsdc?.toFixed(2)} USDC
+            {job.deadlineHours && <><Clock className="w-3 h-3 ml-1" />{job.deadlineHours}h</>}
+          </div>
         </div>
-        {loadingPosted && <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--claw-orange)" }} /></div>}
-        {!loadingPosted && postedJobs.length === 0 && (
-          <div className="rounded-sm p-4 text-center text-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.1)", color: "var(--text-muted)" }}>
-            No jobs posted yet.{" "}
-            <button className="underline" style={{ color: "var(--claw-orange)" }} onClick={() => navigate("/gigs?tab=commerce")} data-testid="link-post-first-commerce">
-              Post one on Commerce tab
+        <button className="hover:opacity-80 shrink-0" onClick={() => navigate("/gigs?tab=commerce")} data-testid={`link-job-${job.id}`}>
+          <ExternalLink className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+        </button>
+      </div>
+    );
+  }
+
+  function SectionHeader({ label, count, color }: { label: string; count: number; color: string }) {
+    return (
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-display uppercase tracking-wider" style={{ color }}>{label}</span>
+        {count > 0 && (
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: `${color}20`, color }}>{count}</span>
+        )}
+        <div className="flex-1 h-px" style={{ background: `${color}25` }} />
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--claw-orange)" }} /></div>;
+  }
+
+  const hasActive = activePostedJobs.length > 0 || activeTakenJobs.length > 0 || (myPostedGigs.filter((g: any) => ["open", "assigned", "in_progress"].includes(g.status)).length > 0) || (myAssignedGigs.filter((g: any) => ["assigned", "in_progress"].includes(g.status)).length > 0);
+  const hasPending = pendingPostedJobs.length > 0 || pendingTakenJobs.length > 0 || pendingValidations.length > 0 || pendingApps.length > 0;
+  const hasHistory = historyJobs.length > 0 || myGigs.filter((g: any) => g.status === "completed").length > 0;
+
+  return (
+    <div className="flex flex-col gap-8">
+
+      {/* Active */}
+      <div data-testid="mywork-section-active">
+        <SectionHeader label="Active" count={activePostedJobs.length + activeTakenJobs.length} color="#22c55e" />
+        {!hasActive && (
+          <div className="rounded-sm p-4 text-center text-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)", color: "var(--text-muted)" }}>
+            No active work.{" "}
+            <button className="underline" style={{ color: "var(--claw-orange)" }} onClick={() => navigate("/gigs?tab=marketplace")} data-testid="link-browse-marketplace">
+              Browse the Marketplace
             </button>
           </div>
         )}
-        {postedJobs.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {postedJobs.map((job: any) => (
+        {(activePostedJobs.length > 0 || activeTakenJobs.length > 0) && (
+          <div className="flex flex-col gap-2 mb-4">
+            {activePostedJobs.map((j) => <JobRow key={j.id} job={j} role="poster" borderColor="rgba(34,197,94,0.15)" />)}
+            {activeTakenJobs.map((j) => <JobRow key={j.id} job={j} role="worker" borderColor="rgba(59,130,246,0.15)" />)}
+          </div>
+        )}
+        {/* Active traditional gigs */}
+        {(() => {
+          const activeGigs = [...myPostedGigs.filter((g: any) => ["open", "assigned", "in_progress"].includes(g.status)), ...myAssignedGigs.filter((g: any) => ["assigned", "in_progress"].includes(g.status))];
+          if (activeGigs.length === 0) return null;
+          return (
+            <div className="flex flex-col gap-2">
+              {activeGigs.map((g: any) => (
+                <Link key={g.id} href={`/gig/${g.id}`}>
+                  <div className="rounded-sm p-3 flex items-center justify-between gap-2 hover:opacity-80 cursor-pointer" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(10,236,184,0.12)" }} data-testid={`mywork-active-gig-${g.id}`}>
+                    <div>
+                      <span className="text-[10px] font-mono uppercase mr-2" style={{ color: g.posterId === agentId ? "var(--claw-orange)" : "var(--teal-glow)" }}>{g.posterId === agentId ? "poster" : "worker"}</span>
+                      <span className="text-sm" style={{ color: "var(--text-primary)" }}>{g.title}</span>
+                    </div>
+                    <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--teal-glow)" }}>{g.status}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Pending */}
+      <div data-testid="mywork-section-pending">
+        <SectionHeader label="Pending" count={pendingPostedJobs.length + pendingTakenJobs.length + pendingValidations.length + pendingApps.length} color="#f59e0b" />
+        {!hasPending && (
+          <div className="rounded-sm p-4 text-center text-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)", color: "var(--text-muted)" }}>
+            Nothing pending review.
+          </div>
+        )}
+
+        {/* Submitted commerce jobs */}
+        {(pendingPostedJobs.length > 0 || pendingTakenJobs.length > 0) && (
+          <div className="flex flex-col gap-2 mb-4">
+            {pendingPostedJobs.map((j) => <JobRow key={j.id} job={j} role="poster" borderColor="rgba(245,158,11,0.2)" />)}
+            {pendingTakenJobs.map((j) => <JobRow key={j.id} job={j} role="worker" borderColor="rgba(245,158,11,0.2)" />)}
+          </div>
+        )}
+
+        {/* Swarm validations needing a vote */}
+        {pendingValidations.length > 0 && (
+          <div className="flex flex-col gap-2 mb-4">
+            {pendingValidations.map((v) => (
               <div
-                key={job.id}
+                key={v.id}
                 className="rounded-sm p-3 flex items-center justify-between gap-3"
-                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.12)" }}
-                data-testid={`mywork-posted-job-${job.id}`}
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(139,92,246,0.2)" }}
+                data-testid={`mywork-validation-${v.id}`}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{job.title}</span>
-                    <span
-                      className="text-xs font-mono px-1.5 py-0.5 rounded-sm"
-                      style={{
-                        color: statusColors8183[job.status] ?? "#6b7280",
-                        background: `${statusColors8183[job.status] ?? "#6b7280"}1a`,
-                        border: `1px solid ${statusColors8183[job.status] ?? "#6b7280"}33`,
-                      }}
-                    >
-                      {job.status}
+                    <Vote className="w-3.5 h-3.5 shrink-0" style={{ color: "#a78bfa" }} />
+                    <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "#a78bfa" }}>Swarm Vote Required</span>
+                    <span className="text-xs font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>
+                      {v.votesFor}/{v.threshold} approvals
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                    <DollarSign className="w-3 h-3" />${job.budgetUsdc.toFixed(2)} USDC
-                    {job.deadlineHours && <><Clock className="w-3 h-3 ml-1" />{job.deadlineHours}h</>}
-                  </div>
+                  <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Gig ID: {v.gigId?.slice(0, 8)}…</p>
                 </div>
-                <button
-                  className="text-xs font-mono hover:opacity-80 shrink-0"
-                  style={{ color: "var(--claw-orange)" }}
-                  onClick={() => navigate("/gigs?tab=commerce")}
-                  data-testid={`link-manage-job-${job.id}`}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
+                <Link href={`/swarm`}>
+                  <button
+                    className="text-[10px] font-mono uppercase tracking-wide flex items-center gap-1 hover:opacity-80 shrink-0"
+                    style={{ color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)", padding: "3px 8px", borderRadius: "2px" }}
+                    data-testid={`button-vote-${v.id}`}
+                  >
+                    <Vote className="w-3 h-3" /> Vote
+                  </button>
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Applications awaiting decision */}
+        {pendingApps.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {pendingApps.map((a) => (
+              <div
+                key={a.id}
+                className="rounded-sm p-3 flex items-center justify-between gap-3"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(245,158,11,0.15)" }}
+                data-testid={`mywork-application-${a.id}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" style={{ color: "#f59e0b" }} />
+                    <span className="text-xs font-mono uppercase tracking-wider" style={{ color: "#f59e0b" }}>Application Pending</span>
+                  </div>
+                  <p className="text-sm mt-0.5 truncate" style={{ color: "var(--text-primary)" }}>{a.job?.title ?? "Commerce Job"}</p>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>Applied {a.appliedAt ? new Date(a.appliedAt).toLocaleDateString() : ""}</p>
+                </div>
+                <button className="hover:opacity-80 shrink-0" onClick={() => navigate("/gigs?tab=commerce")} data-testid={`link-app-${a.id}`}>
+                  <ExternalLink className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
                 </button>
               </div>
             ))}
@@ -679,130 +1014,41 @@ function MyWorkTab({ agentId }: { agentId: string }) {
         )}
       </div>
 
-      {/* My Commerce Jobs — Assignee */}
-      <div>
-        <h3 className="text-sm font-semibold flex items-center gap-2 mb-3" style={{ color: "var(--text-primary)" }}>
-          <Briefcase className="w-4 h-4" style={{ color: "#3b82f6" }} />
-          Commerce Jobs I'm Working On
-        </h3>
-        {loadingAssigned && <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--claw-orange)" }} /></div>}
-        {!loadingAssigned && assignedJobs.length === 0 && (
-          <div className="rounded-sm p-4 text-center text-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.1)", color: "var(--text-muted)" }}>
-            No active assignments.{" "}
-            <button className="underline" style={{ color: "#3b82f6" }} onClick={() => navigate("/gigs?tab=commerce")} data-testid="link-browse-commerce">
-              Browse Commerce jobs
-            </button>
+      {/* History */}
+      <div data-testid="mywork-section-history">
+        <SectionHeader label="History" count={historyJobs.length} color="#6b7280" />
+        {!hasHistory && (
+          <div className="rounded-sm p-4 text-center text-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)", color: "var(--text-muted)" }}>
+            No completed work yet.
           </div>
         )}
-        {assignedJobs.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {assignedJobs.map((job: any) => (
-              <div
-                key={job.id}
-                className="rounded-sm p-3 flex items-center justify-between gap-3"
-                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(59,130,246,0.15)" }}
-                data-testid={`mywork-assigned-job-${job.id}`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{job.title}</span>
-                    <span
-                      className="text-xs font-mono px-1.5 py-0.5 rounded-sm"
-                      style={{
-                        color: statusColors8183[job.status] ?? "#6b7280",
-                        background: `${statusColors8183[job.status] ?? "#6b7280"}1a`,
-                        border: `1px solid ${statusColors8183[job.status] ?? "#6b7280"}33`,
-                      }}
-                    >
-                      {job.status}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                    <DollarSign className="w-3 h-3" />${job.budgetUsdc.toFixed(2)} USDC
-                  </div>
-                </div>
-                <button
-                  className="text-xs font-mono hover:opacity-80 shrink-0"
-                  style={{ color: "#3b82f6" }}
-                  onClick={() => navigate("/gigs?tab=commerce")}
-                  data-testid={`link-view-assigned-job-${job.id}`}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </button>
-              </div>
+        {historyJobs.length > 0 && (
+          <div className="flex flex-col gap-2 mb-4">
+            {historyJobs.slice(0, 8).map((j) => (
+              <JobRow key={`hist-${j.id}`} job={j} role={j.posterAgentId === agentId ? "poster" : "worker"} borderColor="rgba(107,114,128,0.15)" />
             ))}
-          </div>
-        )}
-      </div>
-
-      {/* My Traditional Gigs */}
-      <div>
-        <h3 className="text-sm font-semibold flex items-center gap-2 mb-3" style={{ color: "var(--text-primary)" }}>
-          <Briefcase className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />
-          My Traditional Gigs
-        </h3>
-        {loadingGigs && <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--claw-orange)" }} /></div>}
-        {!loadingGigs && myGigs.length === 0 && (
-          <div className="rounded-sm p-4 text-center text-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.1)", color: "var(--text-muted)" }}>
-            No gigs yet. Post or apply to gigs in the Marketplace tab.
-          </div>
-        )}
-        {myGigs.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {myPostedGigs.length > 0 && (
-              <div
-                className="rounded-sm p-3"
-                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.12)" }}
-              >
-                <p className="text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Posted ({myPostedGigs.length})</p>
-                <div className="flex flex-col gap-1.5">
-                  {myPostedGigs.slice(0, 5).map((g: any) => (
-                    <Link key={g.id} href={`/gig/${g.id}`}>
-                      <div className="flex items-center justify-between gap-2 hover:opacity-80 cursor-pointer" data-testid={`mywork-posted-gig-${g.id}`}>
-                        <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>{g.title}</span>
-                        <span
-                          className="text-[10px] font-mono shrink-0"
-                          style={{ color: g.status === "open" ? "var(--teal-glow)" : g.status === "completed" ? "#22c55e" : "var(--text-muted)" }}
-                        >
-                          {g.status}
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                  {myPostedGigs.length > 5 && (
-                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>+{myPostedGigs.length - 5} more</p>
-                  )}
-                </div>
-              </div>
-            )}
-            {myAssignedGigs.length > 0 && (
-              <div
-                className="rounded-sm p-3"
-                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(10,236,184,0.12)" }}
-              >
-                <p className="text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Assigned ({myAssignedGigs.length})</p>
-                <div className="flex flex-col gap-1.5">
-                  {myAssignedGigs.slice(0, 5).map((g: any) => (
-                    <Link key={g.id} href={`/gig/${g.id}`}>
-                      <div className="flex items-center justify-between gap-2 hover:opacity-80 cursor-pointer" data-testid={`mywork-assigned-gig-${g.id}`}>
-                        <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>{g.title}</span>
-                        <span
-                          className="text-[10px] font-mono shrink-0"
-                          style={{ color: g.status === "assigned" ? "var(--claw-amber)" : g.status === "completed" ? "#22c55e" : "var(--text-muted)" }}
-                        >
-                          {g.status}
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                  {myAssignedGigs.length > 5 && (
-                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>+{myAssignedGigs.length - 5} more</p>
-                  )}
-                </div>
-              </div>
+            {historyJobs.length > 8 && (
+              <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>+{historyJobs.length - 8} more</p>
             )}
           </div>
         )}
+        {/* Completed traditional gigs */}
+        {(() => {
+          const doneGigs = myGigs.filter((g: any) => g.status === "completed");
+          if (doneGigs.length === 0) return null;
+          return (
+            <div className="flex flex-col gap-2">
+              {doneGigs.slice(0, 5).map((g: any) => (
+                <Link key={g.id} href={`/gig/${g.id}`}>
+                  <div className="rounded-sm p-3 flex items-center justify-between gap-2 hover:opacity-80 cursor-pointer" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(107,114,128,0.12)" }} data-testid={`mywork-history-gig-${g.id}`}>
+                    <span className="text-sm" style={{ color: "var(--text-primary)" }}>{g.title}</span>
+                    <span className="text-[10px] font-mono shrink-0" style={{ color: "#22c55e" }}>completed</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -1033,6 +1279,85 @@ function MarketplaceTab() {
   );
 }
 
+function UnifiedPostButton() {
+  const { isConnected, connect } = useWalletContext();
+  const [open, setOpen] = useState(false);
+  const [postGigOpen, setPostGigOpen] = useState(false);
+  const [postCommerceOpen, setPostCommerceOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [open]);
+
+  if (!isConnected) {
+    return (
+      <button
+        onClick={connect}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-sm text-[12px] font-display uppercase tracking-wider"
+        style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
+        data-testid="button-connect-to-post"
+      >
+        <Wallet className="w-3.5 h-3.5" /> Connect to Post
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <div className="relative" ref={dropdownRef}>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-sm text-[12px] font-display uppercase tracking-wider"
+          style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
+          data-testid="button-unified-post"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Post
+          <ChevronDown className="w-3.5 h-3.5" />
+        </button>
+        {open && (
+          <div
+            className="absolute right-0 top-full mt-1 w-52 rounded-sm overflow-hidden z-50"
+            style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.25)", boxShadow: "0 8px 32px rgba(0,0,0,0.3)" }}
+          >
+            <button
+              className="w-full text-left px-4 py-3 text-[12px] font-mono flex items-center gap-2 hover:opacity-80 transition-opacity"
+              style={{ color: "var(--shell-white)", borderBottom: "1px solid rgba(0,0,0,0.08)" }}
+              onClick={() => { setOpen(false); setPostGigOpen(true); }}
+              data-testid="button-post-gig-unified"
+            >
+              <Briefcase className="w-3.5 h-3.5" style={{ color: "var(--claw-orange)" }} />
+              <div>
+                <div>Post a Gig</div>
+                <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>Traditional escrow marketplace</div>
+              </div>
+            </button>
+            <button
+              className="w-full text-left px-4 py-3 text-[12px] font-mono flex items-center gap-2 hover:opacity-80 transition-opacity"
+              style={{ color: "var(--shell-white)" }}
+              onClick={() => { setOpen(false); setPostCommerceOpen(true); }}
+              data-testid="button-post-commerce-unified"
+            >
+              <DollarSign className="w-3.5 h-3.5" style={{ color: "#3b82f6" }} />
+              <div>
+                <div>Post Commerce Job</div>
+                <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>ERC-8183 agentic commerce</div>
+              </div>
+            </button>
+          </div>
+        )}
+      </div>
+      {postGigOpen && <PostGigModal onClose={() => setPostGigOpen(false)} />}
+      {postCommerceOpen && <PostCommerceJobModal onClose={() => setPostCommerceOpen(false)} />}
+    </>
+  );
+}
+
 export default function GigsPage() {
   const [location, navigate] = useLocation();
 
@@ -1068,20 +1393,34 @@ export default function GigsPage() {
     <div className="min-h-screen" style={{ background: "var(--ocean-deep)" }}>
       {/* Page header */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-4">
-        <h1
-          className="font-display text-4xl sm:text-5xl"
-          style={{ color: "var(--shell-white)" }}
-          data-testid="text-page-title"
-        >
-          GIG BOARD
-        </h1>
-        <p className="mt-1 text-sm max-w-xl" style={{ color: "var(--text-muted)" }}>
-          Discover opportunities, connect with trusted agents, and grow your crew.
-          On-chain escrow, swarm validation, and reputation-backed trust.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1
+              className="font-display text-4xl sm:text-5xl"
+              style={{ color: "var(--shell-white)" }}
+              data-testid="text-page-title"
+            >
+              GIG BOARD
+            </h1>
+            <p className="mt-1 text-sm max-w-xl" style={{ color: "var(--text-muted)" }}>
+              Discover opportunities, connect with trusted agents, and grow your crew.
+              On-chain escrow, swarm validation, and reputation-backed trust.
+            </p>
+          </div>
+          <div className="shrink-0 mt-1">
+            <UnifiedPostButton />
+          </div>
+        </div>
+
+        {/* Bond status strip — visible on all tabs when signed in */}
+        {agentId && (
+          <div className="mt-4">
+            <BondStatusWidget agentId={agentId} showDeposit={true} />
+          </div>
+        )}
 
         {/* Tab switcher */}
-        <div className="flex items-center gap-1 mt-5 border-b" style={{ borderColor: "rgba(232,84,10,0.18)" }}>
+        <div className="flex items-center gap-1 mt-4 border-b" style={{ borderColor: "rgba(232,84,10,0.18)" }}>
           {tabs.map((tab) => (
             <button
               key={tab.key}

@@ -1,4 +1,4 @@
-import { eq, desc, or, and, notInArray, gt, gte, lte, lt, count, asc, sql } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, inArray, gt, gte, lte, lt, count, asc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
@@ -246,6 +246,8 @@ export interface IStorage {
   createErc8183Applicant(applicant: InsertErc8183Applicant): Promise<Erc8183Applicant>;
   getErc8183Applicants(jobId: string): Promise<Erc8183Applicant[]>;
   getErc8183Applicant(jobId: string, agentId: string): Promise<Erc8183Applicant | undefined>;
+  getErc8183ApplicationsByAgent(agentId: string): Promise<(Erc8183Applicant & { job?: Erc8183Job })[]>;
+  getValidationsForAgent(agentId: string): Promise<SwarmValidation[]>;
   countErc8183Jobs(filters?: { status?: string; chain?: string }): Promise<number>;
 }
 
@@ -1511,6 +1513,22 @@ Be specific and methodical.`,
     const [row] = await db.select().from(erc8183Applicants)
       .where(and(eq(erc8183Applicants.jobId, jobId), eq(erc8183Applicants.agentId, agentId)));
     return row;
+  }
+
+  async getErc8183ApplicationsByAgent(agentId: string): Promise<(Erc8183Applicant & { job?: Erc8183Job })[]> {
+    const applications = await db.select().from(erc8183Applicants)
+      .where(eq(erc8183Applicants.agentId, agentId))
+      .orderBy(desc(erc8183Applicants.appliedAt));
+    if (applications.length === 0) return [];
+    const jobIds = [...new Set(applications.map((a) => a.jobId))];
+    const jobs = await db.select().from(erc8183Jobs).where(inArray(erc8183Jobs.id, jobIds));
+    const jobMap = new Map(jobs.map((j) => [j.id, j]));
+    return applications.map((a) => ({ ...a, job: jobMap.get(a.jobId) }));
+  }
+
+  async getValidationsForAgent(agentId: string): Promise<SwarmValidation[]> {
+    const all = await db.select().from(swarmValidations).orderBy(desc(swarmValidations.createdAt));
+    return all.filter((v) => v.selectedValidators && v.selectedValidators.includes(agentId));
   }
 
   async countErc8183Jobs(filters?: { status?: string; chain?: string }): Promise<number> {

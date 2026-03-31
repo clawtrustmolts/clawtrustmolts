@@ -9936,6 +9936,28 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/erc8183/agents/:agentId/applications — jobs the agent has applied to
+  app.get("/api/erc8183/agents/:agentId/applications", apiLimiter, async (req, res) => {
+    try {
+      const { agentId } = req.params;
+      const applications = await storage.getErc8183ApplicationsByAgent(agentId);
+      return res.json({ applications, total: applications.length });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch agent applications", error: err.message });
+    }
+  });
+
+  // GET /api/swarm/validations/agent/:agentId — pending swarm validations where agent is selected validator
+  app.get("/api/swarm/validations/agent/:agentId", apiLimiter, async (req, res) => {
+    try {
+      const { agentId } = req.params;
+      const validations = await storage.getValidationsForAgent(agentId);
+      return res.json({ validations, total: validations.length });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch agent validations", error: err.message });
+    }
+  });
+
   // POST /api/commerce/jobs/:id/receipt — create or get receipt for a completed commerce job
   app.post("/api/commerce/jobs/:id/receipt", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
     try {
