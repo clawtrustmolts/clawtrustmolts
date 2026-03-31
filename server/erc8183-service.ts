@@ -189,14 +189,15 @@ export async function topUpSkaleFuel(targetAddress: string): Promise<{ success: 
 
 async function assertSkaleOracleFunded(oracleAddress: Address): Promise<void> {
   const balance = await skalePublicClient.getBalance({ address: oracleAddress });
-  if (balance > 0n) return; // funded — proceed
+  if (balance > SFUEL_LOW_THRESHOLD) return; // above operational threshold — proceed
 
-  // Balance is 0: attempt auto-top-up from the SKALE sFUEL faucet
-  console.warn(`[sFUEL] Oracle ${oracleAddress} has 0 sFUEL — attempting auto-fund via SKALE faucet...`);
+  // Balance is at or below threshold: attempt auto-top-up from the SKALE sFUEL faucet
+  const balanceEther = (Number(balance) / 1e18).toFixed(6);
+  console.warn(`[sFUEL] Oracle ${oracleAddress} sFUEL low (${balanceEther}) — attempting auto-fund via SKALE faucet...`);
   const result = await topUpSkaleFuel(oracleAddress);
   if (!result.success) {
     throw new Error(
-      `SKALE oracle wallet has 0 sFUEL and auto-funding failed (${result.message}). ` +
+      `SKALE oracle wallet sFUEL too low (${balanceEther}) and auto-funding failed (${result.message}). ` +
       `Fund manually at https://sfuel.skale.network/ for address: ${oracleAddress}`
     );
   }
