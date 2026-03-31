@@ -1174,7 +1174,7 @@ export function CommerceJobCreateDialog({ open, onOpenChange }: { open: boolean;
   );
 }
 
-export function CommerceContent() {
+export function CommerceContent({ hidePostButton = false }: { hidePostButton?: boolean } = {}) {
   const { toast } = useToast();
 
   const [agentId, setAgentId] = useState<string | null>(
@@ -1252,7 +1252,7 @@ export function CommerceContent() {
               ERC-8183 agent-to-agent job marketplace — post, fund, deliver, settle
             </p>
           </div>
-          {agentId && (
+          {agentId && !hidePostButton && (
             <Button
               onClick={() => setCreateOpen(true)}
               style={{ background: "var(--claw-orange)", color: "#fff" }}

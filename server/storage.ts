@@ -56,7 +56,7 @@ export interface IStorage {
 
   getGigs(): Promise<Gig[]>;
   getGig(id: string): Promise<Gig | undefined>;
-  getGigsByAgent(agentId: string): Promise<Gig[]>;
+  getGigsByAgent(agentId: string): Promise<(Gig & { applicantCount: number })[]>;
   createGig(gig: InsertGig): Promise<Gig>;
   updateGig(id: string, data: Partial<Gig>): Promise<Gig | undefined>;
   updateGigStatus(id: string, status: string): Promise<Gig | undefined>;
@@ -242,7 +242,7 @@ export interface IStorage {
   getErc8183Job(id: string): Promise<Erc8183Job | undefined>;
   getErc8183Jobs(filters?: { status?: string; posterAgentId?: string; assigneeAgentId?: string; chain?: string; limit?: number; offset?: number }): Promise<Erc8183Job[]>;
   updateErc8183Job(id: string, data: Partial<Erc8183Job>): Promise<Erc8183Job | undefined>;
-  getErc8183JobsByAgent(agentId: string): Promise<{ posted: Erc8183Job[]; taken: Erc8183Job[] }>;
+  getErc8183JobsByAgent(agentId: string): Promise<{ posted: (Erc8183Job & { applicantCount: number })[]; taken: Erc8183Job[] }>;
   createErc8183Applicant(applicant: InsertErc8183Applicant): Promise<Erc8183Applicant>;
   getErc8183Applicants(jobId: string): Promise<Erc8183Applicant[]>;
   getErc8183Applicant(jobId: string, agentId: string): Promise<Erc8183Applicant | undefined>;
@@ -303,10 +303,22 @@ export class DatabaseStorage implements IStorage {
     return gig;
   }
 
-  async getGigsByAgent(agentId: string): Promise<Gig[]> {
-    return db.select().from(gigs).where(
+  async getGigsByAgent(agentId: string): Promise<(Gig & { applicantCount: number })[]> {
+    const agentGigs = await db.select().from(gigs).where(
       or(eq(gigs.posterId, agentId), eq(gigs.assigneeId, agentId))
     );
+    const gigIds = agentGigs.map(g => g.id);
+    const countMap: Record<string, number> = {};
+    if (gigIds.length > 0) {
+      const rows = await db.select({
+        gigId: gigApplicants.gigId,
+        cnt: sql<number>`COUNT(*)`,
+      }).from(gigApplicants)
+        .where(inArray(gigApplicants.gigId, gigIds))
+        .groupBy(gigApplicants.gigId);
+      rows.forEach(r => { countMap[r.gigId] = Number(r.cnt); });
+    }
+    return agentGigs.map(g => ({ ...g, applicantCount: countMap[g.id] ?? 0 }));
   }
 
   async createGig(gig: InsertGig): Promise<Gig> {
@@ -1488,14 +1500,27 @@ Be specific and methodical.`,
     return updated;
   }
 
-  async getErc8183JobsByAgent(agentId: string): Promise<{ posted: Erc8183Job[]; taken: Erc8183Job[] }> {
+  async getErc8183JobsByAgent(agentId: string): Promise<{ posted: (Erc8183Job & { applicantCount: number })[]; taken: Erc8183Job[] }> {
     const posted = await db.select().from(erc8183Jobs)
       .where(eq(erc8183Jobs.posterAgentId, agentId))
       .orderBy(desc(erc8183Jobs.createdAt));
     const taken = await db.select().from(erc8183Jobs)
       .where(eq(erc8183Jobs.assigneeAgentId, agentId))
       .orderBy(desc(erc8183Jobs.createdAt));
-    return { posted, taken };
+    const countMap: Record<string, number> = {};
+    if (posted.length > 0) {
+      const rows = await db.select({
+        jobId: erc8183Applicants.jobId,
+        cnt: sql<number>`COUNT(*)`,
+      }).from(erc8183Applicants)
+        .where(inArray(erc8183Applicants.jobId, posted.map(j => j.id)))
+        .groupBy(erc8183Applicants.jobId);
+      rows.forEach(r => { countMap[r.jobId] = Number(r.cnt); });
+    }
+    return {
+      posted: posted.map(j => ({ ...j, applicantCount: countMap[j.id] ?? 0 })),
+      taken,
+    };
   }
 
   async createErc8183Applicant(applicant: InsertErc8183Applicant): Promise<Erc8183Applicant> {

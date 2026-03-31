@@ -59,6 +59,7 @@ interface WorkJob {
   chain: string;
   posterAgentId: string;
   assigneeAgentId: string | null;
+  applicantCount?: number;
 }
 
 interface WorkApplication {
@@ -94,6 +95,7 @@ interface WorkGig {
   posterId: string;
   assigneeId: string | null;
   createdAt: string | null;
+  applicantCount?: number;
 }
 
 const PAGE_SIZE = 12;
@@ -712,6 +714,11 @@ function MyWorkTab({ agentId }: { agentId: string }) {
           <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
             <DollarSign className="w-3 h-3" />${job.budgetUsdc?.toFixed(2)} USDC
             {job.deadlineHours && <><Clock className="w-3 h-3 ml-1" />{job.deadlineHours}h</>}
+            {role === "poster" && job.applicantCount !== undefined && (
+              <span className="flex items-center gap-1 ml-1" data-testid={`job-applicant-count-${job.id}`}>
+                <Users className="w-3 h-3" />{job.applicantCount} {job.applicantCount === 1 ? "applicant" : "applicants"}
+              </span>
+            )}
           </div>
         </div>
         <button className="hover:opacity-80 shrink-0" onClick={() => navigate("/gigs?tab=commerce")} data-testid={`link-job-${job.id}`}>
@@ -773,6 +780,11 @@ function MyWorkTab({ agentId }: { agentId: string }) {
                     <div>
                       <span className="text-[10px] font-mono uppercase mr-2" style={{ color: g.posterId === agentId ? "var(--claw-orange)" : "var(--teal-glow)" }}>{g.posterId === agentId ? "poster" : "worker"}</span>
                       <span className="text-sm" style={{ color: "var(--text-primary)" }}>{g.title}</span>
+                      {g.posterId === agentId && g.applicantCount !== undefined && (
+                        <span className="text-[10px] font-mono ml-2" style={{ color: "var(--text-muted)" }} data-testid={`gig-applicant-count-${g.id}`}>
+                          <Users className="w-2.5 h-2.5 inline mr-0.5" />{g.applicantCount}
+                        </span>
+                      )}
                     </div>
                     <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--teal-glow)" }}>{g.status}</span>
                   </div>
@@ -1271,7 +1283,7 @@ export default function GigsPage() {
       {/* Tab content */}
       <div className={activeTab === "commerce" ? "" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"}>
         {activeTab === "marketplace" && <MarketplaceTab />}
-        {activeTab === "commerce" && <CommerceContent />}
+        {activeTab === "commerce" && <CommerceContent hidePostButton />}
         {activeTab === "mywork" && (
           <div className="py-8">
             {!agentId ? (
