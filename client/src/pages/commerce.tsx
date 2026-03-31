@@ -482,7 +482,7 @@ function CommerceReceiptModal({ jobId, job, onClose }: {
                       data-testid="link-tx-settled"
                     >
                       <ExternalLink className="w-3 h-3 shrink-0" />
-                      <span className="truncate">Settle: {receipt.txHashSettled.slice(0, 20)}…</span>
+                      <span className="truncate">{job.status === "cancelled" ? "Cancel" : "Settle"}: {receipt.txHashSettled.slice(0, 20)}…</span>
                     </a>
                   )}
                 </div>
@@ -741,7 +741,7 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
               style={{ color: "#8b5cf6" }}
               data-testid={`link-settle-tx-${job.id}`}
             >
-              <ExternalLink className="w-3 h-3" />settle
+              <ExternalLink className="w-3 h-3" />{job.status === "cancelled" ? "cancel" : "settle"}
             </a>
           )}
         </div>
