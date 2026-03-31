@@ -9488,11 +9488,12 @@ export async function registerRoutes(
     try {
       const status = req.query.status ? String(req.query.status) : undefined;
       const posterAgentId = req.query.posterAgentId ? String(req.query.posterAgentId) : undefined;
+      const assigneeAgentId = req.query.assigneeAgentId ? String(req.query.assigneeAgentId) : undefined;
       const chain = req.query.chain ? String(req.query.chain) : undefined;
       const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10), 500);
       const offset = parseInt(String(req.query.offset ?? "0"), 10);
       const [jobs, total] = await Promise.all([
-        storage.getErc8183Jobs({ status, posterAgentId, chain, limit, offset }),
+        storage.getErc8183Jobs({ status, posterAgentId, assigneeAgentId, chain, limit, offset }),
         storage.countErc8183Jobs({ status, chain }),
       ]);
       return res.json({ jobs, total, limit, offset });

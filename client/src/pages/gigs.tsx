@@ -1,20 +1,25 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { Search, X, Users, ChevronDown, Loader2, Wallet, CheckCircle, Plus, ExternalLink, Briefcase } from "lucide-react";
+import {
+  Search, X, Users, Loader2, Wallet, CheckCircle, Plus,
+  ExternalLink, Briefcase, Shield, Lock, DollarSign, Clock,
+} from "lucide-react";
 import { useWalletContext } from "@/context/wallet-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   TierBadge,
   ChainBadge,
   ClawButton,
-  AgentMiniCard,
   EmptyState,
   ErrorState,
   SkeletonCard,
   formatUSDC,
   timeAgo,
 } from "@/components/ui-shared";
+import { CommerceContent } from "@/pages/commerce";
+
+type ActiveTab = "marketplace" | "commerce" | "mywork";
 
 interface DiscoverGig {
   id: number;
@@ -517,7 +522,293 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-export default function GigsPage() {
+function BondStatusWidget({ agentId }: { agentId: string }) {
+  const { data, isLoading } = useQuery<{
+    bondBalance: number;
+    lockedBond: number;
+    availableBond: number;
+    tier: string;
+    tierLabel: string;
+  }>({
+    queryKey: ["/api/agents", agentId, "bond/status"],
+    queryFn: () => fetch(`/api/agents/${agentId}/bond/status`).then((r) => r.json()),
+    staleTime: 30000,
+  });
+
+  if (isLoading) return null;
+  if (!data) return null;
+
+  return (
+    <div
+      className="rounded-sm p-3 flex items-center gap-4 flex-wrap"
+      style={{ background: "rgba(232,84,10,0.07)", border: "1px solid rgba(232,84,10,0.18)" }}
+      data-testid="widget-bond-status"
+    >
+      <div className="flex items-center gap-2">
+        <Shield className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />
+        <span className="text-xs font-mono font-semibold" style={{ color: "var(--text-primary)" }}>Bond</span>
+      </div>
+      <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
+        <span>
+          <span style={{ color: "var(--text-muted)" }}>Total: </span>
+          <span style={{ color: "var(--claw-orange)" }} data-testid="bond-total">${data.bondBalance.toFixed(2)}</span>
+        </span>
+        <span>
+          <span style={{ color: "var(--text-muted)" }}>Locked: </span>
+          <span style={{ color: "#f59e0b" }} data-testid="bond-locked">
+            <Lock className="w-3 h-3 inline mr-0.5" />${data.lockedBond.toFixed(2)}
+          </span>
+        </span>
+        <span>
+          <span style={{ color: "var(--text-muted)" }}>Available: </span>
+          <span style={{ color: "#22c55e" }} data-testid="bond-available">${data.availableBond.toFixed(2)}</span>
+        </span>
+        {data.tierLabel && (
+          <TierBadge tier={data.tierLabel} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MyWorkTab({ agentId }: { agentId: string }) {
+  const [, navigate] = useLocation();
+
+  const { data: myPostedJobs, isLoading: loadingPosted } = useQuery<{ jobs: any[]; total: number }>({
+    queryKey: ["/api/erc8183/jobs", "poster", agentId],
+    queryFn: () => fetch(`/api/erc8183/jobs?posterAgentId=${agentId}&limit=20`).then((r) => r.json()),
+    staleTime: 30000,
+  });
+
+  const { data: myAssignedJobs, isLoading: loadingAssigned } = useQuery<{ jobs: any[]; total: number }>({
+    queryKey: ["/api/erc8183/jobs", "assignee", agentId],
+    queryFn: () => fetch(`/api/erc8183/jobs?assigneeAgentId=${agentId}&limit=20`).then((r) => r.json()),
+    staleTime: 30000,
+  });
+
+  const { data: myGigsData, isLoading: loadingGigs } = useQuery<{ gigs: any[]; total: number }>({
+    queryKey: ["/api/agents", agentId, "gigs"],
+    queryFn: () => fetch(`/api/agents/${agentId}/gigs`).then((r) => r.json()),
+    staleTime: 30000,
+  });
+
+  const postedJobs = myPostedJobs?.jobs ?? [];
+  const assignedJobs = myAssignedJobs?.jobs ?? [];
+  const myGigs = myGigsData?.gigs ?? [];
+  const myPostedGigs = myGigs.filter((g: any) => g.posterId === agentId);
+  const myAssignedGigs = myGigs.filter((g: any) => g.assigneeId === agentId);
+
+  const statusColors8183: Record<string, string> = {
+    open: "#22c55e",
+    funded: "#3b82f6",
+    submitted: "#f59e0b",
+    completed: "#8b5cf6",
+    rejected: "#ef4444",
+    cancelled: "#6b7280",
+    expired: "#6b7280",
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <BondStatusWidget agentId={agentId} />
+
+      {/* My Commerce Jobs — Poster */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <Briefcase className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />
+            Commerce Jobs I Posted
+          </h3>
+          <button
+            className="text-xs font-mono hover:opacity-80"
+            style={{ color: "var(--claw-orange)" }}
+            onClick={() => navigate("/gigs?tab=commerce")}
+            data-testid="link-view-all-commerce"
+          >
+            + Post new
+          </button>
+        </div>
+        {loadingPosted && <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--claw-orange)" }} /></div>}
+        {!loadingPosted && postedJobs.length === 0 && (
+          <div className="rounded-sm p-4 text-center text-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.1)", color: "var(--text-muted)" }}>
+            No jobs posted yet.{" "}
+            <button className="underline" style={{ color: "var(--claw-orange)" }} onClick={() => navigate("/gigs?tab=commerce")} data-testid="link-post-first-commerce">
+              Post one on Commerce tab
+            </button>
+          </div>
+        )}
+        {postedJobs.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {postedJobs.map((job: any) => (
+              <div
+                key={job.id}
+                className="rounded-sm p-3 flex items-center justify-between gap-3"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.12)" }}
+                data-testid={`mywork-posted-job-${job.id}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{job.title}</span>
+                    <span
+                      className="text-xs font-mono px-1.5 py-0.5 rounded-sm"
+                      style={{
+                        color: statusColors8183[job.status] ?? "#6b7280",
+                        background: `${statusColors8183[job.status] ?? "#6b7280"}1a`,
+                        border: `1px solid ${statusColors8183[job.status] ?? "#6b7280"}33`,
+                      }}
+                    >
+                      {job.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                    <DollarSign className="w-3 h-3" />${job.budgetUsdc.toFixed(2)} USDC
+                    {job.deadlineHours && <><Clock className="w-3 h-3 ml-1" />{job.deadlineHours}h</>}
+                  </div>
+                </div>
+                <button
+                  className="text-xs font-mono hover:opacity-80 shrink-0"
+                  style={{ color: "var(--claw-orange)" }}
+                  onClick={() => navigate("/gigs?tab=commerce")}
+                  data-testid={`link-manage-job-${job.id}`}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* My Commerce Jobs — Assignee */}
+      <div>
+        <h3 className="text-sm font-semibold flex items-center gap-2 mb-3" style={{ color: "var(--text-primary)" }}>
+          <Briefcase className="w-4 h-4" style={{ color: "#3b82f6" }} />
+          Commerce Jobs I'm Working On
+        </h3>
+        {loadingAssigned && <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--claw-orange)" }} /></div>}
+        {!loadingAssigned && assignedJobs.length === 0 && (
+          <div className="rounded-sm p-4 text-center text-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.1)", color: "var(--text-muted)" }}>
+            No active assignments.{" "}
+            <button className="underline" style={{ color: "#3b82f6" }} onClick={() => navigate("/gigs?tab=commerce")} data-testid="link-browse-commerce">
+              Browse Commerce jobs
+            </button>
+          </div>
+        )}
+        {assignedJobs.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {assignedJobs.map((job: any) => (
+              <div
+                key={job.id}
+                className="rounded-sm p-3 flex items-center justify-between gap-3"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(59,130,246,0.15)" }}
+                data-testid={`mywork-assigned-job-${job.id}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{job.title}</span>
+                    <span
+                      className="text-xs font-mono px-1.5 py-0.5 rounded-sm"
+                      style={{
+                        color: statusColors8183[job.status] ?? "#6b7280",
+                        background: `${statusColors8183[job.status] ?? "#6b7280"}1a`,
+                        border: `1px solid ${statusColors8183[job.status] ?? "#6b7280"}33`,
+                      }}
+                    >
+                      {job.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                    <DollarSign className="w-3 h-3" />${job.budgetUsdc.toFixed(2)} USDC
+                  </div>
+                </div>
+                <button
+                  className="text-xs font-mono hover:opacity-80 shrink-0"
+                  style={{ color: "#3b82f6" }}
+                  onClick={() => navigate("/gigs?tab=commerce")}
+                  data-testid={`link-view-assigned-job-${job.id}`}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* My Traditional Gigs */}
+      <div>
+        <h3 className="text-sm font-semibold flex items-center gap-2 mb-3" style={{ color: "var(--text-primary)" }}>
+          <Briefcase className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />
+          My Traditional Gigs
+        </h3>
+        {loadingGigs && <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--claw-orange)" }} /></div>}
+        {!loadingGigs && myGigs.length === 0 && (
+          <div className="rounded-sm p-4 text-center text-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.1)", color: "var(--text-muted)" }}>
+            No gigs yet. Post or apply to gigs in the Marketplace tab.
+          </div>
+        )}
+        {myGigs.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {myPostedGigs.length > 0 && (
+              <div
+                className="rounded-sm p-3"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.12)" }}
+              >
+                <p className="text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Posted ({myPostedGigs.length})</p>
+                <div className="flex flex-col gap-1.5">
+                  {myPostedGigs.slice(0, 5).map((g: any) => (
+                    <Link key={g.id} href={`/gig/${g.id}`}>
+                      <div className="flex items-center justify-between gap-2 hover:opacity-80 cursor-pointer" data-testid={`mywork-posted-gig-${g.id}`}>
+                        <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>{g.title}</span>
+                        <span
+                          className="text-[10px] font-mono shrink-0"
+                          style={{ color: g.status === "open" ? "var(--teal-glow)" : g.status === "completed" ? "#22c55e" : "var(--text-muted)" }}
+                        >
+                          {g.status}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                  {myPostedGigs.length > 5 && (
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>+{myPostedGigs.length - 5} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+            {myAssignedGigs.length > 0 && (
+              <div
+                className="rounded-sm p-3"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(10,236,184,0.12)" }}
+              >
+                <p className="text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Assigned ({myAssignedGigs.length})</p>
+                <div className="flex flex-col gap-1.5">
+                  {myAssignedGigs.slice(0, 5).map((g: any) => (
+                    <Link key={g.id} href={`/gig/${g.id}`}>
+                      <div className="flex items-center justify-between gap-2 hover:opacity-80 cursor-pointer" data-testid={`mywork-assigned-gig-${g.id}`}>
+                        <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>{g.title}</span>
+                        <span
+                          className="text-[10px] font-mono shrink-0"
+                          style={{ color: g.status === "assigned" ? "var(--claw-amber)" : g.status === "completed" ? "#22c55e" : "var(--text-muted)" }}
+                        >
+                          {g.status}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                  {myAssignedGigs.length > 5 && (
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>+{myAssignedGigs.length - 5} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MarketplaceTab() {
   const { isConnected, connect } = useWalletContext();
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState("");
@@ -542,12 +833,7 @@ export default function GigsPage() {
     return params.toString();
   }, [skills, chain, minBudget, maxBudget, currency, sortBy, offset]);
 
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-  } = useQuery<DiscoverResponse>({
+  const { data, isLoading, isError, error } = useQuery<DiscoverResponse>({
     queryKey: ["/api/gigs/discover", queryString],
     queryFn: async () => {
       const res = await fetch(`/api/gigs/discover?${queryString}`);
@@ -555,18 +841,6 @@ export default function GigsPage() {
       return res.json();
     },
   });
-
-  const { data: commerceJobsData, isLoading: commerceLoading } = useQuery<{ jobs: any[] }>({
-    queryKey: ["/api/erc8183/jobs", "open"],
-    queryFn: async () => {
-      const res = await fetch("/api/erc8183/jobs?status=open&limit=6");
-      if (!res.ok) throw new Error("Failed to load Commerce jobs");
-      return res.json();
-    },
-  });
-
-  const [, navigate] = useLocation();
-  const commerceJobs = commerceJobsData?.jobs || [];
 
   const gigs = data?.gigs || [];
   const total = data?.total || 0;
@@ -587,226 +861,136 @@ export default function GigsPage() {
   }
 
   function handleSkillKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addSkill();
-    }
+    if (e.key === "Enter") { e.preventDefault(); addSkill(); }
   }
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--ocean-deep)" }}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-6">
-        <h1
-          className="font-display text-4xl sm:text-5xl lg:text-6xl"
-          style={{ color: "var(--shell-white)" }}
-          data-testid="text-page-title"
-        >
-          GIG BOARD
-        </h1>
-        <p
-          className="mt-2 text-sm max-w-xl"
-          style={{ color: "var(--text-muted)" }}
-        >
-          Discover opportunities, connect with trusted agents, and grow your
-          crew. On-chain escrow, swarm validation, and reputation-backed
-          trust.
-        </p>
-      </div>
-
+    <>
+      {/* Sticky filter bar */}
       <div
-        className="sticky top-0 z-50 py-4"
+        className="sticky top-[57px] z-40 py-4"
         style={{
           background: "var(--ocean-deep)",
           borderBottom: "1px solid rgba(0,0,0,0.06)",
         }}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-              <div
-                className="flex items-center gap-2 flex-1 rounded-sm px-3 py-1.5"
-                style={{
-                  background: "var(--ocean-mid)",
-                  border: "1px solid rgba(0,0,0,0.10)",
-                }}
-              >
-                <Search
-                  className="w-3.5 h-3.5 flex-shrink-0"
-                  style={{ color: "var(--text-muted)" }}
-                />
-                <input
-                  type="text"
-                  value={skillInput}
-                  onChange={(e) => setSkillInput(e.target.value)}
-                  onKeyDown={handleSkillKeyDown}
-                  placeholder="Add skill filter..."
-                  className="bg-transparent border-none outline-none text-xs font-mono flex-1"
-                  style={{ color: "var(--shell-white)" }}
-                  data-testid="input-skill-filter"
-                />
-              </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+            <div
+              className="flex items-center gap-2 flex-1 rounded-sm px-3 py-1.5"
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.10)" }}
+            >
+              <Search className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--text-muted)" }} />
+              <input
+                type="text"
+                value={skillInput}
+                onChange={(e) => setSkillInput(e.target.value)}
+                onKeyDown={handleSkillKeyDown}
+                placeholder="Add skill filter..."
+                className="bg-transparent border-none outline-none text-xs font-mono flex-1"
+                style={{ color: "var(--shell-white)" }}
+                data-testid="input-skill-filter"
+              />
             </div>
+          </div>
 
-            {skills.length > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {skills.map((skill) => (
-                  <span
-                    key={skill}
-                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded-sm"
-                    style={{
-                      background: "rgba(232, 84, 10, 0.1)",
-                      color: "var(--claw-orange)",
-                      border: "1px solid rgba(232, 84, 10, 0.3)",
-                    }}
+          {skills.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {skills.map((skill) => (
+                <span
+                  key={skill}
+                  className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded-sm"
+                  style={{ background: "rgba(232, 84, 10, 0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232, 84, 10, 0.3)" }}
+                >
+                  {skill}
+                  <button
+                    type="button"
+                    onClick={() => removeSkill(skill)}
+                    className="hover:brightness-125"
+                    data-testid={`button-remove-skill-${skill}`}
                   >
-                    {skill}
-                    <button
-                      type="button"
-                      onClick={() => removeSkill(skill)}
-                      className="hover:brightness-125"
-                      data-testid={`button-remove-skill-${skill}`}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1">
+            <FilterToggle label="ALL" active={chain === ""} onClick={() => { setChain(""); setOffset(0); }} testId="toggle-chain-all" />
+            <FilterToggle label="Base" active={chain === "BASE_SEPOLIA"} onClick={() => { setChain(chain === "BASE_SEPOLIA" ? "" : "BASE_SEPOLIA"); setOffset(0); }} testId="toggle-chain-base" />
+            <FilterToggle label="SKALE" active={chain === "SKALE_TESTNET"} onClick={() => { setChain(chain === "SKALE_TESTNET" ? "" : "SKALE_TESTNET"); setOffset(0); }} testId="toggle-chain-skale" />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              value={minBudget}
+              onChange={(e) => { setMinBudget(e.target.value); setOffset(0); }}
+              placeholder="Min"
+              className="w-16 text-[11px] font-mono px-2 py-1.5 rounded-sm bg-transparent outline-none"
+              style={{ background: "var(--ocean-mid)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.10)" }}
+              data-testid="input-min-budget"
+            />
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>-</span>
+            <input
+              type="number"
+              value={maxBudget}
+              onChange={(e) => { setMaxBudget(e.target.value); setOffset(0); }}
+              placeholder="Max"
+              className="w-16 text-[11px] font-mono px-2 py-1.5 rounded-sm bg-transparent outline-none"
+              style={{ background: "var(--ocean-mid)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.10)" }}
+              data-testid="input-max-budget"
+            />
+          </div>
+
+          <div className="flex items-center gap-1">
+            <FilterToggle label="ETH" active={currency === "ETH"} onClick={() => { setCurrency(currency === "ETH" ? "" : "ETH"); setOffset(0); }} testId="toggle-currency-eth" />
+            <FilterToggle label="USDC" active={currency === "USDC"} onClick={() => { setCurrency(currency === "USDC" ? "" : "USDC"); setOffset(0); }} testId="toggle-currency-usdc" />
+          </div>
+
+          <div className="flex items-center gap-1">
+            <FilterToggle label="Newest" active={sortBy === "newest"} onClick={() => { setSortBy("newest"); setOffset(0); }} testId="toggle-sort-newest" />
+            <FilterToggle label="Budget High" active={sortBy === "budget_high"} onClick={() => { setSortBy("budget_high"); setOffset(0); }} testId="toggle-sort-budget-high" />
+            <FilterToggle label="Budget Low" active={sortBy === "budget_low"} onClick={() => { setSortBy("budget_low"); setOffset(0); }} testId="toggle-sort-budget-low" />
+          </div>
+
+          <div className="ml-auto">
+            {isConnected ? (
+              <button
+                onClick={() => setPostGigOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-sm text-[12px] font-display uppercase tracking-wider"
+                style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
+                data-testid="button-post-gig"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Pinch to Post
+              </button>
+            ) : (
+              <button
+                onClick={connect}
+                className="flex items-center gap-2 px-4 py-2 rounded-sm text-[12px] font-display uppercase tracking-wider"
+                style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
+                data-testid="button-connect-wallet-post"
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                Connect Wallet to Post
+              </button>
             )}
-
-            <div className="flex items-center gap-1">
-              <FilterToggle
-                label="ALL"
-                active={chain === ""}
-                onClick={() => { setChain(""); setOffset(0); }}
-                testId="toggle-chain-all"
-              />
-              <FilterToggle
-                label="Base"
-                active={chain === "BASE_SEPOLIA"}
-                onClick={() => { setChain(chain === "BASE_SEPOLIA" ? "" : "BASE_SEPOLIA"); setOffset(0); }}
-                testId="toggle-chain-base"
-              />
-              <FilterToggle
-                label="SKALE"
-                active={chain === "SKALE_TESTNET"}
-                onClick={() => { setChain(chain === "SKALE_TESTNET" ? "" : "SKALE_TESTNET"); setOffset(0); }}
-                testId="toggle-chain-skale"
-              />
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                value={minBudget}
-                onChange={(e) => { setMinBudget(e.target.value); setOffset(0); }}
-                placeholder="Min"
-                className="w-16 text-[11px] font-mono px-2 py-1.5 rounded-sm bg-transparent outline-none"
-                style={{
-                  background: "var(--ocean-mid)",
-                  color: "var(--shell-white)",
-                  border: "1px solid rgba(0,0,0,0.10)",
-                }}
-                data-testid="input-min-budget"
-              />
-              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>-</span>
-              <input
-                type="number"
-                value={maxBudget}
-                onChange={(e) => { setMaxBudget(e.target.value); setOffset(0); }}
-                placeholder="Max"
-                className="w-16 text-[11px] font-mono px-2 py-1.5 rounded-sm bg-transparent outline-none"
-                style={{
-                  background: "var(--ocean-mid)",
-                  color: "var(--shell-white)",
-                  border: "1px solid rgba(0,0,0,0.10)",
-                }}
-                data-testid="input-max-budget"
-              />
-            </div>
-
-            <div className="flex items-center gap-1">
-              <FilterToggle
-                label="ETH"
-                active={currency === "ETH"}
-                onClick={() => { setCurrency(currency === "ETH" ? "" : "ETH"); setOffset(0); }}
-                testId="toggle-currency-eth"
-              />
-              <FilterToggle
-                label="USDC"
-                active={currency === "USDC"}
-                onClick={() => { setCurrency(currency === "USDC" ? "" : "USDC"); setOffset(0); }}
-                testId="toggle-currency-usdc"
-              />
-            </div>
-
-            <div className="flex items-center gap-1">
-              <FilterToggle
-                label="Newest"
-                active={sortBy === "newest"}
-                onClick={() => { setSortBy("newest"); setOffset(0); }}
-                testId="toggle-sort-newest"
-              />
-              <FilterToggle
-                label="Budget High"
-                active={sortBy === "budget_high"}
-                onClick={() => { setSortBy("budget_high"); setOffset(0); }}
-                testId="toggle-sort-budget-high"
-              />
-              <FilterToggle
-                label="Budget Low"
-                active={sortBy === "budget_low"}
-                onClick={() => { setSortBy("budget_low"); setOffset(0); }}
-                testId="toggle-sort-budget-low"
-              />
-            </div>
-
-            <div className="ml-auto">
-              {isConnected ? (
-                <button
-                  onClick={() => setPostGigOpen(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-sm text-[12px] font-display uppercase tracking-wider"
-                  style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
-                  data-testid="button-post-gig"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Pinch to Post
-                </button>
-              ) : (
-                <button
-                  onClick={connect}
-                  className="flex items-center gap-2 px-4 py-2 rounded-sm text-[12px] font-display uppercase tracking-wider"
-                  style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
-                  data-testid="button-connect-wallet-post"
-                >
-                  <Wallet className="w-3.5 h-3.5" />
-                  Connect Wallet to Post
-                </button>
-              )}
-            </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Gig grid */}
+      <div className="py-8">
         {isLoading && (
-          <div
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
-            data-testid="skeleton-grid"
-          >
-            {Array.from({ length: 6 }).map((_, i) => (
-              <SkeletonCard key={i} />
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" data-testid="skeleton-grid">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
         )}
 
         {isError && (
-          <ErrorState
-            message={
-              error instanceof Error
-                ? error.message
-                : "Failed to load gigs. Please try again."
-            }
-          />
+          <ErrorState message={error instanceof Error ? error.message : "Failed to load gigs. Please try again."} />
         )}
 
         {!isLoading && !isError && gigs.length === 0 && (
@@ -816,46 +1000,26 @@ export default function GigsPage() {
         {!isLoading && !isError && gigs.length > 0 && (
           <>
             <div className="flex items-center justify-between mb-5 gap-2 flex-wrap">
-              <span
-                className="text-xs font-mono"
-                style={{ color: "var(--text-muted)" }}
-                data-testid="text-total-count"
-              >
+              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }} data-testid="text-total-count">
                 {total} gig{total !== 1 ? "s" : ""} found
               </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {gigs.map((gig) => (
-                <GigCard key={gig.id} gig={gig} />
-              ))}
+              {gigs.map((gig) => <GigCard key={gig.id} gig={gig} />)}
             </div>
 
             <div className="flex items-center justify-center gap-4 mt-10">
               {offset > 0 && (
-                <ClawButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                  data-testid="button-prev-page"
-                >
+                <ClawButton variant="ghost" size="sm" onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} data-testid="button-prev-page">
                   Previous
                 </ClawButton>
               )}
-              <span
-                className="text-xs font-mono"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Page {Math.floor(offset / PAGE_SIZE) + 1} of{" "}
-                {Math.ceil(total / PAGE_SIZE)}
+              <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                Page {Math.floor(offset / PAGE_SIZE) + 1} of {Math.ceil(total / PAGE_SIZE)}
               </span>
               {hasMore && (
-                <ClawButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setOffset(offset + PAGE_SIZE)}
-                  data-testid="button-next-page"
-                >
+                <ClawButton variant="ghost" size="sm" onClick={() => setOffset(offset + PAGE_SIZE)} data-testid="button-next-page">
                   Next
                 </ClawButton>
               )}
@@ -864,96 +1028,108 @@ export default function GigsPage() {
         )}
       </div>
 
-      {/* Agentic Commerce Jobs Section */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-        <div className="flex items-center gap-3 mb-6">
-          <Briefcase className="w-5 h-5" style={{ color: "#0052FF" }} />
-          <h2 className="text-xl font-display" style={{ color: "var(--shell-white)" }}>
-            Agentic Commerce Jobs
-          </h2>
-          <span className="text-xs px-2 py-0.5 rounded-full font-mono" style={{ background: "#0052FF", color: "#000" }}>
-            ERC-8183
-          </span>
+      {postGigOpen && <PostGigModal onClose={() => setPostGigOpen(false)} />}
+    </>
+  );
+}
+
+export default function GigsPage() {
+  const [location, navigate] = useLocation();
+
+  const activeTab = useMemo<ActiveTab>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get("tab");
+    if (t === "commerce" || t === "mywork") return t;
+    return "marketplace";
+  }, [location]);
+
+  const [agentId, setAgentId] = useState<string | null>(() => localStorage.getItem("agentId"));
+  useEffect(() => {
+    const sync = () => setAgentId(localStorage.getItem("agentId"));
+    window.addEventListener("agent-change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("agent-change", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  function goTab(tab: ActiveTab) {
+    navigate(tab === "marketplace" ? "/gigs" : `/gigs?tab=${tab}`);
+  }
+
+  const tabs: { key: ActiveTab; label: string; testId: string }[] = [
+    { key: "marketplace", label: "Marketplace", testId: "tab-marketplace" },
+    { key: "commerce", label: "ERC-8183 Commerce", testId: "tab-commerce" },
+    { key: "mywork", label: "My Work", testId: "tab-mywork" },
+  ];
+
+  return (
+    <div className="min-h-screen" style={{ background: "var(--ocean-deep)" }}>
+      {/* Page header */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-4">
+        <h1
+          className="font-display text-4xl sm:text-5xl"
+          style={{ color: "var(--shell-white)" }}
+          data-testid="text-page-title"
+        >
+          GIG BOARD
+        </h1>
+        <p className="mt-1 text-sm max-w-xl" style={{ color: "var(--text-muted)" }}>
+          Discover opportunities, connect with trusted agents, and grow your crew.
+          On-chain escrow, swarm validation, and reputation-backed trust.
+        </p>
+
+        {/* Tab switcher */}
+        <div className="flex items-center gap-1 mt-5 border-b" style={{ borderColor: "rgba(232,84,10,0.18)" }}>
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => goTab(tab.key)}
+              className="px-4 py-2 text-[11px] font-display uppercase tracking-wider transition-all relative"
+              style={{
+                color: activeTab === tab.key ? "var(--claw-orange)" : "var(--text-muted)",
+                background: "transparent",
+                borderBottom: activeTab === tab.key ? "2px solid var(--claw-orange)" : "2px solid transparent",
+                marginBottom: "-1px",
+              }}
+              data-testid={tab.testId}
+            >
+              {tab.label}
+              {tab.key === "mywork" && agentId && (
+                <span
+                  className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full"
+                  style={{ background: "var(--claw-orange)", verticalAlign: "middle" }}
+                />
+              )}
+            </button>
+          ))}
         </div>
-
-        {commerceLoading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
-          </div>
-        )}
-
-        {!commerceLoading && commerceJobs.length === 0 && (
-          <EmptyState message="No open Commerce jobs at this time." />
-        )}
-
-        {!commerceLoading && commerceJobs.length > 0 && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {commerceJobs.map((job: any) => (
-                <div
-                  key={job.id}
-                  className="rounded-xl border p-5 flex flex-col gap-3"
-                  style={{ background: "var(--surface-card)", borderColor: "var(--border-subtle)" }}
-                  data-testid={`card-commerce-job-${job.id}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-sm leading-snug" style={{ color: "var(--shell-white)" }}>
-                      {job.title}
-                    </h3>
-                    <ChainBadge chain={job.chain} />
-                  </div>
-
-                  {job.description && (
-                    <p className="text-xs leading-relaxed line-clamp-2" style={{ color: "var(--text-muted)" }}>
-                      {job.description}
-                    </p>
-                  )}
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {(job.requiredSkills || job.skillsRequired || []).slice(0, 3).map((skill: string) => (
-                      <span
-                        key={skill}
-                        className="text-xs px-2 py-0.5 rounded-full font-mono"
-                        style={{ background: "var(--surface-overlay)", color: "var(--text-muted)" }}
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center justify-between mt-auto pt-2">
-                    <span className="font-mono font-bold text-sm" style={{ color: "#0052FF" }}>
-                      {formatUSDC(job.budgetUsdc)} USDC
-                    </span>
-                    <ClawButton
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => navigate(`/commerce?highlight=${job.id}`)}
-                      data-testid={`button-view-commerce-${job.id}`}
-                    >
-                      <ExternalLink className="w-3 h-3 mr-1" />
-                      View on Commerce
-                    </ClawButton>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 text-center">
-              <ClawButton
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/commerce")}
-                data-testid="button-view-all-commerce"
-              >
-                View all Commerce jobs
-              </ClawButton>
-            </div>
-          </>
-        )}
       </div>
 
-      {postGigOpen && <PostGigModal onClose={() => setPostGigOpen(false)} />}
+      {/* Tab content */}
+      <div className={activeTab === "commerce" ? "" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"}>
+        {activeTab === "marketplace" && <MarketplaceTab />}
+        {activeTab === "commerce" && <CommerceContent />}
+        {activeTab === "mywork" && (
+          <div className="py-8">
+            {!agentId ? (
+              <div
+                className="rounded-sm p-12 text-center"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.1)" }}
+              >
+                <Briefcase className="w-10 h-10 mx-auto mb-3 opacity-30" style={{ color: "var(--claw-orange)" }} />
+                <p className="font-medium" style={{ color: "var(--text-primary)" }}>Sign in to see your work</p>
+                <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+                  Use "Molt In" to sign in as an agent
+                </p>
+              </div>
+            ) : (
+              <MyWorkTab agentId={agentId} />
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

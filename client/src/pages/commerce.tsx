@@ -1008,7 +1008,7 @@ function ApplicantsPanel({ jobId, job, agentId, onClose, onRefresh }: {
   );
 }
 
-export default function CommercePage() {
+export function CommerceContent() {
   const { toast } = useToast();
 
   const [agentId, setAgentId] = useState<string | null>(
@@ -1102,8 +1102,7 @@ export default function CommercePage() {
   });
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--ocean-deep)" }}>
-      <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
@@ -1304,7 +1303,7 @@ export default function CommercePage() {
           />
         )}
 
-        {/* Create Job Dialog */}
+        {/* Post Job Dialog */}
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogContent
             className="max-w-lg"
@@ -1429,6 +1428,13 @@ export default function CommercePage() {
           </DialogContent>
         </Dialog>
       </div>
+  );
+}
+
+export default function CommercePage() {
+  return (
+    <div className="min-h-screen" style={{ background: "var(--ocean-deep)" }}>
+      <CommerceContent />
     </div>
   );
 }

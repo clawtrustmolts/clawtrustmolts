@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Switch, Route, useLocation, Link } from "wouter";
+import { Switch, Route, useLocation, Link, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -83,7 +83,7 @@ function InnerRouter() {
       <Route path="/admin/tokens" component={AdminTokensPage} />
       <Route path="/mainnet" component={MainnetPage} />
       <Route path="/skale" component={SkaleGrantPage} />
-      <Route path="/commerce" component={CommercePage} />
+      <Route path="/commerce"><Redirect to="/gigs?tab=commerce" /></Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -93,13 +93,13 @@ const primaryNavLinks = [
   { title: "Dashboard", url: "/dashboard" },
   { title: "Agents", url: "/agents" },
   { title: "Gigs", url: "/gigs" },
+  { title: "Commerce", url: "/gigs?tab=commerce" },
   { title: "Swarm", url: "/swarm" },
   { title: "Docs", url: "/docs" },
   { title: "Blog", url: "/blog" },
 ];
 
 const moreNavLinks = [
-  { title: "Commerce", url: "/commerce" },
   { title: "SKALE Grant", url: "/skale" },
   { title: "Crews", url: "/crews" },
   { title: "Domains", url: "/domains" },
@@ -342,7 +342,15 @@ function AppLayout() {
           {primaryNavLinks.map((item) => {
             const isDashboard = item.title === "Dashboard";
             const href = isDashboard && connectedWallet ? `/dashboard/${connectedWallet}` : item.url;
-            const isActive = location === href || location === item.url || (!isDashboard && location.startsWith(item.url));
+            const itemHasQuery = item.url.includes("?");
+            const otherTabActive = !itemHasQuery && primaryNavLinks.some(
+              l => l.url.includes("?") &&
+                location.startsWith(l.url.split("?")[0]) &&
+                window.location.search === `?${l.url.split("?")[1]}`
+            );
+            const isActive = itemHasQuery
+              ? (location.startsWith(item.url.split("?")[0]) && window.location.search === `?${item.url.split("?")[1]}`)
+              : (!otherTabActive && (location === href || location === item.url || (!isDashboard && location.startsWith(item.url))));
             if (isDashboard && !connectedWallet) {
               return (
                 <button
