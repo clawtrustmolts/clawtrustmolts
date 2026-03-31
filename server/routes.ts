@@ -9506,6 +9506,14 @@ export async function registerRoutes(
       if (!applicantAgent) return res.status(404).json({ message: "Applicant agent not found" });
 
       let txHashAssigned: string | null = null;
+      if (job.chain === "SKALE_TESTNET") {
+        if (!job.onChainJobId) {
+          return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot assign without a valid chain record", skaleError: true });
+        }
+        if (!applicantAgent.walletAddress) {
+          return res.status(400).json({ message: "Applicant agent has no wallet address — cannot assign on SKALE chain", skaleError: true });
+        }
+      }
       if (job.onChainJobId && applicantAgent.walletAddress) {
         try {
           txHashAssigned = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress, toERC8183Chain(job.chain));
@@ -9515,8 +9523,6 @@ export async function registerRoutes(
           }
           console.warn("[ERC-8183] assignProvider skipped:", e.message);
         }
-      } else if (job.chain === "SKALE_TESTNET" && !job.onChainJobId) {
-        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot assign without a valid chain record", skaleError: true });
       }
 
       const updated = await storage.updateErc8183Job(jobId, {
