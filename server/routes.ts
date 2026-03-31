@@ -9575,6 +9575,12 @@ export async function registerRoutes(
         try {
           const existing = await storage.getCommerceReceiptByJob(jobId);
           if (!existing) {
+            // Determine swarm verdict:
+            // ORACLE_ASSISTED = poster manually settled and oracle confirmed on-chain
+            // N/A = no on-chain job (off-chain only)
+            const receiptVerdict: string = job.onChainJobId
+              ? (txHash ? "ORACLE_ASSISTED" : "ORACLE_ASSISTED")
+              : "N/A";
             await storage.createTrustReceipt({
               gigId: jobId,
               agentId: job.assigneeAgentId,
@@ -9583,7 +9589,7 @@ export async function registerRoutes(
               amount: job.budgetUsdc,
               currency: "USDC",
               chain: job.chain,
-              swarmVerdict: null,
+              swarmVerdict: receiptVerdict,
               scoreChange: 10,
               tierBefore: null,
               tierAfter: null,
@@ -9596,6 +9602,31 @@ export async function registerRoutes(
       return res.json({ success: true, job: updated, txHash });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to settle job", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/cancel — poster cancels an open job
+  app.post("/api/erc8183/jobs/:jobId/cancel", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only poster can cancel" });
+      if (!["open", "funded"].includes(job.status)) return res.status(400).json({ message: `Cannot cancel job in status: ${job.status}` });
+
+      let txHash: string | null = null;
+      if (job.onChainJobId) {
+        try {
+          txHash = await oracleCancelJob(job.onChainJobId, toERC8183Chain(job.chain));
+        } catch (e: any) {
+          console.warn("[ERC-8183] on-chain cancel skipped:", e.message);
+        }
+      }
+
+      const updated = await storage.updateErc8183Job(jobId, { status: "cancelled", txHashSettled: txHash });
+      return res.json({ success: true, job: updated, txHash });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to cancel job", error: err.message });
     }
   });
 
@@ -9645,6 +9676,8 @@ export async function registerRoutes(
         });
       }
 
+      // Determine swarm verdict: ORACLE_ASSISTED if settled on-chain, N/A if off-chain only
+      const manualVerdict: string = job.onChainJobId ? "ORACLE_ASSISTED" : "N/A";
       const receipt = await storage.createTrustReceipt({
         gigId: id,
         agentId: job.assigneeAgentId,
@@ -9653,7 +9686,7 @@ export async function registerRoutes(
         amount: job.budgetUsdc,
         currency: "USDC",
         chain: job.chain,
-        swarmVerdict: null,
+        swarmVerdict: manualVerdict,
         scoreChange: 10,
         tierBefore: null,
         tierAfter: null,
@@ -9800,6 +9833,10 @@ export async function registerRoutes(
 
   // ─── ERC-8183 Commerce Intelligence endpoints ──────────────────────────────
 
+  // 5-minute server-side cache for quorum reads (avoid hammering SKALE RPC per card load)
+  const quorumCache = new Map<string, { data: unknown; expiresAt: number }>();
+  const QUORUM_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
   // GET /api/erc8183/jobs/:jobId/quorum — swarm quorum state for a job in review/disputed
   app.get("/api/erc8183/jobs/:jobId/quorum", apiLimiter, async (req, res) => {
     try {
@@ -9807,13 +9844,22 @@ export async function registerRoutes(
       const job = await storage.getErc8183Job(jobId);
       if (!job) return res.status(404).json({ message: "Job not found" });
       if (!["submitted", "review", "disputed"].includes(job.status)) {
-        return res.json({ exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, threshold: 3, finalized: false });
+        return res.json({ exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, threshold: 3, finalized: false, cached: false });
       }
+
+      const cacheKey = `${jobId}:${job.chain}`;
+      const cached = quorumCache.get(cacheKey);
+      if (cached && Date.now() < cached.expiresAt) {
+        return res.json({ ...(cached.data as object), cached: true });
+      }
+
       const verdict = await readSwarmVerdictOnChain(jobId, job.chain ?? null);
-      if (!verdict || !verdict.exists) {
-        return res.json({ exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, threshold: 3, finalized: false });
-      }
-      return res.json({ ...verdict, threshold: 3 });
+      const result = (!verdict || !verdict.exists)
+        ? { exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, threshold: 3, finalized: false }
+        : { ...verdict, threshold: 3 };
+
+      quorumCache.set(cacheKey, { data: result, expiresAt: Date.now() + QUORUM_CACHE_TTL_MS });
+      return res.json({ ...result, cached: false });
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }

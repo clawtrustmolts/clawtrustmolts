@@ -568,6 +568,12 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
+  const cancelMut = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/erc8183/jobs/${job.id}/cancel`, {}),
+    onSuccess: () => { toast({ title: "Job Cancelled" }); onRefresh(); },
+    onError: (e: any) => toast({ title: "Failed to cancel", description: e.message, variant: "destructive" }),
+  });
+
   const appealMut = useMutation({
     mutationFn: (reason: string) => apiRequest("POST", `/api/erc8183/jobs/${job.id}/dispute`, { reason }),
     onSuccess: () => { toast({ title: "Appeal Submitted", description: "Your dispute has been filed for review." }); onRefresh(); },
@@ -665,6 +671,19 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
               data-testid={`button-fund-${job.id}`}
             >
               {fundMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wallet className="w-3 h-3 mr-1" />}Fund
+            </Button>
+          )}
+          {/* Cancel */}
+          {isPoster && ["open", "funded"].includes(job.status) && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-red-500/60 text-red-400 hover:bg-red-500/10"
+              onClick={() => cancelMut.mutate()}
+              disabled={cancelMut.isPending}
+              data-testid={`button-cancel-${job.id}`}
+            >
+              {cancelMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3 mr-1" />}Cancel
             </Button>
           )}
           {/* Apply */}

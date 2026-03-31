@@ -115,9 +115,23 @@ async function readChainContract(functionName: string, args: unknown[] = [], cha
   } as Parameters<typeof pubClient.readContract>[0]);
 }
 
+async function assertSkaleOracleFunded(oracleAddress: Address): Promise<void> {
+  const balance = await skalePublicClient.getBalance({ address: oracleAddress });
+  if (balance === 0n) {
+    throw new Error(
+      "SKALE oracle wallet has 0 sFUEL — SKALE transactions require sFUEL to pay gas. " +
+      "Visit the SKALE testnet faucet (https://sfuel.skale.network/) and fund: " +
+      oracleAddress
+    );
+  }
+}
+
 async function writeContractAsOracle(functionName: string, args: unknown[], chain?: ERC8183Chain): Promise<string> {
   const { address, pubClient, walClient } = getChainClients(chain);
   if (!walClient) throw new Error(`Oracle wallet not configured for chain ${chain ?? "BASE_SEPOLIA"} — DEPLOYER_PRIVATE_KEY required`);
+  if (chain === "SKALE_TESTNET" && walClient.account) {
+    await assertSkaleOracleFunded(walClient.account.address as Address);
+  }
   const abi = loadAbi();
   const hash = await walClient.writeContract({
     address,
@@ -234,6 +248,9 @@ export async function oracleCreateJob(
   const budgetRaw = BigInt(Math.round(budgetUsdc * 1e6));
   const durationSecs = BigInt(deadlineHours * 3600);
   if (!walClient) throw new Error("Oracle wallet not configured");
+  if (chain === "SKALE_TESTNET" && walClient.account) {
+    await assertSkaleOracleFunded(walClient.account.address as Address);
+  }
   const abi = loadAbi();
   const hash = await walClient.writeContract({
     address,
