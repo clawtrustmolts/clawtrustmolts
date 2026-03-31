@@ -198,6 +198,22 @@ export async function checkAndTopUpSkaleFuel(): Promise<{ wasFunded: boolean; ba
   return { wasFunded: false, balanceEther: ether, message: `Auto-fund failed: ${result.message}` };
 }
 
+export async function forceTopUpSkaleFuel(): Promise<{ success: boolean; balanceEther: number; message: string }> {
+  const address = skaleWalletClient?.account?.address as Address | undefined;
+  if (!address) return { success: false, balanceEther: 0, message: "Oracle wallet not configured" };
+
+  const result = await topUpSkaleFuel(address);
+  await new Promise(r => setTimeout(r, 3_000));
+  const { ether } = await getSkaleOracleFuelBalance();
+  return {
+    success: result.success,
+    balanceEther: ether,
+    message: result.success
+      ? `Force-funded. New balance: ${ether.toFixed(6)} sFUEL`
+      : `Force-fund failed: ${result.message}`,
+  };
+}
+
 async function writeContractAsOracle(functionName: string, args: unknown[], chain?: ERC8183Chain): Promise<string> {
   const { address, pubClient, walClient } = getChainClients(chain);
   if (!walClient) throw new Error(`Oracle wallet not configured for chain ${chain ?? "BASE_SEPOLIA"} — DEPLOYER_PRIVATE_KEY required`);

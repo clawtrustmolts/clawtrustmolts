@@ -6255,15 +6255,19 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/skale/fund-oracle", adminAuthMiddleware, async (_req, res) => {
+  app.post("/api/admin/skale/fund-oracle", adminAuthMiddleware, async (req, res) => {
     try {
-      const { checkAndTopUpSkaleFuel, getSkaleOracleFuelBalance } = await import("./erc8183-service");
+      const { checkAndTopUpSkaleFuel, forceTopUpSkaleFuel, getSkaleOracleFuelBalance } = await import("./erc8183-service");
+      const force = req.body?.force === true;
       const before = await getSkaleOracleFuelBalance();
-      const result = await checkAndTopUpSkaleFuel();
+
+      const result = force ? await forceTopUpSkaleFuel() : await checkAndTopUpSkaleFuel();
+
       const after = await getSkaleOracleFuelBalance();
       res.json({
         success: true,
-        wasFunded: result.wasFunded,
+        forced: force,
+        wasFunded: "wasFunded" in result ? result.wasFunded : result.success,
         message: result.message,
         balanceBefore: before.ether,
         balanceAfter: after.ether,
