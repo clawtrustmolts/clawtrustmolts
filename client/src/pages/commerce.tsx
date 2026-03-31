@@ -133,8 +133,8 @@ function TierBadge({ tier }: { tier: string }) {
   );
 }
 
-function LeaderboardPanel() {
-  const [collapsed, setCollapsed] = useState(false);
+function LeaderboardPanel({ defaultCollapsed = false }: { defaultCollapsed?: boolean }) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const { data, isLoading } = useQuery<{ leaderboard: any[]; updatedAt: string }>({
     queryKey: ["/api/agents/leaderboard"],
   });
@@ -408,7 +408,7 @@ function CommerceReceiptModal({ jobId, job, onClose }: {
               </div>
 
               {/* TX Hashes */}
-              {(receipt.txHashCreated || receipt.txHashSettled) && (
+              {(receipt.txHashCreated || receipt.txHashFunded || receipt.txHashSettled) && (
                 <div
                   className="p-3 rounded-sm flex flex-col gap-2"
                   style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.1)" }}
@@ -429,13 +429,26 @@ function CommerceReceiptModal({ jobId, job, onClose }: {
                       <span className="truncate">Create: {receipt.txHashCreated.slice(0, 20)}…</span>
                     </a>
                   )}
+                  {receipt.txHashFunded && (
+                    <a
+                      href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", receipt.txHashFunded)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-mono hover:opacity-80"
+                      style={{ color: "#3b82f6" }}
+                      data-testid="link-tx-funded"
+                    >
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Fund: {receipt.txHashFunded.slice(0, 20)}…</span>
+                    </a>
+                  )}
                   {receipt.txHashSettled && (
                     <a
                       href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", receipt.txHashSettled)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1.5 text-xs font-mono hover:opacity-80"
-                      style={{ color: "var(--claw-orange)" }}
+                      style={{ color: "#8b5cf6" }}
                       data-testid="link-tx-settled"
                     >
                       <ExternalLink className="w-3 h-3 shrink-0" />
@@ -625,24 +638,56 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
       )}
 
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3 text-xs" style={{ color: "var(--text-muted)" }}>
+        <div className="flex items-center gap-3 text-xs flex-wrap" style={{ color: "var(--text-muted)" }}>
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3" />{job.deadlineHours}h deadline
           </span>
           <span>{timeAgo(job.createdAt)}</span>
-          {(job.txHashCreated || job.onChainJobId) && (
+          {job.txHashCreated && (
             <a
-              href={
-                job.txHashCreated
-                  ? explorerTxUrl(job.chain ?? "BASE_SEPOLIA", job.txHashCreated)
-                  : explorerAddressUrl(job.chain ?? "BASE_SEPOLIA", AC_ADDRESS[job.chain ?? "BASE_SEPOLIA"])
-              }
+              href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", job.txHashCreated)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5 hover:opacity-80"
+              style={{ color: "var(--claw-orange)" }}
+              data-testid={`link-create-tx-${job.id}`}
+            >
+              <ExternalLink className="w-3 h-3" />create
+            </a>
+          )}
+          {!job.txHashCreated && job.onChainJobId && (
+            <a
+              href={explorerAddressUrl(job.chain ?? "BASE_SEPOLIA", AC_ADDRESS[job.chain ?? "BASE_SEPOLIA"])}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-0.5 hover:opacity-80"
               style={{ color: "var(--claw-orange)" }}
             >
               <ExternalLink className="w-3 h-3" />on-chain
+            </a>
+          )}
+          {job.txHashFunded && (
+            <a
+              href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", job.txHashFunded)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5 hover:opacity-80"
+              style={{ color: "#3b82f6" }}
+              data-testid={`link-fund-tx-${job.id}`}
+            >
+              <ExternalLink className="w-3 h-3" />fund
+            </a>
+          )}
+          {job.txHashSettled && (
+            <a
+              href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", job.txHashSettled)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5 hover:opacity-80"
+              style={{ color: "#8b5cf6" }}
+              data-testid={`link-settle-tx-${job.id}`}
+            >
+              <ExternalLink className="w-3 h-3" />settle
             </a>
           )}
         </div>
@@ -1084,22 +1129,23 @@ export default function CommercePage() {
         )}
 
         {/* Main content: jobs + leaderboard */}
-        <div className="flex gap-4">
+        <div className="flex flex-col gap-4 lg:flex-row">
           {/* Left: filters + jobs */}
           <div className="flex-1 min-w-0">
         {/* Filter Bar */}
         <div className="flex flex-col gap-2 mb-4">
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
             <Filter className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} />
             {["all", "open", "funded", "submitted", "completed"].map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className="text-xs px-3 py-1.5 rounded-sm transition-all capitalize"
+                className="text-xs px-3 py-1.5 rounded-sm transition-all capitalize shrink-0"
                 style={{
                   background: statusFilter === s ? "var(--claw-orange)" : "var(--ocean-mid)",
                   color: statusFilter === s ? "#fff" : "var(--text-muted)",
                   border: "1px solid rgba(232,84,10,0.2)",
+                  whiteSpace: "nowrap",
                 }}
                 data-testid={`filter-status-${s}`}
               >
@@ -1107,8 +1153,8 @@ export default function CommercePage() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>Chain:</span>
+          <div className="flex items-center gap-2 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
+            <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Chain:</span>
             {[
               { key: "all", label: "All Chains", count: chainCounts.all },
               { key: "BASE_SEPOLIA", label: "Base Sepolia", count: chainCounts.BASE_SEPOLIA },
@@ -1117,13 +1163,14 @@ export default function CommercePage() {
               <button
                 key={key}
                 onClick={() => setChainFilter(key)}
-                className="text-xs px-3 py-1.5 rounded-sm transition-all flex items-center gap-1.5"
+                className="text-xs px-3 py-1.5 rounded-sm transition-all flex items-center gap-1.5 shrink-0"
                 style={{
                   background: chainFilter === key
                     ? (key === "SKALE_TESTNET" ? "#8b5cf6" : key === "BASE_SEPOLIA" ? "#3b82f6" : "var(--claw-orange)")
                     : "var(--ocean-mid)",
                   color: chainFilter === key ? "#fff" : "var(--text-muted)",
                   border: `1px solid ${key === "SKALE_TESTNET" ? "rgba(139,92,246,0.3)" : key === "BASE_SEPOLIA" ? "rgba(59,130,246,0.3)" : "rgba(232,84,10,0.2)"}`,
+                  whiteSpace: "nowrap",
                 }}
                 data-testid={`filter-chain-${key}`}
               >
@@ -1178,10 +1225,15 @@ export default function CommercePage() {
         )}
           </div>
 
-          {/* Right: Leaderboard panel */}
+          {/* Right: Leaderboard panel (desktop only) */}
           <div className="w-64 shrink-0 hidden lg:block">
             <LeaderboardPanel />
           </div>
+        </div>
+
+        {/* Mobile: Leaderboard panel below job list */}
+        <div className="mt-2 lg:hidden">
+          <LeaderboardPanel defaultCollapsed={true} />
         </div>
 
         {/* Applicants Panel */}

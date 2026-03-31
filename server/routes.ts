@@ -9389,6 +9389,9 @@ export async function registerRoutes(
         onChainJobId = result.jobId;
         txHashCreated = result.txHash;
       } catch (chainErr: any) {
+        if (jobChain === "SKALE_TESTNET") {
+          return res.status(503).json({ message: `SKALE chain write failed: ${chainErr.message}`, skaleError: true });
+        }
         console.warn("[ERC-8183] on-chain create skipped:", chainErr.message);
       }
 
@@ -9441,7 +9444,14 @@ export async function registerRoutes(
 
       let txHashFunded: string | null = null;
       if (job.onChainJobId) {
-        try { txHashFunded = await oracleFundJob(job.onChainJobId, toERC8183Chain(job.chain)); } catch (e: any) { console.warn("[ERC-8183] fund skipped:", e.message); }
+        try {
+          txHashFunded = await oracleFundJob(job.onChainJobId, toERC8183Chain(job.chain));
+        } catch (e: any) {
+          if (job.chain === "SKALE_TESTNET") {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
+          console.warn("[ERC-8183] fund skipped:", e.message);
+        }
       }
 
       const updated = await storage.updateErc8183Job(jobId, { status: "funded", txHashFunded });
@@ -9495,7 +9505,14 @@ export async function registerRoutes(
 
       let txHash: string | null = null;
       if (job.onChainJobId && applicantAgent.walletAddress) {
-        try { txHash = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress, toERC8183Chain(job.chain)); } catch (e: any) { console.warn("[ERC-8183] assignProvider skipped:", e.message); }
+        try {
+          txHash = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress, toERC8183Chain(job.chain));
+        } catch (e: any) {
+          if (job.chain === "SKALE_TESTNET") {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
+          console.warn("[ERC-8183] assignProvider skipped:", e.message);
+        }
       }
 
       const updated = await storage.updateErc8183Job(jobId, {
@@ -9523,7 +9540,14 @@ export async function registerRoutes(
 
       let txHash: string | null = null;
       if (job.onChainJobId) {
-        try { txHash = await oracleSubmitDeliverable(job.onChainJobId, deliverableHash, toERC8183Chain(job.chain)); } catch (e: any) { console.warn("[ERC-8183] submit skipped:", e.message); }
+        try {
+          txHash = await oracleSubmitDeliverable(job.onChainJobId, deliverableHash, toERC8183Chain(job.chain));
+        } catch (e: any) {
+          if (job.chain === "SKALE_TESTNET") {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
+          console.warn("[ERC-8183] submit skipped:", e.message);
+        }
       }
 
       const updated = await storage.updateErc8183Job(jobId, {
@@ -9558,7 +9582,12 @@ export async function registerRoutes(
         try {
           if (action === "complete") txHash = await oracleCompleteJob(job.onChainJobId, reasonHex, toERC8183Chain(job.chain));
           else txHash = await oracleRejectJob(job.onChainJobId, reasonHex, toERC8183Chain(job.chain));
-        } catch (e: any) { console.warn("[ERC-8183] settle skipped:", e.message); }
+        } catch (e: any) {
+          if (job.chain === "SKALE_TESTNET") {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
+          console.warn("[ERC-8183] settle skipped:", e.message);
+        }
       }
 
       const updated = await storage.updateErc8183Job(jobId, { status: newStatus, txHashSettled: txHash });
@@ -9619,6 +9648,9 @@ export async function registerRoutes(
         try {
           txHash = await oracleCancelJob(job.onChainJobId, toERC8183Chain(job.chain));
         } catch (e: any) {
+          if (job.chain === "SKALE_TESTNET") {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
           console.warn("[ERC-8183] on-chain cancel skipped:", e.message);
         }
       }
@@ -9673,6 +9705,9 @@ export async function registerRoutes(
           ...existing,
           agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
           poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+          txHashCreated: job.txHashCreated,
+          txHashFunded: job.txHashFunded,
+          txHashSettled: job.txHashSettled,
         });
       }
 
@@ -9699,6 +9734,9 @@ export async function registerRoutes(
         ...receipt,
         agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
         poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+        txHashCreated: job.txHashCreated,
+        txHashFunded: job.txHashFunded,
+        txHashSettled: job.txHashSettled,
       });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to create receipt", error: err.message });
