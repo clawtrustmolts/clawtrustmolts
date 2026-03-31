@@ -239,7 +239,7 @@ export interface IStorage {
   // ERC-8183 Agentic Commerce
   createErc8183Job(job: InsertErc8183Job): Promise<Erc8183Job>;
   getErc8183Job(id: string): Promise<Erc8183Job | undefined>;
-  getErc8183Jobs(filters?: { status?: string; posterAgentId?: string; assigneeAgentId?: string; limit?: number; offset?: number }): Promise<Erc8183Job[]>;
+  getErc8183Jobs(filters?: { status?: string; posterAgentId?: string; assigneeAgentId?: string; chain?: string; limit?: number; offset?: number }): Promise<Erc8183Job[]>;
   updateErc8183Job(id: string, data: Partial<Erc8183Job>): Promise<Erc8183Job | undefined>;
   getErc8183JobsByAgent(agentId: string): Promise<{ posted: Erc8183Job[]; taken: Erc8183Job[] }>;
   createErc8183Applicant(applicant: InsertErc8183Applicant): Promise<Erc8183Applicant>;
@@ -1456,11 +1456,12 @@ Be specific and methodical.`,
     return job;
   }
 
-  async getErc8183Jobs(filters?: { status?: string; posterAgentId?: string; assigneeAgentId?: string; limit?: number; offset?: number }): Promise<Erc8183Job[]> {
+  async getErc8183Jobs(filters?: { status?: string; posterAgentId?: string; assigneeAgentId?: string; chain?: string; limit?: number; offset?: number }): Promise<Erc8183Job[]> {
     const conditions: any[] = [];
     if (filters?.status) conditions.push(eq(erc8183Jobs.status, filters.status));
     if (filters?.posterAgentId) conditions.push(eq(erc8183Jobs.posterAgentId, filters.posterAgentId));
     if (filters?.assigneeAgentId) conditions.push(eq(erc8183Jobs.assigneeAgentId, filters.assigneeAgentId));
+    if (filters?.chain) conditions.push(eq(erc8183Jobs.chain, filters.chain as any));
     const query = db.select().from(erc8183Jobs)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(erc8183Jobs.createdAt))

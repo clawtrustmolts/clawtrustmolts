@@ -1,10 +1,60 @@
 import { publicClient, walletClient } from "./blockchain";
-import { createWalletClient, http, parseAbi, type Address } from "viem";
+import { createPublicClient, createWalletClient, http, parseAbi, type Address } from "viem";
 import { baseSepolia } from "viem/chains";
+import { privateKeyToAccount } from "viem/accounts";
 import fs from "fs";
 import path from "path";
 
-const CLAWTRUST_AC_ADDRESS = "0x1933D67CDB911653765e84758f47c60A1E868bC0" as Address;
+type ERC8183Chain = "BASE_SEPOLIA" | "SKALE_TESTNET";
+
+const CLAWTRUST_AC_BASE = "0x1933D67CDB911653765e84758f47c60A1E868bC0" as Address;
+const CLAWTRUST_AC_SKALE = "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6" as Address;
+
+const SKALE_RPC = "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha";
+const skaleChainDef = {
+  id: 324705682,
+  name: "SKALE Base Sepolia",
+  nativeCurrency: { name: "sFUEL", symbol: "sFUEL", decimals: 18 },
+  rpcUrls: { default: { http: [SKALE_RPC] }, public: { http: [SKALE_RPC] } },
+} as const;
+
+const skalePublicClient = createPublicClient({
+  chain: skaleChainDef as any,
+  transport: http(SKALE_RPC, { timeout: 15_000, retryCount: 2, retryDelay: 1500 }),
+});
+
+function buildSkaleWalletClient() {
+  const raw = process.env.DEPLOYER_PRIVATE_KEY;
+  if (!raw || raw.trim() === "") return null;
+  try {
+    const pk = (raw.trim().startsWith("0x") ? raw.trim() : `0x${raw.trim()}`) as `0x${string}`;
+    const account = privateKeyToAccount(pk);
+    return createWalletClient({
+      account,
+      chain: skaleChainDef as any,
+      transport: http(SKALE_RPC, { timeout: 15_000, retryCount: 2, retryDelay: 1500 }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+const skaleWalletClient = buildSkaleWalletClient();
+
+function getChainClients(chain?: ERC8183Chain) {
+  if (chain === "SKALE_TESTNET") {
+    return {
+      address: CLAWTRUST_AC_SKALE,
+      pubClient: skalePublicClient,
+      walClient: skaleWalletClient,
+    };
+  }
+  return {
+    address: CLAWTRUST_AC_BASE,
+    pubClient: publicClient,
+    walClient: walletClient,
+  };
+}
 
 function loadAbi() {
   const artifactPath = path.join(process.cwd(), "contracts/artifacts/contracts/ClawTrustAC.sol/ClawTrustAC.json");
@@ -42,47 +92,56 @@ const FALLBACK_ABI = parseAbi([
 
 const STATUS_LABELS = ["Open", "Funded", "Submitted", "Completed", "Rejected", "Cancelled", "Expired"];
 
-export function getClawTrustACAddress(): string {
-  return CLAWTRUST_AC_ADDRESS;
+export function getClawTrustACAddress(chain?: ERC8183Chain): string {
+  return chain === "SKALE_TESTNET" ? CLAWTRUST_AC_SKALE : CLAWTRUST_AC_BASE;
 }
 
-async function readContract(functionName: string, args: unknown[] = []): Promise<unknown> {
+export function getExplorerUrl(chain?: ERC8183Chain): string {
+  if (chain === "SKALE_TESTNET") return "https://base-sepolia-testnet-explorer.skalenodes.com";
+  return "https://sepolia.basescan.org";
+}
+
+async function readChainContract(functionName: string, args: unknown[] = [], chain?: ERC8183Chain): Promise<unknown> {
+  const { address, pubClient } = getChainClients(chain);
   const abi = loadAbi();
-  return publicClient.readContract({
-    address: CLAWTRUST_AC_ADDRESS,
+  return pubClient.readContract({
+    address,
     abi,
     functionName,
     args,
-  } as Parameters<typeof publicClient.readContract>[0]);
+  } as Parameters<typeof pubClient.readContract>[0]);
 }
 
-async function writeContractAsOracle(functionName: string, args: unknown[]): Promise<string> {
-  if (!walletClient) throw new Error("Oracle wallet not configured — DEPLOYER_PRIVATE_KEY required");
+async function writeContractAsOracle(functionName: string, args: unknown[], chain?: ERC8183Chain): Promise<string> {
+  const { address, pubClient, walClient } = getChainClients(chain);
+  if (!walClient) throw new Error(`Oracle wallet not configured for chain ${chain ?? "BASE_SEPOLIA"} — DEPLOYER_PRIVATE_KEY required`);
   const abi = loadAbi();
-  const hash = await walletClient.writeContract({
-    address: CLAWTRUST_AC_ADDRESS,
+  const hash = await walClient.writeContract({
+    address,
     abi,
     functionName,
     args,
-  } as Parameters<typeof walletClient.writeContract>[0]);
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  } as Parameters<typeof walClient.writeContract>[0]);
+  const receipt = await pubClient.waitForTransactionReceipt({ hash });
   return receipt.transactionHash;
 }
 
-export async function getERC8183Stats() {
+export async function getERC8183Stats(chain?: ERC8183Chain) {
+  const contractAddress = getChainClients(chain).address;
+  const explorerBase = getExplorerUrl(chain);
   try {
-    const stats = await readContract("getStats") as [bigint, bigint, bigint, bigint];
-    const jobCount = await readContract("jobCount") as bigint;
+    const stats = await readChainContract("getStats", [], chain) as [bigint, bigint, bigint, bigint];
+    const jobCount = await readChainContract("jobCount", [], chain) as bigint;
     return {
       totalJobsCreated: Number(stats[0]),
       totalJobsCompleted: Number(stats[1]),
       totalVolumeUSDC: Number(stats[2]) / 1e6,
       completionRate: Number(stats[3]),
       activeJobCount: Number(jobCount),
-      contractAddress: CLAWTRUST_AC_ADDRESS,
+      contractAddress,
       standard: "ERC-8183",
-      chain: "base-sepolia",
-      basescanUrl: `https://sepolia.basescan.org/address/${CLAWTRUST_AC_ADDRESS}`,
+      chain: chain === "SKALE_TESTNET" ? "skale-base-sepolia" : "base-sepolia",
+      basescanUrl: `${explorerBase}/address/${contractAddress}`,
     };
   } catch (err: any) {
     console.error("[ERC8183] getStats error:", err.message);
@@ -92,17 +151,19 @@ export async function getERC8183Stats() {
       totalVolumeUSDC: 0,
       completionRate: 0,
       activeJobCount: 0,
-      contractAddress: CLAWTRUST_AC_ADDRESS,
+      contractAddress,
       standard: "ERC-8183",
-      chain: "base-sepolia",
-      basescanUrl: `https://sepolia.basescan.org/address/${CLAWTRUST_AC_ADDRESS}`,
+      chain: chain === "SKALE_TESTNET" ? "skale-base-sepolia" : "base-sepolia",
+      basescanUrl: `${explorerBase}/address/${contractAddress}`,
     };
   }
 }
 
-export async function getERC8183Job(jobId: string) {
+export async function getERC8183Job(jobId: string, chain?: ERC8183Chain) {
+  const contractAddress = getChainClients(chain).address;
+  const explorerBase = getExplorerUrl(chain);
   const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
-  const raw = await readContract("getJob", [rawJobId as `0x${string}`]) as any[];
+  const raw = await readChainContract("getJob", [rawJobId as `0x${string}`], chain) as any[];
 
   const statusIndex = Number(raw[5]);
   return {
@@ -121,15 +182,15 @@ export async function getERC8183Job(jobId: string) {
     outcomeReason: raw[8] as string,
     createdAt: new Date(Number(raw[9]) * 1000).toISOString(),
     createdAtTs: Number(raw[9]),
-    basescanUrl: `https://sepolia.basescan.org/address/${CLAWTRUST_AC_ADDRESS}`,
+    basescanUrl: `${explorerBase}/address/${contractAddress}`,
   };
 }
 
-export async function getJobLogs() {
-  const abi = loadAbi();
+export async function getJobLogs(chain?: ERC8183Chain) {
+  const { address, pubClient } = getChainClients(chain);
   try {
-    const logs = await publicClient.getLogs({
-      address: CLAWTRUST_AC_ADDRESS,
+    const logs = await pubClient.getLogs({
+      address,
       fromBlock: "earliest",
       toBlock: "latest",
     });
@@ -139,21 +200,21 @@ export async function getJobLogs() {
   }
 }
 
-export async function oracleCompleteJob(jobId: string, reasonHex: string): Promise<string> {
+export async function oracleCompleteJob(jobId: string, reasonHex: string, chain?: ERC8183Chain): Promise<string> {
   const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
   const rawReason = reasonHex.startsWith("0x") ? reasonHex : `0x${reasonHex}`;
-  return writeContractAsOracle("complete", [rawJobId as `0x${string}`, rawReason as `0x${string}`]);
+  return writeContractAsOracle("complete", [rawJobId as `0x${string}`, rawReason as `0x${string}`], chain);
 }
 
-export async function oracleRejectJob(jobId: string, reasonHex: string): Promise<string> {
+export async function oracleRejectJob(jobId: string, reasonHex: string, chain?: ERC8183Chain): Promise<string> {
   const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
   const rawReason = reasonHex.startsWith("0x") ? reasonHex : `0x${reasonHex}`;
-  return writeContractAsOracle("reject", [rawJobId as `0x${string}`, rawReason as `0x${string}`]);
+  return writeContractAsOracle("reject", [rawJobId as `0x${string}`, rawReason as `0x${string}`], chain);
 }
 
-export async function isRegisteredAgent(wallet: string): Promise<boolean> {
+export async function isRegisteredAgent(wallet: string, chain?: ERC8183Chain): Promise<boolean> {
   try {
-    return await readContract("isRegisteredAgent", [wallet as Address]) as boolean;
+    return await readChainContract("isRegisteredAgent", [wallet as Address], chain) as boolean;
   } catch {
     return false;
   }
@@ -162,45 +223,47 @@ export async function isRegisteredAgent(wallet: string): Promise<boolean> {
 export async function oracleCreateJob(
   description: string,
   budgetUsdc: number,
-  deadlineHours: number
+  deadlineHours: number,
+  chain?: ERC8183Chain
 ): Promise<{ jobId: string; txHash: string }> {
+  const { address, pubClient, walClient } = getChainClients(chain);
   const budgetRaw = BigInt(Math.round(budgetUsdc * 1e6));
   const durationSecs = BigInt(deadlineHours * 3600);
-  if (!walletClient) throw new Error("Oracle wallet not configured");
+  if (!walClient) throw new Error("Oracle wallet not configured");
   const abi = loadAbi();
-  const hash = await walletClient.writeContract({
-    address: CLAWTRUST_AC_ADDRESS,
+  const hash = await walClient.writeContract({
+    address,
     abi,
     functionName: "createJob",
     args: [description, budgetRaw, durationSecs],
-  } as Parameters<typeof walletClient.writeContract>[0]);
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  } as Parameters<typeof walClient.writeContract>[0]);
+  const receipt = await pubClient.waitForTransactionReceipt({ hash });
   const jobIdLog = receipt.logs.find((l) => l.topics.length > 1);
   const jobId = jobIdLog?.topics[1] ?? `0x${Date.now().toString(16).padStart(64, "0")}`;
   return { jobId: jobId as string, txHash: receipt.transactionHash };
 }
 
-export async function oracleFundJob(jobId: string): Promise<string> {
+export async function oracleFundJob(jobId: string, chain?: ERC8183Chain): Promise<string> {
   const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
-  return writeContractAsOracle("fund", [rawJobId as `0x${string}`]);
+  return writeContractAsOracle("fund", [rawJobId as `0x${string}`], chain);
 }
 
-export async function oracleAssignProvider(jobId: string, providerWallet: string): Promise<string> {
+export async function oracleAssignProvider(jobId: string, providerWallet: string, chain?: ERC8183Chain): Promise<string> {
   const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
-  return writeContractAsOracle("assignProvider", [rawJobId as `0x${string}`, providerWallet as Address]);
+  return writeContractAsOracle("assignProvider", [rawJobId as `0x${string}`, providerWallet as Address], chain);
 }
 
-export async function oracleSubmitDeliverable(jobId: string, deliverableHash: string): Promise<string> {
+export async function oracleSubmitDeliverable(jobId: string, deliverableHash: string, chain?: ERC8183Chain): Promise<string> {
   const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
   const rawHash = deliverableHash.startsWith("0x")
     ? deliverableHash
     : `0x${Buffer.from(deliverableHash).toString("hex").slice(0, 64).padEnd(64, "0")}`;
-  return writeContractAsOracle("submit", [rawJobId as `0x${string}`, rawHash as `0x${string}`]);
+  return writeContractAsOracle("submit", [rawJobId as `0x${string}`, rawHash as `0x${string}`], chain);
 }
 
-export async function oracleCancelJob(jobId: string): Promise<string> {
+export async function oracleCancelJob(jobId: string, chain?: ERC8183Chain): Promise<string> {
   const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
-  return writeContractAsOracle("cancel", [rawJobId as `0x${string}`]);
+  return writeContractAsOracle("cancel", [rawJobId as `0x${string}`], chain);
 }
 
 export function textToBytes32(text: string): `0x${string}` {

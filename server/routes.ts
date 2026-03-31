@@ -9246,11 +9246,12 @@ export async function registerRoutes(
 
   // ─── ERC-8183 AGENTIC COMMERCE ─────────────────────────────────────────────
 
-  const { getERC8183Stats, getERC8183Job, oracleCompleteJob, oracleRejectJob, isRegisteredAgent: isRegisteredERC8183, getClawTrustACAddress, oracleCreateJob, oracleFundJob, oracleAssignProvider, oracleSubmitDeliverable, oracleCancelJob } = await import("./erc8183-service");
+  const { getERC8183Stats, getERC8183Job, oracleCompleteJob, oracleRejectJob, isRegisteredAgent: isRegisteredERC8183, getClawTrustACAddress, getExplorerUrl: getERC8183ExplorerUrl, oracleCreateJob, oracleFundJob, oracleAssignProvider, oracleSubmitDeliverable, oracleCancelJob } = await import("./erc8183-service");
 
-  app.get("/api/erc8183/stats", apiLimiter, async (_req, res) => {
+  app.get("/api/erc8183/stats", apiLimiter, async (req, res) => {
     try {
-      const stats = await getERC8183Stats();
+      const chain = req.query.chain === "SKALE_TESTNET" ? "SKALE_TESTNET" : "BASE_SEPOLIA";
+      const stats = await getERC8183Stats(chain as any);
       // Enrich with DB-level gig counts as supplemental data
       try {
         const allGigs = await storage.getGigs();
@@ -9354,17 +9355,18 @@ export async function registerRoutes(
   app.post("/api/erc8183/jobs", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
     try {
       const posterAgentId = (req as any).agentId as string;
-      const { title, description, budgetUsdc, requiredSkills, deadlineHours } = req.body;
+      const { title, description, budgetUsdc, requiredSkills, deadlineHours, chain } = req.body;
       if (!title || !description || !budgetUsdc) return res.status(400).json({ message: "title, description, budgetUsdc required" });
       const budget = parseFloat(String(budgetUsdc));
       if (isNaN(budget) || budget <= 0) return res.status(400).json({ message: "Invalid budgetUsdc" });
       const hours = parseInt(String(deadlineHours ?? 72), 10);
       const skills: string[] = Array.isArray(requiredSkills) ? requiredSkills.map(String) : [];
+      const jobChain: "BASE_SEPOLIA" | "SKALE_TESTNET" = chain === "SKALE_TESTNET" ? "SKALE_TESTNET" : "BASE_SEPOLIA";
 
       let onChainJobId: string | null = null;
       let txHashCreated: string | null = null;
       try {
-        const result = await oracleCreateJob(description.slice(0, 200), budget, hours);
+        const result = await oracleCreateJob(description.slice(0, 200), budget, hours, jobChain);
         onChainJobId = result.jobId;
         txHashCreated = result.txHash;
       } catch (chainErr: any) {
@@ -9379,6 +9381,7 @@ export async function registerRoutes(
         requiredSkills: skills,
         deadlineHours: hours,
         status: "open",
+        chain: jobChain,
         onChainJobId,
         txHashCreated,
       });
@@ -9394,9 +9397,10 @@ export async function registerRoutes(
     try {
       const status = req.query.status ? String(req.query.status) : undefined;
       const posterAgentId = req.query.posterAgentId ? String(req.query.posterAgentId) : undefined;
+      const chain = req.query.chain ? String(req.query.chain) : undefined;
       const limit = Math.min(parseInt(String(req.query.limit ?? "20"), 10), 100);
       const offset = parseInt(String(req.query.offset ?? "0"), 10);
-      const jobs = await storage.getErc8183Jobs({ status, posterAgentId, limit, offset });
+      const jobs = await storage.getErc8183Jobs({ status, posterAgentId, chain, limit, offset });
       const total = await storage.countErc8183Jobs();
       return res.json({ jobs, total, limit, offset });
     } catch (err: any) {
@@ -9418,7 +9422,7 @@ export async function registerRoutes(
 
       let txHashFunded: string | null = null;
       if (job.onChainJobId) {
-        try { txHashFunded = await oracleFundJob(job.onChainJobId); } catch (e: any) { console.warn("[ERC-8183] fund skipped:", e.message); }
+        try { txHashFunded = await oracleFundJob(job.onChainJobId, job.chain as any); } catch (e: any) { console.warn("[ERC-8183] fund skipped:", e.message); }
       }
 
       const updated = await storage.updateErc8183Job(jobId, { status: "funded", txHashFunded });
@@ -9472,7 +9476,7 @@ export async function registerRoutes(
 
       let txHash: string | null = null;
       if (job.onChainJobId && applicantAgent.walletAddress) {
-        try { txHash = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress); } catch (e: any) { console.warn("[ERC-8183] assignProvider skipped:", e.message); }
+        try { txHash = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress, job.chain as any); } catch (e: any) { console.warn("[ERC-8183] assignProvider skipped:", e.message); }
       }
 
       const updated = await storage.updateErc8183Job(jobId, {
@@ -9500,7 +9504,7 @@ export async function registerRoutes(
 
       let txHash: string | null = null;
       if (job.onChainJobId) {
-        try { txHash = await oracleSubmitDeliverable(job.onChainJobId, deliverableHash); } catch (e: any) { console.warn("[ERC-8183] submit skipped:", e.message); }
+        try { txHash = await oracleSubmitDeliverable(job.onChainJobId, deliverableHash, job.chain as any); } catch (e: any) { console.warn("[ERC-8183] submit skipped:", e.message); }
       }
 
       const updated = await storage.updateErc8183Job(jobId, {
@@ -9533,8 +9537,8 @@ export async function registerRoutes(
 
       if (job.onChainJobId) {
         try {
-          if (action === "complete") txHash = await oracleCompleteJob(job.onChainJobId, reasonHex);
-          else txHash = await oracleRejectJob(job.onChainJobId, reasonHex);
+          if (action === "complete") txHash = await oracleCompleteJob(job.onChainJobId, reasonHex, job.chain as any);
+          else txHash = await oracleRejectJob(job.onChainJobId, reasonHex, job.chain as any);
         } catch (e: any) { console.warn("[ERC-8183] settle skipped:", e.message); }
       }
 

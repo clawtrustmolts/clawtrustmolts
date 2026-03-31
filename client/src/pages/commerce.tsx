@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 type JobStatus = "open" | "funded" | "submitted" | "completed" | "rejected" | "cancelled" | "expired";
+type JobChain = "BASE_SEPOLIA" | "SKALE_TESTNET";
 
 interface Erc8183Job {
   id: string;
@@ -27,6 +28,7 @@ interface Erc8183Job {
   requiredSkills: string[];
   deadlineHours: number;
   status: JobStatus;
+  chain: JobChain;
   deliverableUrl: string | null;
   deliverableNote: string | null;
   txHashCreated: string | null;
@@ -34,6 +36,50 @@ interface Erc8183Job {
   txHashSettled: string | null;
   createdAt: string;
 }
+
+const CHAIN_CONFIG: Record<JobChain, { label: string; shortLabel: string; color: string; bg: string; explorerBase: string; gasLabel: string }> = {
+  BASE_SEPOLIA: {
+    label: "Base Sepolia",
+    shortLabel: "Base",
+    color: "#3b82f6",
+    bg: "rgba(59,130,246,0.12)",
+    explorerBase: "https://sepolia.basescan.org",
+    gasLabel: "gas required",
+  },
+  SKALE_TESTNET: {
+    label: "SKALE",
+    shortLabel: "SKALE",
+    color: "#8b5cf6",
+    bg: "rgba(139,92,246,0.12)",
+    explorerBase: "https://base-sepolia-testnet-explorer.skalenodes.com",
+    gasLabel: "gas-free",
+  },
+};
+
+function ChainBadge({ chain }: { chain: JobChain }) {
+  const cfg = CHAIN_CONFIG[chain] ?? CHAIN_CONFIG.BASE_SEPOLIA;
+  return (
+    <span
+      className="text-xs font-mono px-2 py-0.5 rounded-sm"
+      style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}33` }}
+    >
+      {cfg.shortLabel}
+    </span>
+  );
+}
+
+function explorerTxUrl(chain: JobChain, txHash: string) {
+  return `${CHAIN_CONFIG[chain].explorerBase}/tx/${txHash}`;
+}
+
+function explorerAddressUrl(chain: JobChain, address: string) {
+  return `${CHAIN_CONFIG[chain].explorerBase}/address/${address}`;
+}
+
+const AC_ADDRESS: Record<JobChain, string> = {
+  BASE_SEPOLIA: "0x1933D67CDB911653765e84758f47c60A1E868bC0",
+  SKALE_TESTNET: "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
+};
 
 const STATUS_CONFIG: Record<JobStatus, { label: string; color: string; bg: string }> = {
   open:      { label: "Open",      color: "#22c55e", bg: "rgba(34,197,94,0.12)" },
@@ -123,6 +169,7 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
               {job.title}
             </span>
             <StatusBadge status={job.status as JobStatus} />
+            <ChainBadge chain={job.chain ?? "BASE_SEPOLIA"} />
           </div>
           <p className="text-xs mt-1 line-clamp-2" style={{ color: "var(--text-muted)" }}>
             {job.description}
@@ -160,8 +207,8 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
             <a
               href={
                 job.txHashCreated
-                  ? `https://sepolia.basescan.org/tx/${job.txHashCreated}`
-                  : `https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0`
+                  ? explorerTxUrl(job.chain ?? "BASE_SEPOLIA", job.txHashCreated)
+                  : explorerAddressUrl(job.chain ?? "BASE_SEPOLIA", AC_ADDRESS[job.chain ?? "BASE_SEPOLIA"])
               }
               target="_blank"
               rel="noopener noreferrer"
@@ -400,6 +447,7 @@ export default function CommercePage() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [chainFilter, setChainFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [applicantsJob, setApplicantsJob] = useState<Erc8183Job | null>(null);
 
@@ -410,13 +458,15 @@ export default function CommercePage() {
     budgetUsdc: "",
     requiredSkills: "",
     deadlineHours: "72",
+    chain: "BASE_SEPOLIA" as JobChain,
   });
 
   const { data, isLoading, refetch } = useQuery<{ jobs: Erc8183Job[]; total: number }>({
-    queryKey: ["/api/erc8183/jobs", statusFilter],
+    queryKey: ["/api/erc8183/jobs", statusFilter, chainFilter],
     queryFn: () => {
       const params = new URLSearchParams({ limit: "50" });
       if (statusFilter !== "all") params.set("status", statusFilter);
+      if (chainFilter !== "all") params.set("chain", chainFilter);
       return fetch(`/api/erc8183/jobs?${params}`).then((r) => r.json());
     },
   });
@@ -432,11 +482,12 @@ export default function CommercePage() {
       budgetUsdc: parseFloat(form.budgetUsdc),
       requiredSkills: form.requiredSkills.split(",").map((s) => s.trim()).filter(Boolean),
       deadlineHours: parseInt(form.deadlineHours, 10),
+      chain: form.chain,
     }),
     onSuccess: () => {
       toast({ title: "Job posted!", description: "Your job is now live on the marketplace." });
       setCreateOpen(false);
-      setForm({ title: "", description: "", budgetUsdc: "", requiredSkills: "", deadlineHours: "72" });
+      setForm({ title: "", description: "", budgetUsdc: "", requiredSkills: "", deadlineHours: "72", chain: "BASE_SEPOLIA" });
       queryClient.invalidateQueries({ queryKey: ["/api/erc8183/jobs"] });
     },
     onError: (e: any) => toast({ title: "Failed to post job", description: e.message, variant: "destructive" }),
@@ -493,23 +544,49 @@ export default function CommercePage() {
         </div>
 
         {/* Filter Bar */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <Filter className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} />
-          {["all", "open", "funded", "submitted", "completed"].map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className="text-xs px-3 py-1.5 rounded-sm transition-all capitalize"
-              style={{
-                background: statusFilter === s ? "var(--claw-orange)" : "var(--ocean-mid)",
-                color: statusFilter === s ? "#fff" : "var(--text-muted)",
-                border: "1px solid rgba(232,84,10,0.2)",
-              }}
-              data-testid={`filter-${s}`}
-            >
-              {s === "all" ? "All Jobs" : s}
-            </button>
-          ))}
+        <div className="flex flex-col gap-2 mb-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Filter className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} />
+            {["all", "open", "funded", "submitted", "completed"].map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className="text-xs px-3 py-1.5 rounded-sm transition-all capitalize"
+                style={{
+                  background: statusFilter === s ? "var(--claw-orange)" : "var(--ocean-mid)",
+                  color: statusFilter === s ? "#fff" : "var(--text-muted)",
+                  border: "1px solid rgba(232,84,10,0.2)",
+                }}
+                data-testid={`filter-status-${s}`}
+              >
+                {s === "all" ? "All Jobs" : s}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>Chain:</span>
+            {[
+              { key: "all", label: "All Chains" },
+              { key: "BASE_SEPOLIA", label: "Base Sepolia" },
+              { key: "SKALE_TESTNET", label: "SKALE (gas-free)" },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setChainFilter(key)}
+                className="text-xs px-3 py-1.5 rounded-sm transition-all"
+                style={{
+                  background: chainFilter === key
+                    ? (key === "SKALE_TESTNET" ? "#8b5cf6" : key === "BASE_SEPOLIA" ? "#3b82f6" : "var(--claw-orange)")
+                    : "var(--ocean-mid)",
+                  color: chainFilter === key ? "#fff" : "var(--text-muted)",
+                  border: `1px solid ${key === "SKALE_TESTNET" ? "rgba(139,92,246,0.3)" : key === "BASE_SEPOLIA" ? "rgba(59,130,246,0.3)" : "rgba(232,84,10,0.2)"}`,
+                }}
+                data-testid={`filter-chain-${key}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Job List */}
@@ -631,6 +708,29 @@ export default function CommercePage() {
                   data-testid="input-job-skills"
                   style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}
                 />
+              </div>
+
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Blockchain Network</label>
+                <div className="flex gap-2">
+                  {(["BASE_SEPOLIA", "SKALE_TESTNET"] as JobChain[]).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setForm({ ...form, chain: c })}
+                      className="flex-1 py-2 px-3 rounded-sm text-xs font-mono transition-all text-left"
+                      style={{
+                        background: form.chain === c ? CHAIN_CONFIG[c].bg : "var(--ocean-deep)",
+                        border: `1px solid ${form.chain === c ? CHAIN_CONFIG[c].color : "rgba(232,84,10,0.15)"}`,
+                        color: form.chain === c ? CHAIN_CONFIG[c].color : "var(--text-muted)",
+                      }}
+                      data-testid={`select-chain-${c}`}
+                    >
+                      <div className="font-semibold">{CHAIN_CONFIG[c].label}</div>
+                      <div className="opacity-70 mt-0.5">{CHAIN_CONFIG[c].gasLabel}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div

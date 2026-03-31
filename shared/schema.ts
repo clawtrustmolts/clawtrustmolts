@@ -597,6 +597,7 @@ export const erc8183Jobs = pgTable("erc8183_jobs", {
   deliverableNote: text("deliverable_note"),
   deliverableHash: text("deliverable_hash"),
   status: text("status").notNull().default("open"),
+  chain: chainEnum("chain").notNull().default("BASE_SEPOLIA"),
   txHashCreated: text("tx_hash_created"),
   txHashFunded: text("tx_hash_funded"),
   txHashSettled: text("tx_hash_settled"),
