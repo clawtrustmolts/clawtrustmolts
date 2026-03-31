@@ -12,7 +12,8 @@ import {
   Briefcase, Plus, Filter, ChevronRight, Clock, DollarSign,
   CheckCircle2, XCircle, Loader2, Wallet, Star, ExternalLink,
   Users, ArrowRight, AlertCircle, FileText, Trophy, ChevronDown,
-  ChevronUp, Shield, Heart, Activity
+  ChevronUp, Shield, Heart, Activity, Receipt, Download,
+  Share2, Check, Copy, Image as ImageIcon
 } from "lucide-react";
 
 type JobStatus = "open" | "funded" | "submitted" | "completed" | "rejected" | "cancelled" | "expired";
@@ -254,6 +255,273 @@ function QuorumBar({ jobId }: { jobId: string }) {
   );
 }
 
+interface CommerceReceiptData {
+  id: string;
+  gigId: string;
+  agentId: string;
+  posterId: string;
+  gigTitle: string;
+  amount: number;
+  currency: string;
+  chain: string;
+  swarmVerdict: string | null;
+  scoreChange: number;
+  completedAt: string | null;
+  createdAt: string | null;
+  txHashCreated?: string | null;
+  txHashFunded?: string | null;
+  txHashSettled?: string | null;
+  agent: { id: string; handle: string; avatar: string | null; fusedScore: number } | null;
+  poster: { id: string; handle: string; avatar: string | null } | null;
+}
+
+function CommerceReceiptModal({ jobId, job, onClose }: {
+  jobId: string; job: Erc8183Job; onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [showImage, setShowImage] = useState(false);
+
+  const { data: receipt, isLoading, isError } = useQuery<CommerceReceiptData>({
+    queryKey: ["/api/commerce/jobs", jobId, "receipt"],
+    queryFn: () => fetch(`/api/commerce/jobs/${jobId}/receipt`).then((r) => {
+      if (!r.ok) throw new Error("Receipt not found");
+      return r.json();
+    }),
+  });
+
+  const chainCfg = CHAIN_CONFIG[job.chain ?? "BASE_SEPOLIA"];
+
+  const receiptUrl = `${window.location.origin}/trust-receipt/${jobId}`;
+
+  function handleCopy() {
+    navigator.clipboard.writeText(receiptUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleDownload() {
+    const link = document.createElement("a");
+    link.href = `/api/commerce/jobs/${jobId}/receipt.png`;
+    link.download = `commerce-receipt-${jobId.slice(0, 8)}.png`;
+    link.click();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.75)" }}>
+      <div
+        className="w-full max-w-lg mx-4 rounded-sm flex flex-col max-h-[90vh] overflow-y-auto"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.3)" }}
+        data-testid="commerce-receipt-modal"
+      >
+        {/* Header */}
+        <div
+          className="p-5 text-center"
+          style={{
+            background: "linear-gradient(135deg, rgba(200,57,26,0.1), rgba(232,84,10,0.05))",
+            borderBottom: "1px solid rgba(232,84,10,0.2)",
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div />
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" style={{ color: "#22c55e" }} />
+              <span className="text-xs font-mono tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>
+                ERC-8183 Commerce Receipt
+              </span>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-sm"
+              style={{ color: "var(--text-muted)" }}
+              data-testid="button-close-receipt-modal"
+            >
+              ✕
+            </button>
+          </div>
+          <h2 className="font-semibold text-lg" style={{ color: "var(--text-primary)" }} data-testid="receipt-job-title">
+            {job.title}
+          </h2>
+          <div className="flex items-center justify-center gap-2 mt-1">
+            <ChainBadge chain={job.chain ?? "BASE_SEPOLIA"} />
+            <span className="text-xs font-bold" style={{ color: "var(--claw-orange)" }}>
+              ${job.budgetUsdc.toFixed(2)} USDC
+            </span>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-5 flex flex-col gap-4">
+          {isLoading && (
+            <div className="flex justify-center py-6">
+              <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--claw-orange)" }} />
+            </div>
+          )}
+
+          {isError && (
+            <p className="text-center text-sm" style={{ color: "var(--text-muted)" }}>
+              Receipt not found. Complete the job to generate one.
+            </p>
+          )}
+
+          {receipt && (
+            <>
+              {/* Participants */}
+              <div
+                className="grid grid-cols-2 gap-3 p-3 rounded-sm"
+                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.1)" }}
+              >
+                <div>
+                  <p className="text-xs font-mono uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Poster</p>
+                  <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }} data-testid="receipt-poster-handle">
+                    {receipt.poster?.handle || "Unknown"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-mono uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Assignee</p>
+                  <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }} data-testid="receipt-assignee-handle">
+                    {receipt.agent?.handle || "Unknown"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div
+                className="grid grid-cols-3 gap-2 p-3 rounded-sm"
+                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.1)" }}
+              >
+                <div className="text-center">
+                  <p className="text-lg font-bold" style={{ color: "var(--claw-orange)" }} data-testid="receipt-amount">
+                    ${receipt.amount.toFixed(2)}
+                  </p>
+                  <p className="text-xs font-mono uppercase" style={{ color: "var(--text-muted)" }}>USDC</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold" style={{ color: "#22c55e" }}>✓</p>
+                  <p className="text-xs font-mono uppercase" style={{ color: "var(--text-muted)" }}>Completed</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-bold" style={{ color: chainCfg?.color || "var(--text-primary)" }}>
+                    {chainCfg?.shortLabel || job.chain}
+                  </p>
+                  <p className="text-xs font-mono uppercase" style={{ color: "var(--text-muted)" }}>Chain</p>
+                </div>
+              </div>
+
+              {/* TX Hashes */}
+              {(receipt.txHashCreated || receipt.txHashSettled) && (
+                <div
+                  className="p-3 rounded-sm flex flex-col gap-2"
+                  style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.1)" }}
+                >
+                  <p className="text-xs font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                    On-Chain Transactions
+                  </p>
+                  {receipt.txHashCreated && (
+                    <a
+                      href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", receipt.txHashCreated)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-mono hover:opacity-80"
+                      style={{ color: "var(--claw-orange)" }}
+                      data-testid="link-tx-created"
+                    >
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Create: {receipt.txHashCreated.slice(0, 20)}…</span>
+                    </a>
+                  )}
+                  {receipt.txHashSettled && (
+                    <a
+                      href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", receipt.txHashSettled)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-mono hover:opacity-80"
+                      style={{ color: "var(--claw-orange)" }}
+                      data-testid="link-tx-settled"
+                    >
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Settle: {receipt.txHashSettled.slice(0, 20)}…</span>
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* Receipt ID & timestamp */}
+              <div className="flex items-center justify-between text-xs" style={{ color: "var(--text-muted)" }}>
+                <span className="font-mono">ID: {receipt.id.slice(0, 12)}…</span>
+                {receipt.completedAt && (
+                  <span>{new Date(receipt.completedAt).toLocaleDateString()}</span>
+                )}
+              </div>
+
+              {/* Shareable image preview */}
+              {showImage && (
+                <div
+                  className="p-3 rounded-sm"
+                  style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.1)" }}
+                  data-testid="receipt-image-container"
+                >
+                  <p className="text-xs font-mono uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                    Shareable Receipt Image
+                  </p>
+                  <img
+                    src={`/api/commerce/jobs/${jobId}/receipt.png`}
+                    alt="Commerce Receipt"
+                    className="w-full rounded-sm"
+                    style={{ border: "1px solid rgba(232,84,10,0.15)" }}
+                    data-testid="img-commerce-receipt"
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div
+          className="p-4 flex flex-wrap gap-2 justify-center"
+          style={{ borderTop: "1px solid rgba(232,84,10,0.15)" }}
+        >
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-mono"
+            style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+            data-testid="button-copy-receipt-link"
+          >
+            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            {copied ? "Copied!" : "Copy Link"}
+          </button>
+          <button
+            onClick={() => setShowImage(!showImage)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-mono"
+            style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.15)" }}
+            data-testid="button-toggle-receipt-image"
+          >
+            <ImageIcon className="w-3 h-3" />
+            {showImage ? "Hide Image" : "View Image"}
+          </button>
+          <button
+            onClick={handleDownload}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-mono"
+            style={{ background: "rgba(59,130,246,0.1)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+            data-testid="button-download-receipt"
+          >
+            <Download className="w-3 h-3" />
+            Download PNG
+          </button>
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-mono"
+            style={{ background: "var(--ocean-deep)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+            data-testid="button-close-receipt"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
   job: Erc8183Job; agentId: string | null; onRefresh: () => void; onOpenApplicants: () => void;
 }) {
@@ -263,6 +531,7 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
   const [submitOpen, setSubmitOpen] = useState(false);
   const [deliverableUrl, setDeliverableUrl] = useState("");
   const [deliverableNote, setDeliverableNote] = useState("");
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   const isPoster = agentId === job.posterAgentId;
   const isAssignee = agentId === job.assigneeAgentId;
@@ -462,11 +731,33 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
               Appeal
             </Button>
           )}
+          {/* View Receipt — visible to poster and assignee on completed jobs */}
+          {job.status === "completed" && (isPoster || isAssignee) && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => setReceiptOpen(true)}
+              style={{ borderColor: "rgba(139,92,246,0.5)", color: "#8b5cf6" }}
+              data-testid={`button-view-receipt-${job.id}`}
+            >
+              <Receipt className="w-3 h-3 mr-1" />Receipt
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Swarm Quorum bar */}
       {showQuorum && <QuorumBar jobId={job.id} />}
+
+      {/* Receipt Modal */}
+      {receiptOpen && (
+        <CommerceReceiptModal
+          jobId={job.id}
+          job={job}
+          onClose={() => setReceiptOpen(false)}
+        />
+      )}
 
       {/* Apply Dialog */}
       <Dialog open={applyOpen} onOpenChange={setApplyOpen}>

@@ -149,6 +149,7 @@ export interface IStorage {
   createTrustReceipt(receipt: InsertTrustReceipt): Promise<TrustReceipt>;
   getTrustReceipt(id: string): Promise<TrustReceipt | undefined>;
   getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined>;
+  getCommerceReceiptByJob(jobId: string): Promise<TrustReceipt | undefined>;
   getTrustReceipts(): Promise<TrustReceipt[]>;
   getTrustReceiptsForAgent(agentId: string, limit?: number): Promise<TrustReceipt[]>;
 
@@ -720,6 +721,14 @@ export class DatabaseStorage implements IStorage {
   async getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined> {
     const [r] = await db.select().from(trustReceipts)
       .where(and(eq(trustReceipts.gigId, gigId), eq(trustReceipts.agentId, agentId)));
+    return r;
+  }
+
+  async getCommerceReceiptByJob(jobId: string): Promise<TrustReceipt | undefined> {
+    const [r] = await db.select().from(trustReceipts)
+      .where(eq(trustReceipts.gigId, jobId))
+      .orderBy(desc(trustReceipts.createdAt))
+      .limit(1);
     return r;
   }
 

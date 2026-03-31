@@ -9571,6 +9571,26 @@ export async function registerRoutes(
             onChainScore: Math.min((assignee.onChainScore ?? 0) + 10, 1000),
           });
         }
+        // Auto-generate commerce receipt on completion
+        try {
+          const existing = await storage.getCommerceReceiptByJob(jobId);
+          if (!existing) {
+            await storage.createTrustReceipt({
+              gigId: jobId,
+              agentId: job.assigneeAgentId,
+              posterId: job.posterAgentId,
+              gigTitle: job.title,
+              amount: job.budgetUsdc,
+              currency: "USDC",
+              chain: job.chain,
+              swarmVerdict: null,
+              scoreChange: 10,
+              tierBefore: null,
+              tierAfter: null,
+              completedAt: new Date(),
+            });
+          }
+        } catch (e: any) { console.warn("[ERC-8183] receipt creation skipped:", e.message); }
       }
 
       return res.json({ success: true, job: updated, txHash });
@@ -9602,6 +9622,136 @@ export async function registerRoutes(
       return res.json(history);
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to fetch agent jobs", error: err.message });
+    }
+  });
+
+  // POST /api/commerce/jobs/:id/receipt — create or get receipt for a completed commerce job
+  app.post("/api/commerce/jobs/:id/receipt", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const job = await storage.getErc8183Job(id);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.status !== "completed") return res.status(400).json({ message: "Job is not completed" });
+      if (!job.assigneeAgentId) return res.status(400).json({ message: "Job has no assignee" });
+
+      const existing = await storage.getCommerceReceiptByJob(id);
+      if (existing) {
+        const assignee = await storage.getAgent(existing.agentId);
+        const poster = await storage.getAgent(existing.posterId);
+        return res.json({
+          ...existing,
+          agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+          poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+        });
+      }
+
+      const receipt = await storage.createTrustReceipt({
+        gigId: id,
+        agentId: job.assigneeAgentId,
+        posterId: job.posterAgentId,
+        gigTitle: job.title,
+        amount: job.budgetUsdc,
+        currency: "USDC",
+        chain: job.chain,
+        swarmVerdict: null,
+        scoreChange: 10,
+        tierBefore: null,
+        tierAfter: null,
+        completedAt: new Date(),
+      });
+
+      const assignee = await storage.getAgent(receipt.agentId);
+      const poster = await storage.getAgent(receipt.posterId);
+      return res.status(201).json({
+        ...receipt,
+        agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+        poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to create receipt", error: err.message });
+    }
+  });
+
+  // GET /api/commerce/jobs/:id/receipt — get existing receipt for a commerce job
+  app.get("/api/commerce/jobs/:id/receipt", apiLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const job = await storage.getErc8183Job(id);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+
+      const receipt = await storage.getCommerceReceiptByJob(id);
+      if (!receipt) return res.status(404).json({ message: "Receipt not found" });
+
+      const assignee = await storage.getAgent(receipt.agentId);
+      const poster = await storage.getAgent(receipt.posterId);
+      return res.json({
+        ...receipt,
+        agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+        poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+        txHashCreated: job.txHashCreated,
+        txHashSettled: job.txHashSettled,
+        txHashFunded: job.txHashFunded,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch receipt", error: err.message });
+    }
+  });
+
+  // GET /api/commerce/jobs/:id/receipt.png — receipt image for a commerce job
+  app.get("/api/commerce/jobs/:id/receipt.png", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const job = await storage.getErc8183Job(id);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.status !== "completed") return res.status(400).json({ message: "Job is not completed" });
+      if (!job.assigneeAgentId) return res.status(400).json({ message: "Job has no assignee" });
+
+      const poster = await storage.getAgent(job.posterAgentId);
+      const assignee = await storage.getAgent(job.assigneeAgentId);
+
+      let receipt = await storage.getCommerceReceiptByJob(id);
+      if (!receipt) {
+        receipt = await storage.createTrustReceipt({
+          gigId: id,
+          agentId: job.assigneeAgentId,
+          posterId: job.posterAgentId,
+          gigTitle: job.title,
+          amount: job.budgetUsdc,
+          currency: "USDC",
+          chain: job.chain,
+          swarmVerdict: null,
+          scoreChange: 10,
+          tierBefore: null,
+          tierAfter: null,
+          completedAt: new Date(),
+        });
+      }
+
+      const chainLabel = job.chain === "SKALE_TESTNET" ? "SKALE" : "Base Sepolia";
+
+      const png = await generateReceiptImage({
+        receiptId: receipt.id,
+        gigTitle: job.title,
+        amount: job.budgetUsdc,
+        currency: "USDC",
+        chain: chainLabel,
+        posterHandle: poster?.handle || "Unknown",
+        assigneeHandle: assignee?.handle || "Unknown",
+        posterMoltDomain: poster?.moltDomain || null,
+        assigneeMoltDomain: assignee?.moltDomain || null,
+        swarmVerdict: "COMPLETED",
+        votesFor: 0,
+        votesAgainst: 0,
+        posterScoreChange: 0,
+        assigneeScoreChange: 10,
+        completedAt: receipt.completedAt,
+      });
+
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.send(png);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to generate receipt image", error: err.message });
     }
   });
 
