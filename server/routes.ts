@@ -6261,13 +6261,29 @@ export async function registerRoutes(
       const force = req.body?.force === true;
       const before = await getSkaleOracleFuelBalance();
 
-      const result = force ? await forceTopUpSkaleFuel() : await checkAndTopUpSkaleFuel();
+      if (force) {
+        // Forced top-up: always attempt faucet and report real outcome
+        const result = await forceTopUpSkaleFuel();
+        const after = await getSkaleOracleFuelBalance();
+        const httpStatus = result.success ? 200 : 502;
+        return res.status(httpStatus).json({
+          success: result.success,
+          forced: true,
+          wasFunded: result.success,
+          message: result.message,
+          balanceBefore: before.ether,
+          balanceAfter: after.ether,
+        });
+      }
 
+      // Threshold-based: attempt top-up only if balance is low; always returns 200
+      const result = await checkAndTopUpSkaleFuel();
       const after = await getSkaleOracleFuelBalance();
-      res.json({
-        success: true,
-        forced: force,
-        wasFunded: "wasFunded" in result ? result.wasFunded : result.success,
+      const fundFailed = !result.wasFunded && result.message.startsWith("Auto-fund failed");
+      return res.status(fundFailed ? 502 : 200).json({
+        success: !fundFailed,
+        forced: false,
+        wasFunded: result.wasFunded,
         message: result.message,
         balanceBefore: before.ether,
         balanceAfter: after.ether,
@@ -6280,9 +6296,11 @@ export async function registerRoutes(
   app.get("/api/admin/skale/oracle-fuel", adminAuthMiddleware, async (_req, res) => {
     try {
       const { getSkaleOracleFuelBalance } = await import("./erc8183-service");
+      const { ORACLE_WALLET_ADDRESS } = await import("./blockchain");
       const { raw, ether } = await getSkaleOracleFuelBalance();
       res.json({
-        address: process.env.DEPLOYER_PRIVATE_KEY ? "configured" : "not-configured",
+        oracleAddress: ORACLE_WALLET_ADDRESS,
+        configured: !!process.env.DEPLOYER_PRIVATE_KEY,
         balanceRaw: raw.toString(),
         balanceEther: ether,
         lowThreshold: 0.001,
