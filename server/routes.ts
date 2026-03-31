@@ -9653,7 +9653,7 @@ export async function registerRoutes(
       let selectedValidatorIds: string[] = [];
       if (!existingValidation) {
         const COMMERCE_VALIDATOR_MIN_FUSED_SCORE = 5;
-        const COMMERCE_VALIDATOR_MIN_AGE_DAYS = 1;
+        const COMMERCE_VALIDATOR_MIN_AGE_DAYS = 3;
         const COMMERCE_VALIDATOR_COUNT = 3;
         const COMMERCE_THRESHOLD = COMMERCE_VALIDATOR_COUNT;
 
