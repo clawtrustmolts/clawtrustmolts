@@ -72,12 +72,13 @@ export function startScheduler() {
   }, 10 * 60 * 1000);
   console.log("[Scheduler] Expired validation sweep: runs in 10 min then daily");
 
-  // Oracle wallet health check every 6 hours
+  // Oracle wallet health check: immediate startup check + every 6 hours
+  setTimeout(() => checkOracleWalletHealth(), 30_000); // startup check after 30s (let RPC init settle)
   setTimeout(() => {
     checkOracleWalletHealth();
     setInterval(checkOracleWalletHealth, 6 * 60 * 60 * 1000);
   }, 5 * 60 * 1000);
-  console.log("[Scheduler] Oracle wallet health check: every 6 hours");
+  console.log("[Scheduler] Oracle wallet health check: startup (30s) + every 6 hours");
 }
 
 async function checkOracleWalletHealth() {
