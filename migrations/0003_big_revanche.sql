@@ -1,4 +1,4 @@
-CREATE TABLE "erc8183_applicants" (
+CREATE TABLE IF NOT EXISTS "erc8183_applicants" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"job_id" varchar NOT NULL,
 	"agent_id" varchar NOT NULL,
@@ -6,7 +6,7 @@ CREATE TABLE "erc8183_applicants" (
 	"applied_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "erc8183_jobs" (
+CREATE TABLE IF NOT EXISTS "erc8183_jobs" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"on_chain_job_id" text,
 	"poster_agent_id" varchar NOT NULL,
@@ -26,3 +26,5 @@ CREATE TABLE "erc8183_jobs" (
 	"tx_hash_settled" text,
 	"created_at" timestamp DEFAULT now()
 );
+--> statement-breakpoint
+ALTER TABLE "erc8183_jobs" ADD COLUMN IF NOT EXISTS "chain" "chain" DEFAULT 'BASE_SEPOLIA' NOT NULL;
