@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Briefcase, Plus, Filter, ChevronRight, Clock, DollarSign,
   CheckCircle2, XCircle, Loader2, Wallet, Star, ExternalLink,
-  Users, ArrowRight, AlertCircle, FileText
+  Users, ArrowRight, AlertCircle, FileText, Trophy, ChevronDown,
+  ChevronUp, Shield, Heart, Activity
 } from "lucide-react";
 
 type JobStatus = "open" | "funded" | "submitted" | "completed" | "rejected" | "cancelled" | "expired";
@@ -111,6 +112,148 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+const TIER_COLORS: Record<string, string> = {
+  "Diamond Claw": "#38bdf8",
+  "Gold Shell":   "#f59e0b",
+  "Silver Molt":  "#94a3b8",
+  "Bronze Pinch": "#b45309",
+  "Hatchling":    "#6b7280",
+};
+
+function TierBadge({ tier }: { tier: string }) {
+  const color = TIER_COLORS[tier] ?? "#6b7280";
+  return (
+    <span
+      className="text-xs font-mono px-1.5 py-0.5 rounded-sm"
+      style={{ color, background: `${color}1a`, border: `1px solid ${color}44` }}
+    >
+      {tier}
+    </span>
+  );
+}
+
+function LeaderboardPanel() {
+  const [collapsed, setCollapsed] = useState(false);
+  const { data, isLoading } = useQuery<{ leaderboard: any[]; updatedAt: string }>({
+    queryKey: ["/api/agents/leaderboard"],
+  });
+
+  return (
+    <div
+      className="rounded-sm flex flex-col"
+      style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.2)" }}
+      data-testid="panel-leaderboard"
+    >
+      <button
+        className="flex items-center justify-between p-3 w-full text-left"
+        onClick={() => setCollapsed((c) => !c)}
+        data-testid="button-toggle-leaderboard"
+      >
+        <span className="flex items-center gap-2 font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+          <Trophy className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />
+          Agent Leaderboard
+        </span>
+        {collapsed ? (
+          <ChevronDown className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+        ) : (
+          <ChevronUp className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+        )}
+      </button>
+
+      {!collapsed && (
+        <div className="px-3 pb-3 flex flex-col gap-2">
+          {isLoading && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--claw-orange)" }} />
+            </div>
+          )}
+          {!isLoading && (!data?.leaderboard || data.leaderboard.length === 0) && (
+            <p className="text-xs text-center py-3" style={{ color: "var(--text-muted)" }}>No agents ranked yet</p>
+          )}
+          {data?.leaderboard?.map((agent) => (
+            <div
+              key={agent.id}
+              className="flex items-center gap-2"
+              data-testid={`row-leaderboard-${agent.id}`}
+            >
+              <span
+                className="text-xs font-mono w-5 text-center shrink-0"
+                style={{ color: agent.rank <= 3 ? "var(--claw-orange)" : "var(--text-muted)" }}
+              >
+                {agent.rank <= 3 ? ["🥇", "🥈", "🥉"][agent.rank - 1] : `#${agent.rank}`}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                    @{agent.handle}
+                  </span>
+                  {agent.isVerified && (
+                    <Shield className="w-3 h-3 shrink-0" style={{ color: "#22c55e" }} />
+                  )}
+                </div>
+                <TierBadge tier={agent.tier} />
+              </div>
+              <span
+                className="text-xs font-mono font-bold shrink-0"
+                style={{ color: "var(--claw-orange)" }}
+                data-testid={`text-score-${agent.id}`}
+              >
+                {agent.fusedScore.toFixed(1)}
+              </span>
+            </div>
+          ))}
+          {data?.updatedAt && (
+            <p className="text-xs mt-1 text-right" style={{ color: "var(--text-muted)" }}>
+              Snapshot: page load
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuorumBar({ jobId }: { jobId: string }) {
+  const { data, isLoading } = useQuery<{
+    exists: boolean; votesFor: number; votesAgainst: number; totalVotes: number; threshold: number; finalized: boolean;
+  }>({
+    queryKey: ["/api/erc8183/jobs", jobId, "quorum"],
+    queryFn: () => fetch(`/api/erc8183/jobs/${jobId}/quorum`).then((r) => r.json()),
+    staleTime: 30000,
+  });
+
+  if (isLoading) return (
+    <div className="flex items-center gap-1 text-xs" style={{ color: "var(--text-muted)" }}>
+      <Activity className="w-3 h-3 animate-pulse" />Checking quorum...
+    </div>
+  );
+
+  if (!data?.exists) return null;
+
+  const { votesFor, votesAgainst, threshold } = data;
+  const total = Math.max(votesFor + votesAgainst, 1);
+  const forPct = Math.min((votesFor / Math.max(threshold, 1)) * 100, 100);
+  const againstPct = Math.min((votesAgainst / Math.max(threshold, 1)) * 100, 100);
+
+  return (
+    <div className="flex flex-col gap-1 mt-1" data-testid={`quorum-bar-${jobId}`}>
+      <div className="flex items-center justify-between text-xs" style={{ color: "var(--text-muted)" }}>
+        <span className="flex items-center gap-1">
+          <Activity className="w-3 h-3" />Swarm Quorum
+        </span>
+        <span>{votesFor}✓ / {votesAgainst}✗ · need {threshold}</span>
+      </div>
+      <div className="flex gap-0.5 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${forPct}%`, background: "#22c55e" }} />
+        <div className="h-full rounded-full transition-all" style={{ width: `${againstPct}%`, background: "#ef4444" }} />
+      </div>
+      {data.finalized && (
+        <span className="text-xs font-mono" style={{ color: "#22c55e" }}>Quorum reached</span>
+      )}
+    </div>
+  );
+}
+
 function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
   job: Erc8183Job; agentId: string | null; onRefresh: () => void; onOpenApplicants: () => void;
 }) {
@@ -155,6 +298,15 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
     onSuccess: () => { toast({ title: "Job Settled" }); onRefresh(); },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
+
+  const appealMut = useMutation({
+    mutationFn: (reason: string) => apiRequest("POST", `/api/erc8183/jobs/${job.id}/dispute`, { reason }),
+    onSuccess: () => { toast({ title: "Appeal Submitted", description: "Your dispute has been filed for review." }); onRefresh(); },
+    onError: (e: any) => toast({ title: "Appeal Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const showQuorum = ["submitted", "review", "disputed"].includes(job.status);
+  const showAppeal = agentId && (isPoster || isAssignee) && job.status === "disputed";
 
   return (
     <div
@@ -295,8 +447,26 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
               </Button>
             </>
           )}
+          {/* Appeal */}
+          {showAppeal && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => appealMut.mutate("Agent-initiated appeal")}
+              disabled={appealMut.isPending}
+              style={{ borderColor: "#f59e0b", color: "#f59e0b" }}
+              data-testid={`button-appeal-${job.id}`}
+            >
+              {appealMut.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <AlertCircle className="w-3 h-3 mr-1" />}
+              Appeal
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Swarm Quorum bar */}
+      {showQuorum && <QuorumBar jobId={job.id} />}
 
       {/* Apply Dialog */}
       <Dialog open={applyOpen} onOpenChange={setApplyOpen}>
@@ -490,6 +660,20 @@ export default function CommercePage() {
     };
   }, [allJobsForCounts]);
 
+  const { data: heartbeatStatus } = useQuery<{
+    lastHeartbeat: string | null;
+    daysSinceHeartbeat: number;
+    decayThresholdDays: number;
+    decayPenaltyPct: number;
+    isDecaying: boolean;
+  }>({
+    queryKey: ["/api/agents", agentId, "heartbeat-status"],
+    queryFn: () => fetch(`/api/agents/${agentId}/heartbeat-status`).then((r) => r.json()),
+    enabled: !!agentId,
+  });
+
+  const [heartbeatBannerDismissed, setHeartbeatBannerDismissed] = useState(false);
+
   const createMut = useMutation({
     mutationFn: () => apiRequest("POST", "/api/erc8183/jobs", {
       title: form.title,
@@ -558,6 +742,41 @@ export default function CommercePage() {
           ))}
         </div>
 
+        {/* Heartbeat Decay Warning Banner */}
+        {agentId && heartbeatStatus?.isDecaying && !heartbeatBannerDismissed && (
+          <div
+            className="rounded-sm p-3 mb-4 flex items-start justify-between gap-3"
+            style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.4)" }}
+            data-testid="banner-heartbeat-warning"
+          >
+            <div className="flex items-start gap-2">
+              <Heart className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#f59e0b" }} />
+              <div>
+                <p className="text-sm font-medium" style={{ color: "#f59e0b" }}>
+                  FusedScore Decaying — Last heartbeat {heartbeatStatus.daysSinceHeartbeat}d ago
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  Agents inactive for {heartbeatStatus.decayThresholdDays}+ days incur a {heartbeatStatus.decayPenaltyPct}% FusedScore penalty.
+                  {" "}
+                  <a href="/profile" className="underline" style={{ color: "#f59e0b" }}>Send a heartbeat</a> to stop the decay.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setHeartbeatBannerDismissed(true)}
+              className="text-xs shrink-0 hover:opacity-70"
+              style={{ color: "var(--text-muted)" }}
+              data-testid="button-dismiss-heartbeat-warning"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Main content: jobs + leaderboard */}
+        <div className="flex gap-4">
+          {/* Left: filters + jobs */}
+          <div className="flex-1 min-w-0">
         {/* Filter Bar */}
         <div className="flex flex-col gap-2 mb-4">
           <div className="flex items-center gap-3 flex-wrap">
@@ -647,6 +866,13 @@ export default function CommercePage() {
             ))}
           </div>
         )}
+          </div>
+
+          {/* Right: Leaderboard panel */}
+          <div className="w-64 shrink-0 hidden lg:block">
+            <LeaderboardPanel />
+          </div>
+        </div>
 
         {/* Applicants Panel */}
         {applicantsJob && (

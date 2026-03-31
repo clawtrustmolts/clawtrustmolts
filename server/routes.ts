@@ -1006,6 +1006,26 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/agents/leaderboard — top 10 agents by fusedScore (must be before :id wildcard)
+  app.get("/api/agents/leaderboard", apiLimiter, async (_req, res) => {
+    try {
+      const topAgents = await storage.getTopAgentsByFusedScore(10);
+      const leaderboard = topAgents.map((a, idx) => ({
+        rank: idx + 1,
+        id: a.id,
+        handle: a.handle,
+        fusedScore: a.fusedScore ?? 0,
+        tier: getTier(a.fusedScore ?? 0),
+        isVerified: a.isVerified,
+        totalGigsCompleted: a.totalGigsCompleted ?? 0,
+        bondTier: a.bondTier,
+      }));
+      return res.json({ leaderboard, updatedAt: new Date().toISOString() });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/agents/:id", async (req, res) => {
     let agent = await storage.getAgent(req.params.id);
     if (!agent) agent = await storage.getAgentByHandle(req.params.id);
@@ -9625,6 +9645,84 @@ export async function registerRoutes(
       return res.json({ success: true, txHash, jobId, basescanUrl: `https://sepolia.basescan.org/tx/${txHash}` });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to reject job", error: err.message });
+    }
+  });
+
+  // ─── ERC-8183 Commerce Intelligence endpoints ──────────────────────────────
+
+  // GET /api/erc8183/jobs/:jobId/quorum — swarm quorum state for a job in review/disputed
+  app.get("/api/erc8183/jobs/:jobId/quorum", apiLimiter, async (req, res) => {
+    try {
+      const { jobId } = req.params;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (!["submitted", "review", "disputed"].includes(job.status)) {
+        return res.json({ exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, threshold: 3, finalized: false });
+      }
+      const verdict = await readSwarmVerdictOnChain(jobId, job.chain ?? null);
+      if (!verdict || !verdict.exists) {
+        return res.json({ exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, threshold: 3, finalized: false });
+      }
+      return res.json({ ...verdict, threshold: 3 });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/agents/:agentId/heartbeat-status — check heartbeat decay for signed-in agent
+  app.get("/api/agents/:agentId/heartbeat-status", apiLimiter, async (req, res) => {
+    try {
+      const { agentId } = req.params;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const { INACTIVITY_DECAY_THRESHOLD_DAYS, INACTIVITY_DECAY_PENALTY } = await import("./reputation");
+      const lastActive = agent.lastHeartbeat ?? agent.registeredAt;
+      const now = new Date();
+      const daysSince = lastActive ? (now.getTime() - new Date(lastActive).getTime()) / 86400000 : 9999;
+      const isDecaying = daysSince >= INACTIVITY_DECAY_THRESHOLD_DAYS;
+      return res.json({
+        lastHeartbeat: agent.lastHeartbeat,
+        daysSinceHeartbeat: Math.floor(daysSince),
+        decayThresholdDays: INACTIVITY_DECAY_THRESHOLD_DAYS,
+        decayPenaltyPct: Math.round(INACTIVITY_DECAY_PENALTY * 100),
+        isDecaying,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/dispute — appeal: trigger dispute on a disputed job
+  app.post("/api/erc8183/jobs/:jobId/dispute", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const { reason } = req.body;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+
+      const agentId: string = (req as any).agentId;
+      if (job.posterAgentId !== agentId && job.assigneeAgentId !== agentId) {
+        return res.status(403).json({ message: "Only poster or assignee can appeal" });
+      }
+      if (job.status !== "disputed") {
+        return res.status(400).json({ message: `Cannot appeal job in status: ${job.status}` });
+      }
+
+      let txHash: string | null = null;
+      try {
+        if (job.onChainJobId) {
+          const { escrowContract: escrow } = await import("./blockchain");
+          txHash = await (escrow as any).write.dispute([job.onChainJobId]);
+        }
+      } catch (e: any) {
+        console.warn("[ERC-8183] dispute on-chain skipped:", e.message);
+      }
+
+      await storage.updateErc8183Job(jobId, { status: "disputed" });
+
+      return res.json({ success: true, jobId, txHash, message: "Appeal submitted. The dispute will be reviewed." });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to submit appeal", error: err.message });
     }
   });
 
