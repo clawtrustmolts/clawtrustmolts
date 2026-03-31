@@ -115,15 +115,87 @@ async function readChainContract(functionName: string, args: unknown[] = [], cha
   } as Parameters<typeof pubClient.readContract>[0]);
 }
 
+const SKALE_CHAIN_NAME = "jubilant-horrible-ancha";
+const SFUEL_FAUCET_URL = "https://sfuel.skale.network/api";
+const SFUEL_LOW_THRESHOLD = BigInt("1000000000000000"); // 0.001 sFUEL
+
+export async function getSkaleOracleFuelBalance(): Promise<{ raw: bigint; ether: number }> {
+  const address = skaleWalletClient?.account?.address as Address | undefined;
+  if (!address) return { raw: 0n, ether: 0 };
+  try {
+    const raw = await skalePublicClient.getBalance({ address });
+    return { raw, ether: Number(raw) / 1e18 };
+  } catch {
+    return { raw: 0n, ether: 0 };
+  }
+}
+
+export async function topUpSkaleFuel(targetAddress: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const resp = await fetch(SFUEL_FAUCET_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: targetAddress, schainName: SKALE_CHAIN_NAME }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (resp.ok) {
+      const body = await resp.json().catch(() => ({})) as any;
+      console.log(`[sFUEL] Auto-funded oracle ${targetAddress} — response:`, body);
+      return { success: true, message: `sFUEL distributed to ${targetAddress}` };
+    }
+    const text = await resp.text().catch(() => resp.statusText);
+    console.warn(`[sFUEL] Faucet responded ${resp.status}: ${text.slice(0, 200)}`);
+    return { success: false, message: `Faucet returned ${resp.status}: ${text.slice(0, 100)}` };
+  } catch (err: any) {
+    console.warn("[sFUEL] Faucet request failed:", err.message?.slice(0, 200));
+    return { success: false, message: `Faucet request failed: ${err.message?.slice(0, 100)}` };
+  }
+}
+
 async function assertSkaleOracleFunded(oracleAddress: Address): Promise<void> {
   const balance = await skalePublicClient.getBalance({ address: oracleAddress });
-  if (balance === 0n) {
+  if (balance > 0n) return; // funded — proceed
+
+  // Balance is 0: attempt auto-top-up from the SKALE sFUEL faucet
+  console.warn(`[sFUEL] Oracle ${oracleAddress} has 0 sFUEL — attempting auto-fund via SKALE faucet...`);
+  const result = await topUpSkaleFuel(oracleAddress);
+  if (!result.success) {
     throw new Error(
-      "SKALE oracle wallet has 0 sFUEL — SKALE transactions require sFUEL to pay gas. " +
-      "Visit the SKALE testnet faucet (https://sfuel.skale.network/) and fund: " +
-      oracleAddress
+      `SKALE oracle wallet has 0 sFUEL and auto-funding failed (${result.message}). ` +
+      `Fund manually at https://sfuel.skale.network/ for address: ${oracleAddress}`
     );
   }
+
+  // Give the faucet tx a moment to land, then re-check
+  await new Promise(r => setTimeout(r, 3_000));
+  const recheck = await skalePublicClient.getBalance({ address: oracleAddress });
+  if (recheck === 0n) {
+    throw new Error(
+      `SKALE oracle wallet still has 0 sFUEL after auto-fund attempt. ` +
+      `Fund manually at https://sfuel.skale.network/ for address: ${oracleAddress}`
+    );
+  }
+  console.log(`[sFUEL] Auto-fund succeeded — oracle ${oracleAddress} balance: ${Number(recheck) / 1e18} sFUEL`);
+}
+
+export async function checkAndTopUpSkaleFuel(): Promise<{ wasFunded: boolean; balanceEther: number; message: string }> {
+  const address = skaleWalletClient?.account?.address as Address | undefined;
+  if (!address) return { wasFunded: false, balanceEther: 0, message: "Oracle wallet not configured" };
+
+  const { raw, ether } = await getSkaleOracleFuelBalance();
+
+  if (raw > SFUEL_LOW_THRESHOLD) {
+    return { wasFunded: false, balanceEther: ether, message: `sFUEL OK (${ether.toFixed(6)} sFUEL)` };
+  }
+
+  console.warn(`[sFUEL] Oracle sFUEL low (${ether.toFixed(6)}) — auto-topping up...`);
+  const result = await topUpSkaleFuel(address);
+  if (result.success) {
+    await new Promise(r => setTimeout(r, 3_000));
+    const { ether: newEther } = await getSkaleOracleFuelBalance();
+    return { wasFunded: true, balanceEther: newEther, message: `Auto-funded. New balance: ${newEther.toFixed(6)} sFUEL` };
+  }
+  return { wasFunded: false, balanceEther: ether, message: `Auto-fund failed: ${result.message}` };
 }
 
 async function writeContractAsOracle(functionName: string, args: unknown[], chain?: ERC8183Chain): Promise<string> {

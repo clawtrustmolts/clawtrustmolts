@@ -6255,6 +6255,40 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/skale/fund-oracle", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const { checkAndTopUpSkaleFuel, getSkaleOracleFuelBalance } = await import("./erc8183-service");
+      const before = await getSkaleOracleFuelBalance();
+      const result = await checkAndTopUpSkaleFuel();
+      const after = await getSkaleOracleFuelBalance();
+      res.json({
+        success: true,
+        wasFunded: result.wasFunded,
+        message: result.message,
+        balanceBefore: before.ether,
+        balanceAfter: after.ether,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get("/api/admin/skale/oracle-fuel", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const { getSkaleOracleFuelBalance } = await import("./erc8183-service");
+      const { raw, ether } = await getSkaleOracleFuelBalance();
+      res.json({
+        address: process.env.DEPLOYER_PRIVATE_KEY ? "configured" : "not-configured",
+        balanceRaw: raw.toString(),
+        balanceEther: ether,
+        lowThreshold: 0.001,
+        isLow: ether < 0.001,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/admin/cleanup-queue", adminAuthMiddleware, async (_req, res) => {
     try {
       const cleaned = await cleanupStuckQueueEntries();
