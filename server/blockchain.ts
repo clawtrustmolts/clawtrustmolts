@@ -223,10 +223,59 @@ export const skaleSwarmValidator = getContract({
   client: { public: skaleSwarmPublicClient, wallet: skaleWalletClient ?? undefined },
 });
 
+// ─── Local Nonce Manager ─────────────────────────────────────────────────────
+// Base Sepolia (and SKALE) RPC nodes sometimes don't reflect pending txs quickly
+// enough when eth_getTransactionCount("pending") is called for rapid sequential
+// transactions. This means two consecutive calls can receive the same nonce,
+// producing "nonce too low" errors after the first tx mines.
+//
+// Solution: track the nonce locally after the first fetch and auto-increment
+// without querying the chain again. Reset only on nonce-related errors.
+class NonceMgr {
+  private next: number | null = null;
+
+  reset(): void { this.next = null; }
+
+  async acquire(getFromChain: () => Promise<number>): Promise<number> {
+    if (this.next === null) {
+      this.next = await getFromChain();
+    }
+    return this.next++;
+  }
+
+  onError(err: any): void {
+    const msg = ((err?.message ?? "") as string).toLowerCase();
+    if (
+      msg.includes("nonce") ||
+      msg.includes("already known") ||
+      msg.includes("replacement transaction underpriced")
+    ) {
+      this.next = null; // force re-fetch from chain on next tx
+    }
+  }
+}
+
+const _baseNonceMgr = new NonceMgr();
+const _skaleNonceMgr = new NonceMgr();
+
 // Separate nonce lock for SKALE chain (independent nonce sequence from Base Sepolia)
 let _skaleNonceLock: Promise<void> = Promise.resolve();
-async function withSkaleNonceLock(fn: () => any): Promise<any> {
-  const result = _skaleNonceLock.then(fn);
+async function withSkaleNonceLock(fn: (nonce: number) => Promise<any>): Promise<any> {
+  const result = _skaleNonceLock.then(async () => {
+    if (!skaleWalletClient?.account) return fn(0);
+    const nonce = await _skaleNonceMgr.acquire(() =>
+      skaleSwarmPublicClient.getTransactionCount({
+        address: skaleWalletClient!.account!.address,
+        blockTag: "pending",
+      })
+    );
+    try {
+      return await fn(nonce);
+    } catch (err: any) {
+      _skaleNonceMgr.onError(err);
+      throw err;
+    }
+  });
   _skaleNonceLock = result.then(() => {}, () => {});
   return result;
 }
@@ -250,18 +299,27 @@ function isWriteReady(): boolean {
 }
 
 // ─── Nonce serialization lock — prevents concurrent tx nonce conflicts ───────
-// All blockchain write operations must go through withNonceLock so that
-// only one transaction is in-flight at a time, preventing "nonce too low" errors.
+// Uses NonceMgr above to track nonce locally, avoiding RPC races.
 
 let _nonceLock: Promise<void> = Promise.resolve();
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function withNonceLock(fn: () => any): Promise<any> {
-  const result = _nonceLock.then(fn);
-  _nonceLock = result.then(
-    () => {},
-    () => {}
-  );
+async function withNonceLock(fn: (nonce: number) => Promise<any>): Promise<any> {
+  const result = _nonceLock.then(async () => {
+    if (!walletClient?.account) return fn(0); // no oracle, let viem pick nonce
+    const nonce = await _baseNonceMgr.acquire(() =>
+      publicClient.getTransactionCount({
+        address: walletClient!.account!.address,
+        blockTag: "pending",
+      })
+    );
+    try {
+      return await fn(nonce);
+    } catch (err: any) {
+      _baseNonceMgr.onError(err);
+      throw err;
+    }
+  });
+  _nonceLock = result.then(() => {}, () => {});
   return result;
 }
 
@@ -285,13 +343,13 @@ export async function mintPassportForAgent(agent: {
   const metadataUri = `https://clawtrust.org/api/agents/${agent.id}/metadata`;
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (clawCardNFT as any).write.adminMintFull([
         agent.walletAddress as Address,
         agent.handle,
         metadataUri,
         agent.skills,
-      ])
+      ], { nonce })
     );
 
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
@@ -352,11 +410,11 @@ export async function setMoltDomainOnChain(
   if (!isWriteReady()) return null;
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (clawCardNFT as any).write.setMoltDomain([
         BigInt(tokenId),
         moltDomain,
-      ])
+      ], { nonce })
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Passport] .molt domain set: ${moltDomain} tx=${txHash}`);
@@ -394,7 +452,7 @@ export async function updateReputationOnChain(opts: {
   const proofUri      = `ipfs://clawtrust/reputation/${opts.agentWallet}`;
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (repAdapter as any).write.updateFusedScore([
         opts.agentWallet as Address,
         BigInt(rawOnChain),
@@ -402,7 +460,7 @@ export async function updateReputationOnChain(opts: {
         BigInt(rawPerf),
         BigInt(rawBond),
         proofUri,
-      ])
+      ], { nonce })
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Reputation] On-chain updated for ${opts.agentWallet} tx=${txHash}`);
@@ -431,12 +489,12 @@ export async function lockEscrowOnChain(opts: {
   const amountRaw = parseUnits(opts.amountUsdc.toString(), 6);
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (escrowContract as any).write.lockUSDC([
         gigIdBytes32,
         opts.payeeWallet as Address,
         amountRaw,
-      ])
+      ], { nonce })
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Escrow] Locked ${opts.amountUsdc} USDC for gig ${opts.gigId} tx=${txHash}`);
@@ -474,7 +532,7 @@ export async function createSwarmValidationOnChain(opts: {
   const chainLabel = useSkale ? "SKALE" : "Base";
 
   try {
-    const txHash = await lockFn(() =>
+    const txHash = await lockFn((nonce) =>
       (contract as any).write.createValidation([
         gigIdBytes32,
         opts.posterWallet  as Address,
@@ -483,7 +541,7 @@ export async function createSwarmValidationOnChain(opts: {
         BigInt(opts.threshold),
         BigInt(0),
         usdcAddress,
-      ])
+      ], { nonce })
     );
     await waitClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Swarm][${chainLabel}] Validation created on-chain for gig ${opts.gigId} tx=${txHash}`);
@@ -518,11 +576,11 @@ export async function castSwarmVoteOnChain(opts: {
   const chainLabel = useSkale ? "SKALE" : "Base";
 
   try {
-    const txHash = await lockFn(() =>
+    const txHash = await lockFn((nonce) =>
       (contract as any).write.vote([
         gigIdBytes32,
         voteType,
-      ])
+      ], { nonce })
     );
     await waitClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Swarm][${chainLabel}] Vote ${opts.approve ? "Approve" : "Reject"} for gig ${opts.gigId} tx=${txHash}`);
@@ -633,10 +691,10 @@ export async function updatePerformanceScoreOnChain(opts: {
   const clampedScore = Math.min(100, Math.max(0, Math.round(opts.score)));
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (bondContract as any).write.updatePerformanceScore(
         [opts.agentWallet as Address, BigInt(clampedScore)],
-        { gas: 100000n }
+        { gas: 100000n, nonce }
       )
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
@@ -672,10 +730,10 @@ export async function lockBondForGigOnChain(opts: {
   const amountRaw = parseUnits(opts.amount.toFixed(6), 6);
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (bondContract as any).write.lockBondForGig(
         [gigIdBytes32, opts.agentWallet as Address, amountRaw],
-        { gas: 150000n }
+        { gas: 150000n, nonce }
       )
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
@@ -705,10 +763,10 @@ export async function slashBondOnChain(opts: {
   const gigIdBytes32 = gigIdToBytes32(opts.gigId);
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (bondContract as any).write.adminFinalize(
         [gigIdBytes32, false],
-        { gas: 150000n }
+        { gas: 150000n, nonce }
       )
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
@@ -772,21 +830,22 @@ export async function depositBondOnChain(opts: {
   const bondContractAddress = CONTRACT_ADDRESSES.bond;
 
   try {
-    const approveTx = await withNonceLock(() =>
+    const approveTx = await withNonceLock((nonce) =>
       walletClient!.writeContract({
         address: USDC_ADDRESS,
         abi: USDC_ABI,
         functionName: "approve",
         args: [bondContractAddress, amountRaw],
+        nonce,
       })
     );
     await publicClient.waitForTransactionReceipt({ hash: approveTx });
     console.log(`[Bond] depositOnChain: approved ${opts.amount} USDC tx=${approveTx}`);
 
-    const depositTx = await withNonceLock(() =>
+    const depositTx = await withNonceLock((nonce) =>
       (bondContract as any).write.depositFor(
         [opts.agentWallet as Address, amountRaw],
-        { gas: 150000n }
+        { gas: 150000n, nonce }
       )
     );
     await publicClient.waitForTransactionReceipt({ hash: depositTx });
@@ -1170,8 +1229,8 @@ export async function expireValidationOnChain(gigId: string): Promise<string | n
   const gigIdBytes32 = ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
 
   try {
-    const txHash = await withNonceLock(() =>
-      (swarmValidator as any).write.expireValidation([gigIdBytes32])
+    const txHash = await withNonceLock((nonce) =>
+      (swarmValidator as any).write.expireValidation([gigIdBytes32], { nonce })
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Sweep] expireValidation on-chain for gig ${gigId} tx=${txHash}`);
