@@ -9341,52 +9341,49 @@ export async function registerRoutes(
   const { getERC8183Stats, getERC8183Job, oracleCompleteJob, oracleRejectJob, isRegisteredAgent: isRegisteredERC8183, getClawTrustACAddress, getExplorerUrl: getERC8183ExplorerUrl, toERC8183Chain, oracleCreateJob, oracleFundJob, oracleAssignProvider, oracleSubmitDeliverable, oracleCancelJob } = await import("./erc8183-service");
 
   app.get("/api/erc8183/stats", apiLimiter, async (req, res) => {
+    // Always build DB stats from erc8183_jobs (the correct table)
+    const getDbStats = async () => {
+      const allJobs = await storage.getErc8183Jobs({ limit: 1000 });
+      const total = await storage.countErc8183Jobs();
+      const completed = allJobs.filter(j => j.status === "completed").length;
+      const open = allJobs.filter(j => j.status === "open").length;
+      const funded = allJobs.filter(j => j.status === "funded").length;
+      const totalVolume = allJobs.reduce((sum, j) => sum + (j.budgetUsdc ?? 0), 0);
+      return { total, completed, open, funded, totalVolume };
+    };
+
     try {
       const stats = await getERC8183Stats(toERC8183Chain(req.query.chain as string | undefined));
-      // Enrich with DB-level gig counts as supplemental data
-      try {
-        const allGigs = await storage.getGigs();
-        const completedGigs = allGigs.filter(g => g.status === "completed").length;
-        const pendingGigs = allGigs.filter(g => g.status === "pending" || g.status === "pending_validation").length;
-        return res.json({
-          ...stats,
-          dbJobsCompleted: completedGigs,
-          dbJobsPending: pendingGigs,
-          dbJobsTotal: allGigs.length,
-        });
-      } catch {
-        return res.json(stats);
-      }
-    } catch (err: any) {
+      const db = await getDbStats();
+      return res.json({
+        ...stats,
+        totalJobsCreated: db.total,
+        totalJobsCompleted: db.completed,
+        totalVolumeUSDC: db.totalVolume,
+        dbJobsTotal: db.total,
+        dbJobsCompleted: db.completed,
+        dbJobsOpen: db.open,
+        dbJobsFunded: db.funded,
+      });
+    } catch {
       // Fallback to DB-only stats — always return 200
       try {
-        const allGigs = await storage.getGigs();
-        const completedGigs = allGigs.filter(g => g.status === "completed").length;
-        const pendingGigs = allGigs.filter(g => g.status === "pending" || g.status === "pending_validation").length;
+        const db = await getDbStats();
         return res.json({
-          totalJobsCreated: allGigs.length,
-          totalJobsCompleted: completedGigs,
-          totalVolumeUSDC: 0,
-          completionRate: allGigs.length > 0 ? Math.round((completedGigs / allGigs.length) * 100) : 0,
-          activeJobCount: pendingGigs,
-          dbJobsCompleted: completedGigs,
-          dbJobsPending: pendingGigs,
-          dbJobsTotal: allGigs.length,
+          totalJobsCreated: db.total,
+          totalJobsCompleted: db.completed,
+          totalVolumeUSDC: db.totalVolume,
+          completionRate: db.total > 0 ? Math.round((db.completed / db.total) * 100) : 0,
+          activeJobCount: db.open + db.funded,
+          dbJobsTotal: db.total,
+          dbJobsCompleted: db.completed,
+          dbJobsOpen: db.open,
+          dbJobsFunded: db.funded,
           standard: "ERC-8183",
-          chain: "base-sepolia",
           source: "db_fallback",
         });
       } catch {
-        return res.json({
-          totalJobsCreated: 0,
-          totalJobsCompleted: 0,
-          totalVolumeUSDC: 0,
-          completionRate: 0,
-          activeJobCount: 0,
-          standard: "ERC-8183",
-          chain: "base-sepolia",
-          source: "db_fallback",
-        });
+        return res.json({ totalJobsCreated: 0, totalJobsCompleted: 0, totalVolumeUSDC: 0, completionRate: 0, activeJobCount: 0, standard: "ERC-8183", source: "db_fallback" });
       }
     }
   });
@@ -9492,10 +9489,12 @@ export async function registerRoutes(
       const status = req.query.status ? String(req.query.status) : undefined;
       const posterAgentId = req.query.posterAgentId ? String(req.query.posterAgentId) : undefined;
       const chain = req.query.chain ? String(req.query.chain) : undefined;
-      const limit = Math.min(parseInt(String(req.query.limit ?? "20"), 10), 100);
+      const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10), 500);
       const offset = parseInt(String(req.query.offset ?? "0"), 10);
-      const jobs = await storage.getErc8183Jobs({ status, posterAgentId, chain, limit, offset });
-      const total = await storage.countErc8183Jobs();
+      const [jobs, total] = await Promise.all([
+        storage.getErc8183Jobs({ status, posterAgentId, chain, limit, offset }),
+        storage.countErc8183Jobs({ status, chain }),
+      ]);
       return res.json({ jobs, total, limit, offset });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to list jobs", error: err.message });

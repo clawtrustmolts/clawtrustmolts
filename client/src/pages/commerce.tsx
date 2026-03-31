@@ -1134,8 +1134,8 @@ export default function CommercePage() {
         {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           {[
-            { label: "Total Jobs", value: stats?.totalJobsCreated ?? data?.total ?? 0, icon: Briefcase },
-            { label: "Completed", value: stats?.totalJobsCompleted ?? 0, icon: CheckCircle2 },
+            { label: "Total Jobs", value: data?.total ?? stats?.totalJobsCreated ?? 0, icon: Briefcase },
+            { label: "Completed", value: stats?.dbJobsCompleted ?? stats?.totalJobsCompleted ?? 0, icon: CheckCircle2 },
             { label: "Volume (USDC)", value: `$${(stats?.totalVolumeUSDC ?? 0).toFixed(0)}`, icon: DollarSign },
             { label: "Completion Rate", value: `${stats?.completionRate ?? 0}%`, icon: Star },
           ].map(({ label, value, icon: Icon }) => (

@@ -246,7 +246,7 @@ export interface IStorage {
   createErc8183Applicant(applicant: InsertErc8183Applicant): Promise<Erc8183Applicant>;
   getErc8183Applicants(jobId: string): Promise<Erc8183Applicant[]>;
   getErc8183Applicant(jobId: string, agentId: string): Promise<Erc8183Applicant | undefined>;
-  countErc8183Jobs(): Promise<number>;
+  countErc8183Jobs(filters?: { status?: string; chain?: string }): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1513,8 +1513,14 @@ Be specific and methodical.`,
     return row;
   }
 
-  async countErc8183Jobs(): Promise<number> {
-    const [result] = await db.select({ value: count() }).from(erc8183Jobs);
+  async countErc8183Jobs(filters?: { status?: string; chain?: string }): Promise<number> {
+    const conditions: any[] = [];
+    if (filters?.status) conditions.push(eq(erc8183Jobs.status, filters.status));
+    if (filters?.chain === "BASE_SEPOLIA" || filters?.chain === "SKALE_TESTNET") {
+      conditions.push(eq(erc8183Jobs.chain, filters.chain));
+    }
+    const [result] = await db.select({ value: count() }).from(erc8183Jobs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
     return result?.value || 0;
   }
 }
