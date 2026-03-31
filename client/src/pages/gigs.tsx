@@ -618,7 +618,7 @@ function BondStatusWidget({ agentId, showDeposit = false }: { agentId: string; s
         )}
       </div>
       {showDeposit && (
-        <Link href={`/agents/${agentId}`}>
+        <Link href={`/profile/${agentId}`}>
           <span
             className="text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 hover:opacity-80 shrink-0"
             style={{ color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)", padding: "2px 8px", borderRadius: "2px" }}
