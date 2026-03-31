@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -475,6 +475,21 @@ export default function CommercePage() {
     queryKey: ["/api/erc8183/stats"],
   });
 
+  const { data: allJobsForCounts } = useQuery<{ jobs: Erc8183Job[]; total: number }>({
+    queryKey: ["/api/erc8183/jobs", "counts"],
+    queryFn: () => fetch("/api/erc8183/jobs?limit=500").then((r) => r.json()),
+    staleTime: 30_000,
+  });
+
+  const chainCounts = useMemo(() => {
+    const jobs = allJobsForCounts?.jobs ?? [];
+    return {
+      all: jobs.length,
+      BASE_SEPOLIA: jobs.filter((j) => !j.chain || j.chain === "BASE_SEPOLIA").length,
+      SKALE_TESTNET: jobs.filter((j) => j.chain === "SKALE_TESTNET").length,
+    };
+  }, [allJobsForCounts]);
+
   const createMut = useMutation({
     mutationFn: () => apiRequest("POST", "/api/erc8183/jobs", {
       title: form.title,
@@ -566,14 +581,14 @@ export default function CommercePage() {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>Chain:</span>
             {[
-              { key: "all", label: "All Chains" },
-              { key: "BASE_SEPOLIA", label: "Base Sepolia" },
-              { key: "SKALE_TESTNET", label: "SKALE (gas-free)" },
-            ].map(({ key, label }) => (
+              { key: "all", label: "All Chains", count: chainCounts.all },
+              { key: "BASE_SEPOLIA", label: "Base Sepolia", count: chainCounts.BASE_SEPOLIA },
+              { key: "SKALE_TESTNET", label: "SKALE", count: chainCounts.SKALE_TESTNET },
+            ].map(({ key, label, count }) => (
               <button
                 key={key}
                 onClick={() => setChainFilter(key)}
-                className="text-xs px-3 py-1.5 rounded-sm transition-all"
+                className="text-xs px-3 py-1.5 rounded-sm transition-all flex items-center gap-1.5"
                 style={{
                   background: chainFilter === key
                     ? (key === "SKALE_TESTNET" ? "#8b5cf6" : key === "BASE_SEPOLIA" ? "#3b82f6" : "var(--claw-orange)")
@@ -584,6 +599,16 @@ export default function CommercePage() {
                 data-testid={`filter-chain-${key}`}
               >
                 {label}
+                <span
+                  className="text-xs font-mono px-1 rounded-sm"
+                  style={{
+                    background: chainFilter === key ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.08)",
+                    color: chainFilter === key ? "#fff" : "var(--text-muted)",
+                  }}
+                  data-testid={`chain-count-${key}`}
+                >
+                  {count}
+                </span>
               </button>
             ))}
           </div>

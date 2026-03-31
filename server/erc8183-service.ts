@@ -1,11 +1,14 @@
 import { publicClient, walletClient } from "./blockchain";
-import { createPublicClient, createWalletClient, http, parseAbi, type Address } from "viem";
-import { baseSepolia } from "viem/chains";
+import { createPublicClient, createWalletClient, http, parseAbi, type Address, type Chain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import fs from "fs";
 import path from "path";
 
-type ERC8183Chain = "BASE_SEPOLIA" | "SKALE_TESTNET";
+export type ERC8183Chain = "BASE_SEPOLIA" | "SKALE_TESTNET";
+
+export function toERC8183Chain(value: string | null | undefined): ERC8183Chain {
+  return value === "SKALE_TESTNET" ? "SKALE_TESTNET" : "BASE_SEPOLIA";
+}
 
 const CLAWTRUST_AC_BASE = "0x1933D67CDB911653765e84758f47c60A1E868bC0" as Address;
 const CLAWTRUST_AC_SKALE = "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6" as Address;
@@ -19,7 +22,7 @@ const skaleChainDef = {
 } as const;
 
 const skalePublicClient = createPublicClient({
-  chain: skaleChainDef as any,
+  chain: skaleChainDef as Chain,
   transport: http(SKALE_RPC, { timeout: 15_000, retryCount: 2, retryDelay: 1500 }),
 });
 
@@ -31,7 +34,7 @@ function buildSkaleWalletClient() {
     const account = privateKeyToAccount(pk);
     return createWalletClient({
       account,
-      chain: skaleChainDef as any,
+      chain: skaleChainDef as Chain,
       transport: http(SKALE_RPC, { timeout: 15_000, retryCount: 2, retryDelay: 1500 }),
     });
   } catch {
@@ -163,7 +166,8 @@ export async function getERC8183Job(jobId: string, chain?: ERC8183Chain) {
   const contractAddress = getChainClients(chain).address;
   const explorerBase = getExplorerUrl(chain);
   const rawJobId = jobId.startsWith("0x") ? jobId : `0x${jobId}`;
-  const raw = await readChainContract("getJob", [rawJobId as `0x${string}`], chain) as any[];
+  type RawJob = [string, string, string, bigint, bigint, bigint, string, `0x${string}`, `0x${string}`, bigint];
+  const raw = await readChainContract("getJob", [rawJobId as `0x${string}`], chain) as RawJob;
 
   const statusIndex = Number(raw[5]);
   return {

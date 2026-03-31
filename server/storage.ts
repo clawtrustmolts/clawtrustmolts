@@ -1461,7 +1461,9 @@ Be specific and methodical.`,
     if (filters?.status) conditions.push(eq(erc8183Jobs.status, filters.status));
     if (filters?.posterAgentId) conditions.push(eq(erc8183Jobs.posterAgentId, filters.posterAgentId));
     if (filters?.assigneeAgentId) conditions.push(eq(erc8183Jobs.assigneeAgentId, filters.assigneeAgentId));
-    if (filters?.chain) conditions.push(eq(erc8183Jobs.chain, filters.chain as any));
+    if (filters?.chain === "BASE_SEPOLIA" || filters?.chain === "SKALE_TESTNET") {
+      conditions.push(eq(erc8183Jobs.chain, filters.chain));
+    }
     const query = db.select().from(erc8183Jobs)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(erc8183Jobs.createdAt))
