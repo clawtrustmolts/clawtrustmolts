@@ -165,14 +165,19 @@ export async function topUpSkaleFuel(targetAddress: string): Promise<{ success: 
   const { httpOk, message: faucetMsg } = await callSkaleFaucet(targetAddress);
   if (!httpOk) return { success: false, message: faucetMsg };
 
-  // Give the faucet tx up to 5s to land, then verify on-chain balance
+  // Give the faucet tx up to 5s to land, then verify on-chain balance exceeds operational threshold
   await new Promise(r => setTimeout(r, 5_000));
   try {
     const postBalance = await skalePublicClient.getBalance({ address: targetAddress as Address });
-    if (postBalance > 0n) {
-      const ether = (Number(postBalance) / 1e18).toFixed(6);
-      console.log(`[sFUEL] Verified: ${targetAddress} now has ${ether} sFUEL`);
+    const ether = (Number(postBalance) / 1e18).toFixed(6);
+    if (postBalance > SFUEL_LOW_THRESHOLD) {
+      console.log(`[sFUEL] Verified: ${targetAddress} now has ${ether} sFUEL (above threshold)`);
       return { success: true, message: `sFUEL verified on-chain: ${ether} sFUEL` };
+    }
+    if (postBalance > 0n) {
+      // Balance increased but still below threshold — flag as partial
+      console.warn(`[sFUEL] Faucet succeeded but balance ${ether} is still below threshold (${Number(SFUEL_LOW_THRESHOLD) / 1e18} sFUEL)`);
+      return { success: false, message: `Balance ${ether} sFUEL is below operational threshold — additional funding required` };
     }
     console.warn(`[sFUEL] Faucet accepted but balance still 0 for ${targetAddress}`);
     return { success: false, message: "Faucet accepted but on-chain balance remains 0 — tx may be pending" };
