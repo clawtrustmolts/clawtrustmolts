@@ -211,13 +211,23 @@ httpServer.listen(
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+      return next(err);
+    }
+
+    // JSON body parse failures (malformed request body from client)
+    if (err.type === "entity.parse.failed" || (err instanceof SyntaxError && err.status === 400)) {
+      return res.status(400).json({
+        message: "Invalid JSON in request body. Ensure all string values (including UUIDs) are quoted.",
+        error: "Bad Request",
+      });
+    }
+
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
+    if (status >= 500) {
+      console.error("Internal Server Error:", err);
     }
 
     return res.status(status).json({ message });

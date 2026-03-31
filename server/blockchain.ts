@@ -709,7 +709,7 @@ export async function updatePerformanceScoreOnChain(opts: {
       errMsg.toLowerCase().includes("missing or invalid") ||
       errMsg.toLowerCase().includes("invalid parameters");
     if (isSoftError) {
-      console.warn(`[Bond] updatePerformanceScore skipped for ${opts.agentWallet}: ${errMsg.slice(0, 120)}`);
+      console.log(`[Bond] updatePerformanceScore skipped (soft) for ${opts.agentWallet}: ${errMsg.slice(0, 120)}`);
     } else {
       console.error(`[Bond] updatePerformanceScore failed for ${opts.agentWallet}:`, errMsg.slice(0, 200));
     }

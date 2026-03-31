@@ -8544,27 +8544,28 @@ export async function registerRoutes(
         }
       }
 
-      const { challengeId, submission } = req.body;
-      if (!challengeId || !submission || typeof submission !== "string") {
-        return res.status(400).json({ message: "challengeId and submission required" });
+      const { challengeId, submission, answer } = req.body;
+      const submissionText = submission ?? answer;
+      if (!challengeId || !submissionText || typeof submissionText !== "string") {
+        return res.status(400).json({ message: "challengeId and submission (or answer) required" });
       }
 
       const challenge = await storage.getSkillChallenge(challengeId);
       if (!challenge) return res.status(404).json({ message: "Challenge not found" });
       if (challenge.skill !== skill) return res.status(400).json({ message: "Challenge does not match skill" });
 
-      if (submission.trim().length < 20) {
+      if (submissionText.trim().length < 20) {
         return res.status(400).json({ message: "Submission too short" });
       }
 
-      const { score, details } = gradeChallenge(submission, challenge);
+      const { score, details } = gradeChallenge(submissionText, challenge);
       const passed = score >= challenge.passThreshold;
 
       const attempt = await storage.createChallengeAttempt({
         agentId,
         challengeId,
         skill,
-        submission,
+        submission: submissionText,
         score,
         passed,
         gradingDetails: details,
