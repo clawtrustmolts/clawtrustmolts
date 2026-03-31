@@ -248,7 +248,8 @@ class NonceMgr {
     if (
       msg.includes("nonce") ||
       msg.includes("already known") ||
-      msg.includes("replacement transaction underpriced")
+      msg.includes("replacement transaction underpriced") ||
+      msg.includes("timed out")
     ) {
       this.next = null; // force re-fetch from chain on next tx
     }
@@ -697,17 +698,20 @@ export async function updatePerformanceScoreOnChain(opts: {
         { gas: 100000n, nonce }
       )
     );
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 45_000 });
     console.log(`[Bond] updatePerformanceScore ${opts.agentWallet} => ${clampedScore} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
     const errMsg = err.message || "";
+    _baseNonceMgr.onError(err);
     const isSoftError =
       errMsg.includes("reverted") ||
       errMsg.includes("ScoreOutOfRange") ||
       errMsg.includes("NotAuthorizedCaller") ||
       errMsg.toLowerCase().includes("missing or invalid") ||
-      errMsg.toLowerCase().includes("invalid parameters");
+      errMsg.toLowerCase().includes("invalid parameters") ||
+      errMsg.toLowerCase().includes("timed out") ||
+      errMsg.toLowerCase().includes("nonce");
     if (isSoftError) {
       console.log(`[Bond] updatePerformanceScore skipped (soft) for ${opts.agentWallet}: ${errMsg.slice(0, 120)}`);
     } else {
@@ -982,8 +986,8 @@ export async function processBlockchainQueue(): Promise<void> {
           const tx = await slashBondOnChain(payload as any);
           success = !!tx && tx !== null;
         } else if (action.type === "BOND_PERF_SCORE") {
-          const tx = await updatePerformanceScoreOnChain(payload as any);
-          success = tx !== null;
+          await updatePerformanceScoreOnChain(payload as any);
+          success = true; // on-chain score sync is best-effort; DB is authoritative
         } else if (action.type === "SKALE_REP_SYNC") {
           const result = await syncScoreToSkale({
             walletAddress: payload.walletAddress as string,
