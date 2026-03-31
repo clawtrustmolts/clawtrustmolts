@@ -6264,9 +6264,11 @@ export async function registerRoutes(
       if (force) {
         // Forced top-up: always attempt faucet and report real outcome
         const result = await forceTopUpSkaleFuel();
+        if (result.message === "Oracle wallet not configured") {
+          return res.status(400).json({ success: false, forced: true, wasFunded: false, message: result.message, balanceBefore: before.ether, balanceAfter: before.ether });
+        }
         const after = await getSkaleOracleFuelBalance();
-        const httpStatus = result.success ? 200 : 502;
-        return res.status(httpStatus).json({
+        return res.status(result.success ? 200 : 502).json({
           success: result.success,
           forced: true,
           wasFunded: result.success,
@@ -6276,8 +6278,21 @@ export async function registerRoutes(
         });
       }
 
-      // Threshold-based: attempt top-up only if balance is low; always returns 200
+      // Threshold-based: attempt top-up only if balance is low
       const result = await checkAndTopUpSkaleFuel();
+
+      // Oracle wallet not configured at all — hard failure
+      if (result.message === "Oracle wallet not configured") {
+        return res.status(400).json({
+          success: false,
+          forced: false,
+          wasFunded: false,
+          message: result.message,
+          balanceBefore: before.ether,
+          balanceAfter: before.ether,
+        });
+      }
+
       const after = await getSkaleOracleFuelBalance();
       const fundFailed = !result.wasFunded && result.message.startsWith("Auto-fund failed");
       return res.status(fundFailed ? 502 : 200).json({
