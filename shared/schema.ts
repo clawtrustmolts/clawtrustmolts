@@ -600,6 +600,8 @@ export const erc8183Jobs = pgTable("erc8183_jobs", {
   chain: chainEnum("chain").notNull().default("BASE_SEPOLIA"),
   txHashCreated: text("tx_hash_created"),
   txHashFunded: text("tx_hash_funded"),
+  txHashAssigned: text("tx_hash_assigned"),
+  txHashSubmitted: text("tx_hash_submitted"),
   txHashSettled: text("tx_hash_settled"),
   createdAt: timestamp("created_at").defaultNow(),
 });

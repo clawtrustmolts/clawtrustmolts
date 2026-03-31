@@ -9452,6 +9452,8 @@ export async function registerRoutes(
           }
           console.warn("[ERC-8183] fund skipped:", e.message);
         }
+      } else if (job.chain === "SKALE_TESTNET") {
+        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot fund without a valid chain record", skaleError: true });
       }
 
       const updated = await storage.updateErc8183Job(jobId, { status: "funded", txHashFunded });
@@ -9503,23 +9505,26 @@ export async function registerRoutes(
       const applicantAgent = await storage.getAgent(applicantAgentId);
       if (!applicantAgent) return res.status(404).json({ message: "Applicant agent not found" });
 
-      let txHash: string | null = null;
+      let txHashAssigned: string | null = null;
       if (job.onChainJobId && applicantAgent.walletAddress) {
         try {
-          txHash = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress, toERC8183Chain(job.chain));
+          txHashAssigned = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress, toERC8183Chain(job.chain));
         } catch (e: any) {
           if (job.chain === "SKALE_TESTNET") {
             return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
           }
           console.warn("[ERC-8183] assignProvider skipped:", e.message);
         }
+      } else if (job.chain === "SKALE_TESTNET" && !job.onChainJobId) {
+        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot assign without a valid chain record", skaleError: true });
       }
 
       const updated = await storage.updateErc8183Job(jobId, {
         assigneeAgentId: applicantAgentId,
         status: "funded",
+        txHashAssigned,
       });
-      return res.json({ success: true, job: updated, txHash });
+      return res.json({ success: true, job: updated, txHash: txHashAssigned });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to accept applicant", error: err.message });
     }
@@ -9538,16 +9543,18 @@ export async function registerRoutes(
 
       const deliverableHash = `0x${Buffer.from(deliverableUrl ?? deliverableNote ?? "submitted").toString("hex").slice(0, 62).padStart(64, "0")}`;
 
-      let txHash: string | null = null;
+      let txHashSubmitted: string | null = null;
       if (job.onChainJobId) {
         try {
-          txHash = await oracleSubmitDeliverable(job.onChainJobId, deliverableHash, toERC8183Chain(job.chain));
+          txHashSubmitted = await oracleSubmitDeliverable(job.onChainJobId, deliverableHash, toERC8183Chain(job.chain));
         } catch (e: any) {
           if (job.chain === "SKALE_TESTNET") {
             return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
           }
           console.warn("[ERC-8183] submit skipped:", e.message);
         }
+      } else if (job.chain === "SKALE_TESTNET") {
+        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot submit without a valid chain record", skaleError: true });
       }
 
       const updated = await storage.updateErc8183Job(jobId, {
@@ -9555,8 +9562,9 @@ export async function registerRoutes(
         deliverableUrl: deliverableUrl ? sanitizeString(deliverableUrl, 500) : job.deliverableUrl,
         deliverableNote: deliverableNote ? sanitizeString(deliverableNote, 1000) : job.deliverableNote,
         deliverableHash,
+        txHashSubmitted,
       });
-      return res.json({ success: true, job: updated, txHash });
+      return res.json({ success: true, job: updated, txHash: txHashSubmitted });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to submit deliverable", error: err.message });
     }
@@ -9588,6 +9596,8 @@ export async function registerRoutes(
           }
           console.warn("[ERC-8183] settle skipped:", e.message);
         }
+      } else if (job.chain === "SKALE_TESTNET") {
+        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot settle without a valid chain record", skaleError: true });
       }
 
       const updated = await storage.updateErc8183Job(jobId, { status: newStatus, txHashSettled: txHash });
@@ -9653,6 +9663,8 @@ export async function registerRoutes(
           }
           console.warn("[ERC-8183] on-chain cancel skipped:", e.message);
         }
+      } else if (job.chain === "SKALE_TESTNET") {
+        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot cancel without a valid chain record", skaleError: true });
       }
 
       const updated = await storage.updateErc8183Job(jobId, { status: "cancelled", txHashSettled: txHash });
@@ -9707,6 +9719,8 @@ export async function registerRoutes(
           poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
           txHashCreated: job.txHashCreated,
           txHashFunded: job.txHashFunded,
+          txHashAssigned: job.txHashAssigned,
+          txHashSubmitted: job.txHashSubmitted,
           txHashSettled: job.txHashSettled,
         });
       }
@@ -9736,6 +9750,8 @@ export async function registerRoutes(
         poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
         txHashCreated: job.txHashCreated,
         txHashFunded: job.txHashFunded,
+        txHashAssigned: job.txHashAssigned,
+        txHashSubmitted: job.txHashSubmitted,
         txHashSettled: job.txHashSettled,
       });
     } catch (err: any) {
@@ -9760,8 +9776,10 @@ export async function registerRoutes(
         agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
         poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
         txHashCreated: job.txHashCreated,
-        txHashSettled: job.txHashSettled,
         txHashFunded: job.txHashFunded,
+        txHashAssigned: job.txHashAssigned,
+        txHashSubmitted: job.txHashSubmitted,
+        txHashSettled: job.txHashSettled,
       });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to fetch receipt", error: err.message });

@@ -35,6 +35,8 @@ interface Erc8183Job {
   deliverableNote: string | null;
   txHashCreated: string | null;
   txHashFunded: string | null;
+  txHashAssigned: string | null;
+  txHashSubmitted: string | null;
   txHashSettled: string | null;
   createdAt: string;
 }
@@ -270,6 +272,8 @@ interface CommerceReceiptData {
   createdAt: string | null;
   txHashCreated?: string | null;
   txHashFunded?: string | null;
+  txHashAssigned?: string | null;
+  txHashSubmitted?: string | null;
   txHashSettled?: string | null;
   agent: { id: string; handle: string; avatar: string | null; fusedScore: number } | null;
   poster: { id: string; handle: string; avatar: string | null } | null;
@@ -408,7 +412,7 @@ function CommerceReceiptModal({ jobId, job, onClose }: {
               </div>
 
               {/* TX Hashes */}
-              {(receipt.txHashCreated || receipt.txHashFunded || receipt.txHashSettled) && (
+              {(receipt.txHashCreated || receipt.txHashFunded || receipt.txHashAssigned || receipt.txHashSubmitted || receipt.txHashSettled) && (
                 <div
                   className="p-3 rounded-sm flex flex-col gap-2"
                   style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.1)" }}
@@ -440,6 +444,32 @@ function CommerceReceiptModal({ jobId, job, onClose }: {
                     >
                       <ExternalLink className="w-3 h-3 shrink-0" />
                       <span className="truncate">Fund: {receipt.txHashFunded.slice(0, 20)}…</span>
+                    </a>
+                  )}
+                  {receipt.txHashAssigned && (
+                    <a
+                      href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", receipt.txHashAssigned)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-mono hover:opacity-80"
+                      style={{ color: "#22c55e" }}
+                      data-testid="link-tx-assigned"
+                    >
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Assign: {receipt.txHashAssigned.slice(0, 20)}…</span>
+                    </a>
+                  )}
+                  {receipt.txHashSubmitted && (
+                    <a
+                      href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", receipt.txHashSubmitted)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-mono hover:opacity-80"
+                      style={{ color: "#f59e0b" }}
+                      data-testid="link-tx-submitted"
+                    >
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Submit: {receipt.txHashSubmitted.slice(0, 20)}…</span>
                     </a>
                   )}
                   {receipt.txHashSettled && (
@@ -676,6 +706,30 @@ function JobCard({ job, agentId, onRefresh, onOpenApplicants }: {
               data-testid={`link-fund-tx-${job.id}`}
             >
               <ExternalLink className="w-3 h-3" />fund
+            </a>
+          )}
+          {job.txHashAssigned && (
+            <a
+              href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", job.txHashAssigned)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5 hover:opacity-80"
+              style={{ color: "#22c55e" }}
+              data-testid={`link-assign-tx-${job.id}`}
+            >
+              <ExternalLink className="w-3 h-3" />assign
+            </a>
+          )}
+          {job.txHashSubmitted && (
+            <a
+              href={explorerTxUrl(job.chain ?? "BASE_SEPOLIA", job.txHashSubmitted)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5 hover:opacity-80"
+              style={{ color: "#f59e0b" }}
+              data-testid={`link-submit-tx-${job.id}`}
+            >
+              <ExternalLink className="w-3 h-3" />submit
             </a>
           )}
           {job.txHashSettled && (
