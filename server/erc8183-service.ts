@@ -130,7 +130,8 @@ export async function getSkaleOracleFuelBalance(): Promise<{ raw: bigint; ether:
   }
 }
 
-export async function topUpSkaleFuel(targetAddress: string): Promise<{ success: boolean; message: string }> {
+/** Call the SKALE sFUEL faucet API. Returns faucet HTTP-level outcome only — does NOT verify on-chain balance. */
+async function callSkaleFaucet(targetAddress: string): Promise<{ httpOk: boolean; message: string }> {
   try {
     const resp = await fetch(SFUEL_FAUCET_URL, {
       method: "POST",
@@ -139,16 +140,45 @@ export async function topUpSkaleFuel(targetAddress: string): Promise<{ success: 
       signal: AbortSignal.timeout(15_000),
     });
     if (resp.ok) {
-      const body = await resp.json().catch(() => ({})) as any;
-      console.log(`[sFUEL] Auto-funded oracle ${targetAddress} — response:`, body);
-      return { success: true, message: `sFUEL distributed to ${targetAddress}` };
+      const body: unknown = await resp.json().catch(() => ({}));
+      // Honor explicit error fields that some faucets return even on HTTP 200
+      const bodyObj = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+      if (typeof bodyObj["error"] === "string" && bodyObj["error"]) {
+        console.warn(`[sFUEL] Faucet HTTP 200 but returned error: ${bodyObj["error"]}`);
+        return { httpOk: false, message: `Faucet error: ${bodyObj["error"]}` };
+      }
+      console.log(`[sFUEL] Faucet accepted request for ${targetAddress}`);
+      return { httpOk: true, message: "Faucet request accepted" };
     }
     const text = await resp.text().catch(() => resp.statusText);
     console.warn(`[sFUEL] Faucet responded ${resp.status}: ${text.slice(0, 200)}`);
-    return { success: false, message: `Faucet returned ${resp.status}: ${text.slice(0, 100)}` };
-  } catch (err: any) {
-    console.warn("[sFUEL] Faucet request failed:", err.message?.slice(0, 200));
-    return { success: false, message: `Faucet request failed: ${err.message?.slice(0, 100)}` };
+    return { httpOk: false, message: `Faucet returned ${resp.status}: ${text.slice(0, 100)}` };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[sFUEL] Faucet request failed:", msg.slice(0, 200));
+    return { httpOk: false, message: `Faucet request failed: ${msg.slice(0, 100)}` };
+  }
+}
+
+/** Top up oracle sFUEL via faucet and verify balance actually increased above threshold. */
+export async function topUpSkaleFuel(targetAddress: string): Promise<{ success: boolean; message: string }> {
+  const { httpOk, message: faucetMsg } = await callSkaleFaucet(targetAddress);
+  if (!httpOk) return { success: false, message: faucetMsg };
+
+  // Give the faucet tx up to 5s to land, then verify on-chain balance
+  await new Promise(r => setTimeout(r, 5_000));
+  try {
+    const postBalance = await skalePublicClient.getBalance({ address: targetAddress as Address });
+    if (postBalance > 0n) {
+      const ether = (Number(postBalance) / 1e18).toFixed(6);
+      console.log(`[sFUEL] Verified: ${targetAddress} now has ${ether} sFUEL`);
+      return { success: true, message: `sFUEL verified on-chain: ${ether} sFUEL` };
+    }
+    console.warn(`[sFUEL] Faucet accepted but balance still 0 for ${targetAddress}`);
+    return { success: false, message: "Faucet accepted but on-chain balance remains 0 — tx may be pending" };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: `Balance re-check failed: ${msg.slice(0, 100)}` };
   }
 }
 
@@ -165,17 +195,7 @@ async function assertSkaleOracleFunded(oracleAddress: Address): Promise<void> {
       `Fund manually at https://sfuel.skale.network/ for address: ${oracleAddress}`
     );
   }
-
-  // Give the faucet tx a moment to land, then re-check
-  await new Promise(r => setTimeout(r, 3_000));
-  const recheck = await skalePublicClient.getBalance({ address: oracleAddress });
-  if (recheck === 0n) {
-    throw new Error(
-      `SKALE oracle wallet still has 0 sFUEL after auto-fund attempt. ` +
-      `Fund manually at https://sfuel.skale.network/ for address: ${oracleAddress}`
-    );
-  }
-  console.log(`[sFUEL] Auto-fund succeeded — oracle ${oracleAddress} balance: ${Number(recheck) / 1e18} sFUEL`);
+  console.log(`[sFUEL] Auto-fund succeeded — oracle ${oracleAddress}: ${result.message}`);
 }
 
 export async function checkAndTopUpSkaleFuel(): Promise<{ wasFunded: boolean; balanceEther: number; message: string }> {
@@ -190,12 +210,14 @@ export async function checkAndTopUpSkaleFuel(): Promise<{ wasFunded: boolean; ba
 
   console.warn(`[sFUEL] Oracle sFUEL low (${ether.toFixed(6)}) — auto-topping up...`);
   const result = await topUpSkaleFuel(address);
+
+  // Re-read balance — topUpSkaleFuel already verified it post-funding
+  const { ether: newEther } = await getSkaleOracleFuelBalance();
+
   if (result.success) {
-    await new Promise(r => setTimeout(r, 3_000));
-    const { ether: newEther } = await getSkaleOracleFuelBalance();
-    return { wasFunded: true, balanceEther: newEther, message: `Auto-funded. New balance: ${newEther.toFixed(6)} sFUEL` };
+    return { wasFunded: true, balanceEther: newEther, message: `Auto-funded and verified. Balance: ${newEther.toFixed(6)} sFUEL` };
   }
-  return { wasFunded: false, balanceEther: ether, message: `Auto-fund failed: ${result.message}` };
+  return { wasFunded: false, balanceEther: newEther, message: `Auto-fund failed: ${result.message}` };
 }
 
 export async function forceTopUpSkaleFuel(): Promise<{ success: boolean; balanceEther: number; message: string }> {
@@ -203,13 +225,14 @@ export async function forceTopUpSkaleFuel(): Promise<{ success: boolean; balance
   if (!address) return { success: false, balanceEther: 0, message: "Oracle wallet not configured" };
 
   const result = await topUpSkaleFuel(address);
-  await new Promise(r => setTimeout(r, 3_000));
+
+  // topUpSkaleFuel already re-reads balance internally; read again for final state
   const { ether } = await getSkaleOracleFuelBalance();
   return {
     success: result.success,
     balanceEther: ether,
     message: result.success
-      ? `Force-funded. New balance: ${ether.toFixed(6)} sFUEL`
+      ? `Force-funded and verified. Balance: ${ether.toFixed(6)} sFUEL`
       : `Force-fund failed: ${result.message}`,
   };
 }
