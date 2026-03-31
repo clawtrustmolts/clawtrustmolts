@@ -16,7 +16,7 @@ import {
   Share2, Check, Copy, Image as ImageIcon
 } from "lucide-react";
 
-type JobStatus = "open" | "funded" | "submitted" | "completed" | "rejected" | "cancelled" | "expired";
+type JobStatus = "open" | "funded" | "submitted" | "completed" | "rejected" | "cancelled" | "expired" | "disputed";
 type JobChain = "BASE_SEPOLIA" | "SKALE_TESTNET";
 
 interface Erc8183Job {
@@ -93,6 +93,7 @@ const STATUS_CONFIG: Record<JobStatus, { label: string; color: string; bg: strin
   rejected:  { label: "Rejected",  color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
   cancelled: { label: "Cancelled", color: "#6b7280", bg: "rgba(107,114,128,0.12)" },
   expired:   { label: "Expired",   color: "#6b7280", bg: "rgba(107,114,128,0.12)" },
+  disputed:  { label: "Disputed",  color: "#f97316", bg: "rgba(249,115,22,0.12)" },
 };
 
 function StatusBadge({ status }: { status: JobStatus }) {
@@ -1008,6 +1009,171 @@ function ApplicantsPanel({ jobId, job, agentId, onClose, onRefresh }: {
   );
 }
 
+interface CommerceCreateForm {
+  title: string;
+  description: string;
+  budgetUsdc: string;
+  requiredSkills: string;
+  deadlineHours: string;
+  chain: JobChain;
+}
+
+const DEFAULT_CREATE_FORM: CommerceCreateForm = {
+  title: "",
+  description: "",
+  budgetUsdc: "",
+  requiredSkills: "",
+  deadlineHours: "72",
+  chain: "BASE_SEPOLIA",
+};
+
+export function CommerceJobCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { toast } = useToast();
+  const [form, setForm] = useState<CommerceCreateForm>(DEFAULT_CREATE_FORM);
+
+  const createMut = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/erc8183/jobs", {
+      title: form.title,
+      description: form.description,
+      budgetUsdc: parseFloat(form.budgetUsdc),
+      requiredSkills: form.requiredSkills.split(",").map((s) => s.trim()).filter(Boolean),
+      deadlineHours: parseInt(form.deadlineHours, 10),
+      chain: form.chain,
+    }),
+    onSuccess: () => {
+      toast({ title: "Job posted!", description: "Your job is now live on the marketplace." });
+      onOpenChange(false);
+      setForm(DEFAULT_CREATE_FORM);
+      queryClient.invalidateQueries({ queryKey: ["/api/erc8183/jobs"] });
+    },
+    onError: (e: Error) => toast({ title: "Failed to post job", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="max-w-lg"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.3)" }}
+      >
+        <DialogHeader>
+          <DialogTitle style={{ color: "var(--text-primary)" }}>Post a New Job</DialogTitle>
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>ERC-8183 Agentic Commerce</p>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Job Title *</label>
+            <Input
+              placeholder="e.g. Translate smart contract for Spanish market"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              data-testid="input-job-title"
+              style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}
+            />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Description *</label>
+            <Textarea
+              placeholder="Describe the task, requirements, and expected deliverables..."
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              rows={4}
+              data-testid="input-job-description"
+              style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Budget (USDC) *</label>
+              <Input
+                type="number"
+                placeholder="50.00"
+                min="0.01"
+                step="0.01"
+                value={form.budgetUsdc}
+                onChange={(e) => setForm({ ...form, budgetUsdc: e.target.value })}
+                data-testid="input-job-budget"
+                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}
+              />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Deadline (hours)</label>
+              <Select value={form.deadlineHours} onValueChange={(v) => setForm({ ...form, deadlineHours: v })}>
+                <SelectTrigger data-testid="select-deadline" style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="24">24 hours</SelectItem>
+                  <SelectItem value="48">48 hours</SelectItem>
+                  <SelectItem value="72">72 hours</SelectItem>
+                  <SelectItem value="168">7 days</SelectItem>
+                  <SelectItem value="336">14 days</SelectItem>
+                  <SelectItem value="720">30 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Required Skills (comma-separated)</label>
+            <Input
+              placeholder="solidity, rust, translation"
+              value={form.requiredSkills}
+              onChange={(e) => setForm({ ...form, requiredSkills: e.target.value })}
+              data-testid="input-job-skills"
+              style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}
+            />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Blockchain Network</label>
+            <div className="flex gap-2">
+              {(["BASE_SEPOLIA", "SKALE_TESTNET"] as JobChain[]).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setForm({ ...form, chain: c })}
+                  className="flex-1 py-2 px-3 rounded-sm text-xs font-mono transition-all text-left"
+                  style={{
+                    background: form.chain === c ? CHAIN_CONFIG[c].bg : "var(--ocean-deep)",
+                    border: `1px solid ${form.chain === c ? CHAIN_CONFIG[c].color : "rgba(232,84,10,0.15)"}`,
+                    color: form.chain === c ? CHAIN_CONFIG[c].color : "var(--text-muted)",
+                  }}
+                  data-testid={`select-chain-${c}`}
+                >
+                  <div className="font-semibold">{CHAIN_CONFIG[c].label}</div>
+                  <div className="opacity-70 mt-0.5">{CHAIN_CONFIG[c].gasLabel}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div
+            className="rounded-sm p-3 text-xs"
+            style={{ background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-muted)" }}
+          >
+            <p className="font-medium mb-1" style={{ color: "var(--claw-orange)" }}>ERC-8183 Lifecycle</p>
+            <div className="flex items-center gap-1 flex-wrap">
+              {["Post", "Fund", "Apply", "Accept", "Submit", "Settle"].map((step, i, arr) => (
+                <span key={step} className="flex items-center gap-1">
+                  <span>{step}</span>
+                  {i < arr.length - 1 && <ArrowRight className="w-3 h-3" />}
+                </span>
+              ))}
+            </div>
+          </div>
+          <Button
+            onClick={() => createMut.mutate()}
+            disabled={createMut.isPending || !form.title || !form.description || !form.budgetUsdc}
+            className="w-full"
+            style={{ background: "var(--claw-orange)", color: "#fff" }}
+            data-testid="button-confirm-post-job"
+          >
+            {createMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+            Post Job
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function CommerceContent() {
   const { toast } = useToast();
 
@@ -1029,16 +1195,6 @@ export function CommerceContent() {
   const [chainFilter, setChainFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [applicantsJob, setApplicantsJob] = useState<Erc8183Job | null>(null);
-
-  // Create job form
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    budgetUsdc: "",
-    requiredSkills: "",
-    deadlineHours: "72",
-    chain: "BASE_SEPOLIA" as JobChain,
-  });
 
   const { data, isLoading, refetch } = useQuery<{ jobs: Erc8183Job[]; total: number }>({
     queryKey: ["/api/erc8183/jobs", statusFilter, chainFilter],
@@ -1082,24 +1238,6 @@ export function CommerceContent() {
   });
 
   const [heartbeatBannerDismissed, setHeartbeatBannerDismissed] = useState(false);
-
-  const createMut = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/erc8183/jobs", {
-      title: form.title,
-      description: form.description,
-      budgetUsdc: parseFloat(form.budgetUsdc),
-      requiredSkills: form.requiredSkills.split(",").map((s) => s.trim()).filter(Boolean),
-      deadlineHours: parseInt(form.deadlineHours, 10),
-      chain: form.chain,
-    }),
-    onSuccess: () => {
-      toast({ title: "Job posted!", description: "Your job is now live on the marketplace." });
-      setCreateOpen(false);
-      setForm({ title: "", description: "", budgetUsdc: "", requiredSkills: "", deadlineHours: "72", chain: "BASE_SEPOLIA" });
-      queryClient.invalidateQueries({ queryKey: ["/api/erc8183/jobs"] });
-    },
-    onError: (e: any) => toast({ title: "Failed to post job", description: e.message, variant: "destructive" }),
-  });
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -1304,129 +1442,7 @@ export function CommerceContent() {
         )}
 
         {/* Post Job Dialog */}
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent
-            className="max-w-lg"
-            style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.3)" }}
-          >
-            <DialogHeader>
-              <DialogTitle style={{ color: "var(--text-primary)" }}>Post a New Job</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-3">
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Job Title *</label>
-                <Input
-                  placeholder="e.g. Translate smart contract for Spanish market"
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  data-testid="input-job-title"
-                  style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}
-                />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Description *</label>
-                <Textarea
-                  placeholder="Describe the task, requirements, and expected deliverables..."
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  rows={4}
-                  data-testid="input-job-description"
-                  style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Budget (USDC) *</label>
-                  <Input
-                    type="number"
-                    placeholder="50.00"
-                    min="0.01"
-                    step="0.01"
-                    value={form.budgetUsdc}
-                    onChange={(e) => setForm({ ...form, budgetUsdc: e.target.value })}
-                    data-testid="input-job-budget"
-                    style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Deadline (hours)</label>
-                  <Select value={form.deadlineHours} onValueChange={(v) => setForm({ ...form, deadlineHours: v })}>
-                    <SelectTrigger data-testid="select-deadline" style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="24">24 hours</SelectItem>
-                      <SelectItem value="48">48 hours</SelectItem>
-                      <SelectItem value="72">72 hours</SelectItem>
-                      <SelectItem value="168">7 days</SelectItem>
-                      <SelectItem value="336">14 days</SelectItem>
-                      <SelectItem value="720">30 days</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Required Skills (comma-separated)</label>
-                <Input
-                  placeholder="solidity, rust, translation"
-                  value={form.requiredSkills}
-                  onChange={(e) => setForm({ ...form, requiredSkills: e.target.value })}
-                  data-testid="input-job-skills"
-                  style={{ background: "var(--ocean-deep)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-primary)" }}
-                />
-              </div>
-
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Blockchain Network</label>
-                <div className="flex gap-2">
-                  {(["BASE_SEPOLIA", "SKALE_TESTNET"] as JobChain[]).map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setForm({ ...form, chain: c })}
-                      className="flex-1 py-2 px-3 rounded-sm text-xs font-mono transition-all text-left"
-                      style={{
-                        background: form.chain === c ? CHAIN_CONFIG[c].bg : "var(--ocean-deep)",
-                        border: `1px solid ${form.chain === c ? CHAIN_CONFIG[c].color : "rgba(232,84,10,0.15)"}`,
-                        color: form.chain === c ? CHAIN_CONFIG[c].color : "var(--text-muted)",
-                      }}
-                      data-testid={`select-chain-${c}`}
-                    >
-                      <div className="font-semibold">{CHAIN_CONFIG[c].label}</div>
-                      <div className="opacity-70 mt-0.5">{CHAIN_CONFIG[c].gasLabel}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div
-                className="rounded-sm p-3 text-xs"
-                style={{ background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-muted)" }}
-              >
-                <p className="font-medium mb-1" style={{ color: "var(--claw-orange)" }}>ERC-8183 Lifecycle</p>
-                <div className="flex items-center gap-1 flex-wrap">
-                  {["Post", "Fund", "Apply", "Accept", "Submit", "Settle"].map((step, i, arr) => (
-                    <span key={step} className="flex items-center gap-1">
-                      <span>{step}</span>
-                      {i < arr.length - 1 && <ArrowRight className="w-3 h-3" />}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <Button
-                onClick={() => createMut.mutate()}
-                disabled={createMut.isPending || !form.title || !form.description || !form.budgetUsdc}
-                className="w-full"
-                style={{ background: "var(--claw-orange)", color: "#fff" }}
-                data-testid="button-confirm-post-job"
-              >
-                {createMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                Post Job
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <CommerceJobCreateDialog open={createOpen} onOpenChange={setCreateOpen} />
       </div>
   );
 }
