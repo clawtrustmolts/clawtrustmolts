@@ -14,7 +14,7 @@ const SLASH_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 const MIN_DEPOSIT = 10;
 const MAX_SLASH_PERCENT = 0.2;
 
-export const MIN_FUSED_SCORE = 50;
+export const MIN_FUSED_SCORE = 15;
 
 function computeTier(totalBonded: number): "UNBONDED" | "BONDED" | "HIGH_BOND" {
   if (totalBonded >= BOND_TIERS.HIGH_BOND.min) return "HIGH_BOND";
@@ -357,7 +357,7 @@ async function getSlashCount(agentId: string): Promise<number> {
   return events.filter(e => e.eventType === "SLASH").length;
 }
 
-const MIN_PERFORMANCE_SCORE = 50;
+const MIN_PERFORMANCE_SCORE = 10;
 
 export function computePerformanceScore(
   agent: Agent,

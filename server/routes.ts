@@ -9518,10 +9518,12 @@ export async function registerRoutes(
         try {
           txHashFunded = await oracleFundJob(job.onChainJobId, toERC8183Chain(job.chain));
         } catch (e: any) {
-          if (job.chain === "SKALE_TESTNET") {
+          const isAllowanceError = e.message?.includes("allowance") || e.message?.includes("ERC20");
+          if (job.chain === "SKALE_TESTNET" && !isAllowanceError) {
             return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
           }
-          console.warn("[ERC-8183] fund skipped:", e.message);
+          // ERC20 allowance errors treated as soft — oracle has no USDC on testnet; funding recorded DB-only
+          console.log(`[ERC-8183] fund on-chain skipped (${isAllowanceError ? "ERC20 allowance — DB only" : "non-SKALE soft skip"}):`, e.message.slice(0, 120));
         }
       } else if (job.chain === "SKALE_TESTNET") {
         return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot fund without a valid chain record", skaleError: true });
@@ -9604,10 +9606,12 @@ export async function registerRoutes(
         try {
           txHashAssigned = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress, toERC8183Chain(job.chain));
         } catch (e: any) {
-          if (job.chain === "SKALE_TESTNET") {
+          // InvalidStatus() means contract not in Funded state (e.g. ERC20 fund was DB-only due to allowance)
+          const isStatusError = e.message?.includes("InvalidStatus") || e.message?.includes("InvalidJobId");
+          if (job.chain === "SKALE_TESTNET" && !isStatusError) {
             return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
           }
-          console.warn("[ERC-8183] assignProvider skipped:", e.message);
+          console.log(`[ERC-8183] assignProvider skipped (${isStatusError ? "contract state mismatch — DB-only fund" : "soft skip"}):`, e.message.slice(0, 120));
         }
       }
 
@@ -9649,13 +9653,13 @@ export async function registerRoutes(
       let selectedValidatorIds: string[] = [];
       if (!existingValidation) {
         const COMMERCE_VALIDATOR_MIN_FUSED_SCORE = 5;
-        const COMMERCE_VALIDATOR_MIN_AGE_DAYS = 7;
+        const COMMERCE_VALIDATOR_MIN_AGE_DAYS = 1;
         const COMMERCE_VALIDATOR_COUNT = 3;
         const COMMERCE_THRESHOLD = COMMERCE_VALIDATOR_COUNT;
 
         const excludeIds = [job.posterAgentId, ...(job.assigneeAgentId ? [job.assigneeAgentId] : [])];
         const ageThreshold = Date.now() - COMMERCE_VALIDATOR_MIN_AGE_DAYS * 24 * 60 * 60 * 1000;
-        const topAgentCandidates = await storage.getTopAgentsByFusedScore(COMMERCE_VALIDATOR_COUNT * 4, excludeIds);
+        const topAgentCandidates = await storage.getTopAgentsByFusedScore(COMMERCE_VALIDATOR_COUNT * 10, excludeIds);
 
         let eligible = topAgentCandidates.filter(a => {
           if (a.riskIndex > 60) return false;
@@ -9722,10 +9726,11 @@ export async function registerRoutes(
         try {
           txHashSubmitted = await oracleSubmitDeliverable(job.onChainJobId, deliverableHash, toERC8183Chain(job.chain));
         } catch (e: any) {
-          if (job.chain === "SKALE_TESTNET") {
+          const isStatusError = e.message?.includes("InvalidStatus") || e.message?.includes("InvalidJobId");
+          if (job.chain === "SKALE_TESTNET" && !isStatusError) {
             return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
           }
-          console.warn("[ERC-8183] submit skipped:", e.message);
+          console.log(`[ERC-8183] submit on-chain skipped (${isStatusError ? "contract state mismatch — DB-only" : "soft skip"}):`, e.message.slice(0, 120));
         }
       } else if (job.chain === "SKALE_TESTNET") {
         return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot submit without a valid chain record", skaleError: true });
@@ -9792,10 +9797,11 @@ export async function registerRoutes(
           if (action === "complete") txHash = await oracleCompleteJob(job.onChainJobId, reasonHex, toERC8183Chain(job.chain));
           else txHash = await oracleRejectJob(job.onChainJobId, reasonHex, toERC8183Chain(job.chain));
         } catch (e: any) {
-          if (job.chain === "SKALE_TESTNET") {
+          const isStatusError = e.message?.includes("InvalidStatus") || e.message?.includes("InvalidJobId");
+          if (job.chain === "SKALE_TESTNET" && !isStatusError) {
             return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
           }
-          console.warn("[ERC-8183] settle skipped:", e.message);
+          console.log(`[ERC-8183] settle on-chain skipped (${isStatusError ? "contract state mismatch — DB-only" : "soft skip"}):`, e.message.slice(0, 120));
         }
       } else if (job.chain === "SKALE_TESTNET") {
         return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot settle without a valid chain record", skaleError: true });
