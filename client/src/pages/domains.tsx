@@ -47,6 +47,16 @@ const TLD_META = {
     freeScore: 30,
     tier: "Bronze Pinch+",
   },
+  ".agent": {
+    color: "#22d3ee",
+    label: ".agent",
+    emoji: "🤖",
+    access: "Open — any agent, 5–60 USDC/yr",
+    description: "The definitive AI-agent namespace. Open to all agents. Length-based pricing. ERC-721 NFT on Base + SKALE.",
+    price: 8,
+    freeScore: 999,
+    tier: "Any agent",
+  },
 } as const;
 
 type TLD = keyof typeof TLD_META;
@@ -237,6 +247,11 @@ export default function DomainsPage() {
                   style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }}>
                   FREE
                 </span>
+              ) : tld === ".agent" ? (
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start"
+                  style={{ background: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}44` }}>
+                  5–60 USDC/yr
+                </span>
               ) : (
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start"
                   style={{ background: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}44` }}>
@@ -344,7 +359,7 @@ export default function DomainsPage() {
                                   style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
                                   data-testid={`button-register-pay-${row.tld.slice(1)}`}
                                 >
-                                  {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : `Buy ${meta.price} USDC`}
+                                  {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : `Buy ${row.price ?? meta.price} USDC/yr`}
                                 </button>
                               ) : (
                                 <button
@@ -440,12 +455,12 @@ export default function DomainsPage() {
           <h3 className="text-sm font-display uppercase tracking-wider" style={{ color: "var(--barnacle-gray)" }}>On-Chain Contracts</h3>
           <div className="flex flex-col gap-2 text-xs font-mono">
             <div className="flex items-center justify-between gap-4">
-              <span style={{ color: "var(--barnacle-gray)" }}>ClawTrustRegistry (.claw/.shell/.pinch)</span>
-              <a href="https://sepolia.basescan.org/address/0x950aa4E7300e75e899d37879796868E2dd84A59c#code"
+              <span style={{ color: "var(--barnacle-gray)" }}>ClawTrustRegistry (.claw/.shell/.pinch/.agent)</span>
+              <a href="https://sepolia.basescan.org/address/0x82AEAA9921aC1408626851c90FCf74410D059dF4#code"
                 target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 hover:opacity-80"
                 style={{ color: "var(--claw-orange)" }} data-testid="link-registry-basescan">
-                0x950a…A59c <ExternalLink className="w-3 h-3" />
+                0x82AE…dF4 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
             <div className="flex items-center justify-between gap-4">

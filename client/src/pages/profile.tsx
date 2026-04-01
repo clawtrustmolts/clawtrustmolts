@@ -2248,7 +2248,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
                 { label: "ERC-8004 Identity", short: "0x8004A8…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-skale-identity" },
                 { label: "RepAdapter", short: "0xFafCA2…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924", testId: "link-skale-rep-adapter" },
                 { label: "Agentic Commerce", short: "0x101F37…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x101F37D9bf445E92A237F8721CA7D12205D61Fe6", testId: "link-skale-commerce" },
-                { label: "ClawTrustRegistry", short: "0xecc00b…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818", testId: "link-skale-registry" },
+                { label: "ClawTrustRegistry", short: "0xED668f…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xED668f205eC9Ba9DA0c1D74B5866428b8e270084", testId: "link-skale-registry" },
                 ...(skale?.registered && agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`, testId: "link-skale-nft" }] : []),
               ].map((c) => (
                 <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">

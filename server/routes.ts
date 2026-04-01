@@ -3505,10 +3505,10 @@ export async function registerRoutes(
           basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0"}`,
         },
         ClawTrustRegistry: {
-          address: process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x950aa4E7300e75e899d37879796868E2dd84A59c",
-          description: "ERC-721 domain name service (.claw/.shell/.pinch TLDs)",
-          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x950aa4E7300e75e899d37879796868E2dd84A59c"}`,
-          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x950aa4E7300e75e899d37879796868E2dd84A59c"}`,
+          address: process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x82AEAA9921aC1408626851c90FCf74410D059dF4",
+          description: "ERC-721 domain name service (.claw/.shell/.pinch/.agent TLDs)",
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x82AEAA9921aC1408626851c90FCf74410D059dF4"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x82AEAA9921aC1408626851c90FCf74410D059dF4"}`,
         },
       },
       erc8004: {
@@ -4046,21 +4046,30 @@ export async function registerRoutes(
 
   // ─── ClawTrust Name Service — Multi-TLD domain API ──────────────────────────
 
-  const DOMAIN_TLDS = [".molt", ".claw", ".shell", ".pinch"] as const;
+  const DOMAIN_TLDS = [".molt", ".claw", ".shell", ".pinch", ".agent"] as const;
   const DOMAIN_TLD_PRICE: Record<string, number> = {
     ".molt": 0,
     ".claw": 50,
     ".shell": 100,
     ".pinch": 25,
+    ".agent": 8,
   };
   const DOMAIN_TLD_FREE_SCORE: Record<string, number> = {
     ".molt": 0,
     ".claw": 70,
     ".shell": 50,
     ".pinch": 30,
+    ".agent": 999,
   };
+  function getAgentDomainPrice(name: string): number {
+    const len = name.length;
+    if (len <= 3) return 60;
+    if (len === 4) return 20;
+    if (len <= 9) return 8;
+    return 5;
+  }
   const DOMAIN_NAME_REGEX = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$|^[a-z0-9]{3,32}$/;
-  const DOMAIN_RESERVED = new Set([...MOLT_RESERVED_NAMES, "claw", "molt", "shell", "pinch", "trust", "admin", "api", "app", "root", "registry", "contract", "token"]);
+  const DOMAIN_RESERVED = new Set([...MOLT_RESERVED_NAMES, "claw", "molt", "shell", "pinch", "agent", "trust", "admin", "api", "app", "root", "registry", "contract", "token"]);
 
   async function checkDomainAvailability(name: string, tld: string, wallet?: string) {
     if (!name || name.length < 3 || name.length > 32 || !DOMAIN_NAME_REGEX.test(name)) {
@@ -4076,7 +4085,7 @@ export async function registerRoutes(
     if (existing && existing.status === "ACTIVE") {
       return { available: false, reason: "taken", takenBy: existing.walletAddress };
     }
-    const price = DOMAIN_TLD_PRICE[tld] ?? 0;
+    const price = tld === ".agent" ? getAgentDomainPrice(name) : (DOMAIN_TLD_PRICE[tld] ?? 0);
     const freeScore = DOMAIN_TLD_FREE_SCORE[tld] ?? 999;
 
     let agentMeetsRequirement = tld === ".molt";
@@ -4088,7 +4097,7 @@ export async function registerRoutes(
         agentMeetsRequirement = score >= freeScore;
       }
     }
-    return { available: true, price, freeScore, agentMeetsRequirement };
+    return { available: true, price, freeScore, agentMeetsRequirement, lengthBased: tld === ".agent" };
   }
 
   app.post("/api/domains/check", async (req, res) => {
@@ -4133,7 +4142,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "That name is reserved" });
       }
       if (!DOMAIN_TLDS.includes(tld as any)) {
-        return res.status(400).json({ message: "TLD must be one of: .molt .claw .shell .pinch" });
+        return res.status(400).json({ message: "TLD must be one of: .molt .claw .shell .pinch .agent" });
       }
 
       const existing = await storage.getMoltDomain(name, tld);
@@ -4141,7 +4150,7 @@ export async function registerRoutes(
         return res.status(409).json({ message: `${name}${tld} is already taken` });
       }
 
-      const requiredPrice = DOMAIN_TLD_PRICE[tld] ?? 0;
+      const requiredPrice = tld === ".agent" ? getAgentDomainPrice(name) : (DOMAIN_TLD_PRICE[tld] ?? 0);
       const freeScore = DOMAIN_TLD_FREE_SCORE[tld] ?? 999;
 
       let agentMeetsScore = tld === ".molt";
@@ -4161,11 +4170,10 @@ export async function registerRoutes(
       const canRegisterPaid = requiredPrice > 0 && payingEnough;
 
       if (!canRegisterFree && !canRegisterPaid && requiredPrice > 0) {
-        return res.status(403).json({
-          message: `${tld} requires FusedScore ≥ ${freeScore} or payment of ${requiredPrice} USDC`,
-          freeScore,
-          requiredPrice,
-        });
+        const msg = tld === ".agent"
+          ? `${name}.agent requires payment of ${requiredPrice} USDC/yr (length-based: 3-char=60, 4-char=20, 5-9 char=8, 10+=5)`
+          : `${tld} requires FusedScore ≥ ${freeScore} or payment of ${requiredPrice} USDC`;
+        return res.status(403).json({ message: msg, freeScore, requiredPrice });
       }
 
       const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
@@ -4265,8 +4273,8 @@ export async function registerRoutes(
   app.get("/api/domains/:fullDomain", async (req, res) => {
     try {
       const full = req.params.fullDomain?.toLowerCase();
-      const tldMatch = full?.match(/^(.+)(\.molt|\.claw|\.shell|\.pinch)$/);
-      if (!tldMatch) return res.status(400).json({ message: "Invalid domain format (e.g. jarvis.claw)" });
+      const tldMatch = full?.match(/^(.+)(\.molt|\.claw|\.shell|\.pinch|\.agent)$/);
+      if (!tldMatch) return res.status(400).json({ message: "Invalid domain format (e.g. jarvis.claw or jarvis.agent)" });
       const [, name, tld] = tldMatch;
       const record = await storage.getMoltDomain(name, tld);
       if (!record || record.status !== "ACTIVE") return res.status(404).json({ message: "Domain not found" });
@@ -5912,7 +5920,7 @@ export async function registerRoutes(
           ERC8004IdentityRegistry:    "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF" as `0x${string}`,
           ERC8004ReputationRegistry: "0x8004B663056A597Dffe9eCcC1965A193B7388713" as `0x${string}`,
           ClawTrustAC:               "0x1933D67CDB911653765e84758f47c60A1E868bC0" as `0x${string}`,
-          ClawTrustRegistry:         "0x950aa4E7300e75e899d37879796868E2dd84A59c" as `0x${string}`,
+          ClawTrustRegistry:         "0x82AEAA9921aC1408626851c90FCf74410D059dF4" as `0x${string}`,
         };
         const liveness: Record<string, { address: string; live: boolean; error?: string }> = {};
         await Promise.all(
@@ -9082,7 +9090,7 @@ export async function registerRoutes(
               swarmValidator: "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
               bond: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
               crew: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
-              registry: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+              registry: "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084",
             },
           },
         },
@@ -9111,7 +9119,7 @@ export async function registerRoutes(
     // ── Additional Base Sepolia contracts (ERC-8004 registry + ERC-8183 AC + domain registry) ──
     const erc8004RegAddr  = "0x8004A818BFB912233c491871b3d84c89A494BD9e"; // Official ERC-8004 identity registry
     const clawACAddr      = "0x1933D67CDB911653765e84758f47c60A1E868bC0"; // ClawTrustAC — ERC-8183 agentic commerce
-    const clawRegAddr     = "0x950aa4E7300e75e899d37879796868E2dd84A59c"; // ClawTrustRegistry — .claw/.shell/.pinch domains
+    const clawRegAddr     = "0x82AEAA9921aC1408626851c90FCf74410D059dF4"; // ClawTrustRegistry — .claw/.shell/.pinch/.agent domains
 
     try {
       const totalSupply = await (clawCardNFT as any).read.totalSupply();

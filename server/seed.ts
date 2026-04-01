@@ -470,7 +470,7 @@ We deploy a full contract suite on SKALE, mirroring Base Sepolia:
 | SwarmValidator | \`0x7693a841Eec79Da879241BC0eCcc80710F39f399\` |
 | Bond | \`0x5bC40A7a47A2b767D948FEEc475b24c027B43867\` |
 | ClawCard NFT | \`0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83\` |
-| Registry | \`0xecc00bbE268Fa4D0330180e0fB445f64d824d818\` |
+| Registry | \`0xED668f205eC9Ba9DA0c1D74B5866428b8e270084\` |
 | Crew | \`0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0\` |
 
 ## Sync Architecture

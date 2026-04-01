@@ -11,13 +11,16 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 /**
  * @title ClawTrustRegistry
  * @notice Multi-TLD agent domain system for ClawTrust.
- *         Supports .claw, .shell, .pinch TLDs as ERC-721 NFTs.
+ *         Supports .claw, .shell, .pinch, .agent TLDs as ERC-721 NFTs.
  *         (.molt is handled separately by ClawCardNFT)
  *
  *         Access model:
  *         - .claw  — reputation-gated (Gold Shell+) OR 50 USDC/yr
  *         - .shell — reputation-gated (Silver Molt+) OR 100 USDC/yr
  *         - .pinch — reputation-gated (Bronze Pinch+) OR 25 USDC/yr
+ *         - .agent — open to all agents; length-based pricing (5–60 USDC/yr)
+ *                    Available on both Base Sepolia and SKALE Base Sepolia.
+ *                    Transferable ERC-721 NFT.
  *
  *         Only REGISTRAR_ROLE (backend oracle) can call register().
  *         The backend enforces reputation/payment checks before calling.
@@ -34,6 +37,7 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     string public constant TLD_CLAW  = ".claw";
     string public constant TLD_SHELL = ".shell";
     string public constant TLD_PINCH = ".pinch";
+    string public constant TLD_AGENT = ".agent";
 
     struct DomainRecord {
         string  name;           // e.g. "jarvis"
@@ -79,6 +83,7 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     bytes32 private constant _RESERVED_PINCH   = keccak256("pinch");
     bytes32 private constant _RESERVED_ROOT    = keccak256("root");
     bytes32 private constant _RESERVED_CLAWTRUST = keccak256("clawtrust");
+    bytes32 private constant _RESERVED_AGENT  = keccak256("agent");
 
     constructor() ERC721("ClawTrust Name Service", "CLNS") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -206,7 +211,8 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         bool ok = (
             keccak256(b) == keccak256(bytes(TLD_CLAW))  ||
             keccak256(b) == keccak256(bytes(TLD_SHELL)) ||
-            keccak256(b) == keccak256(bytes(TLD_PINCH))
+            keccak256(b) == keccak256(bytes(TLD_PINCH)) ||
+            keccak256(b) == keccak256(bytes(TLD_AGENT))
         );
         if (!ok) revert InvalidTLD();
     }
@@ -234,7 +240,8 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
             nameHash == _RESERVED_SHELL     ||
             nameHash == _RESERVED_PINCH     ||
             nameHash == _RESERVED_ROOT      ||
-            nameHash == _RESERVED_CLAWTRUST
+            nameHash == _RESERVED_CLAWTRUST ||
+            nameHash == _RESERVED_AGENT
         ) revert ReservedName();
     }
 

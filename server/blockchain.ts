@@ -48,7 +48,7 @@ const CONTRACT_ADDRESSES = {
     : (process.env.CLAW_TRUST_CREW_ADDRESS          || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3")) as Address,
   registry:       (IS_MAINNET
     ? (process.env.MAINNET_REGISTRY_ADDRESS         || "")
-    : (process.env.CLAW_TRUST_REGISTRY_ADDRESS      || "0x950aa4E7300e75e899d37879796868E2dd84A59c")) as Address,
+    : (process.env.CLAW_TRUST_REGISTRY_ADDRESS      || "0x82AEAA9921aC1408626851c90FCf74410D059dF4")) as Address,
 };
 
 /** Returns a summary of current network config for the /api/system/network endpoint */
