@@ -1316,7 +1316,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: "posterId is required to create a gig" });
       }
 
-      const gig = await storage.createGig(data);
+      const autoPremium = data.budget >= 500 && data.currency === "USDC";
+      const gigTier = (req.body?.gigTier === "PREMIUM" || autoPremium) ? "PREMIUM" : "STANDARD";
+      const crewGig = !!req.body?.crewGig;
+      const minCrewScore = req.body?.minCrewScore ? Number(req.body.minCrewScore) : null;
+
+      const gig = await storage.createGig({ ...data, gigTier, crewGig, minCrewScore } as any);
       res.status(201).json(gig);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -4684,6 +4689,14 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Cannot apply to your own gig" });
       }
 
+      if ((gig as any).gigTier === "PREMIUM" && agent.fusedScore < 70 && !(req as any).isE2EBypass) {
+        return res.status(403).json({ message: "Premium gigs require a TrustScore of 70 or above" });
+      }
+
+      if (gig.crewGig) {
+        return res.status(400).json({ message: "This is a crew-only gig. Apply as a crew via /api/crews/:id/apply/:gigId" });
+      }
+
       const existingApplication = await storage.getGigApplicant(gigId.data, agentId);
       if (existingApplication) {
         return res.status(409).json({ message: "Already applied to this gig" });
@@ -5158,6 +5171,10 @@ export async function registerRoutes(
 
       const allGigs = await storage.getGigs();
       let filtered = allGigs.filter(g => g.status === "open");
+      const crewOnly = req.query.crewOnly === "true";
+      const tierFilter = req.query.tier as string;
+      if (crewOnly) filtered = filtered.filter(g => g.crewGig === true);
+      if (tierFilter) filtered = filtered.filter(g => (g as any).gigTier === tierFilter);
 
       const skillList = skills
         ? skills.split(",").map(s => s.trim().toLowerCase())
@@ -7463,7 +7480,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid crew data", errors: parsed.error.flatten() });
       }
-      const { name, handle, description, members } = parsed.data;
+      const { name, handle, description, members, specialization, agencyPitch, capabilities } = parsed.data;
 
       const existingCrew = await storage.getCrewByHandle(handle);
       if (existingCrew) {
@@ -7523,11 +7540,19 @@ export async function registerRoutes(
       const avgScore = memberAgents.reduce((s, m) => s + m.agent.fusedScore, 0) / memberAgents.length;
       const bondPool = memberAgents.reduce((s, m) => s + m.agent.availableBond, 0);
 
+      const allMemberSkills = memberAgents.flatMap((m) => m.agent.skills || []);
+      const derivedCapabilities = capabilities && capabilities.length > 0
+        ? capabilities
+        : [...new Set(allMemberSkills)].slice(0, 20);
+
       const crew = await storage.createCrew({
         name,
         handle,
         description: description || null,
         ownerWallet,
+        specialization: specialization || "GENERAL",
+        agencyPitch: agencyPitch || null,
+        capabilities: derivedCapabilities,
       });
 
       await storage.updateCrew(crew.id, {
@@ -7570,12 +7595,16 @@ export async function registerRoutes(
       const minScore = Number(req.query.minScore) || 0;
       const minBond = Number(req.query.minBond) || 0;
       const role = (req.query.role as string) || "";
+      const specialization = (req.query.specialization as string) || "";
 
       if (minScore > 0) {
         allCrews = allCrews.filter(c => c.fusedScore >= minScore);
       }
       if (minBond > 0) {
         allCrews = allCrews.filter(c => c.bondPool >= minBond);
+      }
+      if (specialization) {
+        allCrews = allCrews.filter(c => c.specialization === specialization);
       }
 
       const enriched = await Promise.all(allCrews.map(async (crew) => {

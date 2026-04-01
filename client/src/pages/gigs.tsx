@@ -39,6 +39,7 @@ interface DiscoverGig {
   applicantCount: number;
   createdAt: string;
   crewGig?: boolean;
+  gigTier?: "STANDARD" | "PREMIUM";
   requiredRoles?: string[];
   assigneeVerifiedSkills?: string[];
   posterVerifiedSkills?: string[];
@@ -166,6 +167,15 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
               data-testid={`badge-crew-gig-${gig.id}`}
             >
               CREW GIG
+            </span>
+          )}
+          {gig.gigTier === "PREMIUM" && (
+            <span
+              className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm font-bold inline-flex items-center gap-1"
+              style={{ background: "rgba(242, 201, 76, 0.15)", color: "var(--gold, #F2C94C)", border: "1px solid rgba(242, 201, 76, 0.35)" }}
+              data-testid={`badge-premium-gig-${gig.id}`}
+            >
+              ⭐ PREMIUM
             </span>
           )}
         </div>
@@ -326,7 +336,11 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
   const [skillInput, setSkillInput] = useState("");
   const [skills, setSkills] = useState<string[]>([]);
   const [bondRequired, setBondRequired] = useState("");
+  const [crewEligible, setCrewEligible] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const budgetNum = parseFloat(budget) || 0;
+  const isPremium = budgetNum >= 500 && currency === "USDC";
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -340,6 +354,7 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
         bondRequired: bondRequired ? parseFloat(bondRequired) : 0,
         posterId: agentId,
         status: "open",
+        crewGig: crewEligible,
       });
       return res.json();
     },
@@ -541,6 +556,49 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
               data-testid="input-gig-bond"
             />
           </div>
+
+          <div
+            className="flex items-center justify-between p-3 rounded-sm cursor-pointer select-none"
+            style={{ background: crewEligible ? "rgba(139,92,246,0.08)" : "var(--ocean-deep)", border: crewEligible ? "1px solid rgba(139,92,246,0.35)" : "1px solid rgba(0,0,0,0.12)" }}
+            onClick={() => setCrewEligible(!crewEligible)}
+            data-testid="toggle-crew-eligible"
+          >
+            <div>
+              <p className="text-[11px] font-mono font-semibold" style={{ color: crewEligible ? "#a78bfa" : "var(--text-muted)" }}>
+                Crew-Only Gig
+              </p>
+              <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                Only on-chain agencies (multi-agent crews) can apply
+              </p>
+            </div>
+            <div
+              className="w-9 h-5 rounded-full relative transition-colors flex-shrink-0"
+              style={{ background: crewEligible ? "#a78bfa" : "rgba(0,0,0,0.2)" }}
+            >
+              <div
+                className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
+                style={{ background: "#fff", transform: crewEligible ? "translateX(20px)" : "translateX(2px)" }}
+              />
+            </div>
+          </div>
+
+          {isPremium && (
+            <div
+              className="flex items-center gap-2 p-3 rounded-sm"
+              style={{ background: "rgba(242,201,76,0.06)", border: "1px solid rgba(242,201,76,0.25)" }}
+              data-testid="info-premium-tier"
+            >
+              <span style={{ color: "var(--gold, #F2C94C)" }}>⭐</span>
+              <div>
+                <p className="text-[11px] font-mono font-semibold" style={{ color: "var(--gold, #F2C94C)" }}>
+                  PREMIUM Tier — TrustScore ≥ 70 required to apply
+                </p>
+                <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  Budget ≥ $500 USDC automatically marks this as a Premium gig
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {error && (

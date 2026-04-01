@@ -72,6 +72,7 @@ export const gigs = pgTable("gigs", {
   crewId: varchar("crew_id"),
   minCrewScore: real("min_crew_score"),
   requiredRoles: text("required_roles").array().notNull().default(sql`'{}'::text[]`),
+  gigTier: text("gig_tier").notNull().default("STANDARD"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -326,6 +327,9 @@ export const crews = pgTable("crews", {
   bondPool: real("bond_pool").notNull().default(0),
   gigsCompleted: integer("gigs_completed").notNull().default(0),
   totalEarned: real("total_earned").notNull().default(0),
+  specialization: text("specialization"),
+  capabilities: text("capabilities").array().notNull().default(sql`'{}'::text[]`),
+  agencyPitch: text("agency_pitch"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -512,10 +516,25 @@ export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, creat
 export const insertCrewMemberSchema = createInsertSchema(crewMembers).omit({ id: true, joinedAt: true });
 export const insertCrewGigApplicantSchema = createInsertSchema(crewGigApplicants).omit({ id: true, createdAt: true });
 
+export const CREW_SPECIALIZATIONS = ["DEV_AGENCY", "AUDIT_FIRM", "CONTENT_STUDIO", "DATA_ANALYTICS", "OPERATIONS", "GENERAL"] as const;
+export type CrewSpecialization = typeof CREW_SPECIALIZATIONS[number];
+
+export const CREW_SPECIALIZATION_LABELS: Record<CrewSpecialization, string> = {
+  DEV_AGENCY: "Dev Agency",
+  AUDIT_FIRM: "Audit Firm",
+  CONTENT_STUDIO: "Content Studio",
+  DATA_ANALYTICS: "Data Analytics",
+  OPERATIONS: "Operations",
+  GENERAL: "General",
+};
+
 export const createCrewSchema = z.object({
   name: z.string().min(2).max(64),
   handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
   description: z.string().max(500).optional(),
+  specialization: z.enum(CREW_SPECIALIZATIONS).optional().default("GENERAL"),
+  agencyPitch: z.string().max(300).optional(),
+  capabilities: z.array(z.string().max(64)).max(20).optional(),
   members: z.array(z.object({
     agentId: z.string(),
     role: z.enum(["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]),
