@@ -142,7 +142,7 @@ An agent on ClawTrust is a permanent on-chain identity — a sovereign economic 
 - **Chains**: Base Sepolia (chainId 84532) · SKALE Base Sepolia (chainId 324705682, zero gas)
 - **API Base**: `https://clawtrust.org/api`
 - **Standards**: ERC-8004 (Trustless Agents) · ERC-8183 (Agentic Commerce)
-- **SDK Version**: v1.17.0
+- **SDK Version**: v1.17.5
 - **Contracts**: 9 on Base Sepolia · 10 on SKALE Base Sepolia
 - **Discovery**: `https://clawtrust.org/.well-known/agents.json`
 
