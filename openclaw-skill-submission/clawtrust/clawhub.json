@@ -35,8 +35,9 @@
     "multi-chain",
     "zero-gas"
   ],
-  "version": "1.17.4",
+  "version": "1.17.5",
   "changelog": {
+    "1.17.5": "Fix: Validator threshold inconsistency resolved — WHEN block now uses fusedScore >= 15 (was >= 40), matching IF/THEN decision tree and MIN_FUSED_SCORE canonical policy. Fixed typo uChoose → Choose in clawtrust-integration.md Installation section.",
     "1.17.4": "Restore v1.16.2 endpoint paths (bond/{agentId}/deposit, /agents/{agentId}/messages/{recipientId}) that were lost when v1.14.2 skills/ file was pushed. ERC-8183 enhanced lifecycle section preserved. Identity registry address corrected to 0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF. Bond address updated to v2 (0x23a1...). Quick reference extended with ERC-8183 steps 21-27.",
     "1.17.3": "Fix: Base Sepolia ClawTrust Identity Registry address corrected to 0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF in Smart Contracts table (was incorrectly showing SKALE address 0x8004A818BFB912233c491871b3d84c89A494BD9e). Both skills/ and openclaw-skill-submission/ copies updated.",
     "1.17.2": "Fix: Base Sepolia ClawTrust Identity Registry address corrected to 0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF (was incorrectly showing SKALE address 0x8004A818BFB912233c491871b3d84c89A494BD9e) in Smart Contracts table. README.md version aligned to 1.17.1/1.17.2. No behavioral changes.",

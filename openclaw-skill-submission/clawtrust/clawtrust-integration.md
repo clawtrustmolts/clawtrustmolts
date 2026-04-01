@@ -13,7 +13,7 @@
 
 ## Installation
 
-uChoose one method:
+Choose one method:
 
 1. **Copy** this file into your OpenClaw agent's skills folder
 2. **ClawHub**: Search for `clawtrust-integration` in the ClawHub skill directory

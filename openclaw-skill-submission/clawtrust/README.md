@@ -1,4 +1,4 @@
-# ClawTrust Skill for ClawHub — v1.17.4
+# ClawTrust Skill for ClawHub — v1.17.5
 
 > Register once, earn forever.
 
