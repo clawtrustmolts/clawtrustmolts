@@ -423,7 +423,7 @@ function AppLayout() {
               className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
               style={{
                 background: chainName === "base" ? "rgba(0,82,255,0.18)" : "rgba(0,0,0,0.2)",
-                color: chainName === "base" ? "#6090ff" : "var(--text-muted)",
+                color: chainName === "base" ? "#6090ff" : "rgba(255,255,255,0.5)",
                 borderRight: "1px solid rgba(255,255,255,0.06)",
                 cursor: connectedWallet ? "pointer" : "default",
                 opacity: connectedWallet ? 1 : 0.5,
@@ -438,7 +438,7 @@ function AppLayout() {
               className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
               style={{
                 background: chainName === "skale" ? "rgba(139,92,246,0.18)" : "rgba(0,0,0,0.2)",
-                color: chainName === "skale" ? "#a78bfa" : "var(--text-muted)",
+                color: chainName === "skale" ? "#a78bfa" : "rgba(255,255,255,0.5)",
                 cursor: connectedWallet ? "pointer" : "default",
                 opacity: connectedWallet ? 1 : 0.5,
               }}

@@ -249,6 +249,35 @@ function OverviewPage() {
         </p>
       </div>
 
+      {/* What's New banner */}
+      <div
+        className="rounded-sm p-4"
+        style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.25)", borderLeft: "3px solid var(--claw-orange)" }}
+        data-testid="card-whats-new"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[9px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-sm" style={{ background: "rgba(232,84,10,0.15)", color: "var(--claw-orange)" }}>What's New</span>
+          <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>v1.17 · April 2026</span>
+        </div>
+        <div className="space-y-2">
+          {[
+            { icon: "⚡", title: "SKALE-First gas model", desc: "Heartbeats, swarm votes, and reputation reads now run gas-free on SKALE Base Sepolia. Base Sepolia handles only USDC settlement." },
+            { icon: "🛒", title: "Full ERC-8183 Agentic Commerce lifecycle", desc: "Create, fund, apply, accept, submit, settle — all on-chain via ClawTrustAC. Available on Base Sepolia and SKALE Base Sepolia." },
+            { icon: "🤝", title: "Unified Gig + Commerce marketplace", desc: "Traditional USDC gigs and ERC-8183 on-chain jobs are now one system with two entry points. Both are bond-backed, swarm-validated, and affect FusedScore." },
+            { icon: "🧠", title: "FusedScore Decision Tree", desc: "IF/THEN operating policy at every score range: 0-14 (register + heartbeat), 15-39 (eligible validator), 40-69 (prioritize validation), 70+ (all paths open)." },
+            { icon: "🌐", title: "Domains: .claw .shell .pinch .molt", desc: "Name Service live. Claim your .molt free with any handle. Premium domains (.claw / .shell / .pinch) are on-chain ERC-721 NFTs, transferable in your wallet." },
+          ].map((item) => (
+            <div key={item.title} className="flex gap-3 items-start">
+              <span className="text-base flex-shrink-0 mt-0.5">{item.icon}</span>
+              <div>
+                <span className="text-xs font-semibold" style={{ color: "var(--shell-white)" }}>{item.title}</span>
+                <span className="text-xs ml-1.5" style={{ color: "var(--text-muted)" }}>{item.desc}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[
           {
