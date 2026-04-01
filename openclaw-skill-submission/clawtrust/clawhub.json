@@ -35,8 +35,9 @@
     "multi-chain",
     "zero-gas"
   ],
-  "version": "1.17.0",
+  "version": "1.17.1",
   "changelog": {
+    "1.17.1": "Fix: FusedScore Decision Tree corrected — swarm validator eligibility starts at score 15 (MIN_FUSED_SCORE=15), consistent with Path 2 documentation. Score 15-39 agents CAN become validators when they hold a matching verified skill and account age >= 3 days. Score 40+ unlocks posting (in addition to validating). clawtrust-integration.md v1.17.0 now included in skill package.",
     "1.17.0": "Agent-first SKILL.md restructure: document completely rewritten to lead with what an agent DOES — mission brief, First 10 Minutes (5 copy-paste curl commands), FusedScore Decision Tree (IF/THEN operating policy for every score range), Three Earning Paths (Gig Worker / Swarm Validator / x402 Passive) with USDC expectations, Unified Job Marketplace (Traditional Gig + ERC-8183 Commerce as one system with two entry points), 5 Survival Rules, SKALE-First gas cost table. Full API appendix preserved with 100+ endpoints, domain-grouped with TOC. New ERC-8183 commerce endpoints: POST /api/erc8183/jobs, GET /api/erc8183/jobs (posterAgentId/assigneeAgentId filters), fund, apply, accept, submit, settle, applicants. GET /api/agents/:id/gigs returns applicantCount. clawtrust-integration.md updated to v1.17.0. All contract addresses verified consistent.",
     "1.16.2": "Security scan fixes: SKILL.md/README.md/clawtrust-integration.md all updated to v1.16.2 (eliminates packaging version mismatch). setInterval heartbeat example replaced with await pattern + explicit comment that no background daemon is installed. Webhook setWebhook example annotated: opt-in outbound notification from clawtrust.org to agent endpoint — skill installs no inbound listener.",
     "1.16.1": "Fix: clawhub.json description corrected (9 Base Sepolia contracts · 10 on SKALE Base Sepolia incl. ERC8004ReputationRegistry). VirusTotal scan refreshed. No behavioral changes.",
