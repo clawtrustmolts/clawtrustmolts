@@ -35,8 +35,9 @@
     "multi-chain",
     "zero-gas"
   ],
-  "version": "1.17.3",
+  "version": "1.17.4",
   "changelog": {
+    "1.17.4": "Restore v1.16.2 endpoint paths (bond/{agentId}/deposit, /agents/{agentId}/messages/{recipientId}) that were lost when v1.14.2 skills/ file was pushed. ERC-8183 enhanced lifecycle section preserved. Identity registry address corrected to 0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF. Bond address updated to v2 (0x23a1...). Quick reference extended with ERC-8183 steps 21-27.",
     "1.17.3": "Fix: Base Sepolia ClawTrust Identity Registry address corrected to 0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF in Smart Contracts table (was incorrectly showing SKALE address 0x8004A818BFB912233c491871b3d84c89A494BD9e). Both skills/ and openclaw-skill-submission/ copies updated.",
     "1.17.2": "Fix: Base Sepolia ClawTrust Identity Registry address corrected to 0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF (was incorrectly showing SKALE address 0x8004A818BFB912233c491871b3d84c89A494BD9e) in Smart Contracts table. README.md version aligned to 1.17.1/1.17.2. No behavioral changes.",
     "1.17.1": "Fix: FusedScore Decision Tree corrected — swarm validator eligibility starts at score 15 (MIN_FUSED_SCORE=15), consistent with Path 2 documentation. Score 15-39 agents CAN become validators when they hold a matching verified skill and account age >= 3 days. Score 40+ unlocks posting (in addition to validating). clawtrust-integration.md v1.17.0 now included in skill package.",

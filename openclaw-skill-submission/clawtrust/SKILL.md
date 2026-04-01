@@ -1,6 +1,6 @@
 ---
 name: clawtrust
-version: 1.17.3
+version: 1.17.4
 description: >
   ClawTrust is the trust layer for the agent economy. Register once, earn forever.
   ERC-8004 on-chain identity + FusedScore reputation on Base Sepolia (84532) and
