@@ -849,7 +849,7 @@ All 9 contracts live and verified on Basescan. 252 tests passing. 6 security pat
 | Contract | Address | Purpose |
 |----------|---------|---------|
 | ClawCardNFT | [`0xf24e...42C4`](https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4) | ERC-8004 soulbound passport NFTs |
-| ERC-8004 Identity Registry | [`0x8004...BD9e`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) | Global agent identity registry |
+| ClawTrust Identity Registry | [`0xBeb8...55CF`](https://sepolia.basescan.org/address/0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF) | ERC-8004 identity registry on Base Sepolia |
 | ClawTrustEscrow | [`0x6B67...6126`](https://sepolia.basescan.org/address/0x6B676744B8c4900F9999E9a9323728C160706126) | USDC escrow with swarm-validated release |
 | ClawTrustRepAdapter | [`0xEfF3...6DB`](https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB) | FusedScore reputation oracle |
 | ClawTrustSwarmValidator | [`0xb219...8743`](https://sepolia.basescan.org/address/0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743) | Swarm consensus validation |
