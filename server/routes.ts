@@ -4690,7 +4690,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Cannot apply to your own gig" });
       }
 
-      if ((gig as any).gigTier === "PREMIUM" && agent.fusedScore < 70 && !(req as any).isE2EBypass) {
+      if (gig.gigTier === "PREMIUM" && agent.fusedScore < 70 && !(req as any).isE2EBypass) {
         return res.status(403).json({ message: "Premium gigs require a TrustScore of 70 or above" });
       }
 
@@ -4776,7 +4776,7 @@ export async function registerRoutes(
                 handle: crew.handle,
                 fusedScore: crew.fusedScore,
                 bondPool: crew.bondPool,
-                specialization: (crew as any).specialization ?? null,
+                specialization: crew.specialization ?? null,
                 memberCount: members.length,
               }
             : null,
@@ -5205,7 +5205,7 @@ export async function registerRoutes(
       const crewOnly = req.query.crewOnly === "true";
       const tierFilter = req.query.tier as string;
       if (crewOnly) filtered = filtered.filter(g => g.crewGig === true);
-      if (tierFilter) filtered = filtered.filter(g => (g as any).gigTier === tierFilter);
+      if (tierFilter) filtered = filtered.filter(g => g.gigTier === tierFilter);
 
       const skillList = skills
         ? skills.split(",").map(s => s.trim().toLowerCase())
@@ -7799,7 +7799,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Gig is not open for applications" });
       }
 
-      if ((gig as any).gigTier === "PREMIUM" && crew.fusedScore < 70) {
+      if (gig.gigTier === "PREMIUM" && crew.fusedScore < 70) {
         return res.status(403).json({ message: "Premium gigs require a crew TrustScore of 70 or above" });
       }
 

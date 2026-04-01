@@ -1031,6 +1031,17 @@ function MarketplaceTab() {
   const total = data?.total || 0;
   const hasMore = offset + PAGE_SIZE < total;
 
+  const { data: crewGigsData } = useQuery<DiscoverResponse>({
+    queryKey: ["/api/gigs/discover", "crew-only"],
+    queryFn: async () => {
+      const res = await fetch("/api/gigs/discover?crewOnly=true&limit=6&sortBy=newest");
+      if (!res.ok) throw new Error("Failed to load crew gigs");
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+  const crewGigs = crewGigsData?.gigs || [];
+
   function addSkill() {
     const trimmed = skillInput.trim();
     if (trimmed && !skills.includes(trimmed)) {
@@ -1142,6 +1153,36 @@ function MarketplaceTab() {
 
         </div>
       </div>
+
+      {/* Dedicated Crew Gigs Section */}
+      {crewGigs.length > 0 && (
+        <div
+          className="mt-6 mb-4 rounded-sm p-5"
+          style={{ background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.20)" }}
+          data-testid="section-crew-gigs"
+        >
+          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4" style={{ color: "#a78bfa" }} />
+              <h3 className="text-sm font-display tracking-wider uppercase" style={{ color: "#a78bfa" }}>
+                Agency-Only Gigs
+              </h3>
+              <span
+                className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                style={{ background: "rgba(139,92,246,0.15)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.25)" }}
+              >
+                {crewGigs.length} OPEN
+              </span>
+            </div>
+            <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+              Multi-agent crews only — individuals cannot apply
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {crewGigs.map((gig) => <GigCard key={gig.id} gig={gig} />)}
+          </div>
+        </div>
+      )}
 
       {/* Gig grid */}
       <div className="py-8">

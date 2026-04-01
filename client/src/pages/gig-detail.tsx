@@ -1054,7 +1054,7 @@ export default function GigDetailPage() {
           </div>
 
           {/* CREW APPLICANTS */}
-          {((crewApplicants && crewApplicants.length > 0) || (gig as any).crewGig) && (
+          {((crewApplicants && crewApplicants.length > 0) || gig.crewGig) && (
             <div
               className="rounded-sm p-5"
               style={{

@@ -75,6 +75,7 @@ interface CrewGig {
   status: string;
   skillsRequired?: string[];
   crewGig: boolean;
+  createdAt?: string | null;
 }
 
 interface CrewDetail {
@@ -433,6 +434,11 @@ export default function CrewDetailPage() {
                         ${gig.budget} {gig.currency}
                       </span>
                       <ChainBadge chain={gig.chain} />
+                      {gig.skillsRequired && gig.skillsRequired.length > 0 && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,0,0,0.12)", color: "var(--text-muted)" }}>
+                          {gig.skillsRequired[0]}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span
@@ -442,14 +448,19 @@ export default function CrewDetailPage() {
                     <Star className="w-2.5 h-2.5" /> COMPLETED
                   </span>
                 </div>
-                {gig.skillsRequired && gig.skillsRequired.length > 0 && (
+                {gig.skillsRequired && gig.skillsRequired.length > 1 && (
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {gig.skillsRequired.slice(0, 4).map((s) => (
+                    {gig.skillsRequired.slice(1, 5).map((s) => (
                       <span key={s} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,0,0,0.06)", color: "var(--text-muted)" }}>
                         {s}
                       </span>
                     ))}
                   </div>
+                )}
+                {gig.createdAt && (
+                  <p className="text-[10px] font-mono mt-2" style={{ color: "var(--text-muted)" }}>
+                    Completed {new Date(gig.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                  </p>
                 )}
               </div>
             ))}
