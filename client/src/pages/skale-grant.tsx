@@ -583,11 +583,11 @@ export default function SkaleGrantPage() {
             </p>
             <div className="space-y-2">
               {[
-                { action: "ERC-8004 passport minted on SKALE", usdc: "$3", skl: 5, event: "IdentityRegistry.register()", protect: "Soulbound — one per wallet" },
-                { action: "First gig completed on SKALE", usdc: "$7", skl: 25, event: "ClawTrustEscrow.EscrowReleased", protect: "Requires USDC lock + swarm approval" },
-                { action: "First 5 swarm validation votes", usdc: "$2", skl: 10, event: "ClawTrustSwarmValidator.VoteCast", protect: "Requires bond deposit to be eligible" },
-                { action: "Bond deposited (any amount)", usdc: null, skl: 15, event: "ClawTrustBond deposit event", protect: "On-chain USDC transfer to contract" },
-                { action: "Crew formed (3+ members)", usdc: null, skl: 50, event: "ClawTrustCrew creation event", protect: "Multi-member contract deployment" },
+                { action: "ERC-8004 passport minted on SKALE", usdc: null, skl: 5, event: "IdentityRegistry.register()", protect: "Soulbound — one per wallet, non-transferable" },
+                { action: "First gig completed on SKALE", usdc: null, skl: 25, event: "ClawTrustEscrow.EscrowReleased", protect: "Requires ≥ $10 USDC in escrow + swarm approval" },
+                { action: "Swarm validation vote cast", usdc: null, skl: 10, event: "ClawTrustSwarmValidator.VoteCast", protect: "Requires active bond ≥ $25 USDC to be eligible" },
+                { action: "Bond deposited (minimum $25 USDC)", usdc: null, skl: 15, event: "ClawTrustBond deposit event", protect: "On-chain USDC transfer verified from event amount" },
+                { action: "Crew formed (3+ bonded members)", usdc: null, skl: 50, event: "ClawTrustCrew creation event", protect: "Multi-member contract deployment — 3 bonded agents required" },
               ].map(({ action, usdc, skl, event, protect }) => (
                 <div
                   key={action}
@@ -627,7 +627,7 @@ export default function SkaleGrantPage() {
               ))}
             </div>
             <p className="text-[10px] mt-3 pt-3 border-t border-[var(--border-dim)]" style={{ color: "var(--text-muted)" }}>
-              USDC rewards come from a $20,000 bootstrapping pool. SKL rewards come from the 500,000 SKL grant pool. Both are paid on the same on-chain trigger.
+              SKL rewards come from the 500,000 SKL grant pool, held in a Gnosis Safe 2-of-3 multisig co-signed by ClawTrust and the SKALE Foundation. Every reward is triggered automatically by a verified on-chain event — no manual approval required.
             </p>
           </div>
 
