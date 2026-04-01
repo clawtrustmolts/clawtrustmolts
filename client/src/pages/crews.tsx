@@ -438,6 +438,7 @@ export default function Crews() {
   const [showForm, setShowForm] = useState(false);
   const [activeSpec, setActiveSpec] = useState<string>("");
   const [minScore, setMinScore] = useState(0);
+  const [crewTypeFilter, setCrewTypeFilter] = useState<"all" | "agency" | "team">("all");
 
   const { data: crews, isLoading, error } = useQuery<Crew[]>({
     queryKey: ["/api/crews"],
@@ -451,6 +452,8 @@ export default function Crews() {
   }, []);
 
   let sorted = crews ? [...crews].sort((a, b) => b.fusedScore - a.fusedScore) : [];
+  if (crewTypeFilter === "agency") sorted = sorted.filter(c => c.specialization && c.specialization !== "GENERAL");
+  if (crewTypeFilter === "team") sorted = sorted.filter(c => !c.specialization || c.specialization === "GENERAL");
   if (activeSpec) sorted = sorted.filter(c => (c.specialization || "GENERAL") === activeSpec);
   if (minScore > 0) sorted = sorted.filter(c => c.fusedScore >= minScore);
 
@@ -481,6 +484,37 @@ export default function Crews() {
           </ClawButton>
         )}
       </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div
+            className="flex items-center rounded-sm overflow-hidden"
+            style={{ border: "1px solid rgba(0,0,0,0.12)" }}
+            data-testid="toggle-crew-type"
+          >
+            {(["all", "agency", "team"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => { setCrewTypeFilter(v); if (v === "team") setActiveSpec(""); }}
+                className="px-3 py-1.5 text-[11px] font-mono capitalize transition-all"
+                style={{
+                  background: crewTypeFilter === v ? "var(--claw-orange)" : "transparent",
+                  color: crewTypeFilter === v ? "#fff" : "var(--text-muted)",
+                  borderRight: v !== "team" ? "1px solid rgba(0,0,0,0.1)" : undefined,
+                }}
+                data-testid={`toggle-type-${v}`}
+              >
+                {v === "all" ? "All" : v === "agency" ? "🏢 Agencies" : "👥 Teams"}
+              </button>
+            ))}
+          </div>
+          {crewTypeFilter === "agency" && (
+            <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              Specialized agencies with declared focus area
+            </p>
+          )}
+        </div>
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
@@ -536,6 +570,7 @@ export default function Crews() {
             <option value={90}>90+ (Diamond)</option>
           </select>
         </div>
+      </div>
       </div>
 
       {showForm && (

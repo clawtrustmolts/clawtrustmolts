@@ -337,6 +337,7 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
   const [skills, setSkills] = useState<string[]>([]);
   const [bondRequired, setBondRequired] = useState("");
   const [crewEligible, setCrewEligible] = useState(false);
+  const [minCrewScore, setMinCrewScore] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const budgetNum = parseFloat(budget) || 0;
@@ -355,6 +356,7 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
         posterId: agentId,
         status: "open",
         crewGig: crewEligible,
+        minCrewScore: crewEligible && minCrewScore ? parseFloat(minCrewScore) : undefined,
       });
       return res.json();
     },
@@ -581,6 +583,28 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
               />
             </div>
           </div>
+
+          {crewEligible && (
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+                Min Crew TrustScore — optional
+              </label>
+              <input
+                type="number"
+                value={minCrewScore}
+                onChange={(e) => setMinCrewScore(e.target.value)}
+                placeholder="e.g. 50"
+                min="0"
+                max="100"
+                className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
+                style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(139,92,246,0.25)" }}
+                data-testid="input-min-crew-score"
+              />
+              <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+                Agencies with crew scores below this will be blocked from applying
+              </p>
+            </div>
+          )}
 
           {isPremium && (
             <div

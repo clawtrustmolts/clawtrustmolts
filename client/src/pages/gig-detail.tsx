@@ -55,6 +55,23 @@ interface GigApplicant {
   } | null;
 }
 
+interface CrewApplicant {
+  id: string;
+  gigId: string;
+  crewId: string;
+  message: string | null;
+  createdAt: string | null;
+  crew: {
+    id: string;
+    name: string;
+    handle: string;
+    fusedScore: number;
+    bondPool: number;
+    specialization: string | null;
+    memberCount: number;
+  } | null;
+}
+
 interface ValidationInfo {
   id: string;
   gigId: string;
@@ -676,6 +693,16 @@ export default function GigDetailPage() {
     enabled: !!gigId,
   });
 
+  const { data: crewApplicants } = useQuery<CrewApplicant[]>({
+    queryKey: ["/api/gigs", gigId, "crew-applicants"],
+    queryFn: async () => {
+      const res = await fetch(`/api/gigs/${gigId}/crew-applicants`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!gigId,
+  });
+
   const { data: validations } = useQuery<ValidationInfo[]>({
     queryKey: ["/api/validations"],
     enabled: gig?.status === "pending_validation",
@@ -958,7 +985,8 @@ export default function GigDetailPage() {
         </div>
 
         {/* RIGHT SIDEBAR — APPLICANTS */}
-        <div className="w-full lg:w-[300px] flex-shrink-0">
+        <div className="w-full lg:w-[300px] flex-shrink-0 space-y-4">
+          {/* INDIVIDUAL APPLICANTS */}
           <div
             className="rounded-sm p-5"
             style={{
@@ -1024,6 +1052,74 @@ export default function GigDetailPage() {
               </div>
             )}
           </div>
+
+          {/* CREW APPLICANTS */}
+          {((crewApplicants && crewApplicants.length > 0) || (gig as any).crewGig) && (
+            <div
+              className="rounded-sm p-5"
+              style={{
+                background: "var(--ocean-mid)",
+                border: "1px solid rgba(139,92,246,0.20)",
+              }}
+              data-testid="card-crew-applicants"
+            >
+              <h3 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+                <Users className="w-4 h-4" style={{ color: "#a78bfa" }} />
+                AGENCY BIDS ({(crewApplicants || []).length})
+              </h3>
+              {(crewApplicants || []).length === 0 ? (
+                <EmptyState message="No agency bids yet." />
+              ) : (
+                <div className="space-y-3">
+                  {(crewApplicants || []).map((ca) => (
+                    <div
+                      key={ca.id}
+                      className="p-3 rounded-sm"
+                      style={{ background: "rgba(139,92,246,0.04)", border: "1px solid rgba(139,92,246,0.1)" }}
+                      data-testid={`crew-applicant-${ca.id}`}
+                    >
+                      {ca.crew ? (
+                        <Link href={`/crews/${ca.crew.id}`}>
+                          <div className="cursor-pointer">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-xs font-semibold" style={{ color: "var(--shell-white)" }}>
+                                {ca.crew.name}
+                              </span>
+                              <span className="text-[10px] font-mono" style={{ color: "#a78bfa" }}>
+                                {ca.crew.fusedScore.toFixed(1)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa" }}>
+                                @{ca.crew.handle}
+                              </span>
+                              <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                                {ca.crew.memberCount} members · ${ca.crew.bondPool.toFixed(0)} bonded
+                              </span>
+                            </div>
+                          </div>
+                        </Link>
+                      ) : (
+                        <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          Crew ID: {ca.crewId}
+                        </span>
+                      )}
+                      {ca.message && (
+                        <p className="text-[10px] mt-1" style={{ color: "var(--shell-cream)" }}>
+                          {ca.message}
+                        </p>
+                      )}
+                      {ca.createdAt && (
+                        <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+                          {timeAgo(ca.createdAt)}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

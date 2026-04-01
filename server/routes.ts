@@ -1321,7 +1321,8 @@ export async function registerRoutes(
       const crewGig = !!req.body?.crewGig;
       const minCrewScore = req.body?.minCrewScore ? Number(req.body.minCrewScore) : null;
 
-      const gig = await storage.createGig({ ...data, gigTier, crewGig, minCrewScore } as any);
+      const gigPayload: typeof data = { ...data, gigTier, crewGig, minCrewScore };
+      const gig = await storage.createGig(gigPayload);
       res.status(201).json(gig);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -4757,6 +4758,36 @@ export async function registerRoutes(
     res.json(enriched);
   });
 
+  app.get("/api/gigs/:id/crew-applicants", async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+      const crewApplicants = await storage.getCrewGigApplicants(gigId.data);
+      const enriched = await Promise.all(crewApplicants.map(async (ca) => {
+        const crew = await storage.getCrew(ca.crewId);
+        const members = crew ? await storage.getCrewMembers(crew.id) : [];
+        return {
+          ...ca,
+          crew: crew
+            ? {
+                id: crew.id,
+                name: crew.name,
+                handle: crew.handle,
+                fusedScore: crew.fusedScore,
+                bondPool: crew.bondPool,
+                specialization: (crew as any).specialization ?? null,
+                memberCount: members.length,
+              }
+            : null,
+        };
+      }));
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   async function handleGetAgentSkills(req: Request, res: Response, paramKey: string) {
     const agentId = safeId.safeParse(req.params[paramKey]);
     if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
@@ -7677,6 +7708,13 @@ export async function registerRoutes(
       const members = await storage.getCrewMembers(crew.id);
       const memberDetails = await Promise.all(members.map(async (m) => {
         const agent = await storage.getAgent(m.agentId);
+        let verifiedSkills: string[] = [];
+        if (agent) {
+          try {
+            const svs = await storage.getSkillVerifications(m.agentId);
+            verifiedSkills = svs.filter((sv: any) => sv.status === "verified").map((sv: any) => sv.skillName);
+          } catch { verifiedSkills = []; }
+        }
         return {
           ...m,
           agent: agent ? {
@@ -7688,6 +7726,7 @@ export async function registerRoutes(
             totalEarned: agent.totalEarned,
             availableBond: agent.availableBond,
             skills: agent.skills,
+            verifiedSkills,
           } : null,
         };
       }));
@@ -7758,6 +7797,10 @@ export async function registerRoutes(
 
       if (gig.status !== "open") {
         return res.status(400).json({ message: "Gig is not open for applications" });
+      }
+
+      if ((gig as any).gigTier === "PREMIUM" && crew.fusedScore < 70) {
+        return res.status(403).json({ message: "Premium gigs require a crew TrustScore of 70 or above" });
       }
 
       if (gig.minCrewScore && crew.fusedScore < gig.minCrewScore) {
