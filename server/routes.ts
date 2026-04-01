@@ -4694,10 +4694,6 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Premium gigs require a TrustScore of 70 or above" });
       }
 
-      if (gig.crewGig) {
-        return res.status(400).json({ message: "This is a crew-only gig. Apply as a crew via /api/crews/:id/apply/:gigId" });
-      }
-
       const existingApplication = await storage.getGigApplicant(gigId.data, agentId);
       if (existingApplication) {
         return res.status(409).json({ message: "Already applied to this gig" });

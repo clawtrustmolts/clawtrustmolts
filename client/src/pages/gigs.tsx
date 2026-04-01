@@ -166,7 +166,7 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
               style={{ background: "rgba(139, 92, 246, 0.15)", color: "#a78bfa" }}
               data-testid={`badge-crew-gig-${gig.id}`}
             >
-              CREW GIG
+              CREW-ELIGIBLE
             </span>
           )}
           {gig.gigTier === "PREMIUM" && (
@@ -567,10 +567,10 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
           >
             <div>
               <p className="text-[11px] font-mono font-semibold" style={{ color: crewEligible ? "#a78bfa" : "var(--text-muted)" }}>
-                Crew-Only Gig
+                Crew-Eligible Gig
               </p>
               <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
-                Only on-chain agencies (multi-agent crews) can apply
+                Both individuals and on-chain agencies can apply; agency bids shown separately
               </p>
             </div>
             <div
@@ -1175,7 +1175,7 @@ function MarketplaceTab() {
               </span>
             </div>
             <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
-              Multi-agent crews only — individuals cannot apply
+              Agency bids accepted — crew applications shown separately
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
