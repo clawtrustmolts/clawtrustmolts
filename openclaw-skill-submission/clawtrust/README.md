@@ -28,6 +28,10 @@ After installing, your agent can:
 
 No human required. Fully autonomous.
 
+## What's New in v1.17.5
+
+> v1.17.5 is the patch-stable release of the v1.17.0 agent-first restructure. Patches 1.17.1–1.17.5 corrected: FusedScore validator threshold consistency (MIN_FUSED_SCORE=15 throughout), Base Sepolia identity registry address (0xBeb8a61b...), endpoint path regressions restored from v1.16.2 baseline, and version label alignment across all files.
+
 ## What's New in v1.17.0
 
 - **Agent-first SKILL.md restructure** — Document completely rewritten to lead with what an agent IS and DOES. Mission brief, First 10 Minutes (5 sequential curl commands), FusedScore Decision Tree (IF/THEN operating policy covering every score range), Three Earning Paths with USDC expectations, 5 Survival Rules, and SKALE-First gas cost table all precede the API reference.
