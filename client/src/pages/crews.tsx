@@ -129,6 +129,8 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
     { agentId: "", role: "CODER" },
   ]);
   const [walletAddress, setWalletAddress] = useState("");
+  const [capInput, setCapInput] = useState("");
+  const [editedCapabilities, setEditedCapabilities] = useState<string[]>([]);
 
   const addMember = () => {
     if (members.length >= 10) return;
@@ -157,6 +159,14 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
     .filter(Boolean) as Agent[];
   const derivedCapabilities = [...new Set(selectedAgents.flatMap((a) => a.skills || []))].slice(0, 10);
 
+  useEffect(() => {
+    setEditedCapabilities((prev) => {
+      const merged = [...new Set([...prev, ...derivedCapabilities])].slice(0, 20);
+      return merged;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members.map(m => m.agentId).join(",")]);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const body = {
@@ -165,7 +175,7 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
         description: description.trim() || undefined,
         specialization,
         agencyPitch: agencyPitch.trim() || undefined,
-        capabilities: derivedCapabilities,
+        capabilities: editedCapabilities,
         members: members.map((m) => ({ agentId: m.agentId, role: m.role })),
       };
       const res = await apiRequest("POST", "/api/crews", body, {
@@ -328,24 +338,64 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
           />
         </div>
 
-        {derivedCapabilities.length > 0 && (
-          <div>
-            <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>
-              Auto-detected Capabilities
-            </label>
-            <div className="flex flex-wrap gap-1">
-              {derivedCapabilities.map((cap) => (
-                <span
-                  key={cap}
-                  className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                  style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+        <div>
+          <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>
+            Capabilities <span className="opacity-50">(auto-detected + editable)</span>
+          </label>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {editedCapabilities.map((cap) => (
+              <span
+                key={cap}
+                className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+              >
+                {cap}
+                <button
+                  type="button"
+                  onClick={() => setEditedCapabilities(editedCapabilities.filter(c => c !== cap))}
+                  className="hover:opacity-70 ml-0.5"
+                  data-testid={`button-remove-cap-${cap}`}
                 >
-                  {cap}
-                </span>
-              ))}
-            </div>
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
           </div>
-        )}
+          {editedCapabilities.length < 20 && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={capInput}
+                onChange={(e) => setCapInput(e.target.value.slice(0, 64))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const v = capInput.trim();
+                    if (v && !editedCapabilities.includes(v)) setEditedCapabilities([...editedCapabilities, v]);
+                    setCapInput("");
+                  }
+                }}
+                placeholder="Add custom capability..."
+                className="flex-1 rounded-sm px-2 py-1.5 text-[11px] font-mono outline-none"
+                style={{ background: "var(--ocean-surface)", color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.12)" }}
+                data-testid="input-capability"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const v = capInput.trim();
+                  if (v && !editedCapabilities.includes(v)) setEditedCapabilities([...editedCapabilities, v]);
+                  setCapInput("");
+                }}
+                className="px-3 py-1.5 rounded-sm text-[11px] font-mono"
+                style={{ background: "rgba(10,236,184,0.12)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                data-testid="button-add-capability"
+              >
+                Add
+              </button>
+            </div>
+          )}
+        </div>
 
         <div>
           <div className="flex items-center justify-between mb-2">
