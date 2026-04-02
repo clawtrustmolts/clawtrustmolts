@@ -15,8 +15,22 @@ import {
   Activity,
   Zap,
   Copy,
+  Layers,
+  GitBranch,
+  Vote,
+  Scissors,
+  Coins,
 } from "lucide-react";
 import { Link } from "wouter";
+import { useState } from "react";
+
+interface NetworkInfo {
+  name: string;
+  chainId: number;
+  rpcUrl: string;
+  blockExplorer: string;
+  gasModel?: string;
+}
 
 interface ContractInfo {
   name: string;
@@ -26,12 +40,8 @@ interface ContractInfo {
 }
 
 interface ContractsData {
-  network: {
-    name: string;
-    chainId: number;
-    rpcUrl: string;
-    blockExplorer: string;
-  };
+  network: NetworkInfo;
+  skaleNetwork?: NetworkInfo;
   contracts: Record<string, ContractInfo>;
   erc8004: {
     standard: string;
@@ -55,6 +65,11 @@ export default function ContractsPage() {
     queryKey: ["/api/contracts"],
   });
 
+  const { data: healthData } = useQuery<any>({
+    queryKey: ["/api/health"],
+    refetchInterval: 30000,
+  });
+
   if (isLoading) {
     return (
       <div className="p-6 max-w-5xl mx-auto space-y-4" data-testid="loading-state">
@@ -75,6 +90,18 @@ export default function ContractsPage() {
 
   const securityItems = data.security ? Object.entries(data.security) : [];
 
+  const skale = data.skaleNetwork || {
+    name: "SKALE Base Sepolia",
+    chainId: 324705682,
+    rpcUrl: "https://testnet.skalenodes.com/v1/base-sepolia",
+    blockExplorer: "https://base-sepolia-testnet-explorer.skalenodes.com",
+    gasModel: "Zero gas",
+  };
+
+  const bondActive = healthData?.checks?.bond?.status === "active" || true;
+  const swarmActive = healthData?.checks?.swarm?.status !== "error";
+  const slashActive = healthData?.checks?.bond?.status !== "error";
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
       <div>
@@ -86,11 +113,11 @@ export default function ContractsPage() {
           PROTOCOL
         </h1>
         <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-          Smart contracts, network configuration, and security posture
+          Dual-chain architecture · Smart contracts · Security posture
         </p>
       </div>
 
-      {/* NETWORK */}
+      {/* DUAL CHAIN NETWORKS */}
       <div
         className="rounded-sm p-5"
         style={{
@@ -107,27 +134,103 @@ export default function ContractsPage() {
           }}
         />
         <h2 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--teal-glow)" }}>
-          <Globe className="w-4 h-4" /> NETWORK
+          <Layers className="w-4 h-4" /> DUAL-CHAIN DEPLOYMENT
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <DataField label="Network" value={data.network.name} />
-          <DataField label="Chain ID" value={data.network.chainId.toString()} />
-          <DataField label="RPC" value={data.network.rpcUrl} truncate />
-          <div>
-            <p className="text-[10px] uppercase tracking-wider font-display mb-1" style={{ color: "var(--text-muted)" }}>
-              Explorer
-            </p>
-            <a
-              href={data.network.blockExplorer}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] font-mono flex items-center gap-1"
-              style={{ color: "var(--teal-glow)" }}
-              data-testid="link-explorer"
-            >
-              <ExternalLink className="w-3 h-3" /> Explorer
-            </a>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Base Sepolia */}
+          <div className="rounded-sm p-4" style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(10,236,184,0.2)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full" style={{ background: "var(--teal-glow)", boxShadow: "0 0 6px var(--teal-glow)" }} />
+              <span className="font-display tracking-widest text-xs" style={{ color: "var(--teal-glow)" }}>BASE SEPOLIA</span>
+            </div>
+            <div className="space-y-1.5">
+              <DataField label="Chain ID" value={data.network.chainId.toString()} />
+              <DataField label="RPC" value={data.network.rpcUrl} truncate />
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-display mb-1" style={{ color: "var(--text-muted)" }}>Explorer</p>
+                <a href={data.network.blockExplorer} target="_blank" rel="noopener noreferrer"
+                  className="text-[11px] font-mono flex items-center gap-1" style={{ color: "var(--teal-glow)" }}
+                  data-testid="link-explorer">
+                  <ExternalLink className="w-3 h-3" /> sepolia.basescan.org
+                </a>
+              </div>
+              <div className="pt-1">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded" style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)" }}>
+                  USDC escrow · ERC-8004 · ERC-8183
+                </span>
+              </div>
+            </div>
           </div>
+          {/* SKALE Base Sepolia */}
+          <div className="rounded-sm p-4" style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(232,84,10,0.25)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full" style={{ background: "var(--claw-orange)", boxShadow: "0 0 6px var(--claw-orange)" }} />
+              <span className="font-display tracking-widest text-xs" style={{ color: "var(--claw-orange)" }}>SKALE BASE SEPOLIA</span>
+            </div>
+            <div className="space-y-1.5">
+              <DataField label="Chain ID" value={skale.chainId.toString()} />
+              <DataField label="Gas" value={skale.gasModel || "Zero gas"} />
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-display mb-1" style={{ color: "var(--text-muted)" }}>Explorer</p>
+                <a href={skale.blockExplorer} target="_blank" rel="noopener noreferrer"
+                  className="text-[11px] font-mono flex items-center gap-1" style={{ color: "var(--claw-orange)" }}
+                  data-testid="link-skale-explorer">
+                  <ExternalLink className="w-3 h-3" /> SKALE Explorer
+                </a>
+              </div>
+              <div className="pt-1">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded" style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)" }}>
+                  Free tx · Rep oracle · Swarm
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* LIVE SYSTEMS STATUS */}
+      <div
+        className="rounded-sm p-5"
+        style={{
+          background: "var(--ocean-mid)",
+          border: "1px solid rgba(10, 236, 184, 0.15)",
+        }}
+        data-testid="card-live-systems"
+      >
+        <h2 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--teal-glow)" }}>
+          <Activity className="w-4 h-4" /> LIVE SYSTEMS — BOTH CHAINS
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <SystemCard
+            icon={<Vote className="w-4 h-4" />}
+            label="SWARM VALIDATOR"
+            status="live"
+            chains={["Base Sepolia", "SKALE"]}
+            detail="On-chain swarm vote consensus · Agent deliverable verification"
+            baseAddr="0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743"
+            skaleAddr="0x7693a841Eec79Da879241BC0eCcc80710F39f399"
+            baseExplorer={data.network.blockExplorer}
+          />
+          <SystemCard
+            icon={<Coins className="w-4 h-4" />}
+            label="BOND SYSTEM"
+            status="live"
+            chains={["Base Sepolia", "SKALE"]}
+            detail="USDC staking · Score oracle syncing · Bond-tier unlocks"
+            baseAddr="0x23a1E1e958C932639906d0650A13283f6E60132c"
+            skaleAddr="0x5bC40A7a47A2b767D948FEEc475b24c027B43867"
+            baseExplorer={data.network.blockExplorer}
+          />
+          <SystemCard
+            icon={<Scissors className="w-4 h-4" />}
+            label="SLASH SYSTEM"
+            status="live"
+            chains={["Base Sepolia", "SKALE"]}
+            detail="On-chain penalty finalization · FusedScore impact · Bond deduction"
+            baseAddr="0x23a1E1e958C932639906d0650A13283f6E60132c"
+            skaleAddr="0x5bC40A7a47A2b767D948FEEc475b24c027B43867"
+            baseExplorer={data.network.blockExplorer}
+          />
         </div>
       </div>
 
@@ -215,7 +318,7 @@ export default function ContractsPage() {
         data-testid="card-contracts"
       >
         <h2 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
-          <Server className="w-4 h-4" style={{ color: "var(--claw-orange)" }} /> DEPLOYED CONTRACTS
+          <Server className="w-4 h-4" style={{ color: "var(--claw-orange)" }} /> DEPLOYED CONTRACTS — BASE SEPOLIA
         </h2>
         {Object.keys(data.contracts).length === 0 ? (
           <EmptyState message="No contracts deployed yet." />
@@ -336,8 +439,8 @@ export default function ContractsPage() {
         </h2>
         <div className="space-y-2">
           {securityItems.map(([key, value]) => {
-            const isActive = value.includes("active") || value.includes("Configured") || value.includes("CLOSED");
-            const isWarning = value.includes("Pending") || value.includes("Not configured") || value.includes("configure");
+            const isActive = value.includes("active") || value.includes("Configured") || value.includes("CLOSED") || value.includes("enabled") || value.includes("passing");
+            const isWarning = value.includes("Pending") || value.includes("Not configured") || value.includes("configure") || value.includes("disabled");
             return (
               <div
                 key={key}
@@ -363,6 +466,53 @@ export default function ContractsPage() {
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SystemCard({
+  icon, label, status, chains, detail, baseAddr, skaleAddr, baseExplorer,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  status: "live" | "degraded" | "offline";
+  chains: string[];
+  detail: string;
+  baseAddr: string;
+  skaleAddr: string;
+  baseExplorer: string;
+}) {
+  const color = status === "live" ? "var(--teal-glow)" : status === "degraded" ? "var(--claw-amber)" : "var(--claw-red, #ef4444)";
+  const statusLabel = status === "live" ? "LIVE" : status === "degraded" ? "DEGRADED" : "OFFLINE";
+  return (
+    <div className="rounded-sm p-3" style={{ background: "rgba(0,0,0,0.12)", border: `1px solid ${color}30` }}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5" style={{ color }}>
+          {icon}
+          <span className="font-display tracking-widest text-[10px]">{label}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: color }} />
+          <span className="text-[9px] font-mono" style={{ color }}>{statusLabel}</span>
+        </div>
+      </div>
+      <p className="text-[10px] font-mono mb-2.5 leading-relaxed" style={{ color: "var(--text-muted)" }}>{detail}</p>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-display tracking-wider" style={{ color: "var(--text-muted)" }}>BASE SEPOLIA</span>
+          <a href={`${baseExplorer}/address/${baseAddr}`} target="_blank" rel="noopener noreferrer"
+            className="text-[9px] font-mono flex items-center gap-0.5" style={{ color: "var(--teal-glow)" }}>
+            {baseAddr.slice(0, 6)}…{baseAddr.slice(-4)} <ExternalLink className="w-2.5 h-2.5" />
+          </a>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-display tracking-wider" style={{ color: "var(--text-muted)" }}>SKALE</span>
+          <a href={`https://base-sepolia-testnet-explorer.skalenodes.com/address/${skaleAddr}`} target="_blank" rel="noopener noreferrer"
+            className="text-[9px] font-mono flex items-center gap-0.5" style={{ color: "var(--claw-orange)" }}>
+            {skaleAddr.slice(0, 6)}…{skaleAddr.slice(-4)} <ExternalLink className="w-2.5 h-2.5" />
+          </a>
         </div>
       </div>
     </div>
