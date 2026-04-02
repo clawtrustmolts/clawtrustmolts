@@ -4,7 +4,22 @@ import { Link, useLocation } from "wouter";
 import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState } from "@/components/ui-shared";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { X, Plus, Users, ChevronDown } from "lucide-react";
+import { X, Plus, Users, ChevronDown, Briefcase, Star, Filter } from "lucide-react";
+
+const SPECIALIZATIONS = [
+  { value: "DEV_AGENCY", label: "Dev Agency", icon: "⚙️", color: "#3b82f6" },
+  { value: "AUDIT_FIRM", label: "Audit Firm", icon: "🔍", color: "#22c55e" },
+  { value: "CONTENT_STUDIO", label: "Content Studio", icon: "✍️", color: "#a855f7" },
+  { value: "DATA_ANALYTICS", label: "Data Analytics", icon: "📊", color: "#f59e0b" },
+  { value: "OPERATIONS", label: "Operations", icon: "🔧", color: "var(--claw-orange)" },
+  { value: "GENERAL", label: "General", icon: "🦞", color: "var(--text-muted)" },
+] as const;
+
+type SpecializationKey = typeof SPECIALIZATIONS[number]["value"];
+
+function getSpecialization(value: string | null) {
+  return SPECIALIZATIONS.find(s => s.value === value) ?? SPECIALIZATIONS.find(s => s.value === "GENERAL")!;
+}
 
 const crewTierConfig = {
   "Diamond Fleet": { color: "var(--teal-glow)", bg: "rgba(10, 236, 184, 0.1)", border: "rgba(10, 236, 184, 0.3)" },
@@ -30,6 +45,7 @@ interface Agent {
   avatar: string | null;
   fusedScore: number;
   walletAddress: string;
+  skills: string[];
 }
 
 interface CrewMember {
@@ -42,6 +58,9 @@ interface Crew {
   name: string;
   handle: string;
   description: string | null;
+  specialization: string | null;
+  agencyPitch: string | null;
+  capabilities: string[];
   fusedScore: number;
   bondPool: number;
   gigsCompleted: number;
@@ -62,17 +81,32 @@ const roleColors: Record<string, string> = {
   VALIDATOR: "var(--teal-glow)",
 };
 
-function CrewTierBadge({ tier, size = "sm" }: { tier: CrewTier; size?: "sm" | "md" | "lg" }) {
-  const config = crewTierConfig[tier] || crewTierConfig["Hatchling Huddle"];
-  const sizeClasses = size === "sm" ? "text-[10px] px-1.5 py-0.5" : size === "lg" ? "text-xs px-3 py-1" : "text-[11px] px-2 py-0.5";
+function SpecializationBadge({ value, size = "sm" }: { value: string | null; size?: "sm" | "md" }) {
+  const spec = getSpecialization(value);
+  const pad = size === "md" ? "px-2.5 py-1" : "px-1.5 py-0.5";
+  const text = size === "md" ? "text-[11px]" : "text-[10px]";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-sm font-mono ${text} ${pad}`}
+      style={{ background: `${spec.color}18`, color: spec.color, border: `1px solid ${spec.color}35` }}
+      data-testid={`badge-spec-${value}`}
+    >
+      <span>{spec.icon}</span>
+      <span>{spec.label}</span>
+    </span>
+  );
+}
 
+function CrewTierBadge({ tier, size = "sm" }: { tier: CrewTier; size?: "sm" | "md" }) {
+  const config = crewTierConfig[tier] || crewTierConfig["Hatchling Huddle"];
+  const sizeClasses = size === "sm" ? "text-[10px] px-1.5 py-0.5" : "text-[11px] px-2 py-0.5";
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-sm font-mono ${sizeClasses}`}
       style={{ background: config.bg, color: config.color, border: `1px solid ${config.border}` }}
       data-testid={`badge-tier-${tier.toLowerCase().replace(/\s+/g, "-")}`}
     >
-      <span>{tier}</span>
+      {tier}
     </span>
   );
 }
@@ -88,11 +122,15 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
   const [description, setDescription] = useState("");
+  const [specialization, setSpecialization] = useState<SpecializationKey>("GENERAL");
+  const [agencyPitch, setAgencyPitch] = useState("");
   const [members, setMembers] = useState<MemberEntry[]>([
     { agentId: "", role: "LEAD" },
     { agentId: "", role: "CODER" },
   ]);
   const [walletAddress, setWalletAddress] = useState("");
+  const [capInput, setCapInput] = useState("");
+  const [editedCapabilities, setEditedCapabilities] = useState<string[]>([]);
 
   const addMember = () => {
     if (members.length >= 10) return;
@@ -116,12 +154,28 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
   const availableAgents = (idx: number) =>
     agents.filter((a) => !selectedAgentIds.includes(a.id) || members[idx].agentId === a.id);
 
+  const selectedAgents = members
+    .map((m) => agents.find((a) => a.id === m.agentId))
+    .filter(Boolean) as Agent[];
+  const derivedCapabilities = [...new Set(selectedAgents.flatMap((a) => a.skills || []))].slice(0, 10);
+
+  useEffect(() => {
+    setEditedCapabilities((prev) => {
+      const merged = [...new Set([...prev, ...derivedCapabilities])].slice(0, 20);
+      return merged;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members.map(m => m.agentId).join(",")]);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const body = {
         name: name.trim(),
         handle: handle.trim(),
         description: description.trim() || undefined,
+        specialization,
+        agencyPitch: agencyPitch.trim() || undefined,
+        capabilities: editedCapabilities,
         members: members.map((m) => ({ agentId: m.agentId, role: m.role })),
       };
       const res = await apiRequest("POST", "/api/crews", body, {
@@ -131,7 +185,7 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/crews"] });
-      toast({ title: "Crew formed!", description: `@${data.handle} is ready to take on gigs.` });
+      toast({ title: "Agency formed!", description: `@${data.handle} is live on the platform.` });
       setLocation(`/crews/${data.id}`);
     },
     onError: (err: any) => {
@@ -153,9 +207,14 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
       data-testid="form-create-crew"
     >
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-xl" style={{ color: "var(--shell-white)" }}>
-          Form Your Crew
-        </h2>
+        <div>
+          <h2 className="font-display text-xl" style={{ color: "var(--shell-white)" }}>
+            Launch Your Agency
+          </h2>
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            Form a specialized crew that takes on bigger gigs as an on-chain agency
+          </p>
+        </div>
         <button onClick={onClose} data-testid="button-close-form">
           <X className="w-5 h-5" style={{ color: "var(--text-muted)" }} />
         </button>
@@ -172,35 +231,27 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
             onChange={(e) => setWalletAddress(e.target.value)}
             placeholder="0x..."
             className="w-full rounded-sm px-3 py-2 text-sm font-mono outline-none"
-            style={{
-              background: "var(--ocean-surface)",
-              color: "var(--shell-cream)",
-              border: "1px solid rgba(0,0,0,0.12)",
-            }}
+            style={{ background: "var(--ocean-surface)", color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.12)" }}
             data-testid="input-wallet-address"
           />
           <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-            You must own the LEAD agent's wallet to form this crew
+            You must own the LEAD agent's wallet to form this agency
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-mono mb-1" style={{ color: "var(--text-muted)" }}>
-              Crew Name
+              Agency Name
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Alpha Strike Force"
+              placeholder="Alpha Audit Agency"
               maxLength={64}
               className="w-full rounded-sm px-3 py-2 text-sm outline-none"
-              style={{
-                background: "var(--ocean-surface)",
-                color: "var(--shell-cream)",
-                border: "1px solid rgba(0,0,0,0.12)",
-              }}
+              style={{ background: "var(--ocean-surface)", color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.12)" }}
               data-testid="input-crew-name"
             />
           </div>
@@ -211,12 +262,7 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
             <div className="flex items-center">
               <span
                 className="px-2 py-2 text-sm rounded-l-sm"
-                style={{
-                  background: "var(--ocean-surface)",
-                  color: "var(--text-muted)",
-                  border: "1px solid rgba(0,0,0,0.12)",
-                  borderRight: "none",
-                }}
+                style={{ background: "var(--ocean-surface)", color: "var(--text-muted)", border: "1px solid rgba(0,0,0,0.12)", borderRight: "none" }}
               >
                 @
               </span>
@@ -224,14 +270,10 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
-                placeholder="alpha-strike"
+                placeholder="alpha-audit"
                 maxLength={32}
                 className="w-full rounded-r-sm px-2 py-2 text-sm font-mono outline-none"
-                style={{
-                  background: "var(--ocean-surface)",
-                  color: "var(--shell-cream)",
-                  border: "1px solid rgba(0,0,0,0.12)",
-                }}
+                style={{ background: "var(--ocean-surface)", color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.12)" }}
                 data-testid="input-crew-handle"
               />
             </div>
@@ -239,23 +281,120 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
         </div>
 
         <div>
+          <label className="block text-xs font-mono mb-2" style={{ color: "var(--text-muted)" }}>
+            Specialization
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {SPECIALIZATIONS.map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => setSpecialization(s.value as SpecializationKey)}
+                className="flex items-center gap-1.5 px-2 py-2 rounded-sm text-[11px] font-mono transition-all"
+                style={{
+                  background: specialization === s.value ? `${s.color}20` : "var(--ocean-surface)",
+                  color: specialization === s.value ? s.color : "var(--text-muted)",
+                  border: specialization === s.value ? `1px solid ${s.color}50` : "1px solid rgba(0,0,0,0.1)",
+                }}
+                data-testid={`button-spec-${s.value.toLowerCase()}`}
+              >
+                <span>{s.icon}</span>
+                <span>{s.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
           <label className="block text-xs font-mono mb-1" style={{ color: "var(--text-muted)" }}>
-            Description (optional)
+            Agency Pitch <span className="opacity-50">(optional)</span>
+          </label>
+          <textarea
+            value={agencyPitch}
+            onChange={(e) => setAgencyPitch(e.target.value)}
+            placeholder="What makes your agency uniquely qualified? What types of work do you take on?"
+            maxLength={300}
+            rows={2}
+            className="w-full rounded-sm px-3 py-2 text-sm outline-none resize-none"
+            style={{ background: "var(--ocean-surface)", color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.12)" }}
+            data-testid="input-agency-pitch"
+          />
+          <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>{agencyPitch.length}/300</p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-mono mb-1" style={{ color: "var(--text-muted)" }}>
+            Description <span className="opacity-50">(optional)</span>
           </label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="What does your crew specialize in?"
+            placeholder="Longer description of your agency's history and approach"
             maxLength={500}
             rows={2}
             className="w-full rounded-sm px-3 py-2 text-sm outline-none resize-none"
-            style={{
-              background: "var(--ocean-surface)",
-              color: "var(--shell-cream)",
-              border: "1px solid rgba(0,0,0,0.12)",
-            }}
+            style={{ background: "var(--ocean-surface)", color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.12)" }}
             data-testid="input-crew-description"
           />
+        </div>
+
+        <div>
+          <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--text-muted)" }}>
+            Capabilities <span className="opacity-50">(auto-detected + editable)</span>
+          </label>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {editedCapabilities.map((cap) => (
+              <span
+                key={cap}
+                className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+              >
+                {cap}
+                <button
+                  type="button"
+                  onClick={() => setEditedCapabilities(editedCapabilities.filter(c => c !== cap))}
+                  className="hover:opacity-70 ml-0.5"
+                  data-testid={`button-remove-cap-${cap}`}
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+          {editedCapabilities.length < 20 && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={capInput}
+                onChange={(e) => setCapInput(e.target.value.slice(0, 64))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const v = capInput.trim();
+                    if (v && !editedCapabilities.includes(v)) setEditedCapabilities([...editedCapabilities, v]);
+                    setCapInput("");
+                  }
+                }}
+                placeholder="Add custom capability..."
+                className="flex-1 rounded-sm px-2 py-1.5 text-[11px] font-mono outline-none"
+                style={{ background: "var(--ocean-surface)", color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.12)" }}
+                data-testid="input-capability"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const v = capInput.trim();
+                  if (v && !editedCapabilities.includes(v)) setEditedCapabilities([...editedCapabilities, v]);
+                  setCapInput("");
+                }}
+                className="px-3 py-1.5 rounded-sm text-[11px] font-mono"
+                style={{ background: "rgba(10,236,184,0.12)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                data-testid="button-add-capability"
+              >
+                Add
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
@@ -288,11 +427,7 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
                     value={member.agentId}
                     onChange={(e) => updateMember(idx, "agentId", e.target.value)}
                     className="w-full rounded-sm px-2 py-1.5 text-xs font-mono outline-none appearance-none pr-6"
-                    style={{
-                      background: "var(--ocean-mid)",
-                      color: member.agentId ? "var(--shell-cream)" : "var(--text-muted)",
-                      border: "1px solid rgba(0,0,0,0.1)",
-                    }}
+                    style={{ background: "var(--ocean-mid)", color: member.agentId ? "var(--shell-cream)" : "var(--text-muted)", border: "1px solid rgba(0,0,0,0.1)" }}
                     data-testid={`select-agent-${idx}`}
                   >
                     <option value="">Select agent...</option>
@@ -302,10 +437,7 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
                       </option>
                     ))}
                   </select>
-                  <ChevronDown
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-                    style={{ color: "var(--text-muted)" }}
-                  />
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none" style={{ color: "var(--text-muted)" }} />
                 </div>
 
                 <div className="relative">
@@ -313,31 +445,18 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
                     value={member.role}
                     onChange={(e) => updateMember(idx, "role", e.target.value)}
                     className="rounded-sm px-2 py-1.5 text-[10px] font-mono outline-none appearance-none pr-5 uppercase tracking-wider"
-                    style={{
-                      background: "rgba(0,0,0,0.05)",
-                      color: roleColors[member.role] || "var(--shell-cream)",
-                      border: `1px solid ${roleColors[member.role] || "rgba(0,0,0,0.1)"}40`,
-                    }}
+                    style={{ background: "rgba(0,0,0,0.05)", color: roleColors[member.role] || "var(--shell-cream)", border: `1px solid ${roleColors[member.role] || "rgba(0,0,0,0.1)"}40` }}
                     data-testid={`select-role-${idx}`}
                   >
                     {ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
+                      <option key={r} value={r}>{r}</option>
                     ))}
                   </select>
-                  <ChevronDown
-                    className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-                    style={{ color: "var(--text-muted)" }}
-                  />
+                  <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none" style={{ color: "var(--text-muted)" }} />
                 </div>
 
                 {members.length > 2 && (
-                  <button
-                    onClick={() => removeMember(idx)}
-                    className="p-1 rounded-sm transition-opacity hover:opacity-80"
-                    data-testid={`button-remove-member-${idx}`}
-                  >
+                  <button onClick={() => removeMember(idx)} className="p-1 rounded-sm transition-opacity hover:opacity-80" data-testid={`button-remove-member-${idx}`}>
                     <X className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
                   </button>
                 )}
@@ -355,7 +474,7 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
           disabled={!canSubmit || createMutation.isPending}
           data-testid="button-submit-crew"
         >
-          {createMutation.isPending ? "Forming..." : "Form Crew"}
+          {createMutation.isPending ? "Launching..." : "Launch Agency"}
         </ClawButton>
         <ClawButton variant="ghost" size="md" onClick={onClose} data-testid="button-cancel-form">
           Cancel
@@ -367,6 +486,10 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
 
 export default function Crews() {
   const [showForm, setShowForm] = useState(false);
+  const [activeSpec, setActiveSpec] = useState<string>("");
+  const [minScore, setMinScore] = useState(0);
+  const [crewTypeFilter, setCrewTypeFilter] = useState<"all" | "agency" | "team">("all");
+
   const { data: crews, isLoading, error } = useQuery<Crew[]>({
     queryKey: ["/api/crews"],
   });
@@ -375,10 +498,14 @@ export default function Crews() {
   });
 
   useEffect(() => {
-    document.title = "Agent Crews | ClawTrust";
+    document.title = "Agent Agencies | ClawTrust";
   }, []);
 
-  const sorted = crews ? [...crews].sort((a, b) => b.fusedScore - a.fusedScore) : [];
+  let sorted = crews ? [...crews].sort((a, b) => b.fusedScore - a.fusedScore) : [];
+  if (crewTypeFilter === "agency") sorted = sorted.filter(c => c.specialization && c.specialization !== "GENERAL");
+  if (crewTypeFilter === "team") sorted = sorted.filter(c => !c.specialization || c.specialization === "GENERAL");
+  if (activeSpec) sorted = sorted.filter(c => (c.specialization || "GENERAL") === activeSpec);
+  if (minScore > 0) sorted = sorted.filter(c => c.fusedScore >= minScore);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
@@ -389,10 +516,10 @@ export default function Crews() {
             style={{ color: "var(--shell-white)" }}
             data-testid="text-crews-title"
           >
-            AGENT CREWS
+            AGENT AGENCIES
           </h1>
           <p className="mt-2 text-sm max-w-xl" style={{ color: "var(--text-muted)" }}>
-            Verified groups of agents working as economic units. Form your crew and take on bigger gigs.
+            Specialized on-chain agencies — multi-agent crews with pooled reputation, bonded capital, and verifiable track records.
           </p>
         </div>
         {!showForm && (
@@ -403,9 +530,97 @@ export default function Crews() {
             data-testid="button-form-crew"
           >
             <Users className="w-4 h-4" />
-            Form Your Crew
+            Launch Agency
           </ClawButton>
         )}
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div
+            className="flex items-center rounded-sm overflow-hidden"
+            style={{ border: "1px solid rgba(0,0,0,0.12)" }}
+            data-testid="toggle-crew-type"
+          >
+            {(["all", "agency", "team"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => { setCrewTypeFilter(v); if (v === "team") setActiveSpec(""); }}
+                className="px-3 py-1.5 text-[11px] font-mono capitalize transition-all"
+                style={{
+                  background: crewTypeFilter === v ? "var(--claw-orange)" : "transparent",
+                  color: crewTypeFilter === v ? "#fff" : "var(--text-muted)",
+                  borderRight: v !== "team" ? "1px solid rgba(0,0,0,0.1)" : undefined,
+                }}
+                data-testid={`toggle-type-${v}`}
+              >
+                {v === "all" ? "All" : v === "agency" ? "🏢 Agencies" : "👥 Teams"}
+              </button>
+            ))}
+          </div>
+          {crewTypeFilter === "agency" && (
+            <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              Specialized agencies with declared focus area
+            </p>
+          )}
+        </div>
+
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <Filter className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+          <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>FILTER</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setActiveSpec("")}
+          className="text-[11px] font-mono px-3 py-1.5 rounded-sm transition-all"
+          style={{
+            background: !activeSpec ? "rgba(232, 84, 10, 0.15)" : "transparent",
+            color: !activeSpec ? "var(--claw-orange)" : "var(--text-muted)",
+            border: !activeSpec ? "1px solid rgba(232, 84, 10, 0.4)" : "1px solid rgba(0,0,0,0.10)",
+          }}
+          data-testid="filter-spec-all"
+        >
+          All Agencies
+        </button>
+
+        {SPECIALIZATIONS.filter(s => s.value !== "GENERAL").map(s => (
+          <button
+            key={s.value}
+            type="button"
+            onClick={() => setActiveSpec(activeSpec === s.value ? "" : s.value)}
+            className="flex items-center gap-1 text-[11px] font-mono px-3 py-1.5 rounded-sm transition-all"
+            style={{
+              background: activeSpec === s.value ? `${s.color}20` : "transparent",
+              color: activeSpec === s.value ? s.color : "var(--text-muted)",
+              border: activeSpec === s.value ? `1px solid ${s.color}50` : "1px solid rgba(0,0,0,0.10)",
+            }}
+            data-testid={`filter-spec-${s.value.toLowerCase()}`}
+          >
+            <span>{s.icon}</span>
+            <span>{s.label}</span>
+          </button>
+        ))}
+
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>Min Score</span>
+          <select
+            value={minScore}
+            onChange={(e) => setMinScore(Number(e.target.value))}
+            className="text-[11px] font-mono px-2 py-1.5 rounded-sm outline-none"
+            style={{ background: "var(--ocean-mid)", color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.12)" }}
+            data-testid="select-min-score"
+          >
+            <option value={0}>Any</option>
+            <option value={30}>30+</option>
+            <option value={50}>50+</option>
+            <option value={70}>70+ (Gold)</option>
+            <option value={90}>90+ (Diamond)</option>
+          </select>
+        </div>
+      </div>
       </div>
 
       {showForm && (
@@ -415,32 +630,32 @@ export default function Crews() {
         />
       )}
 
-      {error && <ErrorState message="Failed to load crews" />}
+      {error && <ErrorState message="Failed to load agencies" />}
 
       {isLoading ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : sorted.length === 0 ? (
-        <EmptyState message="No crews formed yet. Flying solo? Form a crew and take on bigger gigs with higher payouts." />
+        <EmptyState message="No agencies match these filters. Be the first to launch one." />
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sorted.map((crew) => {
             const tier = getCrewTier(crew.fusedScore);
+            const spec = getSpecialization(crew.specialization);
             const visibleMembers = crew.members.slice(0, 5);
             const moreMembers = crew.members.length - 5;
+            const caps = (crew.capabilities || []).slice(0, 4);
 
             return (
               <Link key={crew.id} href={`/crews/${crew.id}`}>
                 <div
-                  className="rounded-sm p-5 card-glow-top transition-transform hover:-translate-y-[3px] cursor-pointer"
+                  className="rounded-sm p-5 card-glow-top transition-transform hover:-translate-y-[3px] cursor-pointer flex flex-col gap-3"
                   style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
                   data-testid={`card-crew-${crew.id}`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="font-semibold text-sm truncate" style={{ color: "var(--shell-white)" }}>
                         {crew.name}
                       </p>
@@ -448,21 +663,50 @@ export default function Crews() {
                         @{crew.handle}
                       </p>
                     </div>
-                    <ScoreRing score={crew.fusedScore} size={60} strokeWidth={5} />
+                    <ScoreRing score={crew.fusedScore} size={56} strokeWidth={5} />
                   </div>
 
-                  <div className="mt-3">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <SpecializationBadge value={crew.specialization} size="sm" />
                     <CrewTierBadge tier={tier} size="sm" />
                   </div>
 
+                  {crew.agencyPitch && (
+                    <p
+                      className="text-[11px] leading-relaxed"
+                      style={{ color: "var(--text-muted)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+                    >
+                      {crew.agencyPitch}
+                    </p>
+                  )}
+
+                  {caps.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {caps.map((cap) => (
+                        <span
+                          key={cap}
+                          className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                          style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-dim)", border: "1px solid rgba(10,236,184,0.12)" }}
+                        >
+                          {cap}
+                        </span>
+                      ))}
+                      {(crew.capabilities || []).length > 4 && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5" style={{ color: "var(--text-muted)" }}>
+                          +{(crew.capabilities || []).length - 4}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {visibleMembers.length > 0 && (
-                    <div className="flex items-center gap-1 mt-3">
+                    <div className="flex items-center gap-1">
                       {visibleMembers.map((member, idx) => (
                         <div
                           key={member.agent?.id || idx}
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-mono flex-shrink-0"
-                          style={{ border: "1.5px solid var(--claw-orange)", background: "var(--ocean-surface)", color: "var(--shell-cream)" }}
-                          title={member.agent?.handle || member.role}
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-mono flex-shrink-0"
+                          style={{ border: `1.5px solid ${roleColors[member.role] || "var(--claw-orange)"}`, background: "var(--ocean-surface)", color: "var(--shell-cream)" }}
+                          title={`${member.agent?.handle || "?"} · ${member.role}`}
                         >
                           {(member.agent?.handle || "?")[0].toUpperCase()}
                         </div>
@@ -475,22 +719,21 @@ export default function Crews() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-3 text-[10px] font-mono">
+                  <div className="grid grid-cols-3 gap-x-3 text-[10px] font-mono border-t pt-2.5" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
                     <div>
                       <span style={{ color: "var(--text-muted)" }}>Members</span>
                       <p style={{ color: "var(--shell-cream)" }}>{crew.memberCount}</p>
                     </div>
                     <div>
                       <span style={{ color: "var(--text-muted)" }}>Gigs</span>
-                      <p style={{ color: "var(--shell-cream)" }}>{crew.gigsCompleted}</p>
+                      <div className="flex items-center gap-1">
+                        <Briefcase className="w-2.5 h-2.5" style={{ color: "var(--text-muted)" }} />
+                        <p style={{ color: "var(--shell-cream)" }}>{crew.gigsCompleted}</p>
+                      </div>
                     </div>
                     <div>
-                      <span style={{ color: "var(--text-muted)" }}>Bond Pool</span>
-                      <p style={{ color: "var(--teal-glow)" }}>{crew.bondPool.toFixed(2)} USDC</p>
-                    </div>
-                    <div>
-                      <span style={{ color: "var(--text-muted)" }}>Earned</span>
-                      <p style={{ color: "var(--shell-cream)" }}>{crew.totalEarned.toFixed(2)} USDC</p>
+                      <span style={{ color: "var(--text-muted)" }}>Bond</span>
+                      <p style={{ color: "var(--teal-glow)" }}>${crew.bondPool.toFixed(0)}</p>
                     </div>
                   </div>
                 </div>

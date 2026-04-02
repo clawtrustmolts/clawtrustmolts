@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Switch, Route, useLocation, Link } from "wouter";
+import { Switch, Route, useLocation, Link, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -39,6 +39,10 @@ import TelegramMePage from "@/pages/telegram-me";
 import DomainsPage from "@/pages/domains";
 import BlogPage from "@/pages/blog";
 import BlogPostPage from "@/pages/blog-post";
+import AdminTokensPage from "@/pages/admin-tokens";
+import MainnetPage from "@/pages/mainnet";
+import SkaleGrantPage from "@/pages/skale-grant";
+import CommercePage from "@/pages/commerce";
 import "@/styles/telegram.css";
 
 function ScrollToTop() {
@@ -76,6 +80,10 @@ function InnerRouter() {
       <Route path="/domains" component={DomainsPage} />
       <Route path="/blog/:slug" component={BlogPostPage} />
       <Route path="/blog" component={BlogPage} />
+      <Route path="/admin/tokens" component={AdminTokensPage} />
+      <Route path="/mainnet" component={MainnetPage} />
+      <Route path="/skale" component={SkaleGrantPage} />
+      <Route path="/commerce"><Redirect to="/gigs?tab=commerce" /></Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -85,12 +93,14 @@ const primaryNavLinks = [
   { title: "Dashboard", url: "/dashboard" },
   { title: "Agents", url: "/agents" },
   { title: "Gigs", url: "/gigs" },
+  { title: "Commerce", url: "/gigs?tab=commerce" },
   { title: "Swarm", url: "/swarm" },
   { title: "Docs", url: "/docs" },
   { title: "Blog", url: "/blog" },
 ];
 
 const moreNavLinks = [
+  { title: "SKALE Grant", url: "/skale" },
   { title: "Crews", url: "/crews" },
   { title: "Domains", url: "/domains" },
   { title: "Messages", url: "/messages" },
@@ -108,7 +118,7 @@ function MoltInModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [found, setFound] = useState<{ id: string; handle: string; walletAddress: string; tier?: string } | null>(null);
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const backdropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -141,9 +151,13 @@ function MoltInModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   function signIn() {
     if (!found) return;
     localStorage.setItem("agentId", found.id);
+    window.dispatchEvent(new CustomEvent("agent-change", { detail: { agentId: found.id } }));
     queryClient.invalidateQueries();
     onClose();
-    navigate(`/profile/${found.id}`);
+    const neutralPages = ["/", "/register", "/login"];
+    if (neutralPages.some(p => location === p || location.startsWith(p + "?"))) {
+      navigate(`/profile/${found.id}`);
+    }
   }
 
   if (!open) return null;
@@ -276,7 +290,17 @@ function AppLayout() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
-  const agentId = localStorage.getItem("agentId");
+
+  const [agentId, setAgentId] = useState<string | null>(() => localStorage.getItem("agentId"));
+  useEffect(() => {
+    const sync = () => setAgentId(localStorage.getItem("agentId"));
+    window.addEventListener("agent-change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("agent-change", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
   const { wallet: connectedWallet, connect: connectWallet } = useWalletContext();
   const { chainName, switchToBase, switchToSkale } = useChain();
 
@@ -318,7 +342,15 @@ function AppLayout() {
           {primaryNavLinks.map((item) => {
             const isDashboard = item.title === "Dashboard";
             const href = isDashboard && connectedWallet ? `/dashboard/${connectedWallet}` : item.url;
-            const isActive = location === href || location === item.url || (!isDashboard && location.startsWith(item.url));
+            const itemHasQuery = item.url.includes("?");
+            const otherTabActive = !itemHasQuery && primaryNavLinks.some(
+              l => l.url.includes("?") &&
+                location.startsWith(l.url.split("?")[0]) &&
+                window.location.search === `?${l.url.split("?")[1]}`
+            );
+            const isActive = itemHasQuery
+              ? (location.startsWith(item.url.split("?")[0]) && window.location.search === `?${item.url.split("?")[1]}`)
+              : (!otherTabActive && (location === href || location === item.url || (!isDashboard && location.startsWith(item.url))));
             if (isDashboard && !connectedWallet) {
               return (
                 <button
@@ -391,7 +423,7 @@ function AppLayout() {
               className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
               style={{
                 background: chainName === "base" ? "rgba(0,82,255,0.18)" : "rgba(0,0,0,0.2)",
-                color: chainName === "base" ? "#6090ff" : "var(--text-muted)",
+                color: chainName === "base" ? "#6090ff" : "rgba(255,255,255,0.5)",
                 borderRight: "1px solid rgba(255,255,255,0.06)",
                 cursor: connectedWallet ? "pointer" : "default",
                 opacity: connectedWallet ? 1 : 0.5,
@@ -406,7 +438,7 @@ function AppLayout() {
               className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
               style={{
                 background: chainName === "skale" ? "rgba(139,92,246,0.18)" : "rgba(0,0,0,0.2)",
-                color: chainName === "skale" ? "#a78bfa" : "var(--text-muted)",
+                color: chainName === "skale" ? "#a78bfa" : "rgba(255,255,255,0.5)",
                 cursor: connectedWallet ? "pointer" : "default",
                 opacity: connectedWallet ? 1 : 0.5,
               }}
@@ -422,15 +454,26 @@ function AppLayout() {
           <NotificationBell />
           <WalletButton />
           {agentId ? (
-            <Link href={`/profile/${agentId}`}>
+            <div className="hidden sm:flex items-center gap-1">
+              <Link href={`/profile/${agentId}`}>
+                <button
+                  className="claw-button items-center gap-2 px-4 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
+                  style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
+                  data-testid="button-my-profile"
+                >
+                  My Profile 🦞
+                </button>
+              </Link>
               <button
-                className="claw-button hidden sm:inline-flex items-center gap-2 px-5 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
-                style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
-                data-testid="button-my-profile"
+                className="claw-button px-2 py-1.5 text-[11px] font-display uppercase tracking-wider"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.3)", color: "var(--claw-orange)" }}
+                onClick={() => setSignInOpen(true)}
+                title="Switch Agent"
+                data-testid="button-molt-in"
               >
-                My Profile 🦞
+                ↔
               </button>
-            </Link>
+            </div>
           ) : (
             <button
               className="claw-button hidden sm:inline-flex items-center gap-2 px-5 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"

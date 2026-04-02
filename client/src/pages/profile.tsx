@@ -278,6 +278,27 @@ export default function ProfilePage() {
     },
   });
 
+  const reactivateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/agents/${agentId}/reactivate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-agent-id": myAgentId || "" },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || "Reactivation failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId] });
+      toast({ title: "Agent reactivated", description: "Your autonomy status is now active." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Reactivation failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const { data: moltAgent, isLoading: moltLoading, isError: moltError } = useQuery<Agent>({
     queryKey: ["/api/agents/by-molt", moltName],
     queryFn: async () => {
@@ -479,6 +500,16 @@ export default function ProfilePage() {
     enabled: !!displayAgent?.walletAddress && activeTab === "commerce",
   });
 
+  const { data: erc8183AgentJobs, isLoading: isErc8183JobsLoading } = useQuery<{ posted: any[]; taken: any[] }>({
+    queryKey: ["/api/erc8183/agents", agentId, "jobs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/erc8183/agents/${agentId}/jobs`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!agentId && (activeTab === "commerce" || activeTab === "overview"),
+  });
+
   if (isAgentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
@@ -632,7 +663,7 @@ export default function ProfilePage() {
               </span>
               {agent.erc8004TokenId ? (
                 <a
-                  href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                  href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
@@ -729,7 +760,11 @@ export default function ProfilePage() {
                     </span>
                     {agent.isVerified && (
                       <a
-                        href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                        href={
+                          agent.preferredChain === "SKALE_TESTNET"
+                            ? `https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e`
+                            : agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:opacity-80 transition-opacity"
@@ -740,8 +775,8 @@ export default function ProfilePage() {
                       </a>
                     )}
                     {(() => {
-                      const onBase = !!agent.erc8004TokenId || agent.preferredChain !== "SKALE_TESTNET";
                       const onSkale = agent.preferredChain === "SKALE_TESTNET";
+                      const onBase = !onSkale;
                       return (
                         <div className="inline-flex items-center rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }} data-testid="badge-chains-active">
                           <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>ON</span>
@@ -843,6 +878,36 @@ export default function ProfilePage() {
                 </Link>
               </div>
 
+              {/* REACTIVATION BANNER — own profile only, when status is not active */}
+              {myAgentId === agent.id && agent.autonomyStatus !== "active" && (
+                <div
+                  className="rounded-sm p-3 flex items-center justify-between gap-3"
+                  style={{ background: "rgba(242,201,76,0.07)", border: "1px solid rgba(242,201,76,0.25)" }}
+                  data-testid="banner-reactivation"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "var(--claw-amber)" }} />
+                    <div>
+                      <p className="text-[10px] font-mono font-semibold" style={{ color: "var(--claw-amber)" }}>
+                        Agent is not active
+                      </p>
+                      <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        Status: {agent.autonomyStatus}. Reactivate to accept gigs and earn reputation.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                    style={{ background: "rgba(242,201,76,0.15)", color: "var(--claw-amber)", border: "1px solid rgba(242,201,76,0.35)" }}
+                    onClick={() => reactivateMutation.mutate()}
+                    disabled={reactivateMutation.isPending}
+                    data-testid="button-reactivate-agent"
+                  >
+                    {reactivateMutation.isPending ? "…" : "Reactivate"}
+                  </button>
+                </div>
+              )}
+
               {/* STATS GRID — 2×3: FusedScore · Gigs Done · USDC Earned · On-Chain · Karma · Clean Streak */}
               <div className="grid grid-cols-3 gap-1.5" data-testid="stats-grid">
                 <div className="rounded-sm p-2 text-center" style={{ background: "rgba(232,84,10,0.07)", border: "1px solid rgba(232,84,10,0.18)" }}>
@@ -850,8 +915,8 @@ export default function ProfilePage() {
                   <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>FusedScore</p>
                 </div>
                 <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-base font-mono font-bold" style={{ color: "var(--shell-white)" }}>{agent.totalGigsCompleted}</p>
-                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Gigs Done</p>
+                  <p className="text-base font-mono font-bold" style={{ color: "var(--shell-white)" }} data-testid="stat-jobs-done">{agent.totalGigsCompleted}</p>
+                  <p className="text-[8px] font-mono uppercase tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>Jobs Done</p>
                 </div>
                 <div className="rounded-sm p-2 text-center" style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <p className="text-base font-mono font-bold" style={{ color: "var(--teal-glow)" }}>{formatUSDC(agent.totalEarned)}</p>
@@ -1031,11 +1096,17 @@ export default function ProfilePage() {
                     ) : agent.moltDomain ? (
                       <a
                         href={agent.erc8004TokenId
-                          ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
+                          ? agent.preferredChain === "SKALE_TESTNET"
+                            ? `https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e`
+                            : agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
                           : `/passport?wallet=${agent.walletAddress}`}
                         target={agent.erc8004TokenId ? "_blank" : undefined}
                         rel={agent.erc8004TokenId ? "noopener noreferrer" : undefined}
-                        title={agent.erc8004TokenId ? "View name NFT on BaseScan" : "View passport"}
+                        title={agent.erc8004TokenId
+                          ? agent.preferredChain === "SKALE_TESTNET"
+                            ? "View identity on SKALE Explorer"
+                            : "View name NFT on BaseScan"
+                          : "View passport"}
                         className="hover:opacity-80 transition-opacity"
                         data-testid="text-molt-domain"
                       >
@@ -1110,7 +1181,7 @@ export default function ProfilePage() {
               {/* NFT PASSPORT IDENTITY */}
               {agent.erc8004TokenId ? (
                 <a
-                  href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                  href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block rounded-sm p-3 transition-opacity hover:opacity-85 group"
@@ -1119,7 +1190,7 @@ export default function ProfilePage() {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[9px] font-mono uppercase tracking-[2px]" style={{ color: "var(--teal-glow)", opacity: 0.8 }}>
-                      Passport NFT · Base Sepolia
+                      {agent.preferredChain === "SKALE_TESTNET" ? "Passport NFT · SKALE" : "Passport NFT · Base Sepolia"}
                     </span>
                     <ExternalLink className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: "var(--teal-glow)" }} />
                   </div>
@@ -1338,7 +1409,7 @@ export default function ProfilePage() {
               {agent.erc8004TokenId && (
                 <div className="mt-2 flex flex-col gap-1">
                   <a
-                    href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                    href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
@@ -1346,7 +1417,7 @@ export default function ProfilePage() {
                     data-testid="link-claw-card-basescan"
                   >
                     <ExternalLink className="w-2.5 h-2.5" />
-                    NFT #{agent.erc8004TokenId} on BaseScan ↗
+                    {agent.preferredChain === "SKALE_TESTNET" ? `NFT #${agent.erc8004TokenId} on SKALE ↗` : `NFT #${agent.erc8004TokenId} on BaseScan ↗`}
                   </a>
                   <a
                     href={`/passport?wallet=${agent.walletAddress}`}
@@ -1427,6 +1498,8 @@ export default function ProfilePage() {
               events={events}
               erc8004={repData?.erc8004}
               mcpSkills={mcpSkills}
+              gigs={gigs}
+              commerceJobs={erc8183AgentJobs}
             />
           )}
           {activeTab === "gigs" && (
@@ -1466,8 +1539,9 @@ export default function ProfilePage() {
               agentCheck={erc8183AgentCheck}
               postedGigs={postedGigs}
               assignedGigs={assignedGigs}
+              erc8183Jobs={erc8183AgentJobs}
               isOwnProfile={myAgentId === agent.id}
-              isLoading={isErc8183StatsLoading || isErc8183InfoLoading || isErc8183AgentCheckLoading}
+              isLoading={isErc8183StatsLoading || isErc8183InfoLoading || isErc8183AgentCheckLoading || isErc8183JobsLoading}
             />
           )}
           {activeTab === "social" && (
@@ -2057,7 +2131,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             )}
             {agent.erc8004TokenId && (
               <a
-                href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 text-[9px] font-mono hover:opacity-70 transition-opacity"
@@ -2144,7 +2218,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
                 { label: "Escrow", short: "0x6B6767…", href: "https://sepolia.basescan.org/address/0x6B676744B8c4900F9999E9a9323728C160706126", testId: "link-base-escrow" },
                 { label: "SwarmValidator", short: "0xb219dd…", href: "https://sepolia.basescan.org/address/0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743", testId: "link-base-swarm" },
                 { label: "Bond", short: "0x23a1E1…", href: "https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c", testId: "link-base-bond" },
-                ...(agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`, testId: "link-base-nft" }] : []),
+                ...(agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`, testId: "link-base-nft" }] : []),
               ].map((c) => (
                 <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
                   <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
@@ -2174,7 +2248,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
                 { label: "ERC-8004 Identity", short: "0x8004A8…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e", testId: "link-skale-identity" },
                 { label: "RepAdapter", short: "0xFafCA2…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924", testId: "link-skale-rep-adapter" },
                 { label: "Agentic Commerce", short: "0x101F37…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0x101F37D9bf445E92A237F8721CA7D12205D61Fe6", testId: "link-skale-commerce" },
-                { label: "ClawTrustRegistry", short: "0xecc00b…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818", testId: "link-skale-registry" },
+                { label: "ClawTrustRegistry", short: "0xED668f…", href: "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xED668f205eC9Ba9DA0c1D74B5866428b8e270084", testId: "link-skale-registry" },
                 ...(skale?.registered && agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`, testId: "link-skale-nft" }] : []),
               ].map((c) => (
                 <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
@@ -2199,6 +2273,8 @@ function OverviewTab({
   events,
   erc8004,
   mcpSkills,
+  gigs,
+  commerceJobs,
 }: {
   agent: Agent;
   breakdown?: RepData["breakdown"];
@@ -2206,6 +2282,8 @@ function OverviewTab({
   events: ReputationEvent[];
   erc8004?: RepData["erc8004"];
   mcpSkills: AgentSkill[];
+  gigs?: any[];
+  commerceJobs?: { posted: any[]; taken: any[] };
 }) {
   const [formulaOpen, setFormulaOpen] = useState(false);
 
@@ -2346,6 +2424,89 @@ function OverviewTab({
         </SectionCard>
       )}
 
+      {/* UNIFIED ACTIVITY FEED — Completed Gigs + Commerce Jobs (chronological, newest first) */}
+      {(() => {
+        type FeedItem = { id: string; title: string; type: "Gig" | "Commerce"; role: string; timestamp: Date | null };
+        const items: FeedItem[] = [];
+
+        // Add completed gigs only
+        (gigs || []).forEach((g: any) => {
+          if (g.status !== "completed") return;
+          if (g.posterId === agent.id || g.assigneeId === agent.id) {
+            items.push({
+              id: `gig-${g.id}`,
+              title: g.title || "Untitled Gig",
+              type: "Gig",
+              role: g.posterId === agent.id ? "poster" : "assignee",
+              timestamp: g.updatedAt ? new Date(g.updatedAt) : (g.createdAt ? new Date(g.createdAt) : null),
+            });
+          }
+        });
+
+        // Add completed commerce jobs only
+        const allCommerce = [...(commerceJobs?.posted || []), ...(commerceJobs?.taken || [])];
+        allCommerce.forEach((j: any) => {
+          if (j.status !== "completed") return;
+          items.push({
+            id: `commerce-${j.id}`,
+            title: j.title || "Untitled Commerce Job",
+            type: "Commerce",
+            role: j.posterAgentId === agent.id ? "poster" : "assignee",
+            timestamp: j.updatedAt ? new Date(j.updatedAt) : (j.createdAt ? new Date(j.createdAt) : null),
+          });
+        });
+
+        if (items.length === 0) return null;
+
+        // Sort chronologically (newest first), deduplicate by id
+        const seen = new Set<string>();
+        const sorted = items
+          .filter(item => { if (seen.has(item.id)) return false; seen.add(item.id); return true; })
+          .sort((a, b) => (b.timestamp?.getTime() ?? 0) - (a.timestamp?.getTime() ?? 0))
+          .slice(0, 10);
+
+        return (
+          <SectionCard testId="card-activity-feed">
+            <SectionTitle icon={<Activity className="w-4 h-4" style={{ color: "#0052FF" }} />}>
+              ACTIVITY FEED
+            </SectionTitle>
+            <div className="space-y-2" data-testid="unified-activity-feed">
+              {sorted.map(item => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 p-3 rounded-sm"
+                  style={{ background: "rgba(0,0,0,0.03)" }}
+                  data-testid={`activity-item-${item.id}`}
+                >
+                  <span
+                    className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm flex-shrink-0"
+                    style={{
+                      background: item.type === "Commerce" ? "rgba(0,82,255,0.1)" : "rgba(232,84,10,0.08)",
+                      color: item.type === "Commerce" ? "#0052FF" : "var(--claw-orange)",
+                      border: `1px solid ${item.type === "Commerce" ? "rgba(0,82,255,0.2)" : "rgba(232,84,10,0.2)"}`,
+                    }}
+                  >
+                    {item.type}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate" style={{ color: "var(--shell-white)" }}>{item.title}</p>
+                    <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>{item.role}</p>
+                  </div>
+                  <span className="text-[10px] font-mono flex-shrink-0" style={{ color: "var(--teal-glow)" }}>
+                    completed
+                  </span>
+                  {item.timestamp && (
+                    <span className="text-[9px] font-mono flex-shrink-0" style={{ color: "var(--text-muted)" }}>
+                      {timeAgo(item.timestamp.toISOString())}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        );
+      })()}
+
       {/* REPUTATION EVENTS */}
       <SectionCard testId="card-rep-events">
         <SectionTitle icon={<Activity className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />}>
@@ -2398,7 +2559,7 @@ function OverviewTab({
 
           {/* Hero NFT Passport block */}
           <a
-            href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
+            href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${erc8004.tokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-4 p-4 rounded-sm mb-4 hover:opacity-90 transition-opacity group"
@@ -2413,7 +2574,7 @@ function OverviewTab({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[9px] font-mono uppercase tracking-widest mb-0.5" style={{ color: "var(--teal-glow)", opacity: 0.7 }}>
-                Agent Passport NFT · Base Sepolia
+                {agent.preferredChain === "SKALE_TESTNET" ? "Agent Passport NFT · SKALE" : "Agent Passport NFT · Base Sepolia"}
               </p>
               <p className="text-2xl font-mono font-bold" style={{ color: "var(--teal-glow)" }}>
                 #{erc8004.tokenId}
@@ -3581,6 +3742,7 @@ function CommerceTab({
   agentCheck,
   postedGigs,
   assignedGigs,
+  erc8183Jobs,
   isOwnProfile,
   isLoading,
 }: {
@@ -3606,6 +3768,7 @@ function CommerceTab({
   agentCheck?: { wallet: string; isRegisteredAgent: boolean };
   postedGigs: Gig[];
   assignedGigs: Gig[];
+  erc8183Jobs?: { posted: any[]; taken: any[] };
   isOwnProfile: boolean;
   isLoading: boolean;
 }) {
@@ -3626,10 +3789,18 @@ function CommerceTab({
     expired: { label: "Expired", bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" },
   };
 
-  const totalJobsCompleted = postedGigs.filter((g) => g.status === "completed").length + assignedGigs.filter((g) => g.status === "completed").length;
-  const totalEarnedFromGigs = assignedGigs
-    .filter((g) => g.status === "completed")
-    .reduce((sum, g) => sum + (g.budget || 0), 0);
+  const realPosted = erc8183Jobs?.posted ?? [];
+  const realTaken = erc8183Jobs?.taken ?? [];
+  const displayPosted = realPosted.length > 0 ? realPosted : postedGigs;
+  const displayTaken = realTaken.length > 0 ? realTaken : assignedGigs;
+  const isRealData = realPosted.length > 0 || realTaken.length > 0;
+
+  const totalJobsCompleted = (isRealData
+    ? realPosted.filter((j: any) => j.status === "completed").length + realTaken.filter((j: any) => j.status === "completed").length
+    : postedGigs.filter((g) => g.status === "completed").length + assignedGigs.filter((g) => g.status === "completed").length);
+  const totalEarnedFromGigs = (isRealData
+    ? realTaken.filter((j: any) => j.status === "completed").reduce((sum: number, j: any) => sum + (j.budgetUsdc || 0), 0)
+    : assignedGigs.filter((g) => g.status === "completed").reduce((sum, g) => sum + (g.budget || 0), 0));
 
   if (isLoading) {
     return (
@@ -3801,7 +3972,7 @@ function CommerceTab({
             }}
             data-testid="toggle-commerce-posted"
           >
-            POSTED ({postedGigs.length})
+            POSTED ({displayPosted.length})
           </button>
           <button
             onClick={() => setCommerceSubTab("taken")}
@@ -3813,42 +3984,49 @@ function CommerceTab({
             }}
             data-testid="toggle-commerce-taken"
           >
-            TAKEN ({assignedGigs.length})
+            TAKEN ({displayTaken.length})
           </button>
         </div>
 
-        {(commerceSubTab === "posted" ? postedGigs : assignedGigs).length === 0 ? (
+        {(commerceSubTab === "posted" ? displayPosted : displayTaken).length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3" data-testid="commerce-empty-state">
             <span className="text-4xl">🦞</span>
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>
               {commerceSubTab === "posted" ? "No jobs posted yet." : "No jobs taken yet."}
             </p>
             {isOwnProfile && commerceSubTab === "posted" ? (
-              <ClawButton variant="ghost" size="sm" href="/gigs?action=post" data-testid="button-post-job-commerce">
-                <Briefcase className="w-3.5 h-3.5" /> Post a Job
+              <ClawButton variant="ghost" size="sm" href="/commerce" data-testid="button-post-job-commerce">
+                <Briefcase className="w-3.5 h-3.5" /> Post on Marketplace
               </ClawButton>
             ) : (
-              <ClawButton variant="ghost" size="sm" href="/gigs" data-testid="button-browse-gigs-commerce">
-                <Briefcase className="w-3.5 h-3.5" /> Browse Gig Board
+              <ClawButton variant="ghost" size="sm" href="/commerce" data-testid="button-browse-gigs-commerce">
+                <Briefcase className="w-3.5 h-3.5" /> Browse Marketplace
               </ClawButton>
             )}
           </div>
         ) : (
           <div className="space-y-3">
-            {(commerceSubTab === "posted" ? postedGigs : assignedGigs).map((gig) => {
-              const mapped = erc8183StatusMap[gig.status] || { label: gig.status, bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" };
+            {(commerceSubTab === "posted" ? displayPosted : displayTaken).map((item: any) => {
+              const status = item.status || "open";
+              const mapped = erc8183StatusMap[status] || { label: status, bg: "rgba(107,127,163,0.1)", color: "var(--text-muted)" };
+              const budget = item.budgetUsdc ?? item.budget;
+              const currency = item.budgetUsdc != null ? "USDC" : (item.currency ?? "USDC");
+              const href = isRealData ? `/commerce?job=${item.id}` : `/gig/${item.id}`;
+              const basescanHref = item.txHashCreated
+                ? `https://sepolia.basescan.org/tx/${item.txHashCreated}`
+                : `https://sepolia.basescan.org/address/${contractAddress}`;
 
               return (
                 <div
-                  key={gig.id}
+                  key={item.id}
                   className="flex items-center justify-between p-3 rounded-sm transition-all hover:brightness-110"
                   style={{
                     background: "var(--ocean-surface)",
                     border: "1px solid rgba(0,0,0,0.06)",
                   }}
-                  data-testid={`commerce-job-${gig.id}`}
+                  data-testid={`commerce-job-${item.id}`}
                 >
-                  <Link href={`/gig/${gig.id}`} className="flex-1 min-w-0 cursor-pointer">
+                  <Link href={href} className="flex-1 min-w-0 cursor-pointer">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span
                         className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-sm"
@@ -3859,30 +4037,30 @@ function CommerceTab({
                       <span
                         className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm"
                         style={{ background: mapped.bg, color: mapped.color }}
-                        data-testid={`commerce-status-${gig.id}`}
+                        data-testid={`commerce-status-${item.id}`}
                       >
                         {mapped.label}
                       </span>
                     </div>
                     <p className="text-sm font-semibold mt-1 truncate" style={{ color: "var(--shell-white)" }}>
-                      {gig.title}
+                      {item.title}
                     </p>
                     <div className="flex items-center gap-3 mt-1">
                       <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
-                        {gig.budget} {gig.currency}
+                        ${budget} {currency}
                       </span>
                       <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                        {timeAgo(gig.createdAt ?? new Date())}
+                        {timeAgo(item.createdAt ?? item.updatedAt ?? new Date())}
                       </span>
                     </div>
                   </Link>
                   <a
-                    href={`https://sepolia.basescan.org/address/${contractAddress}`}
+                    href={basescanHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex-shrink-0 ml-2 p-1 rounded-sm transition-opacity hover:opacity-70"
                     title="View on Basescan"
-                    data-testid={`commerce-basescan-${gig.id}`}
+                    data-testid={`commerce-basescan-${item.id}`}
                   >
                     <ExternalLink className="w-3.5 h-3.5" style={{ color: "#0052FF" }} />
                   </a>

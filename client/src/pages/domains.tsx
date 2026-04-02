@@ -47,6 +47,16 @@ const TLD_META = {
     freeScore: 30,
     tier: "Bronze Pinch+",
   },
+  ".agent": {
+    color: "#22d3ee",
+    label: ".agent",
+    emoji: "🤖",
+    access: "Open — any agent, 5–60 USDC/yr",
+    description: "The definitive AI-agent namespace. Open to all agents. Length-based pricing. ERC-721 NFT on Base + SKALE.",
+    price: 8,
+    freeScore: 999,
+    tier: "Any agent",
+  },
 } as const;
 
 type TLD = keyof typeof TLD_META;
@@ -72,6 +82,14 @@ type DomainRecord = {
   onChainTokenId?: number | null;
   registeredAt: string;
 };
+
+function agentPrice(name: string): number {
+  const len = name.length;
+  if (len <= 3) return 60;
+  if (len === 4) return 20;
+  if (len <= 9) return 8;
+  return 5;
+}
 
 function TldBadge({ tld, size = "sm" }: { tld: string; size?: "sm" | "md" | "lg" }) {
   const meta = TLD_META[tld as TLD];
@@ -167,10 +185,11 @@ export default function DomainsPage() {
 
   const registerMutation = useMutation({
     mutationFn: async ({ name, tld, free }: { name: string; tld: string; free: boolean }) => {
+      const price = tld === ".agent" ? agentPrice(name) : (TLD_META[tld as TLD]?.price ?? 0);
       const res = await apiRequest("POST", "/api/domains/register", {
         name,
         tld,
-        pricePaid: free ? 0 : TLD_META[tld as TLD]?.price ?? 0,
+        pricePaid: free ? 0 : price,
         walletAddress: wallet,
       });
       if (!res.ok) {
@@ -179,7 +198,7 @@ export default function DomainsPage() {
       }
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       setRegisterSuccess({
         fullDomain: data.fullDomain,
         basescanUrl: data.basescanUrl,
@@ -188,10 +207,18 @@ export default function DomainsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/domains/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/domains/check-all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/domains/browse"] });
-      toast({
-        title: `🦞 ${data.fullDomain} is yours!`,
-        description: data.free ? "Registered free via reputation" : `Paid ${data.pricePaid} USDC`,
-      });
+      if (data.onChainWarning) {
+        toast({
+          title: `🦞 ${data.fullDomain} registered!`,
+          description: "Domain saved — on-chain passport sync timed out and will be retried automatically.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: `🦞 ${data.fullDomain} is yours!`,
+          description: data.free ? "Registered free via reputation" : `Paid ${data.pricePaid} USDC`,
+        });
+      }
     },
     onError: (err: Error) => {
       toast({ title: "Registration failed", description: err.message, variant: "destructive" });
@@ -236,6 +263,11 @@ export default function DomainsPage() {
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start"
                   style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }}>
                   FREE
+                </span>
+              ) : tld === ".agent" ? (
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start"
+                  style={{ background: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}44` }}>
+                  5–60 USDC/yr
                 </span>
               ) : (
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start"
@@ -292,7 +324,7 @@ export default function DomainsPage() {
                   <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                     <th className="text-left px-4 py-2.5 text-xs uppercase tracking-wider font-display" style={{ color: "var(--barnacle-gray)" }}>TLD</th>
                     <th className="text-left px-4 py-2.5 text-xs uppercase tracking-wider font-display" style={{ color: "var(--barnacle-gray)" }}>Status</th>
-                    <th className="text-left px-4 py-2.5 text-xs uppercase tracking-wider font-display" style={{ color: "var(--barnacle-gray)" }}>Access</th>
+                    <th className="text-left px-4 py-2.5 text-xs uppercase tracking-wider font-display" style={{ color: "var(--barnacle-gray)" }}>Pricing</th>
                     <th className="px-4 py-2.5"></th>
                   </tr>
                 </thead>
@@ -300,6 +332,13 @@ export default function DomainsPage() {
                   {checkData.results.map((row) => {
                     const meta = TLD_META[row.tld as TLD];
                     const isPending = registerMutation.isPending && !registerSuccess;
+                    const ownedDomainNames = new Set(
+                      (walletDomains?.domains ?? []).map(d => `${d.name}${d.tld}`)
+                    );
+                    const alreadyOwned = ownedDomainNames.has(`${debouncedName}${row.tld}`);
+                    const agentDomainPrice = row.tld === ".agent" ? agentPrice(debouncedName) : null;
+                    const displayPrice = agentDomainPrice ?? row.price ?? meta?.price;
+
                     return (
                       <tr key={row.tld} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
                         data-testid={`availability-row-${row.tld.slice(1)}`}>
@@ -309,7 +348,13 @@ export default function DomainsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          {row.available ? (
+                          {alreadyOwned ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-sm"
+                              style={{ background: "rgba(10,236,184,0.12)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.25)" }}
+                              data-testid={`badge-owned-${row.tld.slice(1)}`}>
+                              <CheckCircle className="w-3 h-3" /> You own this
+                            </span>
+                          ) : row.available ? (
                             <span className="inline-flex items-center gap-1 text-green-400">
                               <CheckCircle className="w-3.5 h-3.5" /> Available
                             </span>
@@ -321,46 +366,59 @@ export default function DomainsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs" style={{ color: "var(--barnacle-gray)" }}>
-                          {meta?.access}
+                          {row.tld === ".agent" ? (
+                            <span>
+                              <span style={{ color: "#22d3ee", fontWeight: 600 }}>{agentDomainPrice} USDC/yr</span>
+                              <span className="ml-1 opacity-60">
+                                ({debouncedName.length <= 3 ? "3-char" : debouncedName.length === 4 ? "4-char" : debouncedName.length <= 9 ? "5-9 char" : "10+ char"})
+                              </span>
+                            </span>
+                          ) : (
+                            meta?.access
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {row.available && isConnected && (
-                            <div className="flex items-center justify-end gap-2">
-                              {row.agentMeetsRequirement ? (
-                                <button
-                                  onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: true })}
-                                  disabled={isPending}
-                                  className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
-                                  style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
-                                  data-testid={`button-register-free-${row.tld.slice(1)}`}
-                                >
-                                  {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Register Free"}
-                                </button>
-                              ) : meta?.price && meta.price > 0 ? (
-                                <button
-                                  onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: false })}
-                                  disabled={isPending}
-                                  className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
-                                  style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
-                                  data-testid={`button-register-pay-${row.tld.slice(1)}`}
-                                >
-                                  {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : `Buy ${meta.price} USDC`}
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: true })}
-                                  disabled={isPending}
-                                  className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
-                                  style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
-                                  data-testid={`button-register-${row.tld.slice(1)}`}
-                                >
-                                  {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Register"}
-                                </button>
+                          {alreadyOwned ? null : (
+                            <>
+                              {row.available && isConnected && (
+                                <div className="flex items-center justify-end gap-2">
+                                  {row.agentMeetsRequirement ? (
+                                    <button
+                                      onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: true })}
+                                      disabled={isPending}
+                                      className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                                      style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
+                                      data-testid={`button-register-free-${row.tld.slice(1)}`}
+                                    >
+                                      {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Register Free"}
+                                    </button>
+                                  ) : displayPrice && displayPrice > 0 ? (
+                                    <button
+                                      onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: false })}
+                                      disabled={isPending}
+                                      className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                                      style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
+                                      data-testid={`button-register-pay-${row.tld.slice(1)}`}
+                                    >
+                                      {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : `Buy ${displayPrice} USDC/yr`}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: true })}
+                                      disabled={isPending}
+                                      className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                                      style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
+                                      data-testid={`button-register-${row.tld.slice(1)}`}
+                                    >
+                                      {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Register"}
+                                    </button>
+                                  )}
+                                </div>
                               )}
-                            </div>
-                          )}
-                          {row.available && !isConnected && (
-                            <span className="text-xs" style={{ color: "var(--barnacle-gray)" }}>Connect wallet</span>
+                              {row.available && !isConnected && (
+                                <span className="text-xs" style={{ color: "var(--barnacle-gray)" }}>Connect wallet</span>
+                              )}
+                            </>
                           )}
                         </td>
                       </tr>
@@ -440,12 +498,12 @@ export default function DomainsPage() {
           <h3 className="text-sm font-display uppercase tracking-wider" style={{ color: "var(--barnacle-gray)" }}>On-Chain Contracts</h3>
           <div className="flex flex-col gap-2 text-xs font-mono">
             <div className="flex items-center justify-between gap-4">
-              <span style={{ color: "var(--barnacle-gray)" }}>ClawTrustRegistry (.claw/.shell/.pinch)</span>
-              <a href="https://sepolia.basescan.org/address/0x950aa4E7300e75e899d37879796868E2dd84A59c#code"
+              <span style={{ color: "var(--barnacle-gray)" }}>ClawTrustRegistry (.claw/.shell/.pinch/.agent)</span>
+              <a href="https://sepolia.basescan.org/address/0x82AEAA9921aC1408626851c90FCf74410D059dF4#code"
                 target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 hover:opacity-80"
                 style={{ color: "var(--claw-orange)" }} data-testid="link-registry-basescan">
-                0x950a…A59c <ExternalLink className="w-3 h-3" />
+                0x82AE…dF4 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
             <div className="flex items-center justify-between gap-4">

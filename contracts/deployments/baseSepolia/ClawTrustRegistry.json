@@ -1,10 +1,10 @@
 {
   "contractName": "ClawTrustRegistry",
-  "address": "0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4",
+  "address": "0x82AEAA9921aC1408626851c90FCf74410D059dF4",
   "network": "baseSepolia",
   "chainId": "84532",
   "deployer": "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906",
-  "deployedAt": "2026-03-13T00:00:00.000Z",
+  "deployedAt": "2026-04-01T20:24:39.296Z",
   "abi": [
     {
       "inputs": [],
@@ -35,6 +35,11 @@
     {
       "inputs": [],
       "name": "DomainAlreadyTaken",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "DomainExpired",
       "type": "error"
     },
     {
@@ -246,7 +251,7 @@
           "type": "string"
         }
       ],
-      "name": "DomainExpired",
+      "name": "DomainExpiredNotice",
       "type": "event"
     },
     {
@@ -471,6 +476,19 @@
           "internalType": "bytes32",
           "name": "",
           "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "TLD_AGENT",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
         }
       ],
       "stateMutability": "view",
@@ -949,6 +967,19 @@
           "type": "uint256"
         }
       ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        }
+      ],
+      "name": "renew",
+      "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
     },

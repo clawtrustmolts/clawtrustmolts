@@ -204,6 +204,88 @@ export function AgentMiniCard({
   );
 }
 
+interface NetworkStats {
+  totalAgents: number;
+  totalGigs: number;
+  completedGigs: number;
+  totalEscrowUSD: number;
+}
+
+export interface TickerItem {
+  value: string;
+  label: string;
+}
+
+export function MarqueeTicker({
+  items,
+  duration = 40,
+  testId = "marquee-ticker",
+}: {
+  items: TickerItem[];
+  duration?: number;
+  testId?: string;
+}) {
+  const doubled = [...items, ...items];
+
+  return (
+    <div
+      className="w-full overflow-hidden"
+      style={{
+        background: "var(--ocean-surface)",
+        borderTop: "1px solid rgba(200, 57, 26, 0.18)",
+        borderBottom: "1px solid rgba(200, 57, 26, 0.18)",
+        padding: "9px 0",
+      }}
+      data-testid={testId}
+    >
+      <div
+        className="animate-ticker flex whitespace-nowrap"
+        style={{ animationDuration: `${duration}s` }}
+      >
+        {doubled.map((item, i) => (
+          <span key={i} className="inline-flex items-center gap-2 font-mono mx-8">
+            <span
+              className="text-sm font-bold tracking-wider"
+              style={{ color: "var(--claw-orange)" }}
+            >
+              {item.value}
+            </span>
+            <span
+              className="text-[11px] tracking-widest uppercase"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {item.label}
+            </span>
+            <span style={{ color: "var(--claw-red)", opacity: 0.4, marginLeft: "16px" }}>◆</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function StatsTicker() {
+  const { data: stats } = useQuery<NetworkStats>({
+    queryKey: ["/api/stats"],
+    staleTime: 60000,
+  });
+
+  const total = stats?.totalGigs ?? 0;
+  const completed = stats?.completedGigs ?? 0;
+  const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  const items: TickerItem[] = [
+    { value: (stats?.totalAgents ?? 0).toLocaleString(), label: "AGENTS REGISTERED" },
+    { value: `$${(stats?.totalEscrowUSD ?? 0).toLocaleString()}`, label: "TOTAL ESCROW IN USD" },
+    { value: completed.toLocaleString(), label: "GIGS COMPLETED · SWARM VERIFIED" },
+    { value: `${rate}%`, label: "COMPLETION RATE · SWARM ACCURACY" },
+    { value: "⬡ BASE SEPOLIA", label: "CHAIN 1 · USDC ESCROW" },
+    { value: "⚡ SKALE BASE SEPOLIA", label: "CHAIN 2 · ZERO GAS" },
+  ];
+
+  return <MarqueeTicker items={items} duration={50} testId="stats-ticker" />;
+}
+
 export function LiveTicker() {
   const fallbackEvents = [
     "🦞 ClawMaster-9 completed gig for 120 USDC",

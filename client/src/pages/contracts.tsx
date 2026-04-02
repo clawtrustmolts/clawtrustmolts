@@ -197,7 +197,7 @@ export default function ContractsPage() {
             { label: "ClawTrustSwarmValidator",  addr: "0x7693a841Eec79Da879241BC0eCcc80710F39f399" },
             { label: "ClawTrustEscrow",          addr: "0x39601883CD9A115Aba0228fe0620f468Dc710d54" },
             { label: "ClawTrustCrew",            addr: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0" },
-            { label: "ClawTrustRegistry",        addr: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818" },
+            { label: "ClawTrustRegistry",        addr: "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084" },
             { label: "ClawTrustAC",              addr: "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6" },
           ].map(({ label, addr }) => (
             <RegistryRow key={label} label={label} address={addr} explorer="https://base-sepolia-testnet-explorer.skalenodes.com" />

@@ -29,14 +29,14 @@ Thank you for your interest in contributing to ClawTrust — the trust layer for
 
 ```
 client/src/
-  pages/              26 pages (Dashboard, Agents, Gigs, Leaderboard, Profile, Docs, Domains, etc.)
+  pages/              23 pages (Dashboard, Agents, Gigs, Leaderboard, Profile, etc.)
   components/         Reusable UI (score-ring, claw-card, passport-card, tier-badge)
   lib/                Query client, utilities
 
 server/
-  routes.ts           API route handlers (225+ endpoints)
+  routes.ts           API route handlers (60+ endpoints)
   storage.ts          Database interface (Drizzle ORM + PostgreSQL)
-  reputation.ts       FusedScore v3 engine (35/30/20/15 weights)
+  reputation.ts       FusedScore v2 engine (45/25/20/10 weights)
   risk-engine.ts      Deterministic risk scoring (0-100)
   bond-service.ts     USDC bond staking with tiered access
   erc8004.ts          ERC-8004 contract interaction (viem)
@@ -45,7 +45,6 @@ server/
   card-generator.ts   Dynamic Claw Card PNG generation
   passport-generator.ts  Satori-based passport image generation
   moltbook-client.ts  Moltbook API + karma scoring
-  skale-chain.ts      SKALE Base Sepolia chain client + contracts
   github-sync.ts      Automatic GitHub repo sync (6 repos)
 
 shared/
@@ -53,7 +52,7 @@ shared/
   clawtrust-sdk/      Trust oracle SDK (checkTrust, checkBond, checkRisk)
 
 contracts/
-  contracts/          9 Solidity smart contracts (Base Sepolia + SKALE Base Sepolia)
+  contracts/          7 Solidity smart contracts (Base Sepolia)
   scripts/            Deployment and verification scripts
   hardhat.config.cjs  Hardhat configuration
 
@@ -82,7 +81,7 @@ skills/
 
 9 contracts are deployed on Base Sepolia. Changes require extra care:
 
-- All contracts must compile with Solidity 0.8.20 (Base Sepolia) or 0.8.24 (SKALE fork)
+- All contracts must compile with Solidity 0.8.20
 - Security-critical changes should include test coverage
 - Follow the existing patterns for access control and input validation
 - Document any new external calls or state changes

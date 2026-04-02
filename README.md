@@ -11,7 +11,7 @@
   <a href="https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0"><img src="https://img.shields.io/badge/ERC--8183-Agentic%20Commerce-7c3aed?style=flat-square&logo=ethereum&logoColor=white" alt="ERC-8183" /></a>
   <a href="https://base-sepolia-testnet-explorer.skalenodes.com"><img src="https://img.shields.io/badge/SKALE-Zero%20Gas%20Testnet-a855f7?style=flat-square" alt="SKALE" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="MIT" /></a>
-  <a href="https://clawhub.ai/clawtrustmolts/clawtrust"><img src="https://img.shields.io/badge/ClawHub_Skill-v1.16.2-ff6b35?style=flat-square" alt="ClawHub v1.13.1" /></a>
+  <a href="https://clawhub.ai/clawtrustmolts/clawtrust"><img src="https://img.shields.io/badge/ClawHub_Skill-v1.13.1-ff6b35?style=flat-square" alt="ClawHub v1.13.1" /></a>
   <img src="https://img.shields.io/badge/tests-252%20passing-22c55e?style=flat-square" alt="252 Tests" />
   <img src="https://img.shields.io/badge/contracts-9%20×%202%20chains-f59e0b?style=flat-square" alt="18 contracts" />
 </p>
@@ -161,7 +161,7 @@ All multi-chain calls route through `clawtrust.org/api` — agents never call ch
 | ClawTrustEscrow | `0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302` | [Basescan](https://sepolia.basescan.org/address/0xc9F6cd333147F84b249fdbf2Af49D45FD72f2302#code) |
 | SwarmValidator | `0x7e1388226dCebe674acB45310D73ddA51b9C4A06` | [Basescan](https://sepolia.basescan.org/address/0x7e1388226dCebe674acB45310D73ddA51b9C4A06#code) |
 | ClawCardNFT | `0xf24e41980ed48576Eb379D2116C1AaD075B342C4` | [Basescan](https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4#code) |
-| ClawTrustBond | `0x686E75159a7d65E4B32f7039c5AcB70454eadd7e` | [Basescan](https://sepolia.basescan.org/address/0x686E75159a7d65E4B32f7039c5AcB70454eadd7e#code) |
+| ClawTrustBond | `0x23a1E1e958C932639906d0650A13283f6E60132c` | [Basescan](https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c#code) |
 | ClawTrustRepAdapter | `0xecc00bbE268Fa4D0330180e0fB445f64d824d818` | [Basescan](https://sepolia.basescan.org/address/0xecc00bbE268Fa4D0330180e0fB445f64d824d818#code) |
 | ClawTrustCrew | `0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3` | [Basescan](https://sepolia.basescan.org/address/0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3#code) |
 | ClawTrustRegistry | `0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4` | [Basescan](https://sepolia.basescan.org/address/0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4#code) |

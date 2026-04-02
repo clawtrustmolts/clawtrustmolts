@@ -15,16 +15,69 @@ import { syncScoreToSkale } from "./skale-chain";
 
 const RPC_URL = process.env.BASE_RPC_URL || "https://sepolia.base.org";
 
+/**
+ * NETWORK_MODE — set to "mainnet" in production env vars to switch all
+ * contract addresses to Base Mainnet (8453) instead of Base Sepolia (84532).
+ * One-click mainnet readiness: deploy contracts, set VITE_NETWORK_MODE=mainnet
+ * and each MAINNET_* address env var, then redeploy.
+ */
+export const NETWORK_MODE: "testnet" | "mainnet" =
+  (process.env.NETWORK_MODE === "mainnet") ? "mainnet" : "testnet";
+
+const IS_MAINNET = NETWORK_MODE === "mainnet";
+
 // ─── Redeployed 2026-03-19 (Task #27) — security patches (CRITICAL-3, CRITICAL-4, HIGH-1, getGigVerdict) ──
 const CONTRACT_ADDRESSES = {
-  clawCardNFT:             (process.env.CLAW_CARD_NFT_ADDRESS             || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4") as Address,
-  escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x6B676744B8c4900F9999E9a9323728C160706126") as Address,
-  swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as Address,
-  repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as Address,
-  bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address,
-  crew:                    (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address,
-  registry:                (process.env.CLAW_TRUST_REGISTRY_ADDRESS       || "0x950aa4E7300e75e899d37879796868E2dd84A59c") as Address,
+  clawCardNFT:    (IS_MAINNET
+    ? (process.env.MAINNET_CLAW_CARD_NFT_ADDRESS   || "")
+    : (process.env.CLAW_CARD_NFT_ADDRESS            || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4")) as Address,
+  escrow:         (IS_MAINNET
+    ? (process.env.MAINNET_ESCROW_ADDRESS           || "")
+    : (process.env.CLAW_TRUST_ESCROW_ADDRESS        || "0x6B676744B8c4900F9999E9a9323728C160706126")) as Address,
+  swarmValidator: (IS_MAINNET
+    ? (process.env.MAINNET_SWARM_VALIDATOR_ADDRESS  || "")
+    : (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743")) as Address,
+  repAdapter:     (IS_MAINNET
+    ? (process.env.MAINNET_REP_ADAPTER_ADDRESS      || "")
+    : (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS   || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB")) as Address,
+  bond:           (IS_MAINNET
+    ? (process.env.MAINNET_BOND_ADDRESS             || "")
+    : (process.env.CLAW_TRUST_BOND_ADDRESS          || "0x23a1E1e958C932639906d0650A13283f6E60132c")) as Address,
+  crew:           (IS_MAINNET
+    ? (process.env.MAINNET_CREW_ADDRESS             || "")
+    : (process.env.CLAW_TRUST_CREW_ADDRESS          || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3")) as Address,
+  registry:       (IS_MAINNET
+    ? (process.env.MAINNET_REGISTRY_ADDRESS         || "")
+    : (process.env.CLAW_TRUST_REGISTRY_ADDRESS      || "0x82AEAA9921aC1408626851c90FCf74410D059dF4")) as Address,
 };
+
+/** Returns a summary of current network config for the /api/system/network endpoint */
+export function getNetworkConfig() {
+  return {
+    mode: NETWORK_MODE,
+    chainId: IS_MAINNET ? 8453 : 84532,
+    chainName: IS_MAINNET ? "Base Mainnet" : "Base Sepolia",
+    contracts: {
+      escrow:         CONTRACT_ADDRESSES.escrow,
+      bond:           CONTRACT_ADDRESSES.bond,
+      swarmValidator: CONTRACT_ADDRESSES.swarmValidator,
+      registry:       CONTRACT_ADDRESSES.registry,
+      repAdapter:     CONTRACT_ADDRESSES.repAdapter,
+    },
+    mainnetReady: IS_MAINNET
+      ? Object.values(CONTRACT_ADDRESSES).every(a => a && a.length > 5)
+      : false,
+    mainnetChecklist: {
+      escrowDeployed:         IS_MAINNET ? !!process.env.MAINNET_ESCROW_ADDRESS   : null,
+      bondDeployed:           IS_MAINNET ? !!process.env.MAINNET_BOND_ADDRESS     : null,
+      swarmValidatorDeployed: IS_MAINNET ? !!process.env.MAINNET_SWARM_VALIDATOR_ADDRESS : null,
+      registryDeployed:       IS_MAINNET ? !!process.env.MAINNET_REGISTRY_ADDRESS  : null,
+      oracleKeySet:           !!process.env.ORACLE_PRIVATE_KEY,
+      usdcConfigured:         IS_MAINNET ? true : null,
+      networkModeSet:         IS_MAINNET,
+    },
+  };
+}
 
 // ─── ABI loader ──────────────────────────────────────────────────────
 
@@ -170,10 +223,60 @@ export const skaleSwarmValidator = getContract({
   client: { public: skaleSwarmPublicClient, wallet: skaleWalletClient ?? undefined },
 });
 
+// ─── Local Nonce Manager ─────────────────────────────────────────────────────
+// Base Sepolia (and SKALE) RPC nodes sometimes don't reflect pending txs quickly
+// enough when eth_getTransactionCount("pending") is called for rapid sequential
+// transactions. This means two consecutive calls can receive the same nonce,
+// producing "nonce too low" errors after the first tx mines.
+//
+// Solution: track the nonce locally after the first fetch and auto-increment
+// without querying the chain again. Reset only on nonce-related errors.
+class NonceMgr {
+  private next: number | null = null;
+
+  reset(): void { this.next = null; }
+
+  async acquire(getFromChain: () => Promise<number>): Promise<number> {
+    if (this.next === null) {
+      this.next = await getFromChain();
+    }
+    return this.next++;
+  }
+
+  onError(err: any): void {
+    const msg = ((err?.message ?? "") as string).toLowerCase();
+    if (
+      msg.includes("nonce") ||
+      msg.includes("already known") ||
+      msg.includes("replacement transaction underpriced") ||
+      msg.includes("timed out")
+    ) {
+      this.next = null; // force re-fetch from chain on next tx
+    }
+  }
+}
+
+const _baseNonceMgr = new NonceMgr();
+const _skaleNonceMgr = new NonceMgr();
+
 // Separate nonce lock for SKALE chain (independent nonce sequence from Base Sepolia)
 let _skaleNonceLock: Promise<void> = Promise.resolve();
-async function withSkaleNonceLock(fn: () => any): Promise<any> {
-  const result = _skaleNonceLock.then(fn);
+async function withSkaleNonceLock(fn: (nonce: number) => Promise<any>): Promise<any> {
+  const result = _skaleNonceLock.then(async () => {
+    if (!skaleWalletClient?.account) return fn(0);
+    const nonce = await _skaleNonceMgr.acquire(() =>
+      skaleSwarmPublicClient.getTransactionCount({
+        address: skaleWalletClient!.account!.address,
+        blockTag: "pending",
+      })
+    );
+    try {
+      return await fn(nonce);
+    } catch (err: any) {
+      _skaleNonceMgr.onError(err);
+      throw err;
+    }
+  });
   _skaleNonceLock = result.then(() => {}, () => {});
   return result;
 }
@@ -197,18 +300,27 @@ function isWriteReady(): boolean {
 }
 
 // ─── Nonce serialization lock — prevents concurrent tx nonce conflicts ───────
-// All blockchain write operations must go through withNonceLock so that
-// only one transaction is in-flight at a time, preventing "nonce too low" errors.
+// Uses NonceMgr above to track nonce locally, avoiding RPC races.
 
 let _nonceLock: Promise<void> = Promise.resolve();
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function withNonceLock(fn: () => any): Promise<any> {
-  const result = _nonceLock.then(fn);
-  _nonceLock = result.then(
-    () => {},
-    () => {}
-  );
+async function withNonceLock(fn: (nonce: number) => Promise<any>): Promise<any> {
+  const result = _nonceLock.then(async () => {
+    if (!walletClient?.account) return fn(0); // no oracle, let viem pick nonce
+    const nonce = await _baseNonceMgr.acquire(() =>
+      publicClient.getTransactionCount({
+        address: walletClient!.account!.address,
+        blockTag: "pending",
+      })
+    );
+    try {
+      return await fn(nonce);
+    } catch (err: any) {
+      _baseNonceMgr.onError(err);
+      throw err;
+    }
+  });
+  _nonceLock = result.then(() => {}, () => {});
   return result;
 }
 
@@ -232,13 +344,13 @@ export async function mintPassportForAgent(agent: {
   const metadataUri = `https://clawtrust.org/api/agents/${agent.id}/metadata`;
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (clawCardNFT as any).write.adminMintFull([
         agent.walletAddress as Address,
         agent.handle,
         metadataUri,
         agent.skills,
-      ])
+      ], { nonce })
     );
 
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
@@ -299,11 +411,11 @@ export async function setMoltDomainOnChain(
   if (!isWriteReady()) return null;
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (clawCardNFT as any).write.setMoltDomain([
         BigInt(tokenId),
         moltDomain,
-      ])
+      ], { nonce })
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Passport] .molt domain set: ${moltDomain} tx=${txHash}`);
@@ -341,7 +453,7 @@ export async function updateReputationOnChain(opts: {
   const proofUri      = `ipfs://clawtrust/reputation/${opts.agentWallet}`;
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (repAdapter as any).write.updateFusedScore([
         opts.agentWallet as Address,
         BigInt(rawOnChain),
@@ -349,7 +461,7 @@ export async function updateReputationOnChain(opts: {
         BigInt(rawPerf),
         BigInt(rawBond),
         proofUri,
-      ])
+      ], { nonce })
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Reputation] On-chain updated for ${opts.agentWallet} tx=${txHash}`);
@@ -378,12 +490,12 @@ export async function lockEscrowOnChain(opts: {
   const amountRaw = parseUnits(opts.amountUsdc.toString(), 6);
 
   try {
-    const txHash = await withNonceLock(() =>
+    const txHash = await withNonceLock((nonce) =>
       (escrowContract as any).write.lockUSDC([
         gigIdBytes32,
         opts.payeeWallet as Address,
         amountRaw,
-      ])
+      ], { nonce })
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Escrow] Locked ${opts.amountUsdc} USDC for gig ${opts.gigId} tx=${txHash}`);
@@ -421,7 +533,7 @@ export async function createSwarmValidationOnChain(opts: {
   const chainLabel = useSkale ? "SKALE" : "Base";
 
   try {
-    const txHash = await lockFn(() =>
+    const txHash = await lockFn((nonce) =>
       (contract as any).write.createValidation([
         gigIdBytes32,
         opts.posterWallet  as Address,
@@ -430,7 +542,7 @@ export async function createSwarmValidationOnChain(opts: {
         BigInt(opts.threshold),
         BigInt(0),
         usdcAddress,
-      ])
+      ], { nonce })
     );
     await waitClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Swarm][${chainLabel}] Validation created on-chain for gig ${opts.gigId} tx=${txHash}`);
@@ -465,11 +577,11 @@ export async function castSwarmVoteOnChain(opts: {
   const chainLabel = useSkale ? "SKALE" : "Base";
 
   try {
-    const txHash = await lockFn(() =>
+    const txHash = await lockFn((nonce) =>
       (contract as any).write.vote([
         gigIdBytes32,
         voteType,
-      ])
+      ], { nonce })
     );
     await waitClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Swarm][${chainLabel}] Vote ${opts.approve ? "Approve" : "Reject"} for gig ${opts.gigId} tx=${txHash}`);
@@ -504,6 +616,25 @@ export async function readPassportById(tokenId: string) {
   try {
     const passport = await (clawCardNFT as any).read.getPassportById([BigInt(tokenId)]);
     return passport;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Read on-chain validation info (rewardPool) from SwarmValidator ──────────
+
+export async function getValidationInfoOnChain(
+  gigId: string,
+  chain?: string | null,
+): Promise<{ rewardPool: number } | null> {
+  const gigIdBytes32 = ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
+  const useSkale = chain === CHAIN_SKALE_TESTNET;
+  const contract = useSkale ? skaleSwarmValidator : swarmValidator;
+  try {
+    const info = await (contract as any).read.getValidationInfo([gigIdBytes32]);
+    // info is a tuple/struct; rewardPool is typically at index 5 or via named field
+    const rewardPool = info?.rewardPool ?? info?.[5] ?? info?.[4] ?? 0n;
+    return { rewardPool: Number(rewardPool) / 1_000_000 }; // USDC 6 decimals
   } catch {
     return null;
   }
@@ -580,19 +711,28 @@ export async function updatePerformanceScoreOnChain(opts: {
   const clampedScore = Math.min(100, Math.max(0, Math.round(opts.score)));
 
   try {
-    const txHash = await withNonceLock(() =>
-      (bondContract as any).write.updatePerformanceScore([
-        opts.agentWallet as Address,
-        BigInt(clampedScore),
-      ])
+    const txHash = await withNonceLock((nonce) =>
+      (bondContract as any).write.updatePerformanceScore(
+        [opts.agentWallet as Address, BigInt(clampedScore)],
+        { gas: 100000n, nonce }
+      )
     );
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 45_000 });
     console.log(`[Bond] updatePerformanceScore ${opts.agentWallet} => ${clampedScore} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
     const errMsg = err.message || "";
-    if (errMsg.includes("reverted") || errMsg.includes("ScoreOutOfRange") || errMsg.includes("NotAuthorizedCaller")) {
-      console.warn(`[Bond] updatePerformanceScore skipped for ${opts.agentWallet}: ${errMsg.slice(0, 120)}`);
+    _baseNonceMgr.onError(err);
+    const isSoftError =
+      errMsg.includes("reverted") ||
+      errMsg.includes("ScoreOutOfRange") ||
+      errMsg.includes("NotAuthorizedCaller") ||
+      errMsg.toLowerCase().includes("missing or invalid") ||
+      errMsg.toLowerCase().includes("invalid parameters") ||
+      errMsg.toLowerCase().includes("timed out") ||
+      errMsg.toLowerCase().includes("nonce");
+    if (isSoftError) {
+      console.log(`[Bond] updatePerformanceScore skipped (soft) for ${opts.agentWallet}: ${errMsg.slice(0, 120)}`);
     } else {
       console.error(`[Bond] updatePerformanceScore failed for ${opts.agentWallet}:`, errMsg.slice(0, 200));
     }
@@ -613,12 +753,11 @@ export async function lockBondForGigOnChain(opts: {
   const amountRaw = parseUnits(opts.amount.toFixed(6), 6);
 
   try {
-    const txHash = await withNonceLock(() =>
-      (bondContract as any).write.lockBondForGig([
-        gigIdBytes32,
-        opts.agentWallet as Address,
-        amountRaw,
-      ])
+    const txHash = await withNonceLock((nonce) =>
+      (bondContract as any).write.lockBondForGig(
+        [gigIdBytes32, opts.agentWallet as Address, amountRaw],
+        { gas: 150000n, nonce }
+      )
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Bond] lockBondForGig gig=${opts.gigId} agent=${opts.agentWallet} amount=${opts.amount} tx=${txHash}`);
@@ -647,11 +786,11 @@ export async function slashBondOnChain(opts: {
   const gigIdBytes32 = gigIdToBytes32(opts.gigId);
 
   try {
-    const txHash = await withNonceLock(() =>
-      (bondContract as any).write.adminFinalize([
-        gigIdBytes32,
-        false,
-      ])
+    const txHash = await withNonceLock((nonce) =>
+      (bondContract as any).write.adminFinalize(
+        [gigIdBytes32, false],
+        { gas: 150000n, nonce }
+      )
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Bond] slashBondOnChain gig=${opts.gigId} tx=${txHash}`);
@@ -714,22 +853,23 @@ export async function depositBondOnChain(opts: {
   const bondContractAddress = CONTRACT_ADDRESSES.bond;
 
   try {
-    const approveTx = await withNonceLock(() =>
+    const approveTx = await withNonceLock((nonce) =>
       walletClient!.writeContract({
         address: USDC_ADDRESS,
         abi: USDC_ABI,
         functionName: "approve",
         args: [bondContractAddress, amountRaw],
+        nonce,
       })
     );
     await publicClient.waitForTransactionReceipt({ hash: approveTx });
     console.log(`[Bond] depositOnChain: approved ${opts.amount} USDC tx=${approveTx}`);
 
-    const depositTx = await withNonceLock(() =>
-      (bondContract as any).write.depositFor([
-        opts.agentWallet as Address,
-        amountRaw,
-      ])
+    const depositTx = await withNonceLock((nonce) =>
+      (bondContract as any).write.depositFor(
+        [opts.agentWallet as Address, amountRaw],
+        { gas: 150000n, nonce }
+      )
     );
     await publicClient.waitForTransactionReceipt({ hash: depositTx });
     console.log(`[Bond] depositOnChain: depositFor agent=${opts.agentWallet} amount=${opts.amount} tx=${depositTx}`);
@@ -865,8 +1005,8 @@ export async function processBlockchainQueue(): Promise<void> {
           const tx = await slashBondOnChain(payload as any);
           success = !!tx && tx !== null;
         } else if (action.type === "BOND_PERF_SCORE") {
-          const tx = await updatePerformanceScoreOnChain(payload as any);
-          success = tx !== null;
+          await updatePerformanceScoreOnChain(payload as any);
+          success = true; // on-chain score sync is best-effort; DB is authoritative
         } else if (action.type === "SKALE_REP_SYNC") {
           const result = await syncScoreToSkale({
             walletAddress: payload.walletAddress as string,
@@ -1010,6 +1150,66 @@ export async function getUSDCBalance(address: string): Promise<number> {
 export const ORACLE_WALLET_ADDRESS = "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906" as Address;
 export const USDC_CONTRACT_ADDRESS = USDC_ADDRESS;
 
+/** Returns oracle wallet ETH balance in ether (for gas). Logs a warning if below threshold. */
+export async function getOracleEthBalance(): Promise<number> {
+  try {
+    const balanceWei = await publicClient.getBalance({ address: ORACLE_WALLET_ADDRESS });
+    const eth = Number(balanceWei) / 1e18;
+    return eth;
+  } catch {
+    return 0;
+  }
+}
+
+/** Minimum ETH balance before we warn (0.005 ETH covers ~25 typical Base Sepolia txs at 0.0002 ETH each) */
+export const ORACLE_ETH_WARN_THRESHOLD = 0.005;
+export const ORACLE_ETH_CRITICAL_THRESHOLD = 0.001;
+export const ORACLE_USDC_WARN_THRESHOLD = 5;
+
+/**
+ * Returns oracle wallet health snapshot used by /api/system/network and the escrow release pre-flight.
+ * Caches result for 60 seconds to avoid hammering the RPC.
+ */
+let _oracleHealthCache: { ethBalance: number; usdcBalance: number; timestamp: number } | null = null;
+export async function getOracleHealth(forceRefresh = false): Promise<{
+  ethBalance: number;
+  usdcBalance: number;
+  ethOk: boolean;
+  usdcOk: boolean;
+  warnings: string[];
+}> {
+  const now = Date.now();
+  if (!forceRefresh && _oracleHealthCache && now - _oracleHealthCache.timestamp < 60_000) {
+    const { ethBalance, usdcBalance } = _oracleHealthCache;
+    return buildOracleHealthResult(ethBalance, usdcBalance);
+  }
+  const [ethBalance, usdcBalance] = await Promise.all([
+    getOracleEthBalance(),
+    getUSDCBalance(ORACLE_WALLET_ADDRESS),
+  ]);
+  _oracleHealthCache = { ethBalance, usdcBalance, timestamp: now };
+  return buildOracleHealthResult(ethBalance, usdcBalance);
+}
+
+function buildOracleHealthResult(ethBalance: number, usdcBalance: number) {
+  const warnings: string[] = [];
+  if (ethBalance < ORACLE_ETH_CRITICAL_THRESHOLD) {
+    warnings.push(`CRITICAL: Oracle ETH balance critically low (${ethBalance.toFixed(5)} ETH) — on-chain txs will fail`);
+  } else if (ethBalance < ORACLE_ETH_WARN_THRESHOLD) {
+    warnings.push(`LOW: Oracle ETH balance low (${ethBalance.toFixed(5)} ETH) — refill soon`);
+  }
+  if (usdcBalance < ORACLE_USDC_WARN_THRESHOLD) {
+    warnings.push(`LOW: Oracle USDC balance low (${usdcBalance.toFixed(2)} USDC) — refill for escrow releases`);
+  }
+  return {
+    ethBalance,
+    usdcBalance,
+    ethOk: ethBalance >= ORACLE_ETH_WARN_THRESHOLD,
+    usdcOk: usdcBalance >= ORACLE_USDC_WARN_THRESHOLD,
+    warnings,
+  };
+}
+
 export async function registerDomainOnChain(
   name: string,
   tld: string,
@@ -1052,8 +1252,8 @@ export async function expireValidationOnChain(gigId: string): Promise<string | n
   const gigIdBytes32 = ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
 
   try {
-    const txHash = await withNonceLock(() =>
-      (swarmValidator as any).write.expireValidation([gigIdBytes32])
+    const txHash = await withNonceLock((nonce) =>
+      (swarmValidator as any).write.expireValidation([gigIdBytes32], { nonce })
     );
     await publicClient.waitForTransactionReceipt({ hash: txHash });
     console.log(`[Sweep] expireValidation on-chain for gig ${gigId} tx=${txHash}`);

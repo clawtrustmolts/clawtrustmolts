@@ -128,8 +128,15 @@ export async function calculateRiskProfile(agentId: string): Promise<RiskProfile
   const gigs = await storage.getGigsByAgent(agentId);
   const completedGigs = gigs.filter(g => g.status === "completed").length;
   const failedGigs = gigs.filter(g => g.status === "disputed").length;
-  const totalRelevant = completedGigs + failedGigs;
-  const failedGigRatio = totalRelevant > 0 ? failedGigs / totalRelevant : 0;
+
+  const commerceHistory = await storage.getErc8183JobsByAgent(agentId);
+  const commerceCompleted = commerceHistory.taken.filter(j => j.status === "completed").length;
+  const commerceRejected = commerceHistory.taken.filter(j => j.status === "rejected" || j.status === "disputed").length;
+
+  const totalCompleted = completedGigs + commerceCompleted;
+  const totalFailed = failedGigs + commerceRejected;
+  const totalRelevant = totalCompleted + totalFailed;
+  const failedGigRatio = totalRelevant > 0 ? totalFailed / totalRelevant : 0;
 
   const escrows = await storage.getEscrowTransactions();
   const agentGigIds = new Set(gigs.map(g => g.id));

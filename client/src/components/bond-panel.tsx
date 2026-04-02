@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,8 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Shield, ArrowUpCircle, ArrowDownCircle, Lock, Unlock, AlertTriangle, Wallet, TrendingUp, Activity } from "lucide-react";
+import { Shield, ArrowUpCircle, ArrowDownCircle, Lock, Unlock, AlertTriangle, Wallet, TrendingUp, Activity, CheckCircle, Loader2, ExternalLink } from "lucide-react";
 import type { BondEvent } from "@shared/schema";
+import {
+  depositBondOnChain,
+  getUSDCBalance,
+  getWalletChainId,
+  switchToChain,
+  txExplorerUrl,
+  CHAIN_IDS,
+  type TxProgress,
+  type ChainKey,
+} from "@/lib/onchain";
 
 const TIER_CONFIG: Record<string, { label: string; className: string }> = {
   UNBONDED: { label: "Unbonded", className: "bg-muted text-muted-foreground" },
@@ -41,6 +51,55 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
   const { toast } = useToast();
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [onChainAmount, setOnChainAmount] = useState("");
+  const [onChainProgress, setOnChainProgress] = useState<TxProgress>({ step: "idle" });
+  const [walletAccount, setWalletAccount] = useState("");
+  const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+  const [wrongChain, setWrongChain] = useState(false);
+  const chainKey: ChainKey = "BASE_SEPOLIA";
+
+  const checkWallet = useCallback(async () => {
+    if (!window.ethereum) {
+      toast({ title: "No wallet found", description: "Install MetaMask to deposit on-chain.", variant: "destructive" });
+      return;
+    }
+    try {
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
+      const account = accounts[0];
+      setWalletAccount(account);
+      const chainId = await getWalletChainId();
+      if (chainId !== CHAIN_IDS[chainKey]) {
+        setWrongChain(true);
+        return;
+      }
+      setWrongChain(false);
+      const bal = await getUSDCBalance(account, chainKey);
+      setUsdcBalance(bal);
+    } catch (err: any) {
+      toast({ title: "Wallet error", description: err.message, variant: "destructive" });
+    }
+  }, [chainKey, toast]);
+
+  const handleOnChainDeposit = useCallback(async () => {
+    const amount = parseFloat(onChainAmount);
+    if (!amount || amount < 10) return;
+    const account = walletAccount;
+    if (!account) { await checkWallet(); return; }
+    try {
+      const { depositTxHash } = await depositBondOnChain(
+        { agentWallet: account, amountUsdc: amount, chainKey },
+        setOnChainProgress,
+      );
+      toast({ title: "Bond deposited on-chain", description: `TX: ${depositTxHash.slice(0, 18)}…` });
+      queryClient.invalidateQueries({ queryKey: ["/api/bond", agentId, "status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bond", agentId, "history"] });
+      setOnChainAmount("");
+      setOnChainProgress({ step: "idle" });
+    } catch (err: any) {
+      setOnChainProgress({ step: "error", error: err.message });
+      toast({ title: "On-chain deposit failed", description: err.message, variant: "destructive" });
+    }
+  }, [agentId, walletAccount, onChainAmount, chainKey, checkWallet, toast]);
 
   const { data: bondStatus, isLoading: statusLoading } = useQuery<{
     totalBonded: number;
@@ -221,11 +280,28 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
           )}
 
           {bondStatus.bondWalletAddress && (
-            <div className="flex items-center gap-1.5 mt-2">
-              <Wallet className="w-3 h-3 text-muted-foreground" />
-              <span className="text-[10px] font-mono text-muted-foreground truncate" data-testid="text-bond-wallet">
+            <div className="mt-3 pt-3 border-t space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Wallet className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                <span className="text-[10px] font-mono text-muted-foreground">CIRCLE BOND WALLET</span>
+              </div>
+              <span className="text-[10px] font-mono break-all block" style={{ color: "hsl(var(--foreground) / 0.7)" }} data-testid="text-bond-wallet">
                 {bondStatus.bondWalletAddress}
               </span>
+              <p className="text-[9px] font-mono text-muted-foreground leading-tight">
+                Deposit USDC to this Circle wallet address on Base Sepolia to fund your bond.
+              </p>
+            </div>
+          )}
+
+          {!bondStatus.bondWalletAddress && !bondStatus.circleConfigured && (
+            <div className="mt-3 pt-3 border-t">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-3 h-3 text-chart-3 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] font-mono text-muted-foreground leading-tight">
+                  Bond deposits go via the platform oracle wallet. Contact the operator to fund or bond directly via the Bond contract.
+                </p>
+              </div>
             </div>
           )}
 
@@ -243,10 +319,86 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
       {isOwnProfile && (
         <Card data-testid="card-bond-actions">
           <CardContent className="p-5 space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-mono font-semibold flex items-center gap-1.5">
-                <ArrowUpCircle className="w-3.5 h-3.5 text-chart-2" /> DEPOSIT USDC BOND
+
+            {/* On-chain deposit via MetaMask */}
+            <div className="space-y-2 rounded-lg border border-dashed border-chart-2/40 p-3 bg-chart-2/5">
+              <label className="text-xs font-mono font-semibold flex items-center gap-1.5 text-chart-2">
+                <Wallet className="w-3.5 h-3.5" /> DEPOSIT ON-CHAIN (MetaMask)
               </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min="10"
+                  step="1"
+                  placeholder="Amount (min 10 USDC)"
+                  value={onChainAmount}
+                  onChange={(e) => setOnChainAmount(e.target.value)}
+                  data-testid="input-onchain-deposit-amount"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!onChainAmount || parseFloat(onChainAmount) < 10 || onChainProgress.step === "approving" || onChainProgress.step === "locking"}
+                  onClick={walletAccount ? handleOnChainDeposit : checkWallet}
+                  data-testid="button-onchain-deposit-bond"
+                >
+                  {onChainProgress.step === "approving" || onChainProgress.step === "locking"
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : walletAccount
+                      ? `Fund ${onChainAmount || "?"} USDC`
+                      : "Connect Wallet"
+                  }
+                </Button>
+              </div>
+              {walletAccount && !wrongChain && (
+                <p className="text-[10px] font-mono text-muted-foreground">
+                  Wallet: {walletAccount.slice(0,6)}…{walletAccount.slice(-4)}
+                  {usdcBalance !== null && <> · Balance: <span className={usdcBalance >= (parseFloat(onChainAmount) || 0) ? "text-chart-2" : "text-destructive"}>{usdcBalance.toFixed(2)} USDC</span></>}
+                </p>
+              )}
+              {wrongChain && (
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-3 h-3 text-chart-3 shrink-0" />
+                  <span className="text-[10px] text-chart-3">Switch to Base Sepolia</span>
+                  <Button size="sm" variant="ghost" className="h-5 text-[10px] px-2" onClick={() => switchToChain(chainKey).then(() => checkWallet())}>
+                    Switch
+                  </Button>
+                </div>
+              )}
+              {onChainProgress.step === "done" && onChainProgress.lockTxHash && (
+                <a
+                  href={txExplorerUrl(onChainProgress.lockTxHash, chainKey)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[10px] text-chart-2 hover:underline"
+                >
+                  <CheckCircle className="w-3 h-3" /> Deposited · View TX <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              )}
+              {onChainProgress.step === "error" && (
+                <p className="text-[10px] text-destructive">{onChainProgress.error}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-mono font-semibold flex items-center gap-1.5 text-muted-foreground">
+                <ArrowUpCircle className="w-3.5 h-3.5 text-chart-2" /> DEPOSIT VIA ORACLE
+              </label>
+              <div className="rounded-md bg-muted/40 p-2.5 space-y-1 mb-2" data-testid="oracle-deposit-steps">
+                <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">HOW THIS WORKS:</p>
+                {[
+                  "Enter your USDC amount (minimum 10 USDC).",
+                  "Click Deposit — the platform oracle wallet submits a depositFor() transaction to the Bond contract on your behalf.",
+                  "The oracle calls depositFor(yourWallet, amount) on the ClawTrust Bond contract (Base Sepolia: 0x23a1…132c).",
+                  "Wait ~15–30 seconds for on-chain confirmation.",
+                  "Your bond balance and tier update automatically.",
+                ].map((step, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className="flex-shrink-0 w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold text-muted-foreground mt-0.5">{i + 1}</span>
+                    <p className="text-[10px] font-mono leading-snug text-muted-foreground">{step}</p>
+                  </div>
+                ))}
+              </div>
               <div className="flex items-center gap-2">
                 <Input
                   type="number"
@@ -263,9 +415,14 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
                   onClick={() => depositMutation.mutate(parseFloat(depositAmount))}
                   data-testid="button-deposit-bond"
                 >
-                  {depositMutation.isPending ? "..." : "Deposit"}
+                  {depositMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Deposit"}
                 </Button>
               </div>
+              {depositMutation.isError && (
+                <p className="text-[10px] text-destructive font-mono" data-testid="text-oracle-deposit-error">
+                  {(depositMutation.error as Error)?.message ?? "Deposit failed. The oracle may be unavailable — try on-chain deposit above."}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

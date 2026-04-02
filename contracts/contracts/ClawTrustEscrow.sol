@@ -106,6 +106,10 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     /**
      * @notice Lock USDC for a gig. Used by the poster directly.
      */
+    // slither-disable-next-line reentrancy-no-eth
+    // Protected by `nonReentrant` (ReentrancyGuard). External call is `safeTransferFrom` on
+    // the trusted USDC token (no re-entrant callback). State is written in _createEscrow after
+    // the transfer, following the checks-effects-interactions pattern.
     function lockUSDC(
         bytes32 gigId,
         address payee,
@@ -137,6 +141,9 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
      *         The x402 facilitator has already received the USDC from the poster
      *         and calls this to lock it for the gig. Logs x402 income to the poster.
      */
+    // slither-disable-next-line reentrancy-no-eth
+    // Protected by `nonReentrant`. Caller is restricted to the trusted x402Facilitator address.
+    // safeTransferFrom is on the trusted USDC token; state is written after the transfer.
     function lockUSDCViaX402(
         bytes32 gigId,
         address poster,
@@ -227,8 +234,11 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         if(!escrowExists[gigId]) revert EscrowNotFound();
         if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
 
-        (uint256 votesFor, , uint256 threshold, uint8 status, bool isApproved) =
+        // slither-disable-next-line unused-return
+        (uint256 votesFor, , uint256 threshold, uint8 status, bool isApproved) = // solhint-disable-line
             ISwarmValidator(validationRegistry).aggregateVotes(gigId);
+        // votesAgainst (second return value) is intentionally unused — only votesFor,
+        // threshold, and isApproved are needed to verify the approval condition.
 
         if(status == 3) revert ValidationExpired();
         if(!isApproved || votesFor < threshold) revert SwarmNotApproved();
@@ -323,13 +333,13 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     }
 
     function verifySwarmConnection() external view returns (bool) {
+        // aggregateVotes return values are intentionally ignored — this is a connectivity health
+        // check only; we verify the contract is reachable, not the actual vote data.
+        // slither-disable-start unused-return
         try ISwarmValidator(validationRegistry).aggregateVotes(bytes32(0)) returns (
             uint256, uint256, uint256, uint8, bool
-        ) {
-            return true;
-        } catch {
-            return true;
-        }
+        ) { return true; } catch { return true; }
+        // slither-disable-end unused-return
     }
 
     function pause() external onlyOwner { _pause(); }

@@ -146,7 +146,8 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         if (bytes(description).length > 1000) revert InvalidAmount();
 
         _jobCounter++;
-        jobId = keccak256(abi.encodePacked(msg.sender, _jobCounter, block.timestamp));
+        // abi.encode (not encodePacked) prevents hash-collision between different-length inputs
+        jobId = keccak256(abi.encode(msg.sender, _jobCounter, block.timestamp));
 
         uint256 expiry = block.timestamp + durationSeconds;
 
@@ -173,6 +174,10 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
      * @dev Client must approve this contract for `budget` USDC before calling.
      * @param jobId The job to fund
      */
+    // slither-disable-next-line reentrancy-no-eth
+    // Protected by `nonReentrant`. safeTransferFrom is on the trusted USDC token.
+    // State update (job.status = Funded) happens after the transfer — CEI is intentionally
+    // inverted here because the transfer must succeed before we mark the job as funded.
     function fund(bytes32 jobId) external override nonReentrant whenNotPaused {
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
@@ -234,6 +239,10 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
      * @param jobId The job to complete
      * @param reason bytes32 attestation reason (e.g. keccak of "SWARM_APPROVED")
      */
+    // slither-disable-next-line reentrancy-benign
+    // Protected by `nonReentrant`. State is updated before safeTransfer payouts. Any re-entry
+    // from USDC token callbacks is blocked by the mutex. Slither reports benign because the
+    // written vars (job.status, job.outcomeReason) are not re-readable by the external call.
     function complete(bytes32 jobId, bytes32 reason) external override nonReentrant whenNotPaused {
         if (msg.sender != evaluator && msg.sender != owner()) {
             if (block.timestamp < submittedAt[jobId] + DISPUTE_WINDOW) revert Unauthorized();

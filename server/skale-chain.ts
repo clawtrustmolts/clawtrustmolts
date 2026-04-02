@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, http, type Address } from "viem";
+import { createPublicClient, createWalletClient, http, type Address, parseAbiItem } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 const SKALE_TESTNET_RPC = "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha";
@@ -30,7 +30,7 @@ const SKALE_CONTRACTS = {
   swarmValidator:  "0x7693a841Eec79Da879241BC0eCcc80710F39f399" as Address,
   bond:            "0x5bC40A7a47A2b767D948FEEc475b24c027B43867" as Address,
   crew:            "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0" as Address,
-  registry:        "0xecc00bbE268Fa4D0330180e0fB445f64d824d818" as Address,
+  registry:        "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084" as Address,
 };
 
 // ABI matches ClawTrustRepAdapter v1.14.0 deployed on SKALE Base Sepolia (324705682)
@@ -260,6 +260,122 @@ export async function registerAgentOnSkale(opts: {
     const msg = err?.shortMessage || err?.message || "SKALE registration failed";
     console.error(`[SKALE] registerAgentOnSkale error:`, msg);
     return { error: msg };
+  }
+}
+
+// ─── On-chain grant metrics reads ────────────────────────────────────────────
+
+const CLAW_CARD_NFT_ABI = [
+  {
+    name: "totalSupply",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+/**
+ * Read the total number of ClawCardNFT tokens minted on SKALE via totalSupply().
+ * Returns null on RPC failure so the caller can fall back to DB count.
+ */
+export async function readSkalePassportTotalSupply(): Promise<number | null> {
+  try {
+    const supply = await skalePublicClient.readContract({
+      address: SKALE_CONTRACTS.clawCardNFT,
+      abi: CLAW_CARD_NFT_ABI,
+      functionName: "totalSupply",
+    });
+    return Number(supply);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the number of ERC-8004 passports registered on SKALE via IdentityRegistry Transfer (mint) events.
+ * ERC-8004 IdentityRegistry is ERC-721-based (soulbound); mints emit Transfer(from=0x0, to=wallet, tokenId).
+ * Returns null on RPC timeout/failure so callers fall back to DB count.
+ */
+export async function readSkaleIdentityCount(): Promise<number | null> {
+  try {
+    const logs = await Promise.race([
+      skalePublicClient.getLogs({
+        address: SKALE_CONTRACTS.erc8004IdentityRegistry,
+        event: parseAbiItem(
+          "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+        ),
+        args: { from: "0x0000000000000000000000000000000000000000" as Address },
+        fromBlock: 0n,
+        toBlock: "latest",
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("getLogs timeout")), 8000)
+      ),
+    ]);
+    return logs.length;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read completed-gig stats from on-chain EscrowReleased events on the SKALE ClawTrustEscrow contract.
+ * EscrowReleased(bytes32 indexed gigId, address indexed payee, uint256 amount, uint256 fee)
+ * fires only when a gig is fully completed and payment released to the worker.
+ * Returns { count, usdcVolume } — count = EscrowReleased events, usdcVolume = USDC paid out (6-decimal).
+ * Returns null on RPC timeout/failure so callers fall back to DB values.
+ */
+export async function readSkaleEscrowStats(): Promise<{ count: number; usdcVolume: number } | null> {
+  try {
+    const logs = await Promise.race([
+      skalePublicClient.getLogs({
+        address: SKALE_CONTRACTS.escrow,
+        event: parseAbiItem(
+          "event EscrowReleased(bytes32 indexed gigId, address indexed payee, uint256 amount, uint256 fee)"
+        ),
+        fromBlock: 0n,
+        toBlock: "latest",
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("getLogs timeout")), 8000)
+      ),
+    ]);
+    const usdcVolume = logs.reduce((sum, log) => {
+      const amount = (log.args as { amount?: bigint }).amount ?? 0n;
+      return sum + Number(amount) / 1e6;
+    }, 0);
+    return { count: logs.length, usdcVolume };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the count of approved swarm validations on the SKALE ClawTrustSwarmValidator contract.
+ * ValidationResolved(bytes32 indexed gigId, uint8 status, uint256 votesFor, uint256 votesAgainst)
+ * where ValidationStatus { Pending=0, Approved=1, Rejected=2, Expired=3 }.
+ * Returns only Approved (status === 1) count; falls back to null on timeout/failure.
+ */
+export async function readSkaleSwarmValidationCount(): Promise<number | null> {
+  try {
+    const logs = await Promise.race([
+      skalePublicClient.getLogs({
+        address: SKALE_CONTRACTS.swarmValidator,
+        event: parseAbiItem(
+          "event ValidationResolved(bytes32 indexed gigId, uint8 status, uint256 votesFor, uint256 votesAgainst)"
+        ),
+        fromBlock: 0n,
+        toBlock: "latest",
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("getLogs timeout")), 8000)
+      ),
+    ]);
+    // ValidationStatus.Approved = 1
+    return logs.filter(l => (l.args as { status?: bigint }).status === 1n).length;
+  } catch {
+    return null;
   }
 }
 

@@ -72,6 +72,7 @@ export const gigs = pgTable("gigs", {
   crewId: varchar("crew_id"),
   minCrewScore: real("min_crew_score"),
   requiredRoles: text("required_roles").array().notNull().default(sql`'{}'::text[]`),
+  gigTier: text("gig_tier").notNull().default("STANDARD"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -326,6 +327,9 @@ export const crews = pgTable("crews", {
   bondPool: real("bond_pool").notNull().default(0),
   gigsCompleted: integer("gigs_completed").notNull().default(0),
   totalEarned: real("total_earned").notNull().default(0),
+  specialization: text("specialization"),
+  capabilities: text("capabilities").array().notNull().default(sql`'{}'::text[]`),
+  agencyPitch: text("agency_pitch"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -512,10 +516,25 @@ export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, creat
 export const insertCrewMemberSchema = createInsertSchema(crewMembers).omit({ id: true, joinedAt: true });
 export const insertCrewGigApplicantSchema = createInsertSchema(crewGigApplicants).omit({ id: true, createdAt: true });
 
+export const CREW_SPECIALIZATIONS = ["DEV_AGENCY", "AUDIT_FIRM", "CONTENT_STUDIO", "DATA_ANALYTICS", "OPERATIONS", "GENERAL"] as const;
+export type CrewSpecialization = typeof CREW_SPECIALIZATIONS[number];
+
+export const CREW_SPECIALIZATION_LABELS: Record<CrewSpecialization, string> = {
+  DEV_AGENCY: "Dev Agency",
+  AUDIT_FIRM: "Audit Firm",
+  CONTENT_STUDIO: "Content Studio",
+  DATA_ANALYTICS: "Data Analytics",
+  OPERATIONS: "Operations",
+  GENERAL: "General",
+};
+
 export const createCrewSchema = z.object({
   name: z.string().min(2).max(64),
   handle: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, "Handle must be alphanumeric with dashes/underscores"),
   description: z.string().max(500).optional(),
+  specialization: z.enum(CREW_SPECIALIZATIONS).optional().default("GENERAL"),
+  agencyPitch: z.string().max(300).optional(),
+  capabilities: z.array(z.string().max(64)).max(20).optional(),
   members: z.array(z.object({
     agentId: z.string(),
     role: z.enum(["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]),
@@ -581,6 +600,46 @@ export const reputationMigrations = pgTable("reputation_migrations", {
 export const insertReputationMigrationSchema = createInsertSchema(reputationMigrations).omit({ id: true, createdAt: true });
 export type ReputationMigration = typeof reputationMigrations.$inferSelect;
 export type InsertReputationMigration = z.infer<typeof insertReputationMigrationSchema>;
+
+// ─── ERC-8183 AGENTIC COMMERCE ──────────────────────────────────────────────
+export const erc8183Jobs = pgTable("erc8183_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  onChainJobId: text("on_chain_job_id"),
+  posterAgentId: varchar("poster_agent_id").notNull(),
+  assigneeAgentId: varchar("assignee_agent_id"),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  budgetUsdc: real("budget_usdc").notNull(),
+  requiredSkills: text("required_skills").array().notNull().default(sql`'{}'::text[]`),
+  deadlineHours: integer("deadline_hours").notNull().default(72),
+  deliverableUrl: text("deliverable_url"),
+  deliverableNote: text("deliverable_note"),
+  deliverableHash: text("deliverable_hash"),
+  status: text("status").notNull().default("open"),
+  chain: chainEnum("chain").notNull().default("BASE_SEPOLIA"),
+  txHashCreated: text("tx_hash_created"),
+  txHashFunded: text("tx_hash_funded"),
+  txHashAssigned: text("tx_hash_assigned"),
+  txHashSubmitted: text("tx_hash_submitted"),
+  txHashSettled: text("tx_hash_settled"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertErc8183JobSchema = createInsertSchema(erc8183Jobs).omit({ id: true, createdAt: true });
+export type Erc8183Job = typeof erc8183Jobs.$inferSelect;
+export type InsertErc8183Job = z.infer<typeof insertErc8183JobSchema>;
+
+export const erc8183Applicants = pgTable("erc8183_applicants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: varchar("job_id").notNull(),
+  agentId: varchar("agent_id").notNull(),
+  proposal: text("proposal").notNull(),
+  appliedAt: timestamp("applied_at").defaultNow(),
+});
+
+export const insertErc8183ApplicantSchema = createInsertSchema(erc8183Applicants).omit({ id: true, appliedAt: true });
+export type Erc8183Applicant = typeof erc8183Applicants.$inferSelect;
+export type InsertErc8183Applicant = z.infer<typeof insertErc8183ApplicantSchema>;
 
 export const MOLT_RESERVED_NAMES = new Set([
   "clawtrust", "molty", "admin", "swarm", "crew", "official", "verified",

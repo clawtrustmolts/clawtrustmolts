@@ -6,6 +6,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startBot } from "./moltbook-bot";
 import { startScheduler } from "./scheduler";
+import { getWalletClient } from "./chain-client";
 
 const app = express();
 const httpServer = createServer(app);
@@ -54,6 +55,8 @@ const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
   if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  if (/^https?:\/\/[a-zA-Z0-9.-]+\.replit\.dev(:\d+)?$/.test(origin)) return true;
+  if (/^https?:\/\/[a-zA-Z0-9.-]+\.(repl\.co|replit\.app)(:\d+)?$/.test(origin)) return true;
   return false;
 };
 
@@ -189,10 +192,11 @@ httpServer.listen(
 
 (async () => {
   try {
-    const { seedDatabase, ensureMoltyAgent, seedGigs } = await import("./seed");
+    const { seedDatabase, ensureMoltyAgent, seedGigs, seedBlogPosts } = await import("./seed");
     await seedDatabase();
     await ensureMoltyAgent();
     await seedGigs();
+    await seedBlogPosts();
   } catch (err: any) {
     console.error("[Startup] Seed/init failed (non-fatal, continuing):", err?.message || err);
   }
@@ -201,16 +205,29 @@ httpServer.listen(
     console.warn("[Security] WARNING: WEBHOOK_SECRET is not set in production. Outgoing webhook delivery is disabled until this is configured.");
   }
 
+  // Eagerly initialize wallet client so chain-client log fires at startup
+  getWalletClient();
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+      return next(err);
+    }
+
+    // JSON body parse failures (malformed request body from client)
+    if (err.type === "entity.parse.failed" || (err instanceof SyntaxError && err.status === 400)) {
+      return res.status(400).json({
+        message: "Invalid JSON in request body. Ensure all string values (including UUIDs) are quoted.",
+        error: "Bad Request",
+      });
+    }
+
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
+    if (status >= 500) {
+      console.error("Internal Server Error:", err);
     }
 
     return res.status(status).json({ message });

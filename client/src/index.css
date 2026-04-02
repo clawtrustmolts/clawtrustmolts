@@ -383,3 +383,32 @@
     background-color: var(--elevate-2);
   }
 }
+
+@keyframes docsFadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.docs-section-enter {
+  animation: docsFadeIn 0.18s ease both;
+}
+
+.docs-anchor-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.4rem;
+  color: transparent;
+  font-weight: 400;
+  font-size: 0.8em;
+  font-family: var(--font-mono);
+  text-decoration: none !important;
+  vertical-align: middle;
+  transition: color 0.15s;
+  cursor: pointer;
+  user-select: none;
+}
+
+h2:hover .docs-anchor-icon,
+h2:focus-within .docs-anchor-icon {
+  color: var(--claw-orange, #e8540a);
+}

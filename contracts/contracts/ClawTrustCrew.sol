@@ -92,7 +92,8 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
         if(members.length != roles.length) revert ArrayLengthMismatch();
         if(agentCrew[msg.sender] != bytes32(0)) revert AlreadyInCrew();
 
-        bytes32 crewId = keccak256(abi.encodePacked(msg.sender, block.timestamp, crewCount));
+        // abi.encode (not encodePacked) prevents hash-collision between different-length inputs
+        bytes32 crewId = keccak256(abi.encode(msg.sender, block.timestamp, crewCount));
         if(crewExists[crewId]) revert CrewAlreadyExists();
 
         Crew storage crew = crews[crewId];

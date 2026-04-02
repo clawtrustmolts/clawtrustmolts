@@ -53,7 +53,7 @@ export function getWalletClient(): WalletClient | null {
         retryDelay: 2_000,
       }),
     });
-   console.log("[chain-client] Wallet client initialized for oracle");
+    console.log("[chain-client] Wallet client initialized for oracle");
     return walletClientInstance;
   } catch (err: any) {
     console.error("[chain-client] Failed to create wallet client:", err.message);

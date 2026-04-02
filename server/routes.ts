@@ -31,7 +31,7 @@ import { generateCrewPassportImage, getCrewTier } from "./crew-passport-generato
 import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerIntroPost, postManifesto, directPost } from "./moltbook-bot";
 import { isBot, getBotPrerenderedHTML } from "./bot-prerender";
 import { paymentMiddleware } from "x402-express";
-import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore } from "./bond-service";
+import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore, MIN_FUSED_SCORE } from "./bond-service";
 import { telegramAnnounceSlash } from "./telegram-announcements";
 import { agentIdAliases } from "./seed";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
@@ -61,15 +61,19 @@ import {
   transferUSDCOnChain,
   getUSDCBalance,
   ORACLE_WALLET_ADDRESS,
+  getOracleHealth,
+  ORACLE_ETH_CRITICAL_THRESHOLD,
   registerDomainOnChain,
   isDomainAvailableOnChain,
   REGISTRY_ADDRESS,
   REGISTRY_BASESCAN,
+  getNetworkConfig,
+  getValidationInfoOnChain,
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
-import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, SKALE_CONTRACTS } from "./skale-chain";
-import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS } from "./chain-client";
+import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS } from "./skale-chain";
+import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS, getWalletClient } from "./chain-client";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -127,10 +131,13 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const safeId = z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/);
 const safeUUID = z.string().regex(uuidPattern, "Must be a valid UUID");
 
-// E2E test secret — only effective when NODE_ENV !== "production"
-const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass";
+// E2E test secret — only effective when NODE_ENV !== "production" AND explicitly set.
+// No implicit default: an unset E2E_TEST_SECRET disables all bypasses even in dev.
+// Set this only in isolated CI/dev environments, never in public staging.
+const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET || null;
 const isTestBypass = (req: Request): boolean => {
   if (process.env.NODE_ENV === "production") return false;
+  if (!E2E_TEST_SECRET) return false; // bypass disabled when secret not explicitly set
   return req.headers["x-e2e-test-secret"] === E2E_TEST_SECRET;
 };
 
@@ -225,7 +232,13 @@ function registrationRateLimit(req: Request, res: Response, next: NextFunction) 
 }
 
 function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
-  if (!process.env.TURNSTILE_SECRET_KEY) return next();
+  if (!process.env.TURNSTILE_SECRET_KEY) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[Security] CAPTCHA gate BLOCKED: TURNSTILE_SECRET_KEY is not set in production. Set it to enable registrations.");
+      return res.status(503).json({ message: "CAPTCHA service not configured. Platform registrations are temporarily disabled. Contact the operator." });
+    }
+    return next();
+  }
 
   const token = req.body?.captchaToken || req.headers["x-captcha-token"];
   if (!token) {
@@ -245,21 +258,26 @@ function captchaMiddleware(req: Request, res: Response, next: NextFunction) {
   });
 }
 
-let privyVerificationKey: crypto.KeyObject | null = null;
-try {
-  const keyPem = process.env.PRIVY_VERIFICATION_KEY;
-  if (keyPem) {
-    privyVerificationKey = crypto.createPublicKey(keyPem.replace(/\\n/g, "\n"));
-    console.log("[Auth] Privy verification key loaded - cryptographic JWT verification enabled");
+const PRIVY_JWKS_URL =
+  process.env.PRIVY_JWKS_URL ||
+  (process.env.PRIVY_APP_ID
+    ? `https://auth.privy.io/api/v1/apps/${process.env.PRIVY_APP_ID}/jwks.json`
+    : null);
+
+let privyJWKS: ReturnType<typeof jose.createRemoteJWKSet> | null = null;
+if (PRIVY_JWKS_URL) {
+  try {
+    privyJWKS = jose.createRemoteJWKSet(new URL(PRIVY_JWKS_URL));
+    console.log("[Auth] Privy JWKS configured - full ES256 cryptographic JWT verification enabled");
+  } catch (err: any) {
+    console.error("[Auth] Failed to configure Privy JWKS:", err.message);
   }
-} catch (err: any) {
-  console.error("[Auth] Failed to load PRIVY_VERIFICATION_KEY:", err.message);
 }
 
 async function verifyPrivyJWT(token: string): Promise<{ verified: boolean; payload?: any; error?: string }> {
-  if (privyVerificationKey) {
+  if (privyJWKS) {
     try {
-      const { payload } = await jose.jwtVerify(token, privyVerificationKey, {
+      const { payload } = await jose.jwtVerify(token, privyJWKS, {
         issuer: "privy.io",
         audience: process.env.PRIVY_APP_ID,
       });
@@ -477,6 +495,13 @@ async function adminAuthMiddleware(req: Request, res: Response, next: NextFuncti
     return res.status(403).json({ message: "Wallet not authorized for admin actions" });
   }
 
+  // E2E test bypass — skip SIWE signature verification in dev/test mode only (never in production)
+  if (isTestBypass(req)) {
+    console.log(`[AdminAuth] E2E bypass: skipping signature check for admin ${adminWallet}`);
+    (req as any).adminWallet = adminWallet;
+    return next();
+  }
+
   const adminSig = req.headers["x-admin-signature"] as string | undefined;
   const adminSigTs = req.headers["x-admin-sig-timestamp"] as string | undefined;
 
@@ -579,6 +604,45 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
+  });
+
+  // In-memory registration token store (supplements the REGISTRATION_API_KEY env var)
+  // Tokens survive server restarts only if persisted in REGISTRATION_API_KEY; issued tokens are session-scoped
+  const issuedRegistrationTokens: Map<string, { label: string; createdAt: Date; createdByWallet: string }> = new Map();
+
+  app.get("/api/admin/registration-tokens", adminAuthMiddleware, (req, res) => {
+    const tokens: Array<{ label: string; prefix: string; createdAt?: Date; primary: boolean; createdByWallet?: string }> = [];
+    const envKey = process.env.REGISTRATION_API_KEY;
+    if (envKey) {
+      tokens.push({ label: "Primary (REGISTRATION_API_KEY env var)", prefix: envKey.slice(0, 8) + "...", primary: true });
+    } else {
+      tokens.push({ label: "Primary key not set — no REGISTRATION_API_KEY env var", prefix: "(none)", primary: true });
+    }
+    for (const [token, info] of issuedRegistrationTokens) {
+      tokens.push({ label: info.label, prefix: token.slice(0, 12) + "...", createdAt: info.createdAt, primary: false, createdByWallet: info.createdByWallet });
+    }
+    res.json({ tokens, count: tokens.length, sessionTokensActive: issuedRegistrationTokens.size });
+  });
+
+  app.post("/api/admin/registration-tokens", adminAuthMiddleware, (req, res) => {
+    const { label = "Admin-issued token" } = req.body || {};
+    const token = `ct-reg-${crypto.randomBytes(20).toString("hex")}`;
+    const adminWallet = (req.headers["x-admin-wallet"] as string) || "unknown";
+    issuedRegistrationTokens.set(token, { label, createdAt: new Date(), createdByWallet: adminWallet });
+    console.log(`[Admin] Registration token issued by ${adminWallet}: label="${label}"`);
+    res.json({ token, label, message: "Store this token securely — it will not be shown again. Session-scoped: restarts clear it." });
+  });
+
+  app.delete("/api/admin/registration-tokens/:prefix", adminAuthMiddleware, (req, res) => {
+    const prefix = String(req.params.prefix);
+    let revoked = 0;
+    for (const [token] of issuedRegistrationTokens) {
+      if (token.startsWith(prefix)) {
+        issuedRegistrationTokens.delete(token);
+        revoked++;
+      }
+    }
+    res.json({ revoked, message: revoked > 0 ? `Revoked ${revoked} token(s)` : "No matching token found" });
   });
 
   app.get("/.well-known/agent-card.json", async (_req, res) => {
@@ -943,6 +1007,26 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/agents/leaderboard — top 10 agents by fusedScore (must be before :id wildcard)
+  app.get("/api/agents/leaderboard", apiLimiter, async (_req, res) => {
+    try {
+      const topAgents = await storage.getTopAgentsByFusedScore(10);
+      const leaderboard = topAgents.map((a, idx) => ({
+        rank: idx + 1,
+        id: a.id,
+        handle: a.handle,
+        fusedScore: a.fusedScore ?? 0,
+        tier: getTier(a.fusedScore ?? 0),
+        isVerified: a.isVerified,
+        totalGigsCompleted: a.totalGigsCompleted ?? 0,
+        bondTier: a.bondTier,
+      }));
+      return res.json({ leaderboard, updatedAt: new Date().toISOString() });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/agents/:id", async (req, res) => {
     let agent = await storage.getAgent(req.params.id);
     if (!agent) agent = await storage.getAgentByHandle(req.params.id);
@@ -1000,6 +1084,32 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
       }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Agent self-reactivation — reset autonomy status to active and bump heartbeat
+  app.post("/api/agents/:id/reactivate", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only reactivate your own agent" });
+      }
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const updated = await storage.updateAgent(agentId, {
+        autonomyStatus: "active",
+        lastHeartbeat: new Date(),
+      });
+      console.log(`[Agent] Reactivated agent ${agentId} (${agent.handle})`);
+      res.json({
+        message: "Agent reactivated successfully. Send a heartbeat within 30 minutes to stay active.",
+        agentId,
+        handle: updated?.handle,
+        autonomyStatus: "active",
+        lastHeartbeat: updated?.lastHeartbeat,
+      });
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
@@ -1207,7 +1317,13 @@ export async function registerRoutes(
         return res.status(400).json({ message: "posterId is required to create a gig" });
       }
 
-      const gig = await storage.createGig(data);
+      const autoPremium = data.budget >= 500 && data.currency === "USDC";
+      const gigTier = (req.body?.gigTier === "PREMIUM" || autoPremium) ? "PREMIUM" : "STANDARD";
+      const crewGig = !!req.body?.crewGig;
+      const minCrewScore = req.body?.minCrewScore ? Number(req.body.minCrewScore) : null;
+
+      const gigPayload: typeof data = { ...data, gigTier, crewGig, minCrewScore };
+      const gig = await storage.createGig(gigPayload);
       res.status(201).json(gig);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -1570,9 +1686,7 @@ export async function registerRoutes(
 
   app.post("/api/escrow/create", apiLimiter, walletAuthMiddleware, async (req, res) => {
     const cb = checkCircuitBreaker();
-    if (!cb.allowed) {
-      return res.status(503).json({ message: "Escrow operations temporarily paused", reason: cb.reason });
-    }
+    const circleAvailable = cb.allowed;
 
     try {
       const escrowBody = z.object({
@@ -1600,7 +1714,7 @@ export async function registerRoutes(
       let circleWallet = null;
       let circleWalletId = null;
 
-      if (isCircleConfigured() && gig.currency === "USDC") {
+      if (circleAvailable && isCircleConfigured() && gig.currency === "USDC") {
         try {
           circleWallet = await createEscrowWallet(chain);
           circleWalletId = circleWallet.walletId;
@@ -1779,26 +1893,32 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
-      const adminOnChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
-      if (adminOnChainVerdict === null) {
-        console.warn(`[Escrow] Admin-resolve: on-chain verdict check failed for gig ${gigId} — blocking as precaution`);
-        return res.status(503).json({ message: "Unable to verify on-chain swarm state. Please try again." });
+      // E2E test bypass — skip on-chain swarm verdict check in dev/test mode only
+      const isE2EAdminResolve = isTestBypass(req);
+      if (isE2EAdminResolve) {
+        console.log(`[Escrow] E2E bypass: skipping on-chain swarm verdict check for admin-resolve on gig ${gigId}`);
+      } else {
+        const adminOnChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
+        if (adminOnChainVerdict === null) {
+          console.warn(`[Escrow] Admin-resolve: on-chain verdict check failed for gig ${gigId} — blocking as precaution`);
+          return res.status(503).json({ message: "Unable to verify on-chain swarm state. Please try again." });
+        }
+        if (!adminOnChainVerdict.exists) {
+          logSuspiciousActivity(req, "admin_resolve_no_onchain", `Admin ${adminWallet} attempted resolve on gig ${gigId} — no on-chain swarm validation`);
+          return res.status(403).json({ message: "No on-chain swarm validation found. Cannot resolve dispute without on-chain record." });
+        }
+        if (!adminOnChainVerdict.finalized) {
+          return res.status(400).json({ message: "On-chain swarm validation is still in progress. Cannot resolve until finalized." });
+        }
+        if (action === "release_to_assignee" && adminOnChainVerdict.status !== 1) {
+          logSuspiciousActivity(req, "admin_release_blocked", `Admin ${adminWallet} attempted release_to_assignee on gig ${gigId} but on-chain verdict is status=${adminOnChainVerdict.status} (not approved)`, "critical");
+          return res.status(403).json({ message: "On-chain swarm verdict is not approved. Cannot release to assignee. Use refund_to_poster instead." });
+        }
+        if (action === "refund_to_poster" && adminOnChainVerdict.status === 1) {
+          logSuspiciousActivity(req, "admin_refund_override", `Admin ${adminWallet} refunding poster on gig ${gigId} despite approved on-chain verdict — logged for audit`, "critical");
+        }
+        console.log(`[Escrow] Admin-resolve on-chain check for gig ${gigId}: exists=${adminOnChainVerdict.exists}, finalized=${adminOnChainVerdict.finalized}, status=${adminOnChainVerdict.status}, action=${action}`);
       }
-      if (!adminOnChainVerdict.exists) {
-        logSuspiciousActivity(req, "admin_resolve_no_onchain", `Admin ${adminWallet} attempted resolve on gig ${gigId} — no on-chain swarm validation`);
-        return res.status(403).json({ message: "No on-chain swarm validation found. Cannot resolve dispute without on-chain record." });
-      }
-      if (!adminOnChainVerdict.finalized) {
-        return res.status(400).json({ message: "On-chain swarm validation is still in progress. Cannot resolve until finalized." });
-      }
-      if (action === "release_to_assignee" && adminOnChainVerdict.status !== 1) {
-        logSuspiciousActivity(req, "admin_release_blocked", `Admin ${adminWallet} attempted release_to_assignee on gig ${gigId} but on-chain verdict is status=${adminOnChainVerdict.status} (not approved)`, "critical");
-        return res.status(403).json({ message: "On-chain swarm verdict is not approved. Cannot release to assignee. Use refund_to_poster instead." });
-      }
-      if (action === "refund_to_poster" && adminOnChainVerdict.status === 1) {
-        logSuspiciousActivity(req, "admin_refund_override", `Admin ${adminWallet} refunding poster on gig ${gigId} despite approved on-chain verdict — logged for audit`, "critical");
-      }
-      console.log(`[Escrow] Admin-resolve on-chain check for gig ${gigId}: exists=${adminOnChainVerdict.exists}, finalized=${adminOnChainVerdict.finalized}, status=${adminOnChainVerdict.status}, action=${action}`);
 
       let circleTransfer = null;
 
@@ -1915,6 +2035,54 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Confirm on-chain escrow lock (frontend wallet tx) ──────────────────────
+  app.post("/api/escrow/confirm-onchain", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    const schema = z.object({
+      gigId:      z.string().min(1).max(64),
+      lockTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, "Invalid tx hash"),
+      chain:      z.string().optional(),
+    });
+    try {
+      const { gigId, lockTxHash, chain } = schema.parse(req.body);
+      const escrow = await storage.getEscrowByGig(gigId);
+      if (!escrow) {
+        // No DB escrow yet — create a record to track the on-chain lock
+        const gig = await storage.getGig(gigId);
+        if (!gig) return res.status(404).json({ message: "Gig not found" });
+        const walletAddress = (req as any).walletAddress as string;
+        const assignee = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+        const created = await storage.createEscrow({
+          gigId,
+          depositorId: walletAddress,
+          payeeId:     assignee?.walletAddress || "",
+          amount:      gig.budgetUsdc || gig.budget,
+          currency:    "USDC",
+          chain:       chain || gig.chain || "BASE_SEPOLIA",
+          status:      "locked",
+        });
+        await storage.updateEscrow(created.id, { txHash: lockTxHash });
+        await storage.updateGig(gigId, { status: "in_progress" });
+        return res.json({ status: "created", escrowId: created.id, txHash: lockTxHash });
+      }
+
+      if (escrow.status !== "pending") {
+        return res.status(400).json({ message: `Escrow already ${escrow.status}` });
+      }
+
+      await storage.updateEscrow(escrow.id, { status: "locked", txHash: lockTxHash });
+      const gig = await storage.getGig(gigId);
+      if (gig && gig.status === "open") {
+        await storage.updateGig(gigId, { status: "in_progress" });
+      }
+
+      console.log(`[Escrow] On-chain lock confirmed by wallet ${(req as any).walletAddress} for gig ${gigId} tx=${lockTxHash}`);
+      res.json({ status: "locked", escrowId: escrow.id, txHash: lockTxHash });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/circle/config", async (_req, res) => {
     res.json({
       configured: isCircleConfigured(),
@@ -1938,9 +2106,7 @@ export async function registerRoutes(
 
   app.post("/api/escrow/release", apiLimiter, walletAuthMiddleware, async (req, res) => {
     const cb = checkCircuitBreaker();
-    if (!cb.allowed) {
-      return res.status(503).json({ message: "Escrow operations temporarily paused", reason: cb.reason });
-    }
+    const circleAvailable = cb.allowed;
     try {
       const releaseSchema = z.object({
         gigId: z.string().uuid(),
@@ -1976,65 +2142,146 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Escrow is ${escrow.status}, cannot release` });
       }
 
-      // Check on-chain verdict; fall back to DB validation when on-chain is unavailable
-      const onChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
-      const dbValidation = await storage.getValidationByGig(gigId);
-      const dbApproved = dbValidation?.status === "approved";
+      // E2E test bypass — skip on-chain swarm verification in dev/test mode only
+      const isE2ERelease = isTestBypass(req);
 
-      if (onChainVerdict === null) {
-        if (dbApproved) {
-          console.warn(`[Escrow] On-chain verdict check unavailable for gig ${gigId} — using DB-approved validation as fallback`);
-        } else {
-          console.warn(`[Escrow] On-chain verdict check failed for gig ${gigId} — blocking release as precaution`);
-          return res.status(503).json({ message: "Unable to verify on-chain swarm verdict. Please try again." });
-        }
-      } else if (!onChainVerdict.exists) {
-        if (dbApproved) {
-          console.log(`[Escrow] No on-chain validation for gig ${gigId} — DB validation is approved, allowing release`);
-        } else {
-          logSuspiciousActivity(req, "escrow_release_no_onchain", `Escrow release blocked for gig ${gigId} — no on-chain swarm validation exists`);
-          return res.status(403).json({ message: "No swarm validation found for this gig. Escrow release requires swarm approval." });
-        }
-      } else if (!onChainVerdict.finalized) {
-        if (dbApproved) {
-          console.log(`[Escrow] On-chain validation not finalized for gig ${gigId} — DB validation approved, allowing release`);
-        } else {
-          return res.status(400).json({ message: "Swarm validation is not yet finalized. Cannot release escrow." });
-        }
-      } else if (onChainVerdict.status !== 1) {
-        logSuspiciousActivity(req, "escrow_release_blocked", `Escrow release blocked for gig ${gigId} — on-chain verdict status=${onChainVerdict.status} (not approved)`, "critical");
-        return res.status(403).json({ message: "On-chain swarm verdict is not approved. Escrow release denied." });
+      if (isE2ERelease) {
+        console.log(`[Escrow] E2E bypass: skipping on-chain swarm verdict check for gig ${gigId}`);
       } else {
-        console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
+        // Check on-chain verdict; fall back to DB validation when on-chain is unavailable
+        const onChainVerdict = await readSwarmVerdictOnChain(gigId, gig.chain || undefined);
+        const dbValidation = await storage.getValidationByGig(gigId);
+        const dbApproved = dbValidation?.status === "approved";
+
+        if (onChainVerdict === null) {
+          if (dbApproved) {
+            console.warn(`[Escrow] On-chain verdict check unavailable for gig ${gigId} — using DB-approved validation as fallback`);
+          } else {
+            console.warn(`[Escrow] On-chain verdict check failed for gig ${gigId} — blocking release as precaution`);
+            return res.status(503).json({ message: "Unable to verify on-chain swarm verdict. Please try again." });
+          }
+        } else if (!onChainVerdict.exists) {
+          if (dbApproved) {
+            console.log(`[Escrow] No on-chain validation for gig ${gigId} — DB validation is approved, allowing release`);
+          } else {
+            logSuspiciousActivity(req, "escrow_release_no_onchain", `Escrow release blocked for gig ${gigId} — no on-chain swarm validation exists`);
+            return res.status(403).json({ message: "No swarm validation found for this gig. Escrow release requires swarm approval." });
+          }
+        } else if (!onChainVerdict.finalized) {
+          if (dbApproved) {
+            console.log(`[Escrow] On-chain validation not finalized for gig ${gigId} — DB validation approved, allowing release`);
+          } else {
+            return res.status(400).json({ message: "Swarm validation is not yet finalized. Cannot release escrow." });
+          }
+        } else if (onChainVerdict.status !== 1) {
+          logSuspiciousActivity(req, "escrow_release_blocked", `Escrow release blocked for gig ${gigId} — on-chain verdict status=${onChainVerdict.status} (not approved)`, "critical");
+          return res.status(403).json({ message: "On-chain swarm verdict is not approved. Escrow release denied." });
+        } else {
+          console.log(`[Escrow] On-chain verdict verified for gig ${gigId}: approved (${onChainVerdict.votesFor}/${onChainVerdict.totalVotes})`);
+        }
       }
 
       let circleTransfer = null;
-      if (escrow.circleWalletId && isCircleConfigured()) {
-        const assignee = await storage.getAgent(gig.assigneeId);
-        if (assignee) {
-          const destAddress = escrow.chain === "SOL_DEVNET"
-            ? assignee.solanaAddress || assignee.walletAddress
-            : assignee.walletAddress;
-          try {
-            circleTransfer = await transferUSDC({
-              sourceWalletId: escrow.circleWalletId,
-              destinationAddress: destAddress,
-              amount: escrow.amount.toString(),
-              chain: escrow.chain || "BASE_SEPOLIA",
-            });
-          } catch (err: any) {
-            console.error("[Escrow] Circle release failed:", err.message);
-            recordCircuitFailure("Circle USDC transfer failed on release");
+      let circleAttemptFailed = false;
+      if (isCircleConfigured()) {
+        if (!circleAvailable) {
+          // Circuit breaker open — will attempt on-chain fallback below
+          console.warn(`[Escrow] Circuit breaker open for gig ${gigId} — skipping Circle, attempting on-chain fallback`);
+          circleAttemptFailed = true;
+        } else if (!escrow.circleWalletId) {
+          // Circle is configured but this escrow has no Circle wallet (created before Circle or during outage)
+          // Fall through to on-chain transfer so state is only updated after confirmed payout
+          console.warn(`[Escrow] Circle configured but escrow ${escrow.id} has no circleWalletId — using on-chain fallback`);
+          circleAttemptFailed = true;
+        } else {
+          const assigneeForCircle = await storage.getAgent(gig.assigneeId);
+          if (assigneeForCircle) {
+            const destAddress = escrow.chain === "SOL_DEVNET"
+              ? assigneeForCircle.solanaAddress || assigneeForCircle.walletAddress
+              : assigneeForCircle.walletAddress;
+            try {
+              circleTransfer = await transferUSDC({
+                sourceWalletId: escrow.circleWalletId,
+                destinationAddress: destAddress,
+                amount: escrow.amount.toString(),
+                chain: escrow.chain || "BASE_SEPOLIA",
+              });
+            } catch (err: any) {
+              console.error("[Escrow] Circle release failed:", err.message);
+              recordCircuitFailure("Circle USDC transfer failed on release");
+              circleAttemptFailed = true;
+              console.warn(`[Escrow] Circle failed for gig ${gigId} — attempting on-chain fallback`);
+            }
           }
         }
       }
 
+      // ── On-chain fallback (no Circle, or Circle failed) ─────────────────
+      let onChainTxHash: string | undefined;
+      if ((!isCircleConfigured() || circleAttemptFailed) && !circleTransfer && gig.assigneeId) {
+        const assigneeAgent = await storage.getAgent(gig.assigneeId);
+        if (assigneeAgent?.walletAddress && escrow.amount > 0) {
+          // E2E test bypass — skip oracle balance preflight and mark released without real transfer
+          if (isE2ERelease) {
+            console.log(`[Escrow] E2E bypass: simulating oracle transfer for gig ${gigId} (amount=${escrow.amount} USDC)`);
+            onChainTxHash = `e2e-simulated-tx-${Date.now()}`;
+          } else {
+          // Pre-flight: verify oracle wallet has sufficient USDC before releasing
+          try {
+            const oracleBalance = await getUSDCBalance(ORACLE_WALLET_ADDRESS);
+            const LOW_BALANCE_WARN = 5;
+            if (oracleBalance < escrow.amount) {
+              console.error(`[Escrow] Oracle wallet underfunded: ${oracleBalance.toFixed(2)} USDC available, ${escrow.amount} USDC needed for gig ${gigId}`);
+              return res.status(503).json({
+                message: `Oracle wallet underfunded. Available: ${oracleBalance.toFixed(2)} USDC, needed: ${escrow.amount} USDC. Contact platform support to fund the oracle wallet.`,
+                oracleBalance,
+                required: escrow.amount,
+                oracleWallet: ORACLE_WALLET_ADDRESS,
+              });
+            }
+            if (oracleBalance < LOW_BALANCE_WARN) {
+              console.warn(`[Escrow] Oracle wallet low balance: ${oracleBalance.toFixed(2)} USDC (below ${LOW_BALANCE_WARN} USDC warning threshold)`);
+            }
+          } catch (balErr: any) {
+            console.warn("[Escrow] Could not check oracle balance before release:", balErr.message);
+          }
+          // Pre-flight: check oracle ETH balance for gas before attempting transfer
+          try {
+            const oracleHealth = await getOracleHealth();
+            if (oracleHealth.ethBalance < ORACLE_ETH_CRITICAL_THRESHOLD) {
+              console.error(`[Escrow] Oracle wallet ETH critically low: ${oracleHealth.ethBalance.toFixed(6)} ETH — cannot pay gas for gig ${gigId}`);
+              return res.status(503).json({
+                message: `Oracle wallet has insufficient ETH for gas (${oracleHealth.ethBalance.toFixed(6)} ETH). Contact platform operator to refill.`,
+                oracleEthBalance: oracleHealth.ethBalance,
+                oracleWallet: ORACLE_WALLET_ADDRESS,
+              });
+            }
+            if (!oracleHealth.ethOk) {
+              console.warn(`[Escrow] Oracle ETH balance low (${oracleHealth.ethBalance.toFixed(6)} ETH) — proceeding but refill needed`);
+            }
+          } catch (gasCheckErr: any) {
+            console.warn("[Escrow] Could not check oracle ETH balance before release:", gasCheckErr.message);
+          }
+          try {
+            onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, escrow.amount);
+            console.log(`[Escrow] On-chain USDC transfer complete: ${onChainTxHash}`);
+          } catch (txErr: any) {
+            console.error("[Escrow] On-chain USDC transfer failed:", txErr.message);
+            return res.status(503).json({ message: "On-chain payment failed. Escrow remains locked. Please retry or contact support.", detail: txErr.message });
+          }
+          } // end else (not E2E bypass)
+        }
+      }
+
+      // ── Payment confirmed — update state atomically ───────────────────────
       await storage.updateEscrow(escrow.id, {
         status: "released",
         circleTransactionId: circleTransfer?.transactionId || null,
+        ...(onChainTxHash ? { releaseTxHash: onChainTxHash } : {}),
       });
       await storage.updateGigStatus(gigId, "completed");
 
+      // ── Post-release side effects ─────────────────────────────────────────
       const assignee = await storage.getAgent(gig.assigneeId);
       if (assignee) {
         await storage.createReputationEvent({
@@ -2064,20 +2311,6 @@ export async function registerRoutes(
         tryPostToMoltbook(`✅ Gig completed on ClawTrust. ${gig.budget} ${gig.currency} released. Swarm validated. The agent economy works. clawtrust.org`);
         notifyAgent(gig.assigneeId, "escrow_released", "Escrow Released", `${escrow.amount} ${escrow.currency} has been released for: ${gig.title}`, { gigId }).catch(() => {});
         notifyAgent(gig.posterId, "gig_completed", "Gig Completed", `${assignee.handle} completed "${gig.title}" — trust receipt ready.`, { gigId }).catch(() => {});
-      }
-
-      let onChainTxHash: string | undefined;
-      if (!isCircleConfigured() && gig.assigneeId) {
-        const assigneeAgent = await storage.getAgent(gig.assigneeId);
-        if (assigneeAgent?.walletAddress && escrow.amount > 0) {
-          try {
-            onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, escrow.amount);
-            await storage.updateEscrow(escrow.id, { releaseTxHash: onChainTxHash });
-            console.log(`[Escrow] On-chain USDC transfer: ${onChainTxHash}`);
-          } catch (txErr: any) {
-            console.error("[Escrow] On-chain USDC transfer failed (oracle may be unfunded):", txErr.message);
-          }
-        }
       }
 
       res.json({
@@ -2229,6 +2462,81 @@ export async function registerRoutes(
     if (!validation) return res.status(404).json({ message: "Validation not found" });
     const votes = await storage.getVotesByValidation(req.params.id);
     res.json({ validation, votes });
+  });
+
+  // ─── Claimable swarm rewards for a wallet address ──────────────────────
+  app.get("/api/swarm/claimable-rewards", async (req, res) => {
+    try {
+      const walletAddress = String(req.query.walletAddress || "").toLowerCase().trim();
+      if (!walletAddress || !walletAddress.startsWith("0x")) {
+        return res.json({ claimable: [] });
+      }
+
+      const allAgents = await storage.getAgents();
+      const agent = allAgents.find(a => a.walletAddress?.toLowerCase() === walletAddress);
+      if (!agent) return res.json({ claimable: [] });
+
+      const validations = await storage.getValidations();
+      const approvedValidations = validations.filter(v => v.status === "approved");
+
+      const claimable: Array<{
+        gigId: string;
+        validationId: string;
+        gigTitle: string;
+        chain: string;
+        rewardPool: number;
+        voteChoice: string;
+      }> = [];
+
+      for (const validation of approvedValidations) {
+        const votes = await storage.getVotesByValidation(validation.id);
+        const agentVote = votes.find(v => v.voterId === agent.id);
+        // Filter: validator voted approve on this gig
+        // Note: rewardClaimed in DB is off-chain accounting only — do not use as on-chain claim gate
+        if (!agentVote || agentVote.vote !== "approve") continue;
+
+        const gig = await storage.getGig(validation.gigId);
+        const chain = gig?.chain ?? "BASE_SEPOLIA";
+        const approveVotesCount = votes.filter(v => v.vote === "approve").length || 1;
+
+        // Read authoritative on-chain rewardPool; skip if pool is empty (fully claimed on-chain)
+        let perValidatorReward: number | null = null;
+        let onChainReadSucceeded = false;
+        try {
+          const onChainInfo = await getValidationInfoOnChain(validation.gigId, chain);
+          if (onChainInfo !== null) {
+            onChainReadSucceeded = true;
+            if (onChainInfo.rewardPool <= 0) {
+              // Pool exhausted on-chain — rewards fully claimed, skip
+              continue;
+            }
+            // Per-validator share = pool divided equally among approve voters
+            perValidatorReward = onChainInfo.rewardPool / approveVotesCount;
+          }
+        } catch {
+          // On-chain read unavailable — fall through to estimate
+        }
+
+        // Fallback estimate when RPC unavailable: 5% of budget / approve voters
+        if (!onChainReadSucceeded || perValidatorReward === null) {
+          const poolEstimate = gig?.budgetUsdc ? Number(gig.budgetUsdc) * 0.05 : 0;
+          perValidatorReward = poolEstimate / approveVotesCount;
+        }
+
+        claimable.push({
+          gigId: validation.gigId,
+          validationId: validation.id,
+          gigTitle: gig?.title ?? validation.gigId,
+          chain,
+          rewardPool: perValidatorReward,
+          voteChoice: agentVote.vote,
+        });
+      }
+
+      res.json({ claimable });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   const MICRO_REWARD_RATE = 0.005;
@@ -2735,8 +3043,8 @@ export async function registerRoutes(
         scoreChange: karmaBoost,
         source: "moltbook",
         details: data.postUrl
-          ? `Synced Moltbook post: ${data.postUrl} (source: ${fetchSource}, viral bonus: ${viralScore.viralBonus})`
-          : `Moltbook karma sync for ${agent.handle} (source: ${fetchSource})`,
+          ? `Synced Moltbook post: ${sanitizeString(data.postUrl, 300)} (source: ${fetchSource}, viral bonus: ${viralScore.viralBonus})`
+          : `Moltbook karma sync for ${sanitizeString(agent.handle, 100)} (source: ${fetchSource})`,
         proofUri: data.postUrl || null,
       });
 
@@ -2746,12 +3054,13 @@ export async function registerRoutes(
           Math.max(viralScore.totalInteractions * 2, karmaBoost * 10),
           5000
         );
+        const safeHandle = sanitizeString(agent.handle, 100);
         suggestedGig = {
           suggestion: "Molt-to-Market",
-          title: `Monetize Moltbook Post by ${agent.handle}`,
+          title: `Monetize Moltbook Post by ${safeHandle}`,
           description: data.postUrl
-            ? `Turn viral Moltbook content into a paid gig opportunity. Source: ${data.postUrl}`
-            : `Create a gig from ${agent.handle.replace(/[^\w\s\-]/g, "")}'s Moltbook presence (${Number(effectiveKarma)} karma)`,
+            ? `Turn viral Moltbook content into a paid gig opportunity. Source: ${sanitizeString(data.postUrl, 300)}`
+            : `Create a gig from ${safeHandle}'s Moltbook presence (${Number(effectiveKarma)} karma)`,
           skills: agent.skills,
           estimatedBudget: budget,
           currency: "USDC",
@@ -3278,10 +3587,10 @@ export async function registerRoutes(
           basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0"}`,
         },
         ClawTrustRegistry: {
-          address: process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x950aa4E7300e75e899d37879796868E2dd84A59c",
-          description: "ERC-721 domain name service (.claw/.shell/.pinch TLDs)",
-          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x950aa4E7300e75e899d37879796868E2dd84A59c"}`,
-          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x950aa4E7300e75e899d37879796868E2dd84A59c"}`,
+          address: process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x82AEAA9921aC1408626851c90FCf74410D059dF4",
+          description: "ERC-721 domain name service (.claw/.shell/.pinch/.agent TLDs)",
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x82AEAA9921aC1408626851c90FCf74410D059dF4"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_REGISTRY_ADDRESS || "0x82AEAA9921aC1408626851c90FCf74410D059dF4"}`,
         },
       },
       erc8004: {
@@ -3656,9 +3965,17 @@ export async function registerRoutes(
       await storage.updateAgent(agent.id, { moltDomain: `${name}.molt` });
       const updatedAgent = await storage.getAgent(agent.id);
 
+      let moltOnChainWarning = false;
       if (agent.erc8004TokenId) {
-        setMoltDomainOnChain(agent.erc8004TokenId, `${name}.molt`)
-          .catch(err => console.error("[Passport] setMoltDomain error:", err.message));
+        try {
+          await Promise.race([
+            setMoltDomainOnChain(agent.erc8004TokenId, `${name}.molt`),
+            new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+          ]);
+        } catch (err: any) {
+          console.error("[Passport] setMoltDomain on-chain sync failed:", err.message);
+          moltOnChainWarning = true;
+        }
       } else {
         queueBlockchainAction({
           type: "SET_MOLT_DOMAIN",
@@ -3676,6 +3993,7 @@ export async function registerRoutes(
         moltDomain: `${name}.molt`,
         foundingMoltNumber,
         profileUrl: `/profile/${name}.molt`,
+        onChainWarning: moltOnChainWarning || undefined,
         agent: updatedAgent,
       });
     } catch (err: any) {
@@ -3819,21 +4137,30 @@ export async function registerRoutes(
 
   // ─── ClawTrust Name Service — Multi-TLD domain API ──────────────────────────
 
-  const DOMAIN_TLDS = [".molt", ".claw", ".shell", ".pinch"] as const;
+  const DOMAIN_TLDS = [".molt", ".claw", ".shell", ".pinch", ".agent"] as const;
   const DOMAIN_TLD_PRICE: Record<string, number> = {
     ".molt": 0,
     ".claw": 50,
     ".shell": 100,
     ".pinch": 25,
+    ".agent": 8,
   };
   const DOMAIN_TLD_FREE_SCORE: Record<string, number> = {
     ".molt": 0,
     ".claw": 70,
     ".shell": 50,
     ".pinch": 30,
+    ".agent": 999,
   };
+  function getAgentDomainPrice(name: string): number {
+    const len = name.length;
+    if (len <= 3) return 60;
+    if (len === 4) return 20;
+    if (len <= 9) return 8;
+    return 5;
+  }
   const DOMAIN_NAME_REGEX = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$|^[a-z0-9]{3,32}$/;
-  const DOMAIN_RESERVED = new Set([...MOLT_RESERVED_NAMES, "claw", "molt", "shell", "pinch", "trust", "admin", "api", "app", "root", "registry", "contract", "token"]);
+  const DOMAIN_RESERVED = new Set([...MOLT_RESERVED_NAMES, "claw", "molt", "shell", "pinch", "agent", "trust", "admin", "api", "app", "root", "registry", "contract", "token"]);
 
   async function checkDomainAvailability(name: string, tld: string, wallet?: string) {
     if (!name || name.length < 3 || name.length > 32 || !DOMAIN_NAME_REGEX.test(name)) {
@@ -3849,7 +4176,7 @@ export async function registerRoutes(
     if (existing && existing.status === "ACTIVE") {
       return { available: false, reason: "taken", takenBy: existing.walletAddress };
     }
-    const price = DOMAIN_TLD_PRICE[tld] ?? 0;
+    const price = tld === ".agent" ? getAgentDomainPrice(name) : (DOMAIN_TLD_PRICE[tld] ?? 0);
     const freeScore = DOMAIN_TLD_FREE_SCORE[tld] ?? 999;
 
     let agentMeetsRequirement = tld === ".molt";
@@ -3861,7 +4188,7 @@ export async function registerRoutes(
         agentMeetsRequirement = score >= freeScore;
       }
     }
-    return { available: true, price, freeScore, agentMeetsRequirement };
+    return { available: true, price, freeScore, agentMeetsRequirement, lengthBased: tld === ".agent" };
   }
 
   app.post("/api/domains/check", async (req, res) => {
@@ -3906,7 +4233,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "That name is reserved" });
       }
       if (!DOMAIN_TLDS.includes(tld as any)) {
-        return res.status(400).json({ message: "TLD must be one of: .molt .claw .shell .pinch" });
+        return res.status(400).json({ message: "TLD must be one of: .molt .claw .shell .pinch .agent" });
       }
 
       const existing = await storage.getMoltDomain(name, tld);
@@ -3914,7 +4241,7 @@ export async function registerRoutes(
         return res.status(409).json({ message: `${name}${tld} is already taken` });
       }
 
-      const requiredPrice = DOMAIN_TLD_PRICE[tld] ?? 0;
+      const requiredPrice = tld === ".agent" ? getAgentDomainPrice(name) : (DOMAIN_TLD_PRICE[tld] ?? 0);
       const freeScore = DOMAIN_TLD_FREE_SCORE[tld] ?? 999;
 
       let agentMeetsScore = tld === ".molt";
@@ -3934,11 +4261,10 @@ export async function registerRoutes(
       const canRegisterPaid = requiredPrice > 0 && payingEnough;
 
       if (!canRegisterFree && !canRegisterPaid && requiredPrice > 0) {
-        return res.status(403).json({
-          message: `${tld} requires FusedScore ≥ ${freeScore} or payment of ${requiredPrice} USDC`,
-          freeScore,
-          requiredPrice,
-        });
+        const msg = tld === ".agent"
+          ? `${name}.agent requires payment of ${requiredPrice} USDC/yr (length-based: 3-char=60, 4-char=20, 5-9 char=8, 10+=5)`
+          : `${tld} requires FusedScore ≥ ${freeScore} or payment of ${requiredPrice} USDC`;
+        return res.status(403).json({ message: msg, freeScore, requiredPrice });
       }
 
       const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
@@ -3946,10 +4272,18 @@ export async function registerRoutes(
       let onChainTxHash: string | null = null;
       const free = canRegisterFree && !payingEnough;
 
+      let moltOnChainWarning = false;
       if (tld === ".molt") {
         if (resolvedAgent?.erc8004TokenId) {
-          setMoltDomainOnChain(resolvedAgent.erc8004TokenId, `${name}.molt`)
-            .catch(err => console.error("[Domains] setMoltDomain error:", err.message));
+          try {
+            await Promise.race([
+              setMoltDomainOnChain(resolvedAgent.erc8004TokenId, `${name}.molt`),
+              new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+            ]);
+          } catch (err: any) {
+            console.error("[Domains] setMoltDomain on-chain sync failed:", err.message);
+            moltOnChainWarning = true;
+          }
         }
       } else {
         try {
@@ -3989,6 +4323,7 @@ export async function registerRoutes(
         expiresAt,
         onChainTokenId,
         onChainTxHash,
+        onChainWarning: moltOnChainWarning || undefined,
         basescanUrl: onChainTxHash
           ? `https://sepolia.basescan.org/tx/${onChainTxHash}`
           : tld === ".molt" && resolvedAgent?.erc8004TokenId
@@ -4038,8 +4373,8 @@ export async function registerRoutes(
   app.get("/api/domains/:fullDomain", async (req, res) => {
     try {
       const full = req.params.fullDomain?.toLowerCase();
-      const tldMatch = full?.match(/^(.+)(\.molt|\.claw|\.shell|\.pinch)$/);
-      if (!tldMatch) return res.status(400).json({ message: "Invalid domain format (e.g. jarvis.claw)" });
+      const tldMatch = full?.match(/^(.+)(\.molt|\.claw|\.shell|\.pinch|\.agent)$/);
+      if (!tldMatch) return res.status(400).json({ message: "Invalid domain format (e.g. jarvis.claw or jarvis.agent)" });
       const [, name, tld] = tldMatch;
       const record = await storage.getMoltDomain(name, tld);
       if (!record || record.status !== "ACTIVE") return res.status(404).json({ message: "Domain not found" });
@@ -4065,7 +4400,9 @@ export async function registerRoutes(
     validate: { xForwardedForHeader: false },
     skip: (req) => {
       if (isTestBypass(req)) return true;
-      if (REGISTRATION_API_KEY && req.headers["x-registration-token"] === REGISTRATION_API_KEY) return true;
+      const incomingToken = req.headers["x-registration-token"] as string | undefined;
+      if (incomingToken && REGISTRATION_API_KEY && incomingToken === REGISTRATION_API_KEY) return true;
+      if (incomingToken && issuedRegistrationTokens.has(incomingToken)) return true;
       return false;
     },
     handler: async (req, res) => {
@@ -4447,6 +4784,10 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Cannot apply to your own gig" });
       }
 
+      if (gig.gigTier === "PREMIUM" && agent.fusedScore < 70 && !(req as any).isE2EBypass) {
+        return res.status(403).json({ message: "Premium gigs require a TrustScore of 70 or above" });
+      }
+
       const existingApplication = await storage.getGigApplicant(gigId.data, agentId);
       if (existingApplication) {
         return res.status(409).json({ message: "Already applied to this gig" });
@@ -4505,6 +4846,36 @@ export async function registerRoutes(
       };
     }));
     res.json(enriched);
+  });
+
+  app.get("/api/gigs/:id/crew-applicants", async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+
+      const crewApplicants = await storage.getCrewGigApplicants(gigId.data);
+      const enriched = await Promise.all(crewApplicants.map(async (ca) => {
+        const crew = await storage.getCrew(ca.crewId);
+        const members = crew ? await storage.getCrewMembers(crew.id) : [];
+        return {
+          ...ca,
+          crew: crew
+            ? {
+                id: crew.id,
+                name: crew.name,
+                handle: crew.handle,
+                fusedScore: crew.fusedScore,
+                bondPool: crew.bondPool,
+                specialization: crew.specialization ?? null,
+                memberCount: members.length,
+              }
+            : null,
+        };
+      }));
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   async function handleGetAgentSkills(req: Request, res: Response, paramKey: string) {
@@ -4921,6 +5292,10 @@ export async function registerRoutes(
 
       const allGigs = await storage.getGigs();
       let filtered = allGigs.filter(g => g.status === "open");
+      const crewOnly = req.query.crewOnly === "true";
+      const tierFilter = req.query.tier as string;
+      if (crewOnly) filtered = filtered.filter(g => g.crewGig === true);
+      if (tierFilter) filtered = filtered.filter(g => g.gigTier === tierFilter);
 
       const skillList = skills
         ? skills.split(",").map(s => s.trim().toLowerCase())
@@ -5357,6 +5732,184 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Network / mainnet config ─────────────────────────────────────────────
+  app.get("/api/system/network", async (_req, res) => {
+    try {
+      const [networkConfig, oracleHealth] = await Promise.all([
+        Promise.resolve(getNetworkConfig()),
+        getOracleHealth(),
+      ]);
+      if (oracleHealth.warnings.length > 0) {
+        oracleHealth.warnings.forEach(w => console.warn(`[OracleHealth] ${w}`));
+      }
+      res.json({
+        ...networkConfig,
+        oracle: {
+          wallet: ORACLE_WALLET_ADDRESS,
+          ethBalance: oracleHealth.ethBalance,
+          usdcBalance: oracleHealth.usdcBalance,
+          ethOk: oracleHealth.ethOk,
+          usdcOk: oracleHealth.usdcOk,
+          warnings: oracleHealth.warnings,
+        },
+      });
+    } catch (err: any) {
+      // Fall back to static config if balance checks fail
+      res.json({ ...getNetworkConfig(), oracle: null });
+    }
+  });
+
+  // ─── SKALE Grant Metrics — public endpoint for foundation verification ────
+  app.get("/api/skale/grant-metrics", async (_req, res) => {
+    try {
+      // DB reads + 4 direct SKALE RPC/event-log reads run concurrently
+      const [
+        agents, gigs, escrows, validations,
+        onChainIdentityCount,  // IdentityRegistry Transfer(from=0x0) mint events
+        onChainPassportSupply, // ClawCardNFT.totalSupply() via eth_call (PFP NFT)
+        onChainEscrow,         // EscrowReleased events (completed gigs + USDC paid out)
+        onChainValidations,    // ValidationResolved(approved=true) events
+      ] = await Promise.all([
+        storage.getAgents(),
+        storage.getGigs(),
+        storage.getEscrowTransactions(),
+        storage.getValidations(),
+        readSkaleIdentityCount(),
+        readSkalePassportTotalSupply(),
+        readSkaleEscrowStats(),
+        readSkaleSwarmValidationCount(),
+      ]);
+      const now = Date.now();
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+
+      const skaleGigs = gigs.filter(g => g.chain === "SKALE_TESTNET");
+      const skaleGigIds = new Set(skaleGigs.map(g => g.id));
+      const skaleEscrows = escrows.filter(e => e.chain === "SKALE_TESTNET");
+
+      // T1G1: all 8 mainnet contract env vars must be valid non-zero addresses
+      const isValidAddress = (addr: string) =>
+        /^0x[a-fA-F0-9]{40}$/.test(addr) &&
+        addr !== "0x0000000000000000000000000000000000000000";
+      const mainnetContractsDeployed = [
+        process.env.SKALE_MAINNET_ESCROW_ADDRESS        || "",
+        process.env.SKALE_MAINNET_BOND_ADDRESS           || "",
+        process.env.SKALE_MAINNET_SWARM_VALIDATOR_ADDRESS || "",
+        process.env.SKALE_MAINNET_REP_ADAPTER_ADDRESS    || "",
+        process.env.SKALE_MAINNET_CLAW_CARD_NFT_ADDRESS  || "",
+        process.env.SKALE_MAINNET_CREW_ADDRESS           || "",
+        process.env.SKALE_MAINNET_REGISTRY_ADDRESS       || "",
+        process.env.SKALE_MAINNET_AC_ADDRESS             || "",
+      ].every(isValidAddress);
+
+      // T1G2: ERC-8004 passport count
+      // Primary: on-chain Transfer(from=0x0) mint event count on IdentityRegistry (ERC-721 soulbound).
+      // Fallback: DB count of verified agents with a non-zero erc8004TokenId set by registerAgentOnSkale().
+      const dbPassportsOnSkale = agents.filter(
+        a => a.isVerified &&
+          a.erc8004TokenId !== null &&
+          a.erc8004TokenId !== "" &&
+          a.erc8004TokenId !== "0" &&
+          a.walletAddress !== null &&
+          a.walletAddress !== "0x0000000000000000000000000000000000000000"
+      ).length;
+      const passportsOnSkale = onChainIdentityCount ?? dbPassportsOnSkale;
+      const passportSource = onChainIdentityCount !== null ? "on-chain" : "db" as const;
+      // clawCardNFTSupply: ClawCardNFT.totalSupply() (PFP NFT — different contract, shown for reference)
+      const clawCardNFTSupply = onChainPassportSupply ?? 0;
+
+      // T1G3: swarm validations — on-chain ValidationResolved events; fallback to DB
+      const dbSwarmValidationsOnSkale = validations.filter(
+        v => skaleGigIds.has(v.gigId) && v.status === "approved"
+      ).length;
+      const swarmValidationsOnSkale = onChainValidations ?? dbSwarmValidationsOnSkale;
+      const swarmValidationSource = onChainValidations !== null ? "on-chain" : "db" as const;
+
+      // T2G1: agents with FusedScore > 30
+      const agentsWithScoreAbove30 = agents.filter(a => a.fusedScore > 30).length;
+
+      // T2G2: completed gigs — on-chain FundsReleased event count; fallback to DB
+      const dbCompletedGigsOnSkale = skaleGigs.filter(g => g.status === "completed").length;
+      const completedGigsOnSkale = onChainEscrow?.count ?? dbCompletedGigsOnSkale;
+      const completedGigsSource = onChainEscrow !== null ? "on-chain" : "db" as const;
+
+      // T2G3: USDC volume — on-chain FundsReleased USDC sum (paid out); fallback to DB
+      const dbEscrowVolumeUsdcOnSkale = skaleEscrows
+        .filter(e => e.currency === "USDC")
+        .reduce((sum, e) => sum + e.amount, 0);
+      const escrowVolumeUsdcOnSkale = onChainEscrow?.usdcVolume ?? dbEscrowVolumeUsdcOnSkale;
+      const escrowVolumeSource = onChainEscrow !== null ? "on-chain" : "db" as const;
+
+      // T3 Gate 1 — Active agents (heartbeat < 30 days)
+      const activeAgents30d = agents.filter(a =>
+        a.lastHeartbeat !== null &&
+        (now - new Date(a.lastHeartbeat).getTime()) < thirtyDaysMs
+      ).length;
+
+      // T3G2: cumulative USDC volume — same EscrowReleased source as T2G3 (higher target: $50K)
+      const dbCumulativeEscrowVolumeUsdc = skaleEscrows
+        .filter(e => e.currency === "USDC")
+        .reduce((sum, e) => sum + e.amount, 0);
+      const cumulativeEscrowVolumeUsdc = onChainEscrow?.usdcVolume ?? dbCumulativeEscrowVolumeUsdc;
+      const cumulativeEscrowSource = onChainEscrow !== null ? "on-chain" : "db" as const;
+
+      // T3 Gate 3 — Leaderboard live: true once ≥1 verified ERC-8004 agent exists on SKALE
+      const leaderboardLive = agents.some(
+        a => a.isVerified && a.erc8004TokenId !== null && a.erc8004TokenId !== "" && a.erc8004TokenId !== "0"
+      );
+
+      // Total stats
+      const totalAgents = agents.length;
+      const totalGigsCompleted = gigs.filter(g => g.status === "completed").length;
+
+      res.json({
+        updatedAt: new Date().toISOString(),
+        totalAgents,
+        totalGigsCompleted,
+        tranche1: {
+          mainnetContractsDeployed,
+          passportsOnSkale,
+          passportsTarget: 500,
+          passportSource,      // "on-chain" (IdentityRegistry mint events) | "db" (fallback)
+          clawCardNFTSupply,   // ClawCardNFT.totalSupply() via eth_call — reference PFP count
+          swarmValidationsOnSkale,
+          swarmValidationsTarget: 10,
+          swarmValidationSource, // "on-chain" (ValidationResolved Approved=1) | "db" (fallback)
+        },
+        tranche2: {
+          agentsWithScoreAbove30,
+          agentsWithScoreTarget: 1000,
+          completedGigsOnSkale,
+          completedGigsTarget: 100,
+          completedGigsSource,   // "on-chain" (EscrowReleased count) | "db" (fallback)
+          escrowVolumeUsdcOnSkale: Math.round(escrowVolumeUsdcOnSkale * 100) / 100,
+          escrowVolumeTarget: 10000,
+          escrowVolumeSource,    // "on-chain" (EscrowReleased amount sum) | "db" (fallback)
+        },
+        tranche3: {
+          activeAgents30d,
+          activeAgentsTarget: 2500,
+          cumulativeEscrowVolumeUsdc: Math.round(cumulativeEscrowVolumeUsdc * 100) / 100,
+          cumulativeEscrowTarget: 50000,
+          cumulativeEscrowSource, // "on-chain" (EscrowReleased amount sum) | "db" (fallback)
+          leaderboardLive,
+        },
+        contracts: {
+          escrow: SKALE_CONTRACTS.escrow,
+          bond: SKALE_CONTRACTS.bond,
+          swarmValidator: SKALE_CONTRACTS.swarmValidator,
+          repAdapter: SKALE_CONTRACTS.repAdapter,
+          erc8004Identity: SKALE_CONTRACTS.erc8004IdentityRegistry,
+          clawCardNFT: SKALE_CONTRACTS.clawCardNFT,
+        },
+        explorer: "https://base-sepolia-testnet-explorer.skalenodes.com",
+        rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
+        chainId: 324705682,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to compute grant metrics", error: err.message?.slice(0, 200) });
+    }
+  });
+
   app.get("/api/health", async (_req, res) => {
     const checks: Record<string, { status: string; latencyMs?: number; details?: string }> = {};
 
@@ -5378,8 +5931,9 @@ export async function registerRoutes(
     checks.auth = {
       status: process.env.PRIVY_APP_ID ? "active" : "bypassed",
       details: process.env.PRIVY_APP_ID
-        ? (privyVerificationKey ? "Privy JWT (cryptographic ES256 verification)" : "Privy JWT (structure validation, set PRIVY_VERIFICATION_KEY for full crypto)")
+        ? (privyJWKS ? "Privy JWT (ES256 cryptographic verification via JWKS)" : "Privy JWT (structure validation)")
         : "No PRIVY_APP_ID - auth middleware bypassed",
+      jwksUrl: PRIVY_JWKS_URL || undefined,
     };
 
     checks.captcha = {
@@ -5405,12 +5959,120 @@ export async function registerRoutes(
         : `Failures: ${escrowCircuitBreaker.failureCount}/${escrowCircuitBreaker.threshold}`,
     };
 
+    const x402PayTo = process.env.X402_PAY_TO_ADDRESS || "";
+    const x402IsEnabled = x402PayTo && x402PayTo !== "0x0000000000000000000000000000000000000000";
+    checks.x402 = {
+      status: x402IsEnabled ? "enabled" : "disabled",
+      details: x402IsEnabled
+        ? `x402 payment middleware active — pay_to: ${x402PayTo.slice(0, 10)}... (trust-check: $0.001, reputation: $0.002 USDC on Base Sepolia)`
+        : "Set X402_PAY_TO_ADDRESS to enable micropayment gating on reputation endpoints",
+    };
+
+    let deployerReady = false;
+    let deployerAddress: string | null = null;
+    try {
+      const wc = getWalletClient();
+      if (wc) {
+        deployerReady = true;
+        const [addr] = await wc.getAddresses();
+        deployerAddress = addr || null;
+      }
+    } catch {
+      deployerReady = false;
+    }
+    checks.deployerWallet = {
+      status: deployerReady ? "ready" : "unavailable",
+      details: deployerReady
+        ? `Wallet client active — oracle address: ${deployerAddress ? deployerAddress.slice(0, 10) + "..." : "unknown"}`
+        : "Set DEPLOYER_PRIVATE_KEY to enable backend on-chain writes",
+    };
+
     const allHealthy = checks.database?.status === "healthy";
     res.status(allHealthy ? 200 : 503).json({
       status: allHealthy ? "healthy" : "degraded",
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       checks,
+    });
+  });
+
+  app.get("/api/system/status", async (_req, res) => {
+    const x402PayTo = process.env.X402_PAY_TO_ADDRESS || "";
+    const x402IsEnabled = !!(x402PayTo && x402PayTo !== "0x0000000000000000000000000000000000000000");
+
+    let deployerReady = false;
+    let deployerAddress: string | null = null;
+    try {
+      const wc = getWalletClient();
+      if (wc) {
+        deployerReady = true;
+        const [addr] = await wc.getAddresses();
+        deployerAddress = addr || null;
+      }
+    } catch {
+      deployerReady = false;
+    }
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      x402: {
+        enabled: x402IsEnabled,
+        payToAddress: x402IsEnabled ? x402PayTo : null,
+        routes: x402IsEnabled ? {
+          "GET /api/trust-check/*": "$0.001 USDC",
+          "GET /api/reputation/*": "$0.002 USDC",
+          "GET /api/agents/*/erc8004": "$0.001 USDC",
+        } : null,
+        network: "base-sepolia",
+      },
+      deployerWallet: {
+        ready: deployerReady,
+        address: deployerAddress,
+        details: deployerReady ? "Wallet client active for on-chain oracle writes" : "DEPLOYER_PRIVATE_KEY not configured",
+      },
+      chains: {
+        baseSepolia: { chainId: 84532, rpc: process.env.BASE_RPC_URL || "https://sepolia.base.org", status: "configured" },
+        skaleBaseSepolia: { chainId: 324705682, rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha", status: "configured" },
+      },
+      features: {
+        fusedScore: "active",
+        swarmValidation: "active",
+        escrowGigMarketplace: "active",
+        skillVerification: "active",
+        nameService: "active",
+        agenticCommerce: "active",
+        bondSystem: "active",
+        crews: "active",
+        x402Micropayments: x402IsEnabled ? "active" : "inactive",
+        onChainWrites: deployerReady ? "active" : "inactive",
+      },
+      contracts: await (async () => {
+        const contractAddresses: Record<string, `0x${string}`> = {
+          ClawCardNFT:             (process.env.CLAW_CARD_NFT_ADDRESS              || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4") as `0x${string}`,
+          ClawTrustEscrow:         (process.env.CLAW_TRUST_ESCROW_ADDRESS          || "0x6B676744B8c4900F9999E9a9323728C160706126") as `0x${string}`,
+          ClawTrustRepAdapter:     (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS     || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as `0x${string}`,
+          ClawTrustSwarmValidator: (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as `0x${string}`,
+          ClawTrustBond:           (process.env.CLAW_TRUST_BOND_ADDRESS            || "0x23a1E1e958C932639906d0650A13283f6E60132c") as `0x${string}`,
+          ClawTrustCrew:           (process.env.CLAW_TRUST_CREW_ADDRESS            || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as `0x${string}`,
+          ERC8004IdentityRegistry:    "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF" as `0x${string}`,
+          ERC8004ReputationRegistry: "0x8004B663056A597Dffe9eCcC1965A193B7388713" as `0x${string}`,
+          ClawTrustAC:               "0x1933D67CDB911653765e84758f47c60A1E868bC0" as `0x${string}`,
+          ClawTrustRegistry:         "0x82AEAA9921aC1408626851c90FCf74410D059dF4" as `0x${string}`,
+        };
+        const liveness: Record<string, { address: string; live: boolean; error?: string }> = {};
+        await Promise.all(
+          Object.entries(contractAddresses).map(async ([name, addr]) => {
+            try {
+              const code = await publicClient.getCode({ address: addr });
+              liveness[name] = { address: addr, live: !!code && code !== "0x" };
+            } catch (e: any) {
+              liveness[name] = { address: addr, live: false, error: e.message?.slice(0, 80) };
+            }
+          })
+        );
+        return liveness;
+      })(),
     });
   });
 
@@ -5736,6 +6398,77 @@ export async function registerRoutes(
       res.json({ ...result, status });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/admin/skale/fund-oracle", adminAuthMiddleware, async (req, res) => {
+    try {
+      const { checkAndTopUpSkaleFuel, forceTopUpSkaleFuel, getSkaleOracleFuelBalance } = await import("./erc8183-service");
+      const force = req.body?.force === true;
+      const before = await getSkaleOracleFuelBalance();
+
+      if (force) {
+        // Forced top-up: always attempt faucet and report real outcome
+        const result = await forceTopUpSkaleFuel();
+        if (result.message === "Oracle wallet not configured") {
+          return res.status(400).json({ success: false, forced: true, wasFunded: false, message: result.message, balanceBefore: before.ether, balanceAfter: before.ether });
+        }
+        const after = await getSkaleOracleFuelBalance();
+        return res.status(result.success ? 200 : 502).json({
+          success: result.success,
+          forced: true,
+          wasFunded: result.success,
+          message: result.message,
+          balanceBefore: before.ether,
+          balanceAfter: after.ether,
+        });
+      }
+
+      // Threshold-based: attempt top-up only if balance is low
+      const result = await checkAndTopUpSkaleFuel();
+
+      // Oracle wallet not configured at all — hard failure
+      if (result.message === "Oracle wallet not configured") {
+        return res.status(400).json({
+          success: false,
+          forced: false,
+          wasFunded: false,
+          message: result.message,
+          balanceBefore: before.ether,
+          balanceAfter: before.ether,
+        });
+      }
+
+      const after = await getSkaleOracleFuelBalance();
+      const fundFailed = !result.wasFunded && result.message.startsWith("Auto-fund failed");
+      return res.status(fundFailed ? 502 : 200).json({
+        success: !fundFailed,
+        forced: false,
+        wasFunded: result.wasFunded,
+        message: result.message,
+        balanceBefore: before.ether,
+        balanceAfter: after.ether,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get("/api/admin/skale/oracle-fuel", adminAuthMiddleware, async (_req, res) => {
+    try {
+      const { getSkaleOracleFuelBalance } = await import("./erc8183-service");
+      const { ORACLE_WALLET_ADDRESS } = await import("./blockchain");
+      const { raw, ether } = await getSkaleOracleFuelBalance();
+      res.json({
+        oracleAddress: ORACLE_WALLET_ADDRESS,
+        configured: !!process.env.DEPLOYER_PRIVATE_KEY,
+        balanceRaw: raw.toString(),
+        balanceEther: ether,
+        lowThreshold: 0.001,
+        isLow: ether < 0.001,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -6868,7 +7601,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid crew data", errors: parsed.error.flatten() });
       }
-      const { name, handle, description, members } = parsed.data;
+      const { name, handle, description, members, specialization, agencyPitch, capabilities } = parsed.data;
 
       const existingCrew = await storage.getCrewByHandle(handle);
       if (existingCrew) {
@@ -6928,11 +7661,19 @@ export async function registerRoutes(
       const avgScore = memberAgents.reduce((s, m) => s + m.agent.fusedScore, 0) / memberAgents.length;
       const bondPool = memberAgents.reduce((s, m) => s + m.agent.availableBond, 0);
 
+      const allMemberSkills = memberAgents.flatMap((m) => m.agent.skills || []);
+      const derivedCapabilities = capabilities && capabilities.length > 0
+        ? capabilities
+        : [...new Set(allMemberSkills)].slice(0, 20);
+
       const crew = await storage.createCrew({
         name,
         handle,
         description: description || null,
         ownerWallet,
+        specialization: specialization || "GENERAL",
+        agencyPitch: agencyPitch || null,
+        capabilities: derivedCapabilities,
       });
 
       await storage.updateCrew(crew.id, {
@@ -6975,12 +7716,16 @@ export async function registerRoutes(
       const minScore = Number(req.query.minScore) || 0;
       const minBond = Number(req.query.minBond) || 0;
       const role = (req.query.role as string) || "";
+      const specialization = (req.query.specialization as string) || "";
 
       if (minScore > 0) {
         allCrews = allCrews.filter(c => c.fusedScore >= minScore);
       }
       if (minBond > 0) {
         allCrews = allCrews.filter(c => c.bondPool >= minBond);
+      }
+      if (specialization) {
+        allCrews = allCrews.filter(c => c.specialization === specialization);
       }
 
       const enriched = await Promise.all(allCrews.map(async (crew) => {
@@ -7053,6 +7798,13 @@ export async function registerRoutes(
       const members = await storage.getCrewMembers(crew.id);
       const memberDetails = await Promise.all(members.map(async (m) => {
         const agent = await storage.getAgent(m.agentId);
+        let verifiedSkills: string[] = [];
+        if (agent) {
+          try {
+            const svs = await storage.getSkillVerifications(m.agentId);
+            verifiedSkills = svs.filter((sv: any) => sv.status === "verified").map((sv: any) => sv.skillName);
+          } catch { verifiedSkills = []; }
+        }
         return {
           ...m,
           agent: agent ? {
@@ -7064,6 +7816,7 @@ export async function registerRoutes(
             totalEarned: agent.totalEarned,
             availableBond: agent.availableBond,
             skills: agent.skills,
+            verifiedSkills,
           } : null,
         };
       }));
@@ -7134,6 +7887,10 @@ export async function registerRoutes(
 
       if (gig.status !== "open") {
         return res.status(400).json({ message: "Gig is not open for applications" });
+      }
+
+      if (gig.gigTier === "PREMIUM" && crew.fusedScore < 70) {
+        return res.status(403).json({ message: "Premium gigs require a crew TrustScore of 70 or above" });
       }
 
       if (gig.minCrewScore && crew.fusedScore < gig.minCrewScore) {
@@ -7957,27 +8714,28 @@ export async function registerRoutes(
         }
       }
 
-      const { challengeId, submission } = req.body;
-      if (!challengeId || !submission || typeof submission !== "string") {
-        return res.status(400).json({ message: "challengeId and submission required" });
+      const { challengeId, submission, answer } = req.body;
+      const submissionText = submission ?? answer;
+      if (!challengeId || !submissionText || typeof submissionText !== "string") {
+        return res.status(400).json({ message: "challengeId and submission (or answer) required" });
       }
 
       const challenge = await storage.getSkillChallenge(challengeId);
       if (!challenge) return res.status(404).json({ message: "Challenge not found" });
       if (challenge.skill !== skill) return res.status(400).json({ message: "Challenge does not match skill" });
 
-      if (submission.trim().length < 20) {
+      if (submissionText.trim().length < 20) {
         return res.status(400).json({ message: "Submission too short" });
       }
 
-      const { score, details } = gradeChallenge(submission, challenge);
+      const { score, details } = gradeChallenge(submissionText, challenge);
       const passed = score >= challenge.passThreshold;
 
       const attempt = await storage.createChallengeAttempt({
         agentId,
         challengeId,
         skill,
-        submission,
+        submission: submissionText,
         score,
         passed,
         gradingDetails: details,
@@ -7996,13 +8754,20 @@ export async function registerRoutes(
         });
 
         const currentVerified = agent.verifiedSkills || [];
-        if (!currentVerified.map((s: string) => s.toLowerCase()).includes(skill)) {
-          await storage.updateAgent(agentId, {
-            verifiedSkills: [...currentVerified, skill],
-          });
-        }
+        const newVerifiedSkills = currentVerified.map((s: string) => s.toLowerCase()).includes(skill)
+          ? currentVerified
+          : [...currentVerified, skill];
+
+        const updatedAgent: typeof agent = { ...agent, verifiedSkills: newVerifiedSkills };
+        const newFusedScore = getScoreBreakdown(updatedAgent).fusedScore;
+
+        await storage.updateAgent(agentId, {
+          verifiedSkills: newVerifiedSkills,
+          fusedScore: newFusedScore,
+        });
       }
 
+      const finalAgent = await storage.getAgent(agentId);
       res.json({
         attemptId: attempt.id,
         score,
@@ -8011,8 +8776,10 @@ export async function registerRoutes(
         passThreshold: challenge.passThreshold,
         details,
         breakdown: details,
+        fusedScore: finalAgent?.fusedScore,
+        verifiedSkillsCount: (finalAgent?.verifiedSkills || []).length,
         message: passed
-          ? `Congratulations! You scored ${score}/100 — skill '${skill}' is now verified.`
+          ? `Congratulations! You scored ${score}/100 — skill '${skill}' is now verified. FusedScore updated to ${finalAgent?.fusedScore}.`
           : `Score: ${score}/100 (need ${challenge.passThreshold} to pass). Review the grading details and try again.`,
       });
     } catch (err: any) {
@@ -8119,8 +8886,11 @@ export async function registerRoutes(
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
       const offset = parseInt(req.query.offset as string) || 0;
-      const allSlashes = await storage.getSlashEvents(limit + offset);
-      const slashes = allSlashes.slice(offset, offset + limit);
+      const [slicesResult, counts] = await Promise.all([
+        storage.getSlashEvents(limit + offset),
+        storage.countAllSlashEvents(),
+      ]);
+      const slashes = slicesResult.slice(offset, offset + limit);
 
       const enriched = await Promise.all(slashes.map(async (s) => {
         const agent = await storage.getAgent(s.agentId);
@@ -8132,13 +8902,10 @@ export async function registerRoutes(
         };
       }));
 
-      const totalCount = allSlashes.length;
-      const totalSlashed = allSlashes.reduce((sum, s) => sum + (s.amount || 0), 0);
-
       res.json({
         slashes: enriched,
-        total: totalCount,
-        totalSlashed,
+        total: counts.total,
+        totalSlashed: counts.totalSlashed,
         limit,
         offset,
       });
@@ -8485,7 +9252,7 @@ export async function registerRoutes(
               swarmValidator: "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
               bond: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
               crew: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
-              registry: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+              registry: "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084",
             },
           },
         },
@@ -8514,7 +9281,7 @@ export async function registerRoutes(
     // ── Additional Base Sepolia contracts (ERC-8004 registry + ERC-8183 AC + domain registry) ──
     const erc8004RegAddr  = "0x8004A818BFB912233c491871b3d84c89A494BD9e"; // Official ERC-8004 identity registry
     const clawACAddr      = "0x1933D67CDB911653765e84758f47c60A1E868bC0"; // ClawTrustAC — ERC-8183 agentic commerce
-    const clawRegAddr     = "0x950aa4E7300e75e899d37879796868E2dd84A59c"; // ClawTrustRegistry — .claw/.shell/.pinch domains
+    const clawRegAddr     = "0x82AEAA9921aC1408626851c90FCf74410D059dF4"; // ClawTrustRegistry — .claw/.shell/.pinch/.agent domains
 
     try {
       const totalSupply = await (clawCardNFT as any).read.totalSupply();
@@ -8741,55 +9508,52 @@ export async function registerRoutes(
 
   // ─── ERC-8183 AGENTIC COMMERCE ─────────────────────────────────────────────
 
-  const { getERC8183Stats, getERC8183Job, oracleCompleteJob, oracleRejectJob, isRegisteredAgent: isRegisteredERC8183, getClawTrustACAddress } = await import("./erc8183-service");
+  const { getERC8183Stats, getERC8183Job, oracleCompleteJob, oracleRejectJob, isRegisteredAgent: isRegisteredERC8183, getClawTrustACAddress, getExplorerUrl: getERC8183ExplorerUrl, toERC8183Chain, oracleCreateJob, oracleFundJob, oracleAssignProvider, oracleSubmitDeliverable, oracleCancelJob } = await import("./erc8183-service");
 
-  app.get("/api/erc8183/stats", apiLimiter, async (_req, res) => {
+  app.get("/api/erc8183/stats", apiLimiter, async (req, res) => {
+    // Always build DB stats from erc8183_jobs (the correct table)
+    const getDbStats = async () => {
+      const allJobs = await storage.getErc8183Jobs({ limit: 1000 });
+      const total = await storage.countErc8183Jobs();
+      const completed = allJobs.filter(j => j.status === "completed").length;
+      const open = allJobs.filter(j => j.status === "open").length;
+      const funded = allJobs.filter(j => j.status === "funded").length;
+      const totalVolume = allJobs.reduce((sum, j) => sum + (j.budgetUsdc ?? 0), 0);
+      return { total, completed, open, funded, totalVolume };
+    };
+
     try {
-      const stats = await getERC8183Stats();
-      // Enrich with DB-level gig counts as supplemental data
-      try {
-        const allGigs = await storage.getGigs();
-        const completedGigs = allGigs.filter(g => g.status === "completed").length;
-        const pendingGigs = allGigs.filter(g => g.status === "pending" || g.status === "pending_validation").length;
-        return res.json({
-          ...stats,
-          dbJobsCompleted: completedGigs,
-          dbJobsPending: pendingGigs,
-          dbJobsTotal: allGigs.length,
-        });
-      } catch {
-        return res.json(stats);
-      }
-    } catch (err: any) {
+      const stats = await getERC8183Stats(toERC8183Chain(req.query.chain as string | undefined));
+      const db = await getDbStats();
+      return res.json({
+        ...stats,
+        totalJobsCreated: db.total,
+        totalJobsCompleted: db.completed,
+        totalVolumeUSDC: db.totalVolume,
+        dbJobsTotal: db.total,
+        dbJobsCompleted: db.completed,
+        dbJobsOpen: db.open,
+        dbJobsFunded: db.funded,
+      });
+    } catch {
       // Fallback to DB-only stats — always return 200
       try {
-        const allGigs = await storage.getGigs();
-        const completedGigs = allGigs.filter(g => g.status === "completed").length;
-        const pendingGigs = allGigs.filter(g => g.status === "pending" || g.status === "pending_validation").length;
+        const db = await getDbStats();
         return res.json({
-          totalJobsCreated: allGigs.length,
-          totalJobsCompleted: completedGigs,
-          totalVolumeUSDC: 0,
-          completionRate: allGigs.length > 0 ? Math.round((completedGigs / allGigs.length) * 100) : 0,
-          activeJobCount: pendingGigs,
-          dbJobsCompleted: completedGigs,
-          dbJobsPending: pendingGigs,
-          dbJobsTotal: allGigs.length,
+          totalJobsCreated: db.total,
+          totalJobsCompleted: db.completed,
+          totalVolumeUSDC: db.totalVolume,
+          completionRate: db.total > 0 ? Math.round((db.completed / db.total) * 100) : 0,
+          activeJobCount: db.open + db.funded,
+          dbJobsTotal: db.total,
+          dbJobsCompleted: db.completed,
+          dbJobsOpen: db.open,
+          dbJobsFunded: db.funded,
           standard: "ERC-8183",
-          chain: "base-sepolia",
           source: "db_fallback",
         });
       } catch {
-        return res.json({
-          totalJobsCreated: 0,
-          totalJobsCompleted: 0,
-          totalVolumeUSDC: 0,
-          completionRate: 0,
-          activeJobCount: 0,
-          standard: "ERC-8183",
-          chain: "base-sepolia",
-          source: "db_fallback",
-        });
+        return res.json({ totalJobsCreated: 0, totalJobsCompleted: 0, totalVolumeUSDC: 0, completionRate: 0, activeJobCount: 0, standard: "ERC-8183", source: "db_fallback" });
       }
     }
   });
@@ -8798,6 +9562,12 @@ export async function registerRoutes(
     try {
       const jobId = String(req.params.jobId);
       if (!jobId || jobId.length < 10) return res.status(400).json({ message: "Invalid jobId" });
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRe.test(jobId)) {
+        const dbJob = await storage.getErc8183Job(jobId);
+        if (!dbJob) return res.status(404).json({ message: "Job not found" });
+        return res.json(dbJob);
+      }
       const job = await getERC8183Job(jobId);
       return res.json(job);
     } catch (err: any) {
@@ -8834,6 +9604,671 @@ export async function registerRoutes(
       return res.json({ wallet, isRegisteredAgent: registered, standard: "ERC-8004" });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to check registration", error: err.message });
+    }
+  });
+
+  // ─── MARKETPLACE CRUD ROUTES (9 new routes) ──────────────────────────────
+
+  // POST /api/erc8183/jobs — create a new job
+  app.post("/api/erc8183/jobs", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const posterAgentId = (req as any).agentId as string;
+      const { title, description, budgetUsdc, requiredSkills, deadlineHours, chain } = req.body;
+      if (!title || !description || !budgetUsdc) return res.status(400).json({ message: "title, description, budgetUsdc required" });
+      const budget = parseFloat(String(budgetUsdc));
+      if (isNaN(budget) || budget <= 0) return res.status(400).json({ message: "Invalid budgetUsdc" });
+      const hours = parseInt(String(deadlineHours ?? 72), 10);
+      const skills: string[] = Array.isArray(requiredSkills) ? requiredSkills.map(String) : [];
+      const jobChain: "BASE_SEPOLIA" | "SKALE_TESTNET" = chain === "SKALE_TESTNET" ? "SKALE_TESTNET" : "BASE_SEPOLIA";
+
+      let onChainJobId: string | null = null;
+      let txHashCreated: string | null = null;
+      try {
+        const result = await oracleCreateJob(description.slice(0, 200), budget, hours, jobChain);
+        onChainJobId = result.jobId;
+        txHashCreated = result.txHash;
+      } catch (chainErr: any) {
+        if (jobChain === "SKALE_TESTNET") {
+          return res.status(503).json({ message: `SKALE chain write failed: ${chainErr.message}`, skaleError: true });
+        }
+        console.warn("[ERC-8183] on-chain create skipped:", chainErr.message);
+      }
+
+      const job = await storage.createErc8183Job({
+        posterAgentId,
+        title: sanitizeString(title, 200),
+        description: sanitizeString(description, 2000),
+        budgetUsdc: budget,
+        requiredSkills: skills,
+        deadlineHours: hours,
+        status: "open",
+        chain: jobChain,
+        onChainJobId,
+        txHashCreated,
+      });
+
+      return res.status(201).json(job);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to create job", error: err.message });
+    }
+  });
+
+  // GET /api/erc8183/jobs — list all jobs with filters
+  app.get("/api/erc8183/jobs", apiLimiter, async (req, res) => {
+    try {
+      const status = req.query.status ? String(req.query.status) : undefined;
+      const posterAgentId = req.query.posterAgentId ? String(req.query.posterAgentId) : undefined;
+      const assigneeAgentId = req.query.assigneeAgentId ? String(req.query.assigneeAgentId) : undefined;
+      const chain = req.query.chain ? String(req.query.chain) : undefined;
+      const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10), 500);
+      const offset = parseInt(String(req.query.offset ?? "0"), 10);
+      const [jobs, total] = await Promise.all([
+        storage.getErc8183Jobs({ status, posterAgentId, assigneeAgentId, chain, limit, offset }),
+        storage.countErc8183Jobs({ status, chain }),
+      ]);
+      return res.json({ jobs, total, limit, offset });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to list jobs", error: err.message });
+    }
+  });
+
+  // GET /api/erc8183/jobs/:jobId — single job (already exists for on-chain; add DB fallback)
+  // (kept above, adding db-backed version)
+
+  // POST /api/erc8183/jobs/:jobId/fund — oracle funds the escrow
+  app.post("/api/erc8183/jobs/:jobId/fund", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only poster can fund" });
+      if (job.status !== "open") return res.status(400).json({ message: `Cannot fund job in status: ${job.status}` });
+
+      let txHashFunded: string | null = null;
+      if (job.onChainJobId) {
+        try {
+          txHashFunded = await oracleFundJob(job.onChainJobId, toERC8183Chain(job.chain));
+        } catch (e: any) {
+          const isAllowanceError = e.message?.includes("allowance") || e.message?.includes("ERC20");
+          if (job.chain === "SKALE_TESTNET" && !isAllowanceError) {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
+          // ERC20 allowance errors treated as soft — oracle has no USDC on testnet; funding recorded DB-only
+          console.log(`[ERC-8183] fund on-chain skipped (${isAllowanceError ? "ERC20 allowance — DB only" : "non-SKALE soft skip"}):`, e.message.slice(0, 120));
+        }
+      } else if (job.chain === "SKALE_TESTNET") {
+        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot fund without a valid chain record", skaleError: true });
+      }
+
+      const updated = await storage.updateErc8183Job(jobId, { status: "funded", txHashFunded });
+      return res.json({ success: true, job: updated, txHash: txHashFunded });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fund job", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/apply — agent applies for a job
+  app.post("/api/erc8183/jobs/:jobId/apply", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const applicantAgentId = (req as any).agentId as string;
+      const { proposal } = req.body;
+      if (!proposal) return res.status(400).json({ message: "proposal required" });
+
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId === applicantAgentId) return res.status(400).json({ message: "Cannot apply to your own job" });
+      if (!["open", "funded"].includes(job.status)) return res.status(400).json({ message: `Cannot apply to job in status: ${job.status}` });
+
+      const applicantAgent = await storage.getAgent(applicantAgentId);
+      if (!applicantAgent) return res.status(404).json({ message: "Applicant agent not found" });
+      if ((applicantAgent.fusedScore ?? 0) < MIN_FUSED_SCORE) {
+        return res.status(403).json({ message: `FusedScore too low to apply for Commerce jobs (minimum ${MIN_FUSED_SCORE})` });
+      }
+
+      const existing = await storage.getErc8183Applicant(jobId, applicantAgentId);
+      if (existing) return res.status(409).json({ message: "Already applied" });
+
+      const applicant = await storage.createErc8183Applicant({
+        jobId,
+        agentId: applicantAgentId,
+        proposal: sanitizeString(proposal, 1000),
+      });
+      return res.status(201).json(applicant);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to apply", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/accept — poster accepts an applicant
+  app.post("/api/erc8183/jobs/:jobId/accept", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const { applicantAgentId } = req.body;
+      if (!applicantAgentId) return res.status(400).json({ message: "applicantAgentId required" });
+
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only poster can accept" });
+      if (!["open", "funded"].includes(job.status)) return res.status(400).json({ message: `Cannot accept in status: ${job.status}` });
+
+      const applicantAgent = await storage.getAgent(applicantAgentId);
+      if (!applicantAgent) return res.status(404).json({ message: "Applicant agent not found" });
+
+      // Validate bond availability before proceeding (but do not lock yet)
+      if (job.budgetUsdc > 0) {
+        const bondStatus = await getBondStatus(applicantAgentId);
+        if (!bondStatus || (bondStatus.availableBond ?? 0) < job.budgetUsdc) {
+          return res.status(400).json({ message: "Insufficient bond to accept this Commerce job" });
+        }
+      }
+
+      // On-chain assignment first — if this fails, we haven't locked the bond yet
+      let txHashAssigned: string | null = null;
+      if (job.chain === "SKALE_TESTNET") {
+        if (!job.onChainJobId) {
+          return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot assign without a valid chain record", skaleError: true });
+        }
+        if (!applicantAgent.walletAddress) {
+          return res.status(400).json({ message: "Applicant agent has no wallet address — cannot assign on SKALE chain", skaleError: true });
+        }
+      }
+      if (job.onChainJobId && applicantAgent.walletAddress) {
+        try {
+          txHashAssigned = await oracleAssignProvider(job.onChainJobId, applicantAgent.walletAddress, toERC8183Chain(job.chain));
+        } catch (e: any) {
+          // InvalidStatus() means contract not in Funded state (e.g. ERC20 fund was DB-only due to allowance)
+          const isStatusError = e.message?.includes("InvalidStatus") || e.message?.includes("InvalidJobId");
+          if (job.chain === "SKALE_TESTNET" && !isStatusError) {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
+          console.log(`[ERC-8183] assignProvider skipped (${isStatusError ? "contract state mismatch — DB-only fund" : "soft skip"}):`, e.message.slice(0, 120));
+        }
+      }
+
+      // Lock bond only after on-chain assignment succeeds (or is skipped for non-SKALE chains)
+      if (job.budgetUsdc > 0) {
+        const bondResult = await lockBondForGig(applicantAgentId, jobId, job.budgetUsdc);
+        if (!bondResult.locked) {
+          return res.status(400).json({ message: `Bond lock failed: ${bondResult.reason}` });
+        }
+      }
+
+      const updated = await storage.updateErc8183Job(jobId, {
+        assigneeAgentId: applicantAgentId,
+        status: "funded",
+        txHashAssigned,
+      });
+      return res.json({ success: true, job: updated, txHash: txHashAssigned });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to accept applicant", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/submit — assignee submits deliverable
+  app.post("/api/erc8183/jobs/:jobId/submit", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const { deliverableUrl, deliverableNote } = req.body;
+
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.assigneeAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only assignee can submit" });
+      if (job.status !== "funded") return res.status(400).json({ message: `Cannot submit in status: ${job.status}` });
+
+      const deliverableHash = `0x${Buffer.from(deliverableUrl ?? deliverableNote ?? "submitted").toString("hex").slice(0, 62).padStart(64, "0")}`;
+
+      // === STEP 1: Select validators BEFORE persisting status change ===
+      // This prevents deadlock: if selection fails, job stays at "funded" and assignee can retry.
+      const existingValidation = await storage.getValidationByGig(jobId);
+      let selectedValidatorIds: string[] = [];
+      if (!existingValidation) {
+        const COMMERCE_VALIDATOR_MIN_FUSED_SCORE = 5;
+        const COMMERCE_VALIDATOR_MIN_AGE_DAYS = 3;
+        const COMMERCE_VALIDATOR_COUNT = 3;
+        const COMMERCE_THRESHOLD = COMMERCE_VALIDATOR_COUNT;
+
+        const excludeIds = [job.posterAgentId, ...(job.assigneeAgentId ? [job.assigneeAgentId] : [])];
+        const ageThreshold = Date.now() - COMMERCE_VALIDATOR_MIN_AGE_DAYS * 24 * 60 * 60 * 1000;
+        const topAgentCandidates = await storage.getTopAgentsByFusedScore(COMMERCE_VALIDATOR_COUNT * 10, excludeIds);
+
+        let eligible = topAgentCandidates.filter(a => {
+          if (a.riskIndex > 60) return false;
+          if ((a.fusedScore ?? 0) < COMMERCE_VALIDATOR_MIN_FUSED_SCORE) return false;
+          if (a.registeredAt && new Date(a.registeredAt).getTime() > ageThreshold) return false;
+          return true;
+        });
+
+        // Deduplicate by wallet address
+        const seenWallets = new Set<string>();
+        eligible = eligible.filter(a => {
+          const wallet = a.walletAddress.toLowerCase();
+          if (seenWallets.has(wallet)) return false;
+          seenWallets.add(wallet);
+          return true;
+        });
+
+        // Exclude Commerce applicants (conflict of interest) and social connections
+        const commerceApplicants = await storage.getErc8183Applicants(jobId);
+        const applicantIds = new Set(commerceApplicants.map(a => a.agentId));
+        eligible = eligible.filter(a => !applicantIds.has(a.id));
+
+        const posterFollowing = await storage.getFollowing(job.posterAgentId);
+        const assigneeFollowing = job.assigneeAgentId ? await storage.getFollowing(job.assigneeAgentId) : [];
+        const socialConnections = new Set([
+          ...posterFollowing.map(f => f.followedAgentId),
+          ...assigneeFollowing.map(f => f.followedAgentId),
+        ]);
+        eligible = eligible.filter(a => !socialConnections.has(a.id));
+
+        // Skill-aware selection: prefer validators with matching verified skills
+        const jobSkills = job.requiredSkills && job.requiredSkills.length > 0 ? job.requiredSkills : [];
+        if (jobSkills.length > 0) {
+          const jobSkillSet = new Set(jobSkills.map((s: string) => s.toLowerCase()));
+          const withMatch: typeof eligible = [];
+          const generalValidators: typeof eligible = [];
+          const withMismatch: typeof eligible = [];
+          for (const agent of eligible) {
+            const agentVerified = (agent.verifiedSkills || []).map((s: string) => s.toLowerCase());
+            if (agentVerified.length === 0) {
+              generalValidators.push(agent);
+            } else if (agentVerified.some(s => jobSkillSet.has(s))) {
+              withMatch.push(agent);
+            } else {
+              withMismatch.push(agent);
+            }
+          }
+          eligible = [...withMatch, ...generalValidators, ...withMismatch];
+        }
+
+        selectedValidatorIds = eligible.slice(0, COMMERCE_VALIDATOR_COUNT).map(a => a.id);
+
+        // Fail before any state mutation if not enough validators — job stays at "funded"
+        if (selectedValidatorIds.length < COMMERCE_THRESHOLD) {
+          return res.status(400).json({
+            message: `Not enough eligible validators for swarm (found ${selectedValidatorIds.length}, need ${COMMERCE_THRESHOLD}). Try again when more agents meet eligibility criteria.`,
+          });
+        }
+      }
+
+      // === STEP 2: On-chain submission ===
+      let txHashSubmitted: string | null = null;
+      if (job.onChainJobId) {
+        try {
+          txHashSubmitted = await oracleSubmitDeliverable(job.onChainJobId, deliverableHash, toERC8183Chain(job.chain));
+        } catch (e: any) {
+          const isStatusError = e.message?.includes("InvalidStatus") || e.message?.includes("InvalidJobId");
+          if (job.chain === "SKALE_TESTNET" && !isStatusError) {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
+          console.log(`[ERC-8183] submit on-chain skipped (${isStatusError ? "contract state mismatch — DB-only" : "soft skip"}):`, e.message.slice(0, 120));
+        }
+      } else if (job.chain === "SKALE_TESTNET") {
+        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot submit without a valid chain record", skaleError: true });
+      }
+
+      // === STEP 3: Persist job status change ===
+      const updated = await storage.updateErc8183Job(jobId, {
+        status: "submitted",
+        deliverableUrl: deliverableUrl ? sanitizeString(deliverableUrl, 500) : job.deliverableUrl,
+        deliverableNote: deliverableNote ? sanitizeString(deliverableNote, 1000) : job.deliverableNote,
+        deliverableHash,
+        txHashSubmitted,
+      });
+
+      // === STEP 4: Create swarm validation (validators already selected above) ===
+      if (!existingValidation && selectedValidatorIds.length > 0) {
+        const COMMERCE_THRESHOLD = 3;
+        const validation = await storage.createValidation({
+          gigId: jobId,
+          status: "pending",
+          threshold: COMMERCE_THRESHOLD,
+          selectedValidators: selectedValidatorIds,
+          totalRewardPool: 0,
+          rewardPerValidator: 0,
+        });
+
+        for (const validatorId of selectedValidatorIds) {
+          notifyAgent(validatorId, "swarm_vote_needed", "Commerce Swarm Validation", `Your vote is needed to validate a Commerce deliverable`, { gigId: jobId }).catch(() => {});
+        }
+
+        console.log(`[ERC-8183] Swarm validation created ${validation.id} for job ${jobId} with ${selectedValidatorIds.length} validators`);
+      }
+
+      return res.json({ success: true, job: updated, txHash: txHashSubmitted });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to submit deliverable", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/settle — poster settles (complete or reject)
+  app.post("/api/erc8183/jobs/:jobId/settle", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const { action, reason } = req.body; // action: "complete" | "reject"
+      if (!["complete", "reject"].includes(action)) return res.status(400).json({ message: "action must be complete or reject" });
+
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only poster can settle" });
+      if (job.status !== "submitted") return res.status(400).json({ message: `Cannot settle in status: ${job.status}` });
+
+      // Swarm consensus is required before settlement
+      const swarmValidation = await storage.getValidationByGig(jobId);
+      if (!swarmValidation || swarmValidation.status === "pending") {
+        return res.status(400).json({ message: "Swarm validation must reach consensus before settlement" });
+      }
+
+      let txHash: string | null = null;
+      const newStatus = action === "complete" ? "completed" : "rejected";
+      const reasonHex = "0x535741524d5f415050524f564544000000000000000000000000000000000000";
+
+      if (job.onChainJobId) {
+        try {
+          if (action === "complete") txHash = await oracleCompleteJob(job.onChainJobId, reasonHex, toERC8183Chain(job.chain));
+          else txHash = await oracleRejectJob(job.onChainJobId, reasonHex, toERC8183Chain(job.chain));
+        } catch (e: any) {
+          const isStatusError = e.message?.includes("InvalidStatus") || e.message?.includes("InvalidJobId");
+          if (job.chain === "SKALE_TESTNET" && !isStatusError) {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
+          console.log(`[ERC-8183] settle on-chain skipped (${isStatusError ? "contract state mismatch — DB-only" : "soft skip"}):`, e.message.slice(0, 120));
+        }
+      } else if (job.chain === "SKALE_TESTNET") {
+        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot settle without a valid chain record", skaleError: true });
+      }
+
+      const updated = await storage.updateErc8183Job(jobId, { status: newStatus, txHashSettled: txHash });
+
+      if (action === "complete" && job.assigneeAgentId) {
+        const assignee = await storage.getAgent(job.assigneeAgentId);
+        if (assignee) {
+          await storage.updateAgent(assignee.id, {
+            totalGigsCompleted: (assignee.totalGigsCompleted ?? 0) + 1,
+            onChainScore: Math.min((assignee.onChainScore ?? 0) + 10, 1000),
+          });
+        }
+        // Unlock bond on completion
+        try {
+          await unlockBondForGig(job.assigneeAgentId, jobId);
+        } catch (bondErr: any) {
+          console.warn("[ERC-8183] unlockBondForGig skipped:", bondErr.message);
+        }
+        // Auto-generate commerce receipt on completion
+        try {
+          const existing = await storage.getCommerceReceiptByJob(jobId);
+          if (!existing) {
+            const receiptVerdict: string = job.onChainJobId ? "ORACLE_ASSISTED" : "N/A";
+            await storage.createTrustReceipt({
+              gigId: jobId,
+              agentId: job.assigneeAgentId,
+              posterId: job.posterAgentId,
+              gigTitle: job.title,
+              amount: job.budgetUsdc,
+              currency: "USDC",
+              chain: job.chain,
+              swarmVerdict: receiptVerdict,
+              scoreChange: 10,
+              tierBefore: null,
+              tierAfter: null,
+              completedAt: new Date(),
+            });
+          }
+        } catch (e: any) { console.warn("[ERC-8183] receipt creation skipped:", e.message); }
+
+        // Sync performance score and FusedScore after Commerce completion (same as gig completion)
+        try {
+          await syncPerformanceScore(job.assigneeAgentId);
+        } catch (syncErr: any) {
+          console.warn("[ERC-8183] syncPerformanceScore skipped:", syncErr.message);
+        }
+      }
+
+      if (action === "reject" && job.assigneeAgentId) {
+        // Slash bond and record risk event on rejection
+        try {
+          await slashBond(job.assigneeAgentId, jobId, reason || "Commerce job rejected by swarm");
+        } catch (slashErr: any) {
+          console.warn("[ERC-8183] slashBond skipped:", slashErr.message);
+        }
+        try {
+          await recordRiskEvent(job.assigneeAgentId, "FAILED_GIG", 25, "Commerce job rejected by swarm");
+        } catch (riskErr: any) {
+          console.warn("[ERC-8183] recordRiskEvent skipped:", riskErr.message);
+        }
+        // Sync performance score after rejection too (risk events affect fusedScore)
+        try {
+          await syncPerformanceScore(job.assigneeAgentId);
+        } catch (syncErr: any) {
+          console.warn("[ERC-8183] syncPerformanceScore (reject) skipped:", syncErr.message);
+        }
+      }
+
+      return res.json({ success: true, job: updated, txHash });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to settle job", error: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/cancel — poster cancels an open job
+  app.post("/api/erc8183/jobs/:jobId/cancel", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.posterAgentId !== (req as any).agentId) return res.status(403).json({ message: "Only poster can cancel" });
+      if (!["open", "funded"].includes(job.status)) return res.status(400).json({ message: `Cannot cancel job in status: ${job.status}` });
+
+      let txHash: string | null = null;
+      if (job.onChainJobId) {
+        try {
+          txHash = await oracleCancelJob(job.onChainJobId, toERC8183Chain(job.chain));
+        } catch (e: any) {
+          if (job.chain === "SKALE_TESTNET") {
+            return res.status(503).json({ message: `SKALE chain write failed: ${e.message}`, skaleError: true });
+          }
+          console.warn("[ERC-8183] on-chain cancel skipped:", e.message);
+        }
+      } else if (job.chain === "SKALE_TESTNET") {
+        return res.status(400).json({ message: "SKALE job is missing on-chain ID — cannot cancel without a valid chain record", skaleError: true });
+      }
+
+      const updated = await storage.updateErc8183Job(jobId, { status: "cancelled", txHashSettled: txHash });
+      return res.json({ success: true, job: updated, txHash });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to cancel job", error: err.message });
+    }
+  });
+
+  // GET /api/erc8183/jobs/:jobId/applicants — list applicants
+  app.get("/api/erc8183/jobs/:jobId/applicants", apiLimiter, async (req, res) => {
+    try {
+      const { jobId } = req.params;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      const applicants = await storage.getErc8183Applicants(jobId);
+      return res.json({ applicants, total: applicants.length });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to list applicants", error: err.message });
+    }
+  });
+
+  // GET /api/erc8183/agents/:agentId/jobs — per-agent job history
+  app.get("/api/erc8183/agents/:agentId/jobs", apiLimiter, async (req, res) => {
+    try {
+      const { agentId } = req.params;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const history = await storage.getErc8183JobsByAgent(agentId);
+      return res.json(history);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch agent jobs", error: err.message });
+    }
+  });
+
+  // GET /api/erc8183/agents/:agentId/applications — jobs the agent has applied to
+  app.get("/api/erc8183/agents/:agentId/applications", apiLimiter, async (req, res) => {
+    try {
+      const { agentId } = req.params;
+      const applications = await storage.getErc8183ApplicationsByAgent(agentId);
+      return res.json({ applications, total: applications.length });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch agent applications", error: err.message });
+    }
+  });
+
+  // GET /api/swarm/validations/agent/:agentId — pending swarm validations where agent is selected validator
+  app.get("/api/swarm/validations/agent/:agentId", apiLimiter, async (req, res) => {
+    try {
+      const { agentId } = req.params;
+      const validations = await storage.getValidationsForAgent(agentId);
+      return res.json({ validations, total: validations.length });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch agent validations", error: err.message });
+    }
+  });
+
+  // POST /api/commerce/jobs/:id/receipt — create or get receipt for a completed commerce job
+  app.post("/api/commerce/jobs/:id/receipt", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const job = await storage.getErc8183Job(id);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.status !== "completed") return res.status(400).json({ message: "Job is not completed" });
+      if (!job.assigneeAgentId) return res.status(400).json({ message: "Job has no assignee" });
+
+      const existing = await storage.getCommerceReceiptByJob(id);
+      if (existing) {
+        const assignee = await storage.getAgent(existing.agentId);
+        const poster = await storage.getAgent(existing.posterId);
+        return res.json({
+          ...existing,
+          agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+          poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+          txHashCreated: job.txHashCreated,
+          txHashFunded: job.txHashFunded,
+          txHashAssigned: job.txHashAssigned,
+          txHashSubmitted: job.txHashSubmitted,
+          txHashSettled: job.txHashSettled,
+        });
+      }
+
+      // Determine swarm verdict: ORACLE_ASSISTED if settled on-chain, N/A if off-chain only
+      const manualVerdict: string = job.onChainJobId ? "ORACLE_ASSISTED" : "N/A";
+      const receipt = await storage.createTrustReceipt({
+        gigId: id,
+        agentId: job.assigneeAgentId,
+        posterId: job.posterAgentId,
+        gigTitle: job.title,
+        amount: job.budgetUsdc,
+        currency: "USDC",
+        chain: job.chain,
+        swarmVerdict: manualVerdict,
+        scoreChange: 10,
+        tierBefore: null,
+        tierAfter: null,
+        completedAt: new Date(),
+      });
+
+      const assignee = await storage.getAgent(receipt.agentId);
+      const poster = await storage.getAgent(receipt.posterId);
+      return res.status(201).json({
+        ...receipt,
+        agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+        poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+        txHashCreated: job.txHashCreated,
+        txHashFunded: job.txHashFunded,
+        txHashAssigned: job.txHashAssigned,
+        txHashSubmitted: job.txHashSubmitted,
+        txHashSettled: job.txHashSettled,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to create receipt", error: err.message });
+    }
+  });
+
+  // GET /api/commerce/jobs/:id/receipt — get existing receipt for a commerce job
+  app.get("/api/commerce/jobs/:id/receipt", apiLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const job = await storage.getErc8183Job(id);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+
+      const receipt = await storage.getCommerceReceiptByJob(id);
+      if (!receipt) return res.status(404).json({ message: "Receipt not found" });
+
+      const assignee = await storage.getAgent(receipt.agentId);
+      const poster = await storage.getAgent(receipt.posterId);
+      return res.json({
+        ...receipt,
+        agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+        poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
+        txHashCreated: job.txHashCreated,
+        txHashFunded: job.txHashFunded,
+        txHashAssigned: job.txHashAssigned,
+        txHashSubmitted: job.txHashSubmitted,
+        txHashSettled: job.txHashSettled,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to fetch receipt", error: err.message });
+    }
+  });
+
+  // GET /api/commerce/jobs/:id/receipt.png — receipt image for a commerce job
+  app.get("/api/commerce/jobs/:id/receipt.png", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const job = await storage.getErc8183Job(id);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (job.status !== "completed") return res.status(400).json({ message: "Job is not completed" });
+      if (!job.assigneeAgentId) return res.status(400).json({ message: "Job has no assignee" });
+
+      const poster = await storage.getAgent(job.posterAgentId);
+      const assignee = await storage.getAgent(job.assigneeAgentId);
+
+      let receipt = await storage.getCommerceReceiptByJob(id);
+      if (!receipt) {
+        receipt = await storage.createTrustReceipt({
+          gigId: id,
+          agentId: job.assigneeAgentId,
+          posterId: job.posterAgentId,
+          gigTitle: job.title,
+          amount: job.budgetUsdc,
+          currency: "USDC",
+          chain: job.chain,
+          swarmVerdict: null,
+          scoreChange: 10,
+          tierBefore: null,
+          tierAfter: null,
+          completedAt: new Date(),
+        });
+      }
+
+      const chainLabel = job.chain === "SKALE_TESTNET" ? "SKALE" : "Base Sepolia";
+
+      const png = await generateReceiptImage({
+        receiptId: receipt.id,
+        gigTitle: job.title,
+        amount: job.budgetUsdc,
+        currency: "USDC",
+        chain: chainLabel,
+        posterHandle: poster?.handle || "Unknown",
+        assigneeHandle: assignee?.handle || "Unknown",
+        posterMoltDomain: poster?.moltDomain || null,
+        assigneeMoltDomain: assignee?.moltDomain || null,
+        swarmVerdict: "COMPLETED",
+        votesFor: 0,
+        votesAgainst: 0,
+        posterScoreChange: 0,
+        assigneeScoreChange: 10,
+        completedAt: receipt.completedAt,
+      });
+
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.send(png);
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to generate receipt image", error: err.message });
     }
   });
 
@@ -8877,6 +10312,97 @@ export async function registerRoutes(
       return res.json({ success: true, txHash, jobId, basescanUrl: `https://sepolia.basescan.org/tx/${txHash}` });
     } catch (err: any) {
       return res.status(500).json({ message: "Failed to reject job", error: err.message });
+    }
+  });
+
+  // ─── ERC-8183 Commerce Intelligence endpoints ──────────────────────────────
+
+  // 5-minute server-side cache for quorum reads (avoid hammering SKALE RPC per card load)
+  const quorumCache = new Map<string, { data: unknown; expiresAt: number }>();
+  const QUORUM_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+  // GET /api/erc8183/jobs/:jobId/quorum — swarm quorum state for a job in review/disputed
+  app.get("/api/erc8183/jobs/:jobId/quorum", apiLimiter, async (req, res) => {
+    try {
+      const { jobId } = req.params;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+      if (!["submitted", "review", "disputed"].includes(job.status)) {
+        return res.json({ exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, threshold: 3, finalized: false, cached: false });
+      }
+
+      const cacheKey = `${jobId}:${job.chain}`;
+      const cached = quorumCache.get(cacheKey);
+      if (cached && Date.now() < cached.expiresAt) {
+        return res.json({ ...(cached.data as object), cached: true });
+      }
+
+      const verdict = await readSwarmVerdictOnChain(jobId, job.chain ?? null);
+      const result = (!verdict || !verdict.exists)
+        ? { exists: false, votesFor: 0, votesAgainst: 0, totalVotes: 0, threshold: 3, finalized: false }
+        : { ...verdict, threshold: 3 };
+
+      quorumCache.set(cacheKey, { data: result, expiresAt: Date.now() + QUORUM_CACHE_TTL_MS });
+      return res.json({ ...result, cached: false });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/agents/:agentId/heartbeat-status — check heartbeat decay for signed-in agent
+  app.get("/api/agents/:agentId/heartbeat-status", apiLimiter, async (req, res) => {
+    try {
+      const { agentId } = req.params;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+      const { INACTIVITY_DECAY_THRESHOLD_DAYS, INACTIVITY_DECAY_PENALTY } = await import("./reputation");
+      const lastActive = agent.lastHeartbeat ?? agent.registeredAt;
+      const now = new Date();
+      const daysSince = lastActive ? (now.getTime() - new Date(lastActive).getTime()) / 86400000 : 9999;
+      const isDecaying = daysSince >= INACTIVITY_DECAY_THRESHOLD_DAYS;
+      return res.json({
+        lastHeartbeat: agent.lastHeartbeat,
+        daysSinceHeartbeat: Math.floor(daysSince),
+        decayThresholdDays: INACTIVITY_DECAY_THRESHOLD_DAYS,
+        decayPenaltyPct: Math.round(INACTIVITY_DECAY_PENALTY * 100),
+        isDecaying,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/erc8183/jobs/:jobId/dispute — appeal: trigger dispute on a disputed job
+  app.post("/api/erc8183/jobs/:jobId/dispute", apiLimiter, agentAuthMiddleware, async (req: any, res) => {
+    try {
+      const { jobId } = req.params;
+      const { reason } = req.body;
+      const job = await storage.getErc8183Job(jobId);
+      if (!job) return res.status(404).json({ message: "Job not found" });
+
+      const agentId: string = (req as any).agentId;
+      if (job.posterAgentId !== agentId && job.assigneeAgentId !== agentId) {
+        return res.status(403).json({ message: "Only poster or assignee can appeal" });
+      }
+      if (job.status !== "disputed") {
+        return res.status(400).json({ message: `Cannot appeal job in status: ${job.status}` });
+      }
+
+      let txHash: string | null = null;
+      try {
+        if (job.onChainJobId) {
+          const { escrowContract: escrow } = await import("./blockchain");
+          txHash = await (escrow as any).write.dispute([job.onChainJobId]);
+        }
+      } catch (e: any) {
+        console.warn("[ERC-8183] dispute on-chain skipped:", e.message);
+      }
+
+      await storage.updateErc8183Job(jobId, { status: "disputed" });
+
+      return res.json({ success: true, jobId, txHash, message: "Appeal submitted. The dispute will be reviewed." });
+    } catch (err: any) {
+      return res.status(500).json({ message: "Failed to submit appeal", error: err.message });
     }
   });
 

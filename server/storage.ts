@@ -1,10 +1,13 @@
-import { eq, desc, or, and, notInArray, gt, gte, lte, lt, count, asc, sql } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, inArray, gt, gte, lte, lt, count, asc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements, x402Payments,
-  agentNotifications, skillChallenges, challengeAttempts,
+  agentNotifications, skillChallenges, challengeAttempts, blogPosts,
+  erc8183Jobs, erc8183Applicants,
+  type Erc8183Job, type InsertErc8183Job,
+  type Erc8183Applicant, type InsertErc8183Applicant,
   type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
@@ -35,6 +38,7 @@ import {
   type ReputationMigration, type InsertReputationMigration,
   type SkillChallenge, type InsertSkillChallenge,
   type ChallengeAttempt, type InsertChallengeAttempt,
+  type BlogPost, type InsertBlogPost,
   moltDomains,
   type MoltDomain, type InsertMoltDomain,
   blockchainActionQueue,
@@ -52,7 +56,7 @@ export interface IStorage {
 
   getGigs(): Promise<Gig[]>;
   getGig(id: string): Promise<Gig | undefined>;
-  getGigsByAgent(agentId: string): Promise<Gig[]>;
+  getGigsByAgent(agentId: string): Promise<(Gig & { applicantCount: number })[]>;
   createGig(gig: InsertGig): Promise<Gig>;
   updateGig(id: string, data: Partial<Gig>): Promise<Gig | undefined>;
   updateGigStatus(id: string, status: string): Promise<Gig | undefined>;
@@ -145,6 +149,7 @@ export interface IStorage {
   createTrustReceipt(receipt: InsertTrustReceipt): Promise<TrustReceipt>;
   getTrustReceipt(id: string): Promise<TrustReceipt | undefined>;
   getTrustReceiptByGig(gigId: string, agentId: string): Promise<TrustReceipt | undefined>;
+  getCommerceReceiptByJob(jobId: string): Promise<TrustReceipt | undefined>;
   getTrustReceipts(): Promise<TrustReceipt[]>;
   getTrustReceiptsForAgent(agentId: string, limit?: number): Promise<TrustReceipt[]>;
 
@@ -187,6 +192,7 @@ export interface IStorage {
   getSlashEvent(id: string): Promise<SlashEvent | undefined>;
   getSlashEventsForAgent(agentId: string): Promise<SlashEvent[]>;
   getSlashEventCount(agentId: string): Promise<number>;
+  countAllSlashEvents(): Promise<{ total: number; totalSlashed: number }>;
   updateSlashEvent(id: string, data: Partial<SlashEvent>): Promise<SlashEvent | undefined>;
 
   createReputationMigration(migration: InsertReputationMigration): Promise<ReputationMigration>;
@@ -226,6 +232,24 @@ export interface IStorage {
 
   createChallengeAttempt(attempt: InsertChallengeAttempt): Promise<ChallengeAttempt>;
   getChallengeAttemptsForAgent(agentId: string, skill?: string): Promise<ChallengeAttempt[]>;
+
+  getBlogPosts(): Promise<Omit<BlogPost, "content">[]>;
+  getBlogPost(slug: string): Promise<BlogPost | undefined>;
+  createBlogPost(post: InsertBlogPost): Promise<BlogPost>;
+  countBlogPosts(): Promise<number>;
+
+  // ERC-8183 Agentic Commerce
+  createErc8183Job(job: InsertErc8183Job): Promise<Erc8183Job>;
+  getErc8183Job(id: string): Promise<Erc8183Job | undefined>;
+  getErc8183Jobs(filters?: { status?: string; posterAgentId?: string; assigneeAgentId?: string; chain?: string; limit?: number; offset?: number }): Promise<Erc8183Job[]>;
+  updateErc8183Job(id: string, data: Partial<Erc8183Job>): Promise<Erc8183Job | undefined>;
+  getErc8183JobsByAgent(agentId: string): Promise<{ posted: (Erc8183Job & { applicantCount: number })[]; taken: Erc8183Job[] }>;
+  createErc8183Applicant(applicant: InsertErc8183Applicant): Promise<Erc8183Applicant>;
+  getErc8183Applicants(jobId: string): Promise<Erc8183Applicant[]>;
+  getErc8183Applicant(jobId: string, agentId: string): Promise<Erc8183Applicant | undefined>;
+  getErc8183ApplicationsByAgent(agentId: string): Promise<(Erc8183Applicant & { job?: Erc8183Job })[]>;
+  getValidationsForAgent(agentId: string): Promise<SwarmValidation[]>;
+  countErc8183Jobs(filters?: { status?: string; chain?: string }): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -280,10 +304,22 @@ export class DatabaseStorage implements IStorage {
     return gig;
   }
 
-  async getGigsByAgent(agentId: string): Promise<Gig[]> {
-    return db.select().from(gigs).where(
+  async getGigsByAgent(agentId: string): Promise<(Gig & { applicantCount: number })[]> {
+    const agentGigs = await db.select().from(gigs).where(
       or(eq(gigs.posterId, agentId), eq(gigs.assigneeId, agentId))
     );
+    const gigIds = agentGigs.map(g => g.id);
+    const countMap: Record<string, number> = {};
+    if (gigIds.length > 0) {
+      const rows = await db.select({
+        gigId: gigApplicants.gigId,
+        cnt: sql<number>`COUNT(*)`,
+      }).from(gigApplicants)
+        .where(inArray(gigApplicants.gigId, gigIds))
+        .groupBy(gigApplicants.gigId);
+      rows.forEach(r => { countMap[r.gigId] = Number(r.cnt); });
+    }
+    return agentGigs.map(g => ({ ...g, applicantCount: countMap[g.id] ?? 0 }));
   }
 
   async createGig(gig: InsertGig): Promise<Gig> {
@@ -703,6 +739,14 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
+  async getCommerceReceiptByJob(jobId: string): Promise<TrustReceipt | undefined> {
+    const [r] = await db.select().from(trustReceipts)
+      .where(eq(trustReceipts.gigId, jobId))
+      .orderBy(desc(trustReceipts.createdAt))
+      .limit(1);
+    return r;
+  }
+
   async getTrustReceipts(): Promise<TrustReceipt[]> {
     return db.select().from(trustReceipts).orderBy(desc(trustReceipts.createdAt));
   }
@@ -950,6 +994,19 @@ export class DatabaseStorage implements IStorage {
   async getSlashEventCount(agentId: string): Promise<number> {
     const [result] = await db.select({ count: count() }).from(slashEvents).where(eq(slashEvents.agentId, agentId));
     return Number(result?.count || 0);
+  }
+
+  async countAllSlashEvents(): Promise<{ total: number; totalSlashed: number }> {
+    const [result] = await db
+      .select({
+        total: count(),
+        totalSlashed: sql<number>`coalesce(sum(${slashEvents.amount}), 0)`,
+      })
+      .from(slashEvents);
+    return {
+      total: Number(result?.total || 0),
+      totalSlashed: Number(result?.totalSlashed || 0),
+    };
   }
 
   async updateSlashEvent(id: string, data: Partial<SlashEvent>): Promise<SlashEvent | undefined> {
@@ -1390,6 +1447,138 @@ Be specific and methodical.`,
     return db.select().from(challengeAttempts)
       .where(and(...conditions))
       .orderBy(desc(challengeAttempts.createdAt));
+  }
+
+  async getBlogPosts(): Promise<Omit<BlogPost, "content">[]> {
+    return db.select({
+      id: blogPosts.id,
+      slug: blogPosts.slug,
+      title: blogPosts.title,
+      excerpt: blogPosts.excerpt,
+      author: blogPosts.author,
+      coverImage: blogPosts.coverImage,
+      tags: blogPosts.tags,
+      publishedAt: blogPosts.publishedAt,
+      published: blogPosts.published,
+      readMinutes: blogPosts.readMinutes,
+    }).from(blogPosts)
+      .where(eq(blogPosts.published, true))
+      .orderBy(desc(blogPosts.publishedAt));
+  }
+
+  async getBlogPost(slug: string): Promise<BlogPost | undefined> {
+    const [post] = await db.select().from(blogPosts)
+      .where(and(eq(blogPosts.slug, slug), eq(blogPosts.published, true)));
+    return post;
+  }
+
+  async createBlogPost(post: InsertBlogPost): Promise<BlogPost> {
+    const [created] = await db.insert(blogPosts).values(post).returning();
+    return created;
+  }
+
+  async countBlogPosts(): Promise<number> {
+    const [result] = await db.select({ value: count() }).from(blogPosts);
+    return result?.value || 0;
+  }
+
+  // ─── ERC-8183 AGENTIC COMMERCE ───────────────────────────────────────────
+  async createErc8183Job(job: InsertErc8183Job): Promise<Erc8183Job> {
+    const [created] = await db.insert(erc8183Jobs).values(job).returning();
+    return created;
+  }
+
+  async getErc8183Job(id: string): Promise<Erc8183Job | undefined> {
+    const [job] = await db.select().from(erc8183Jobs).where(eq(erc8183Jobs.id, id));
+    return job;
+  }
+
+  async getErc8183Jobs(filters?: { status?: string; posterAgentId?: string; assigneeAgentId?: string; chain?: string; limit?: number; offset?: number }): Promise<Erc8183Job[]> {
+    const conditions: any[] = [];
+    if (filters?.status) conditions.push(eq(erc8183Jobs.status, filters.status));
+    if (filters?.posterAgentId) conditions.push(eq(erc8183Jobs.posterAgentId, filters.posterAgentId));
+    if (filters?.assigneeAgentId) conditions.push(eq(erc8183Jobs.assigneeAgentId, filters.assigneeAgentId));
+    if (filters?.chain === "BASE_SEPOLIA" || filters?.chain === "SKALE_TESTNET") {
+      conditions.push(eq(erc8183Jobs.chain, filters.chain));
+    }
+    const query = db.select().from(erc8183Jobs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(erc8183Jobs.createdAt))
+      .limit(filters?.limit ?? 50)
+      .offset(filters?.offset ?? 0);
+    return query;
+  }
+
+  async updateErc8183Job(id: string, data: Partial<Erc8183Job>): Promise<Erc8183Job | undefined> {
+    const [updated] = await db.update(erc8183Jobs).set(data).where(eq(erc8183Jobs.id, id)).returning();
+    return updated;
+  }
+
+  async getErc8183JobsByAgent(agentId: string): Promise<{ posted: (Erc8183Job & { applicantCount: number })[]; taken: Erc8183Job[] }> {
+    const posted = await db.select().from(erc8183Jobs)
+      .where(eq(erc8183Jobs.posterAgentId, agentId))
+      .orderBy(desc(erc8183Jobs.createdAt));
+    const taken = await db.select().from(erc8183Jobs)
+      .where(eq(erc8183Jobs.assigneeAgentId, agentId))
+      .orderBy(desc(erc8183Jobs.createdAt));
+    const countMap: Record<string, number> = {};
+    if (posted.length > 0) {
+      const rows = await db.select({
+        jobId: erc8183Applicants.jobId,
+        cnt: sql<number>`COUNT(*)`,
+      }).from(erc8183Applicants)
+        .where(inArray(erc8183Applicants.jobId, posted.map(j => j.id)))
+        .groupBy(erc8183Applicants.jobId);
+      rows.forEach(r => { countMap[r.jobId] = Number(r.cnt); });
+    }
+    return {
+      posted: posted.map(j => ({ ...j, applicantCount: countMap[j.id] ?? 0 })),
+      taken,
+    };
+  }
+
+  async createErc8183Applicant(applicant: InsertErc8183Applicant): Promise<Erc8183Applicant> {
+    const [created] = await db.insert(erc8183Applicants).values(applicant).returning();
+    return created;
+  }
+
+  async getErc8183Applicants(jobId: string): Promise<Erc8183Applicant[]> {
+    return db.select().from(erc8183Applicants)
+      .where(eq(erc8183Applicants.jobId, jobId))
+      .orderBy(asc(erc8183Applicants.appliedAt));
+  }
+
+  async getErc8183Applicant(jobId: string, agentId: string): Promise<Erc8183Applicant | undefined> {
+    const [row] = await db.select().from(erc8183Applicants)
+      .where(and(eq(erc8183Applicants.jobId, jobId), eq(erc8183Applicants.agentId, agentId)));
+    return row;
+  }
+
+  async getErc8183ApplicationsByAgent(agentId: string): Promise<(Erc8183Applicant & { job?: Erc8183Job })[]> {
+    const applications = await db.select().from(erc8183Applicants)
+      .where(eq(erc8183Applicants.agentId, agentId))
+      .orderBy(desc(erc8183Applicants.appliedAt));
+    if (applications.length === 0) return [];
+    const jobIds = [...new Set(applications.map((a) => a.jobId))];
+    const jobs = await db.select().from(erc8183Jobs).where(inArray(erc8183Jobs.id, jobIds));
+    const jobMap = new Map(jobs.map((j) => [j.id, j]));
+    return applications.map((a) => ({ ...a, job: jobMap.get(a.jobId) }));
+  }
+
+  async getValidationsForAgent(agentId: string): Promise<SwarmValidation[]> {
+    const all = await db.select().from(swarmValidations).orderBy(desc(swarmValidations.createdAt));
+    return all.filter((v) => v.selectedValidators && v.selectedValidators.includes(agentId));
+  }
+
+  async countErc8183Jobs(filters?: { status?: string; chain?: string }): Promise<number> {
+    const conditions: any[] = [];
+    if (filters?.status) conditions.push(eq(erc8183Jobs.status, filters.status));
+    if (filters?.chain === "BASE_SEPOLIA" || filters?.chain === "SKALE_TESTNET") {
+      conditions.push(eq(erc8183Jobs.chain, filters.chain));
+    }
+    const [result] = await db.select({ value: count() }).from(erc8183Jobs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+    return result?.value || 0;
   }
 }
 

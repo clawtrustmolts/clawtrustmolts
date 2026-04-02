@@ -113,6 +113,10 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         escrowContract = _escrowContract;
     }
 
+    // slither-disable-next-line reentrancy-no-eth
+    // nonReentrant guards the safeTransferFrom call on the rewardToken (which could be any ERC-20).
+    // Although onlyEscrowOrOwner restricts callers to trusted addresses, a malicious rewardToken
+    // with an on-transfer callback could re-enter without the guard. nonReentrant closes this.
     function createValidation(
         bytes32 gigId,
         address poster,
@@ -121,7 +125,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 threshold,
         uint256 rewardPool,
         address rewardToken
-    ) external onlyEscrowOrOwner whenNotPaused {
+    ) external nonReentrant onlyEscrowOrOwner whenNotPaused {
         if(validationExists[gigId]) revert ValidationAlreadyExists();
         if(poster == address(0)) revert InvalidAddress();
         if(candidates.length > MAX_CANDIDATES) revert TooManyCandidates();
@@ -360,9 +364,12 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
     function getGigVerdict(bytes32 gigId) external view returns (string memory) {
         if (!validationExists[gigId]) return "not_found";
         ValidationStatus s = validations[gigId].status;
-        if (s == ValidationStatus.Approved) return "approved";
-        if (s == ValidationStatus.Rejected) return "rejected";
-        if (s == ValidationStatus.Expired)  return "expired";
+        // slither-disable-next-line incorrect-equality -- enum switch-dispatch; == on a closed enum set is safe and intentional
+        if (s == ValidationStatus.Approved) return "approved"; // solhint-disable-line
+        // slither-disable-next-line incorrect-equality -- enum switch-dispatch (continued)
+        if (s == ValidationStatus.Rejected) return "rejected"; // solhint-disable-line
+        // slither-disable-next-line incorrect-equality -- enum switch-dispatch (continued)
+        if (s == ValidationStatus.Expired)  return "expired";  // solhint-disable-line
         return "pending";
     }
 }

@@ -34,6 +34,24 @@ export const BASE_SEPOLIA = {
     escrow:          "0x6B676744B8c4900F9999E9a9323728C160706126",
     swarmValidator:  "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
     clawCardNFT:     "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
+    usdc:            "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  },
+} as const;
+
+// Base Mainnet — deploy contracts and set env vars to activate
+export const BASE_MAINNET = {
+  chainId: 8453,
+  name: "Base Mainnet",
+  rpc: "https://mainnet.base.org",
+  explorer: "https://basescan.org",
+  contracts: {
+    usdc:            "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    escrow:          (import.meta.env.VITE_MAINNET_ESCROW_ADDRESS  || ""),
+    bond:            (import.meta.env.VITE_MAINNET_BOND_ADDRESS    || ""),
+    swarmValidator:  (import.meta.env.VITE_MAINNET_SWARM_ADDRESS   || ""),
+    erc8004Registry: (import.meta.env.VITE_MAINNET_REGISTRY_ADDRESS|| ""),
+    repAdapter:      (import.meta.env.VITE_MAINNET_REP_ADAPTER_ADDRESS || ""),
+    clawCardNFT:     (import.meta.env.VITE_MAINNET_CLAW_CARD_NFT_ADDRESS || ""),
   },
 } as const;
 
@@ -53,6 +71,6 @@ export const SKALE_TESTNET = {
     swarmValidator:  "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
     bond:            "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
     crew:            "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
-    registry:        "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+    registry:        "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084",
   },
 } as const;

@@ -31,10 +31,13 @@ import {
   Upload,
   Flag,
   Send,
+  Gavel,
 } from "lucide-react";
 import type { Gig, Agent, EscrowTransaction } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { EscrowFundingFlow } from "@/components/escrow-funding";
+import { chainKeyFromBackend, txExplorerUrl, CHAIN_CONTRACTS } from "@/lib/onchain";
 
 interface GigApplicant {
   id: string;
@@ -49,6 +52,23 @@ interface GigApplicant {
     handle: string;
     fusedScore: number;
     skills: string[];
+  } | null;
+}
+
+interface CrewApplicant {
+  id: string;
+  gigId: string;
+  crewId: string;
+  message: string | null;
+  createdAt: string | null;
+  crew: {
+    id: string;
+    name: string;
+    handle: string;
+    fusedScore: number;
+    bondPool: number;
+    specialization: string | null;
+    memberCount: number;
   } | null;
 }
 
@@ -84,14 +104,30 @@ function getMyAgentId(): string | null {
   return localStorage.getItem("agentId");
 }
 
+const DELIVERABLE_TYPES = [
+  { value: "text", label: "Text description" },
+  { value: "url", label: "URL / hosted demo" },
+  { value: "github", label: "GitHub repo / PR" },
+  { value: "ipfs", label: "IPFS / Arweave hash" },
+] as const;
+
 function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: string; onClose: () => void }) {
   const [description, setDescription] = useState("");
   const [proofUrl, setProofUrl] = useState("");
+  const [deliverableType, setDeliverableType] = useState<"text" | "url" | "github" | "ipfs">("text");
   const { toast } = useToast();
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/swarm/validate", {
+      // Step 1: Record the deliverable on the gig
+      await apiRequest("POST", `/api/gigs/${gigId}/submit-deliverable`, {
+        deliverableType,
+        description,
+        proofUrl: proofUrl || undefined,
+        requestValidation: true,
+      }, { "x-agent-id": agentId });
+      // Step 2: Trigger swarm validation
+      await apiRequest("POST", "/api/swarm/validate", {
         gigId,
         assigneeId: agentId,
         description,
@@ -124,6 +160,28 @@ function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: 
         </h3>
         <div>
           <label className="text-[10px] uppercase font-mono tracking-widest" style={{ color: "var(--text-muted)" }}>
+            Deliverable Type
+          </label>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {DELIVERABLE_TYPES.map((dt) => (
+              <button
+                key={dt.value}
+                onClick={() => setDeliverableType(dt.value)}
+                data-testid={`button-deliverable-type-${dt.value}`}
+                className="px-3 py-1.5 text-[10px] font-mono uppercase rounded-sm transition-colors"
+                style={{
+                  background: deliverableType === dt.value ? "rgba(232,84,10,0.2)" : "var(--ocean-mid)",
+                  border: deliverableType === dt.value ? "1px solid rgba(232,84,10,0.5)" : "1px solid rgba(255,255,255,0.06)",
+                  color: deliverableType === dt.value ? "var(--claw-orange)" : "var(--text-muted)",
+                }}
+              >
+                {dt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] uppercase font-mono tracking-widest" style={{ color: "var(--text-muted)" }}>
             Work Description *
           </label>
           <textarea
@@ -152,7 +210,7 @@ function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: 
               border: "1px solid rgba(0,0,0,0.15)",
               color: "var(--shell-white)",
             }}
-            placeholder="https://github.com/... or IPFS link"
+            placeholder={deliverableType === "github" ? "https://github.com/..." : deliverableType === "ipfs" ? "ipfs://Qm... or https://ipfs.io/..." : "https://..."}
             value={proofUrl}
             onChange={(e) => setProofUrl(e.target.value)}
             data-testid="input-proof-url"
@@ -183,11 +241,16 @@ function SubmitWorkModal({ gigId, agentId, onClose }: { gigId: string; agentId: 
 
 function DisputeModal({ gigId, agentId, onClose }: { gigId: string; agentId: string; onClose: () => void }) {
   const [reason, setReason] = useState("");
+  const [evidenceUrl, setEvidenceUrl] = useState("");
   const { toast } = useToast();
 
   const disputeMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/escrow/dispute", { gigId, reason }, { "x-agent-id": agentId });
+      return apiRequest("POST", "/api/escrow/dispute", {
+        gigId,
+        reason,
+        evidenceUrl: evidenceUrl.trim() || undefined,
+      }, { "x-agent-id": agentId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId] });
@@ -212,19 +275,45 @@ function DisputeModal({ gigId, agentId, onClose }: { gigId: string; agentId: str
         <h3 className="font-display tracking-wider text-base" style={{ color: "#ef4444" }}>
           RAISE DISPUTE
         </h3>
-        <textarea
-          className="w-full p-3 rounded-sm text-sm font-mono resize-none"
-          style={{
-            background: "var(--ocean-mid)",
-            border: "1px solid rgba(239,68,68,0.2)",
-            color: "var(--shell-white)",
-            minHeight: 90,
-          }}
-          placeholder="Describe the issue..."
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          data-testid="input-dispute-reason"
-        />
+        <div>
+          <label className="text-[10px] uppercase font-mono tracking-widest" style={{ color: "var(--text-muted)" }}>
+            Reason *
+          </label>
+          <textarea
+            className="w-full mt-1 p-3 rounded-sm text-sm font-mono resize-none"
+            style={{
+              background: "var(--ocean-mid)",
+              border: "1px solid rgba(239,68,68,0.2)",
+              color: "var(--shell-white)",
+              minHeight: 90,
+            }}
+            placeholder="Describe the issue clearly..."
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            data-testid="input-dispute-reason"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase font-mono tracking-widest" style={{ color: "var(--text-muted)" }}>
+            Evidence URL (optional)
+          </label>
+          <input
+            type="url"
+            className="w-full mt-1 p-3 rounded-sm text-sm font-mono"
+            style={{
+              background: "var(--ocean-mid)",
+              border: "1px solid rgba(239,68,68,0.15)",
+              color: "var(--shell-white)",
+            }}
+            placeholder="https://github.com/... or IPFS screenshot link"
+            value={evidenceUrl}
+            onChange={(e) => setEvidenceUrl(e.target.value)}
+            data-testid="input-dispute-evidence-url"
+          />
+          <p className="text-[10px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+            Link to a screenshot, repo, log, or any on-chain proof supporting your claim.
+          </p>
+        </div>
         <div className="flex gap-3">
           <ClawButton variant="ghost" size="sm" onClick={onClose} data-testid="button-cancel-dispute">Cancel</ClawButton>
           <button
@@ -604,9 +693,19 @@ export default function GigDetailPage() {
     enabled: !!gigId,
   });
 
+  const { data: crewApplicants } = useQuery<CrewApplicant[]>({
+    queryKey: ["/api/gigs", gigId, "crew-applicants"],
+    queryFn: async () => {
+      const res = await fetch(`/api/gigs/${gigId}/crew-applicants`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!gigId,
+  });
+
   const { data: validations } = useQuery<ValidationInfo[]>({
     queryKey: ["/api/validations"],
-    enabled: gig?.status === "pending_validation",
+    enabled: gig?.status === "pending_validation" || gig?.status === "disputed",
   });
 
   if (isLoading) {
@@ -794,6 +893,102 @@ export default function GigDetailPage() {
             </div>
           )}
 
+          {gig.status === "disputed" && (() => {
+            const swarmRejected = validation?.status === "rejected";
+            return (
+              <div
+                className="rounded-sm p-5 space-y-4"
+                style={{
+                  background: "rgba(239, 68, 68, 0.05)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                }}
+                data-testid="section-disputed-panel"
+              >
+                <div className="flex items-center gap-2">
+                  <Gavel className="w-4 h-4" style={{ color: "#ef4444" }} />
+                  <h3 className="font-display tracking-wider text-sm" style={{ color: "#ef4444" }}>
+                    {swarmRejected ? "SWARM REJECTED — RESOLUTION IN PROGRESS" : "DISPUTED — NEXT STEPS"}
+                  </h3>
+                </div>
+
+                {swarmRejected ? (
+                  <>
+                    <p className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }}>
+                      The swarm validator consensus <strong>rejected</strong> this gig's completion. The outcome:
+                    </p>
+                    <div className="space-y-2">
+                      {[
+                        { step: "✓", text: "Swarm consensus recorded on-chain — rejection is final and immutable.", color: "#ef4444" },
+                        { step: "✓", text: "Escrow refund is being processed back to the poster's wallet.", color: "#ef4444" },
+                        { step: "✓", text: "Performer's bond may be subject to slashing for non-delivery.", color: "#ef4444" },
+                        { step: "→", text: "Admin review will confirm resolution within 7 business days.", color: "var(--claw-amber)" },
+                      ].map(({ step, text, color }) => (
+                        <div key={step + text} className="flex items-start gap-3">
+                          <span
+                            className="flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center"
+                            style={{ background: "rgba(239,68,68,0.15)", color, border: "1px solid rgba(239,68,68,0.3)" }}
+                          >
+                            {step}
+                          </span>
+                          <span className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }}>{text}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                      Validation ID: {validation?.id?.slice(0, 8)}… · Votes: {((validation?.votes?.approve ?? 0) + (validation?.votes?.reject ?? 0))} validators
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }}>
+                      This gig is under active dispute. The escrow funds are locked and cannot be released
+                      until the dispute is resolved. Here's what happens next:
+                    </p>
+                    <div className="space-y-2">
+                      {[
+                        { step: "1", text: "Both parties should gather evidence — screenshots, repo links, on-chain proof." },
+                        { step: "2", text: "The swarm validator network reviews all submitted evidence impartially." },
+                        { step: "3", text: "If consensus is reached, escrow is released to the prevailing party." },
+                        { step: "4", text: "Bond slashing may apply to the party found at fault." },
+                      ].map(({ step, text }) => (
+                        <div key={step} className="flex items-start gap-3">
+                          <span
+                            className="flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center"
+                            style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}
+                          >
+                            {step}
+                          </span>
+                          <span className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }}>{text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Link href="/swarm">
+                    <span
+                      className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm cursor-pointer"
+                      style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.25)" }}
+                      data-testid="button-view-swarm-from-dispute"
+                    >
+                      <Shield className="w-3 h-3" /> View Swarm Validators
+                    </span>
+                  </Link>
+                  <Link href="/slashes">
+                    <span
+                      className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm cursor-pointer"
+                      style={{ background: "rgba(239,68,68,0.08)", color: "var(--shell-cream)", border: "1px solid rgba(239,68,68,0.15)" }}
+                      data-testid="button-view-slashes-from-dispute"
+                    >
+                      <AlertTriangle className="w-3 h-3" /> Slash Registry
+                    </span>
+                  </Link>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ESCROW TRANSACTIONS */}
           <div
             className="rounded-sm p-5"
@@ -807,12 +1002,32 @@ export default function GigDetailPage() {
               <DollarSign className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />
               ESCROW TRANSACTIONS
             </h3>
+
+            {/* On-chain funding flow — shown to poster when no locked escrow exists and gig has an assignee */}
+            {myAgentId === gig.posterId && gig.assigneeId && assignee?.walletAddress &&
+              !escrows.some(e => e.status === "locked" || e.status === "released") && (
+              <div className="mb-4">
+                <EscrowFundingFlow
+                  gigId={gig.id}
+                  payeeWallet={assignee.walletAddress}
+                  amountUsdc={gig.budgetUsdc || gig.budget}
+                  chain={gig.chain}
+                  onSuccess={() => {
+                    queryClient.invalidateQueries({ queryKey: ["/api/escrow", gigId] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId] });
+                  }}
+                />
+              </div>
+            )}
+
             {escrows.length === 0 ? (
               <EmptyState message="No escrow transactions for this gig." />
             ) : (
               <div className="space-y-2">
                 {escrows.map((escrow) => {
                   const es = escrowStatusConfig[escrow.status] || escrowStatusConfig.pending;
+                  const escrowChainKey = chainKeyFromBackend(escrow.chain);
+                  const explorerBase = CHAIN_CONTRACTS[escrowChainKey].explorer;
                   return (
                     <div
                       key={escrow.id}
@@ -831,9 +1046,22 @@ export default function GigDetailPage() {
                           <ChainBadge chain={escrow.chain} />
                         </div>
                         {escrow.txHash && (
-                          <p className="text-[10px] font-mono mt-1 truncate" style={{ color: "var(--text-muted)" }}>
-                            TX: {escrow.txHash}
-                          </p>
+                          <a
+                            href={`${explorerBase}/tx/${escrow.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] font-mono mt-1 truncate flex items-center gap-1 hover:underline"
+                            style={{ color: "var(--teal-glow)" }}
+                          >
+                            TX: {escrow.txHash.slice(0, 18)}… <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                          </a>
+                        )}
+                        {/* Dispute tracking */}
+                        {escrow.status === "disputed" && (
+                          <div className="mt-2 flex items-center gap-1.5 text-[10px]" style={{ color: "#f87171" }}>
+                            <Gavel className="w-3 h-3" />
+                            <span>Under dispute — swarm adjudicating</span>
+                          </div>
                         )}
                       </div>
                       <div className="text-right flex-shrink-0">
@@ -853,7 +1081,8 @@ export default function GigDetailPage() {
         </div>
 
         {/* RIGHT SIDEBAR — APPLICANTS */}
-        <div className="w-full lg:w-[300px] flex-shrink-0">
+        <div className="w-full lg:w-[300px] flex-shrink-0 space-y-4">
+          {/* INDIVIDUAL APPLICANTS */}
           <div
             className="rounded-sm p-5"
             style={{
@@ -919,6 +1148,74 @@ export default function GigDetailPage() {
               </div>
             )}
           </div>
+
+          {/* CREW APPLICANTS */}
+          {((crewApplicants && crewApplicants.length > 0) || gig.crewGig) && (
+            <div
+              className="rounded-sm p-5"
+              style={{
+                background: "var(--ocean-mid)",
+                border: "1px solid rgba(139,92,246,0.20)",
+              }}
+              data-testid="card-crew-applicants"
+            >
+              <h3 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+                <Users className="w-4 h-4" style={{ color: "#a78bfa" }} />
+                AGENCY BIDS ({(crewApplicants || []).length})
+              </h3>
+              {(crewApplicants || []).length === 0 ? (
+                <EmptyState message="No agency bids yet." />
+              ) : (
+                <div className="space-y-3">
+                  {(crewApplicants || []).map((ca) => (
+                    <div
+                      key={ca.id}
+                      className="p-3 rounded-sm"
+                      style={{ background: "rgba(139,92,246,0.04)", border: "1px solid rgba(139,92,246,0.1)" }}
+                      data-testid={`crew-applicant-${ca.id}`}
+                    >
+                      {ca.crew ? (
+                        <Link href={`/crews/${ca.crew.id}`}>
+                          <div className="cursor-pointer">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-xs font-semibold" style={{ color: "var(--shell-white)" }}>
+                                {ca.crew.name}
+                              </span>
+                              <span className="text-[10px] font-mono" style={{ color: "#a78bfa" }}>
+                                {ca.crew.fusedScore.toFixed(1)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa" }}>
+                                @{ca.crew.handle}
+                              </span>
+                              <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                                {ca.crew.memberCount} members · ${ca.crew.bondPool.toFixed(0)} bonded
+                              </span>
+                            </div>
+                          </div>
+                        </Link>
+                      ) : (
+                        <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          Crew ID: {ca.crewId}
+                        </span>
+                      )}
+                      {ca.message && (
+                        <p className="text-[10px] mt-1" style={{ color: "var(--shell-cream)" }}>
+                          {ca.message}
+                        </p>
+                      )}
+                      {ca.createdAt && (
+                        <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+                          {timeAgo(ca.createdAt)}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
