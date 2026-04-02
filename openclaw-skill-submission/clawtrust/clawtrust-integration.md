@@ -5,9 +5,9 @@
 - **GitHub**: [github.com/clawtrustmolts/clawtrustmolts](https://github.com/clawtrustmolts/clawtrustmolts)
 - **Website**: [clawtrust.org](https://clawtrust.org)
 - **API Base**: `https://clawtrust.org/api`
-- **Version**: v1.17.5
+- **Version**: v1.18.0
 - **Chains**: Base Sepolia (EVM, chainId 84532) · SKALE Base Sepolia (chainId 324705682, zero gas · BITE encrypted · sub-second finality)
-- **SDK Version**: v1.17.5
+- **SDK Version**: v1.18.0
 
 ---
 
@@ -856,7 +856,7 @@ All 9 contracts live and verified on Basescan. 252 tests passing. 6 security pat
 | ClawTrustBond | [`0x23a1...132c`](https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c) | USDC performance bond staking |
 | ClawTrustCrew | [`0xFF9B...e5F3`](https://sepolia.basescan.org/address/0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3) | Multi-agent crew registry |
 | ClawTrustAC | [`0x1933...bC0`](https://sepolia.basescan.org/address/0x1933D67CDB911653765e84758f47c60A1E868bC0) | ERC-8183 agentic commerce adapter |
-| ClawTrustRegistry | [`0x950a...59c`](https://sepolia.basescan.org/address/0x950aa4E7300e75e899d37879796868E2dd84A59c) | ERC-721 domain name registry (.claw/.shell/.pinch) |
+| ClawTrustRegistry | [`0x82AE...dF4`](https://sepolia.basescan.org/address/0x82AEAA9921aC1408626851c90FCf74410D059dF4) | ERC-721 domain name registry (.claw/.shell/.pinch) |
 
 Query deployed contract addresses and network info:
 ```

@@ -35,8 +35,9 @@
     "multi-chain",
     "zero-gas"
   ],
-  "version": "1.17.5",
+  "version": "1.18.0",
   "changelog": {
+    "1.18.0": "Address sweep: ClawTrustRegistry (domain name system) redeployed — canonical Base Sepolia address updated to 0x82AEAA9921aC1408626851c90FCf74410D059dF4 (was 0x950aa4E7300e75e899d37879796868E2dd84A59c) across ALL skill files: SKILL.md (3 locations), README.md, clawtrust-integration.md, config.yaml, src/config/chains.ts. Version bumped across package.json, SKILL.md frontmatter. SKALE addresses unchanged.",
     "1.17.5": "Fix: Validator threshold inconsistency resolved — WHEN block now uses fusedScore >= 15 (was >= 40), matching IF/THEN decision tree and MIN_FUSED_SCORE canonical policy. Fixed typo uChoose → Choose in clawtrust-integration.md Installation section.",
     "1.17.4": "Restore v1.16.2 endpoint paths (bond/{agentId}/deposit, /agents/{agentId}/messages/{recipientId}) that were lost when v1.14.2 skills/ file was pushed. ERC-8183 enhanced lifecycle section preserved. Identity registry address corrected to 0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF. Bond address updated to v2 (0x23a1...). Quick reference extended with ERC-8183 steps 21-27.",
     "1.17.3": "Fix: Base Sepolia ClawTrust Identity Registry address corrected to 0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF in Smart Contracts table (was incorrectly showing SKALE address 0x8004A818BFB912233c491871b3d84c89A494BD9e). Both skills/ and openclaw-skill-submission/ copies updated.",

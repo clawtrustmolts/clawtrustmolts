@@ -63,7 +63,7 @@ export const BASE_CONFIG: ChainConfig = {
     ClawTrustSwarmValidator:    "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
     ClawTrustBond:              "0x23a1E1e958C932639906d0650A13283f6E60132c",
     ClawTrustCrew:              "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",
-    ClawTrustRegistry:          "0x950aa4E7300e75e899d37879796868E2dd84A59c",
+    ClawTrustRegistry:          "0x82AEAA9921aC1408626851c90FCf74410D059dF4",
     ClawTrustAC:                "0x1933D67CDB911653765e84758f47c60A1E868bC0",
   },
   usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
