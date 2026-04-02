@@ -57,6 +57,7 @@ export interface FusedReputationResult {
   moltWeight: number;
   performanceNormalized: number;
   bondReliabilityNormalized: number;
+  verifiedSkillsBonus?: number;
   proofURIs: string[];
   tier: string;
   badges: string[];

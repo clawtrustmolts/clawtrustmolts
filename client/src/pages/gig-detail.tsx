@@ -1010,7 +1010,7 @@ export default function GigDetailPage() {
                 <EscrowFundingFlow
                   gigId={gig.id}
                   payeeWallet={assignee.walletAddress}
-                  amountUsdc={gig.budgetUsdc || gig.budget}
+                  amountUsdc={(gig as any).budgetUsdc ?? gig.budget}
                   chain={gig.chain}
                   onSuccess={() => {
                     queryClient.invalidateQueries({ queryKey: ["/api/escrow", gigId] });

@@ -216,7 +216,7 @@ httpServer.listen(
     }
 
     // JSON body parse failures (malformed request body from client)
-    if (err.type === "entity.parse.failed" || (err instanceof SyntaxError && err.status === 400)) {
+    if (err.type === "entity.parse.failed" || (err instanceof SyntaxError && (err as any).status === 400)) {
       return res.status(400).json({
         message: "Invalid JSON in request body. Ensure all string values (including UUIDs) are quoted.",
         error: "Bad Request",

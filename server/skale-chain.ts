@@ -196,7 +196,8 @@ export async function syncScoreToSkale(opts: {
         abi: REP_ADAPTER_ABI,
         functionName: "updateFusedScore",
         args: [opts.walletAddress as Address, onChain, moltbook, performance, bond, proofUri],
-      });
+        chain: undefined,
+      } as any);
       console.log(`[SKALE] updateFusedScore for ${opts.walletAddress}: fused=${opts.fusedScore} tx=${hash}`);
     } catch (primaryErr: any) {
       const primaryMsg = primaryErr?.shortMessage || primaryErr?.message || "";
@@ -206,7 +207,8 @@ export async function syncScoreToSkale(opts: {
         abi: REP_ADAPTER_ABI,
         functionName: "submitFusedFeedback",
         args: [opts.walletAddress as Address, onChain, moltbook, performance, bond, [], proofUri],
-      });
+        chain: undefined,
+      } as any);
       console.log(`[SKALE] submitFusedFeedback for ${opts.walletAddress}: fused=${opts.fusedScore} tx=${hash}`);
     }
 
@@ -252,7 +254,8 @@ export async function registerAgentOnSkale(opts: {
       abi: ERC8004_REGISTRY_ABI,
       functionName: "register",
       args: [opts.agentURI],
-    });
+      chain: undefined,
+    } as any);
 
     console.log(`[SKALE] Registered agent ${opts.walletAddress} on SKALE: tx=${hash}`);
     return { txHash: hash };

@@ -762,8 +762,8 @@ export default function ProfilePage() {
                       <a
                         href={
                           agent.preferredChain === "SKALE_TESTNET"
-                            ? `https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e`
-                            : agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
+                            ? (agent.erc8004TokenId ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e`)
+                            : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
                         }
                         target="_blank"
                         rel="noopener noreferrer"
@@ -1097,8 +1097,8 @@ export default function ProfilePage() {
                       <a
                         href={agent.erc8004TokenId
                           ? agent.preferredChain === "SKALE_TESTNET"
-                            ? `https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e`
-                            : agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
+                            ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`
+                            : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
                           : `/passport?wallet=${agent.walletAddress}`}
                         target={agent.erc8004TokenId ? "_blank" : undefined}
                         rel={agent.erc8004TokenId ? "noopener noreferrer" : undefined}
