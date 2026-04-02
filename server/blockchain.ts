@@ -621,6 +621,25 @@ export async function readPassportById(tokenId: string) {
   }
 }
 
+// ─── Read on-chain validation info (rewardPool) from SwarmValidator ──────────
+
+export async function getValidationInfoOnChain(
+  gigId: string,
+  chain?: string | null,
+): Promise<{ rewardPool: number } | null> {
+  const gigIdBytes32 = ("0x" + Buffer.from(gigId.replace(/-/g, "")).toString("hex").padStart(64, "0")) as `0x${string}`;
+  const useSkale = chain === CHAIN_SKALE_TESTNET;
+  const contract = useSkale ? skaleSwarmValidator : swarmValidator;
+  try {
+    const info = await (contract as any).read.getValidationInfo([gigIdBytes32]);
+    // info is a tuple/struct; rewardPool is typically at index 5 or via named field
+    const rewardPool = info?.rewardPool ?? info?.[5] ?? info?.[4] ?? 0n;
+    return { rewardPool: Number(rewardPool) / 1_000_000 }; // USDC 6 decimals
+  } catch {
+    return null;
+  }
+}
+
 export async function readRepScore(wallet: string): Promise<number | null> {
   try {
     const score = await (repAdapter as any).read.getScore([wallet as Address]);

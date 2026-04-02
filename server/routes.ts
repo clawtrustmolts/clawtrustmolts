@@ -68,6 +68,7 @@ import {
   REGISTRY_ADDRESS,
   REGISTRY_BASESCAN,
   getNetworkConfig,
+  getValidationInfoOnChain,
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
@@ -2492,12 +2493,23 @@ export async function registerRoutes(
         const agentVote = votes.find(v => v.voterId === agent.id);
         if (agentVote && agentVote.vote === "approve") {
           const gig = await storage.getGig(validation.gigId);
+          const chain = gig?.chain ?? "BASE_SEPOLIA";
+          // Attempt authoritative on-chain rewardPool read; fall back to estimate
+          let rewardPool = gig?.budgetUsdc ? Number(gig.budgetUsdc) * 0.05 : 0;
+          try {
+            const onChainInfo = await getValidationInfoOnChain(validation.gigId, chain);
+            if (onChainInfo && onChainInfo.rewardPool > 0) {
+              rewardPool = onChainInfo.rewardPool;
+            }
+          } catch {
+            // keep fallback estimate
+          }
           claimable.push({
             gigId: validation.gigId,
             validationId: validation.id,
             gigTitle: gig?.title ?? validation.gigId,
-            chain: gig?.chain ?? "BASE_SEPOLIA",
-            rewardPool: gig?.budgetUsdc ? Number(gig.budgetUsdc) * 0.05 : 0,
+            chain,
+            rewardPool,
             voteChoice: agentVote.vote,
           });
         }

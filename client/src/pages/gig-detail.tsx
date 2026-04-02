@@ -935,7 +935,7 @@ export default function GigDetailPage() {
                       ))}
                     </div>
                     <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                      Validation ID: {validation?.id?.slice(0, 8)}… · Votes: {(validation as any)?.votes?.length ?? (validation as any)?.voterIds?.length ?? 0} validators
+                      Validation ID: {validation?.id?.slice(0, 8)}… · Votes: {((validation?.votes?.approve ?? 0) + (validation?.votes?.reject ?? 0))} validators
                     </p>
                   </>
                 ) : (
