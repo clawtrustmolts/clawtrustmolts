@@ -2491,37 +2491,46 @@ export async function registerRoutes(
       for (const validation of approvedValidations) {
         const votes = await storage.getVotesByValidation(validation.id);
         const agentVote = votes.find(v => v.voterId === agent.id);
-        // Only include if this validator voted approve AND hasn't claimed yet (DB flag)
-        if (agentVote && agentVote.vote === "approve" && !agentVote.rewardClaimed) {
-          const gig = await storage.getGig(validation.gigId);
-          const chain = gig?.chain ?? "BASE_SEPOLIA";
-          // Read authoritative on-chain rewardPool; skip if already distributed (rewardPool === 0)
-          let rewardPool: number | null = null;
-          try {
-            const onChainInfo = await getValidationInfoOnChain(validation.gigId, chain);
-            if (onChainInfo !== null) {
-              if (onChainInfo.rewardPool <= 0) {
-                // Already claimed or distributed on-chain — skip
-                continue;
-              }
-              rewardPool = onChainInfo.rewardPool;
+        // Filter: validator voted approve on this gig
+        // Note: rewardClaimed in DB is off-chain accounting only — do not use as on-chain claim gate
+        if (!agentVote || agentVote.vote !== "approve") continue;
+
+        const gig = await storage.getGig(validation.gigId);
+        const chain = gig?.chain ?? "BASE_SEPOLIA";
+        const approveVotesCount = votes.filter(v => v.vote === "approve").length || 1;
+
+        // Read authoritative on-chain rewardPool; skip if pool is empty (fully claimed on-chain)
+        let perValidatorReward: number | null = null;
+        let onChainReadSucceeded = false;
+        try {
+          const onChainInfo = await getValidationInfoOnChain(validation.gigId, chain);
+          if (onChainInfo !== null) {
+            onChainReadSucceeded = true;
+            if (onChainInfo.rewardPool <= 0) {
+              // Pool exhausted on-chain — rewards fully claimed, skip
+              continue;
             }
-          } catch {
-            // On-chain read failed — use estimate so user can still attempt claim
+            // Per-validator share = pool divided equally among approve voters
+            perValidatorReward = onChainInfo.rewardPool / approveVotesCount;
           }
-          // Fallback to DB-derived estimate if on-chain read failed
-          if (rewardPool === null) {
-            rewardPool = gig?.budgetUsdc ? Number(gig.budgetUsdc) * 0.05 : 0;
-          }
-          claimable.push({
-            gigId: validation.gigId,
-            validationId: validation.id,
-            gigTitle: gig?.title ?? validation.gigId,
-            chain,
-            rewardPool,
-            voteChoice: agentVote.vote,
-          });
+        } catch {
+          // On-chain read unavailable — fall through to estimate
         }
+
+        // Fallback estimate when RPC unavailable: 5% of budget / approve voters
+        if (!onChainReadSucceeded || perValidatorReward === null) {
+          const poolEstimate = gig?.budgetUsdc ? Number(gig.budgetUsdc) * 0.05 : 0;
+          perValidatorReward = poolEstimate / approveVotesCount;
+        }
+
+        claimable.push({
+          gigId: validation.gigId,
+          validationId: validation.id,
+          gigTitle: gig?.title ?? validation.gigId,
+          chain,
+          rewardPool: perValidatorReward,
+          voteChoice: agentVote.vote,
+        });
       }
 
       res.json({ claimable });

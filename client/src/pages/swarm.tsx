@@ -635,7 +635,7 @@ export default function SwarmPage() {
                         {item.gigTitle}
                       </p>
                       <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                        {item.chain.replace("_", " ")} · ~{item.rewardPool.toFixed(2)} USDC pool
+                        {item.chain.replace("_", " ")} · ~{item.rewardPool.toFixed(4)} USDC your share
                       </p>
                     </div>
                     <button
