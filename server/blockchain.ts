@@ -893,6 +893,12 @@ export async function depositBondOnChain(opts: {
 
 // ─── FIX 11 — Retry queue ────────────────────────────────────────────
 
+// In-memory blocklist of wallet addresses that have permanently failed SKALE sync
+// (error 0xc8b22310 = agent not registered on SKALE RepAdapter).
+// Persists for the lifetime of the process — survives queue cycles but resets on restart.
+// On restart, agents will attempt once, fail permanently, and be re-added.
+export const skaleNotAuthorizedWallets = new Set<string>();
+
 export async function queueBlockchainAction(action: {
   type: "MINT_PASSPORT" | "SET_MOLT_DOMAIN" | "UPDATE_REPUTATION" | "CREATE_VALIDATION" | "LOCK_ESCROW" | "BOND_DEPOSIT" | "BOND_LOCK" | "BOND_SLASH" | "BOND_PERF_SCORE" | "SKALE_REP_SYNC";
   agentId?: string;
@@ -1018,7 +1024,15 @@ export async function processBlockchainQueue(): Promise<void> {
           });
           success = !("error" in result);
           if (!success) {
-            console.error(`[BlockchainQueue] SKALE_REP_SYNC failed for ${payload.walletAddress}:`, (result as any).error);
+            const errResult = result as { error: string; permanent?: boolean };
+            if (errResult.permanent) {
+              // Non-retryable: agent not registered on SKALE — mark failed immediately and add to blocklist
+              skaleNotAuthorizedWallets.add((payload.walletAddress as string).toLowerCase());
+              console.warn(`[BlockchainQueue] SKALE_REP_SYNC permanently skipped for ${payload.walletAddress}: not registered on SKALE`);
+              await storage.updateBlockchainAction(action.id, { status: "failed", lastAttempt: new Date() });
+              continue;
+            }
+            console.error(`[BlockchainQueue] SKALE_REP_SYNC failed for ${payload.walletAddress}:`, errResult.error);
           }
         }
 

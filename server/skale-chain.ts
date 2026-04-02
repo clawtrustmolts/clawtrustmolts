@@ -160,6 +160,16 @@ export async function readSkaleIsRegistered(walletAddress: string): Promise<bool
   }
 }
 
+// 0xc8b22310 = keccak4("NotAuthorized()") or equivalent on SKALE RepAdapter.
+// Agents that are not registered on SKALE emit this selector for both
+// updateFusedScore and submitFusedFeedback — it is a permanent, non-retryable error.
+const SKALE_NOT_AUTHORIZED_SELECTOR = "0xc8b22310";
+
+function isSkaleNotAuthorized(err: any): boolean {
+  const msg = err?.shortMessage || err?.message || "";
+  return msg.includes(SKALE_NOT_AUTHORIZED_SELECTOR) || msg.includes("NotAuthorized");
+}
+
 export async function syncScoreToSkale(opts: {
   walletAddress: string;
   fusedScore: number;
@@ -167,7 +177,7 @@ export async function syncScoreToSkale(opts: {
   moltbookScore: number;
   performanceScore: number;
   bondScore: number;
-}): Promise<{ txHash: string } | { error: string }> {
+}): Promise<{ txHash: string } | { error: string; permanent?: boolean }> {
   const privKey = process.env.DEPLOYER_PRIVATE_KEY;
   if (!privKey) return { error: "Deployer key not configured" };
 
@@ -200,21 +210,38 @@ export async function syncScoreToSkale(opts: {
       } as any);
       console.log(`[SKALE] updateFusedScore for ${opts.walletAddress}: fused=${opts.fusedScore} tx=${hash}`);
     } catch (primaryErr: any) {
+      // If the error is the permanent NotAuthorized selector, skip the fallback immediately
+      if (isSkaleNotAuthorized(primaryErr)) {
+        console.warn(`[SKALE] ${opts.walletAddress} not registered on SKALE (${SKALE_NOT_AUTHORIZED_SELECTOR}) — permanent skip`);
+        return { error: `NotAuthorized on SKALE: ${SKALE_NOT_AUTHORIZED_SELECTOR}`, permanent: true };
+      }
       const primaryMsg = primaryErr?.shortMessage || primaryErr?.message || "";
       console.warn(`[SKALE] updateFusedScore failed (${primaryMsg.substring(0, 80)}), trying submitFusedFeedback...`);
-      hash = await walletClient.writeContract({
-        address: SKALE_CONTRACTS.repAdapter,
-        abi: REP_ADAPTER_ABI,
-        functionName: "submitFusedFeedback",
-        args: [opts.walletAddress as Address, onChain, moltbook, performance, bond, [], proofUri],
-        chain: undefined,
-      } as any);
-      console.log(`[SKALE] submitFusedFeedback for ${opts.walletAddress}: fused=${opts.fusedScore} tx=${hash}`);
+      try {
+        hash = await walletClient.writeContract({
+          address: SKALE_CONTRACTS.repAdapter,
+          abi: REP_ADAPTER_ABI,
+          functionName: "submitFusedFeedback",
+          args: [opts.walletAddress as Address, onChain, moltbook, performance, bond, [], proofUri],
+          chain: undefined,
+        } as any);
+        console.log(`[SKALE] submitFusedFeedback for ${opts.walletAddress}: fused=${opts.fusedScore} tx=${hash}`);
+      } catch (fallbackErr: any) {
+        if (isSkaleNotAuthorized(fallbackErr)) {
+          console.warn(`[SKALE] ${opts.walletAddress} not registered on SKALE (fallback) — permanent skip`);
+          return { error: `NotAuthorized on SKALE: ${SKALE_NOT_AUTHORIZED_SELECTOR}`, permanent: true };
+        }
+        throw fallbackErr;
+      }
     }
 
     return { txHash: hash };
   } catch (err: any) {
     const msg = err?.shortMessage || err?.message || "Sync failed";
+    if (isSkaleNotAuthorized(err)) {
+      console.warn(`[SKALE] ${opts.walletAddress} not registered on SKALE — permanent skip`);
+      return { error: `NotAuthorized on SKALE: ${SKALE_NOT_AUTHORIZED_SELECTOR}`, permanent: true };
+    }
     console.error(`[SKALE] syncScoreToSkale error for ${opts.walletAddress}:`, msg);
     return { error: msg };
   }
