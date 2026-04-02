@@ -2054,10 +2054,9 @@ export async function registerRoutes(
         const created = await storage.createEscrow({
           gigId,
           depositorId: walletAddress,
-          payeeId:     assignee?.walletAddress || "",
-          amount:      gig.budgetUsdc || gig.budget,
+          amount:      (gig as any).budgetUsdc ?? gig.budget,
           currency:    "USDC",
-          chain:       chain || gig.chain || "BASE_SEPOLIA",
+          chain:       (chain || gig.chain || "BASE_SEPOLIA") as "BASE_SEPOLIA" | "SOL_DEVNET" | "SKALE_TESTNET",
           status:      "locked",
         });
         await storage.updateEscrow(created.id, { txHash: lockTxHash });
@@ -2519,7 +2518,7 @@ export async function registerRoutes(
 
         // Fallback estimate when RPC unavailable: 5% of budget / approve voters
         if (!onChainReadSucceeded || perValidatorReward === null) {
-          const poolEstimate = gig?.budgetUsdc ? Number(gig.budgetUsdc) * 0.05 : 0;
+          const poolEstimate = (gig as any)?.budgetUsdc ? Number((gig as any).budgetUsdc) * 0.05 : 0;
           perValidatorReward = poolEstimate / approveVotesCount;
         }
 
@@ -2560,8 +2559,8 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
-      if (gig.status !== "pending_validation" && gig.status !== "in_progress" && gig.status !== "submitted") {
-        return res.status(400).json({ message: `Gig status "${gig.status}" is not eligible for validation. Must be "pending_validation", "in_progress", or "submitted".` });
+      if (gig.status !== "pending_validation" && gig.status !== "in_progress") {
+        return res.status(400).json({ message: `Gig status "${gig.status}" is not eligible for validation. Must be "pending_validation" or "in_progress".` });
       }
 
       const existingValidation = await storage.getValidationByGig(gigId);
@@ -2982,7 +2981,7 @@ export async function registerRoutes(
 
   app.post("/api/swarm/vote", apiLimiter, walletAuthMiddleware, async (req, res) => {
     req.url = "/api/validations/vote";
-    app.handle(req, res);
+    (app as any).handle(req, res);
   });
 
   app.post("/api/molt-sync", apiLimiter, walletAuthMiddleware, async (req, res) => {
@@ -5933,8 +5932,8 @@ export async function registerRoutes(
       details: process.env.PRIVY_APP_ID
         ? (privyJWKS ? "Privy JWT (ES256 cryptographic verification via JWKS)" : "Privy JWT (structure validation)")
         : "No PRIVY_APP_ID - auth middleware bypassed",
-      jwksUrl: PRIVY_JWKS_URL || undefined,
-    };
+    } as any;
+    if (PRIVY_JWKS_URL) (checks.auth as any).jwksUrl = PRIVY_JWKS_URL;
 
     checks.captcha = {
       status: process.env.TURNSTILE_SECRET_KEY ? "active" : "bypassed",
@@ -7285,7 +7284,7 @@ export async function registerRoutes(
 
       res.json({
         agentId: agent.id,
-        name: agent.name,
+        name: (agent as any).name ?? agent.handle,
         handle: agent.handle,
         chain,
         fusedScore,
@@ -10083,7 +10082,7 @@ export async function registerRoutes(
   // GET /api/erc8183/jobs/:jobId/applicants — list applicants
   app.get("/api/erc8183/jobs/:jobId/applicants", apiLimiter, async (req, res) => {
     try {
-      const { jobId } = req.params;
+      const jobId = req.params.jobId as string;
       const job = await storage.getErc8183Job(jobId);
       if (!job) return res.status(404).json({ message: "Job not found" });
       const applicants = await storage.getErc8183Applicants(jobId);
@@ -10096,7 +10095,7 @@ export async function registerRoutes(
   // GET /api/erc8183/agents/:agentId/jobs — per-agent job history
   app.get("/api/erc8183/agents/:agentId/jobs", apiLimiter, async (req, res) => {
     try {
-      const { agentId } = req.params;
+      const agentId = req.params.agentId as string;
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
       const history = await storage.getErc8183JobsByAgent(agentId);
@@ -10109,7 +10108,7 @@ export async function registerRoutes(
   // GET /api/erc8183/agents/:agentId/applications — jobs the agent has applied to
   app.get("/api/erc8183/agents/:agentId/applications", apiLimiter, async (req, res) => {
     try {
-      const { agentId } = req.params;
+      const agentId = req.params.agentId as string;
       const applications = await storage.getErc8183ApplicationsByAgent(agentId);
       return res.json({ applications, total: applications.length });
     } catch (err: any) {
@@ -10120,7 +10119,7 @@ export async function registerRoutes(
   // GET /api/swarm/validations/agent/:agentId — pending swarm validations where agent is selected validator
   app.get("/api/swarm/validations/agent/:agentId", apiLimiter, async (req, res) => {
     try {
-      const { agentId } = req.params;
+      const agentId = req.params.agentId as string;
       const validations = await storage.getValidationsForAgent(agentId);
       return res.json({ validations, total: validations.length });
     } catch (err: any) {
@@ -10190,7 +10189,7 @@ export async function registerRoutes(
   // GET /api/commerce/jobs/:id/receipt — get existing receipt for a commerce job
   app.get("/api/commerce/jobs/:id/receipt", apiLimiter, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
       const job = await storage.getErc8183Job(id);
       if (!job) return res.status(404).json({ message: "Job not found" });
 
@@ -10324,7 +10323,7 @@ export async function registerRoutes(
   // GET /api/erc8183/jobs/:jobId/quorum — swarm quorum state for a job in review/disputed
   app.get("/api/erc8183/jobs/:jobId/quorum", apiLimiter, async (req, res) => {
     try {
-      const { jobId } = req.params;
+      const jobId = req.params.jobId as string;
       const job = await storage.getErc8183Job(jobId);
       if (!job) return res.status(404).json({ message: "Job not found" });
       if (!["submitted", "review", "disputed"].includes(job.status)) {
@@ -10352,7 +10351,7 @@ export async function registerRoutes(
   // GET /api/agents/:agentId/heartbeat-status — check heartbeat decay for signed-in agent
   app.get("/api/agents/:agentId/heartbeat-status", apiLimiter, async (req, res) => {
     try {
-      const { agentId } = req.params;
+      const agentId = req.params.agentId as string;
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
       const { INACTIVITY_DECAY_THRESHOLD_DAYS, INACTIVITY_DECAY_PENALTY } = await import("./reputation");
@@ -10452,7 +10451,7 @@ export async function registerRoutes(
     // ─── Critical checks (weight 15 each) ───────────────────────────────────
 
     // C1. REP_ADAPTER_ABI has 6-arg updateFusedScore (matches deployed contract)
-    const updateFn = (REP_ADAPTER_ABI as any[]).find((f: any) => f.name === "updateFusedScore");
+    const updateFn = (REP_ADAPTER_ABI as unknown as any[]).find((f: any) => f.name === "updateFusedScore");
     const updateArgCount = updateFn?.inputs?.length ?? 0;
     check("rep-adapter-abi-6args", 15, true, updateArgCount === 6,
       `updateFusedScore has ${updateArgCount}/6 inputs`);
@@ -10480,12 +10479,12 @@ export async function registerRoutes(
     } catch { check("agents-in-db", 5, false, false, "storage.getAgents() threw"); }
 
     // N2. submitFusedFeedback has 7 args (matches deployed contract)
-    const submitFn = (REP_ADAPTER_ABI as any[]).find((f: any) => f.name === "submitFusedFeedback");
+    const submitFn = (REP_ADAPTER_ABI as unknown as any[]).find((f: any) => f.name === "submitFusedFeedback");
     check("submit-fused-feedback-7args", 5, false, (submitFn?.inputs?.length ?? 0) === 7,
       `submitFusedFeedback has ${submitFn?.inputs?.length ?? 0}/7 inputs`);
 
     // N3. getFusedScore output tuple has 7 components (incl. performanceScore, bondScore)
-    const getFn = (REP_ADAPTER_ABI as any[]).find((f: any) => f.name === "getFusedScore");
+    const getFn = (REP_ADAPTER_ABI as unknown as any[]).find((f: any) => f.name === "getFusedScore");
     const tupleFields = getFn?.outputs?.[0]?.components?.length ?? 0;
     check("get-fused-score-7-fields", 5, false, tupleFields === 7,
       `getFusedScore output tuple has ${tupleFields}/7 components`);
@@ -10503,13 +10502,13 @@ export async function registerRoutes(
       `SKALE ERC8004 identity=${skaleIdentity}`);
 
     // N6. Base Sepolia repAdapter fallback is set (env var or hardcoded fallback)
-    const baseRep = CLAW_TRUST_REP_ADAPTER_ADDRESS ?? "";
+    const baseRep = (CLAW_TRUST_REP_ADAPTER_ADDRESS ?? "") as string;
     check("base-rep-adapter-addr-set", 5, false,
       baseRep !== "" && baseRep !== "0x0000000000000000000000000000000000000000",
       `Base repAdapter=${baseRep}`);
 
     // N7. ERC8004_CONTRACTS.identity is set
-    const erc8004Identity = ERC8004_CONTRACTS?.identity ?? "";
+    const erc8004Identity = (ERC8004_CONTRACTS?.identity ?? "") as unknown as string;
     check("erc8004-identity-addr-set", 5, false, erc8004Identity !== "",
       `ERC8004 identity=${erc8004Identity}`);
 
@@ -10542,12 +10541,12 @@ export async function registerRoutes(
       `Base Sepolia chain ID = ${baseChainId}`);
 
     // N13. REP_ADAPTER_ABI has computeFusedScore
-    const computeFn = (REP_ADAPTER_ABI as any[]).find((f: any) => f.name === "computeFusedScore");
+    const computeFn = (REP_ADAPTER_ABI as unknown as any[]).find((f: any) => f.name === "computeFusedScore");
     check("rep-adapter-has-computefusedscore", 5, false, !!computeFn,
       computeFn ? "computeFusedScore present" : "missing computeFusedScore");
 
     // N14. REP_ADAPTER_ABI has authorizedOracles
-    const oracleFn = (REP_ADAPTER_ABI as any[]).find((f: any) => f.name === "authorizedOracles");
+    const oracleFn = (REP_ADAPTER_ABI as unknown as any[]).find((f: any) => f.name === "authorizedOracles");
     check("rep-adapter-has-authorized-oracles", 5, false, !!oracleFn,
       oracleFn ? "authorizedOracles present" : "missing authorizedOracles");
 
