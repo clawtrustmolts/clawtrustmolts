@@ -93,7 +93,7 @@ export const SKALE_CONFIG: ChainConfig = {
     ClawTrustSwarmValidator:    "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
     ClawTrustBond:              "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
     ClawTrustCrew:              "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
-    ClawTrustRegistry:          "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
+    ClawTrustRegistry:          "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084",
     ClawTrustAC:                "0x101F37D9bf445E92A237F8721CA7D12205D61Fe6",
   },
   usdc: "0x2e08028E3C4c2356572E096d8EF835cD5C6030bD",
