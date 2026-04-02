@@ -1,9 +1,10 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { Zap, Users, Clock, TrendingUp, DollarSign, CheckCircle, XCircle, ShieldCheck, ShieldX, Activity, ChevronDown, ChevronUp } from "lucide-react";
+import { Zap, Users, Clock, TrendingUp, DollarSign, CheckCircle, XCircle, ShieldCheck, ShieldX, Activity, ChevronDown, ChevronUp, Gift, Loader2 } from "lucide-react";
 import { formatUSDC, SkeletonCard, ErrorState } from "@/components/ui-shared";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { claimRewardOnChain, chainKeyFromBackend, requestAccounts } from "@/lib/onchain";
 
 const NODE_ANGLES = [0, 60, 120, 180, 240, 300];
 
@@ -240,6 +241,8 @@ function ValidationRow({ v, myAgentId }: { v: any; myAgentId: string | null }) {
 
 export default function SwarmPage() {
   const myAgentId = getMyAgentId();
+  const { toast } = useToast();
+  const [claimingGigIds, setClaimingGigIds] = useState<Set<string>>(new Set());
 
   const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<{
     totalAgents: number;
@@ -283,6 +286,40 @@ export default function SwarmPage() {
   const myAgent = myAgentId && agents
     ? agents.find((a: any) => a.id === myAgentId)
     : null;
+
+  const myWalletAddress = myAgent?.walletAddress ?? null;
+
+  const { data: claimableData } = useQuery<{ claimable: Array<{
+    gigId: string;
+    validationId: string;
+    gigTitle: string;
+    chain: string;
+    rewardPool: number;
+  }> }>({
+    queryKey: ["/api/swarm/claimable-rewards", myWalletAddress],
+    queryFn: () => fetch(`/api/swarm/claimable-rewards?walletAddress=${myWalletAddress}`).then(r => r.json()),
+    enabled: !!myWalletAddress,
+    staleTime: 30_000,
+  });
+
+  async function handleClaimReward(gigId: string, chain: string) {
+    try {
+      const accounts = await requestAccounts();
+      const walletAddress = accounts[0];
+      setClaimingGigIds(prev => new Set(prev).add(gigId));
+      const chainKey = chainKeyFromBackend(chain);
+      const txHash = await claimRewardOnChain(gigId, chainKey, walletAddress);
+      toast({
+        title: "Reward claimed!",
+        description: `Tx: ${txHash.slice(0, 10)}…`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/swarm/claimable-rewards", myWalletAddress] });
+    } catch (err: any) {
+      toast({ title: "Claim failed", description: err.message, variant: "destructive" });
+    } finally {
+      setClaimingGigIds(prev => { const s = new Set(prev); s.delete(gigId); return s; });
+    }
+  }
 
   const eligibility = [
     {
@@ -576,9 +613,51 @@ export default function SwarmPage() {
               </div>
             );
           })()}
-          <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-            Rewards (5% of gig budget per approved validation) are auto-distributed on consensus. No manual claim required.
-          </p>
+          {claimableData && claimableData.claimable.length > 0 && (
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center gap-2 mt-1 mb-1">
+                <Gift className="w-3.5 h-3.5" style={{ color: "#22c55e" }} />
+                <p className="text-[11px] font-mono uppercase tracking-wider" style={{ color: "#22c55e" }}>
+                  Claimable Rewards ({claimableData.claimable.length})
+                </p>
+              </div>
+              {claimableData.claimable.map((item) => {
+                const isClaiming = claimingGigIds.has(item.gigId);
+                return (
+                  <div
+                    key={item.gigId}
+                    className="flex items-center justify-between gap-2 rounded-sm px-3 py-2"
+                    style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.18)" }}
+                    data-testid={`claimable-reward-${item.gigId}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-mono truncate" style={{ color: "var(--shell-white)" }}>
+                        {item.gigTitle}
+                      </p>
+                      <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        {item.chain.replace("_", " ")} · ~{item.rewardPool.toFixed(2)} USDC pool
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleClaimReward(item.gigId, item.chain)}
+                      disabled={isClaiming}
+                      className="shrink-0 flex items-center gap-1.5 rounded-sm px-3 py-1 text-[11px] font-mono uppercase tracking-wider transition-opacity disabled:opacity-50"
+                      style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)" }}
+                      data-testid={`btn-claim-reward-${item.gigId}`}
+                    >
+                      {isClaiming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gift className="w-3 h-3" />}
+                      {isClaiming ? "Claiming…" : "Claim"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {claimableData && claimableData.claimable.length === 0 && (
+            <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              No pending reward claims. Rewards (5% of gig budget) become claimable on-chain once a validation reaches consensus.
+            </p>
+          )}
         </div>
       )}
 

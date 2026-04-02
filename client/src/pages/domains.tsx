@@ -207,13 +207,18 @@ export default function DomainsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/domains/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/domains/check-all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/domains/browse"] });
-      const isMolt = variables.tld === ".molt";
-      toast({
-        title: `🦞 ${data.fullDomain} is yours!`,
-        description: data.free
-          ? `Registered free via reputation${isMolt ? " — on-chain passport sync may take a moment" : ""}`
-          : `Paid ${data.pricePaid} USDC${isMolt ? " — on-chain passport sync may take a moment" : ""}`,
-      });
+      if (data.onChainWarning) {
+        toast({
+          title: `🦞 ${data.fullDomain} registered!`,
+          description: "Domain saved — on-chain passport sync timed out and will be retried automatically.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: `🦞 ${data.fullDomain} is yours!`,
+          description: data.free ? "Registered free via reputation" : `Paid ${data.pricePaid} USDC`,
+        });
+      }
     },
     onError: (err: Error) => {
       toast({ title: "Registration failed", description: err.message, variant: "destructive" });

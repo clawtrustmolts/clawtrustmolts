@@ -2463,6 +2463,52 @@ export async function registerRoutes(
     res.json({ validation, votes });
   });
 
+  // ─── Claimable swarm rewards for a wallet address ──────────────────────
+  app.get("/api/swarm/claimable-rewards", async (req, res) => {
+    try {
+      const walletAddress = String(req.query.walletAddress || "").toLowerCase().trim();
+      if (!walletAddress || !walletAddress.startsWith("0x")) {
+        return res.json({ claimable: [] });
+      }
+
+      const allAgents = await storage.getAgents();
+      const agent = allAgents.find(a => a.walletAddress?.toLowerCase() === walletAddress);
+      if (!agent) return res.json({ claimable: [] });
+
+      const validations = await storage.getValidations();
+      const approvedValidations = validations.filter(v => v.status === "approved");
+
+      const claimable: Array<{
+        gigId: string;
+        validationId: string;
+        gigTitle: string;
+        chain: string;
+        rewardPool: number;
+        voteChoice: string;
+      }> = [];
+
+      for (const validation of approvedValidations) {
+        const votes = await storage.getVotesByValidation(validation.id);
+        const agentVote = votes.find(v => v.voterId === agent.id);
+        if (agentVote && agentVote.vote === "approve") {
+          const gig = await storage.getGig(validation.gigId);
+          claimable.push({
+            gigId: validation.gigId,
+            validationId: validation.id,
+            gigTitle: gig?.title ?? validation.gigId,
+            chain: gig?.chain ?? "BASE_SEPOLIA",
+            rewardPool: gig?.budgetUsdc ? Number(gig.budgetUsdc) * 0.05 : 0,
+            voteChoice: agentVote.vote,
+          });
+        }
+      }
+
+      res.json({ claimable });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   const MICRO_REWARD_RATE = 0.005;
 
   const createValidationSchema = z.object({
@@ -3889,9 +3935,17 @@ export async function registerRoutes(
       await storage.updateAgent(agent.id, { moltDomain: `${name}.molt` });
       const updatedAgent = await storage.getAgent(agent.id);
 
+      let moltOnChainWarning = false;
       if (agent.erc8004TokenId) {
-        setMoltDomainOnChain(agent.erc8004TokenId, `${name}.molt`)
-          .catch(err => console.error("[Passport] setMoltDomain error:", err.message));
+        try {
+          await Promise.race([
+            setMoltDomainOnChain(agent.erc8004TokenId, `${name}.molt`),
+            new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+          ]);
+        } catch (err: any) {
+          console.error("[Passport] setMoltDomain on-chain sync failed:", err.message);
+          moltOnChainWarning = true;
+        }
       } else {
         queueBlockchainAction({
           type: "SET_MOLT_DOMAIN",
@@ -3909,6 +3963,7 @@ export async function registerRoutes(
         moltDomain: `${name}.molt`,
         foundingMoltNumber,
         profileUrl: `/profile/${name}.molt`,
+        onChainWarning: moltOnChainWarning || undefined,
         agent: updatedAgent,
       });
     } catch (err: any) {
@@ -4187,10 +4242,18 @@ export async function registerRoutes(
       let onChainTxHash: string | null = null;
       const free = canRegisterFree && !payingEnough;
 
+      let moltOnChainWarning = false;
       if (tld === ".molt") {
         if (resolvedAgent?.erc8004TokenId) {
-          setMoltDomainOnChain(resolvedAgent.erc8004TokenId, `${name}.molt`)
-            .catch(err => console.error("[Domains] setMoltDomain error:", err.message));
+          try {
+            await Promise.race([
+              setMoltDomainOnChain(resolvedAgent.erc8004TokenId, `${name}.molt`),
+              new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+            ]);
+          } catch (err: any) {
+            console.error("[Domains] setMoltDomain on-chain sync failed:", err.message);
+            moltOnChainWarning = true;
+          }
         }
       } else {
         try {
@@ -4230,6 +4293,7 @@ export async function registerRoutes(
         expiresAt,
         onChainTokenId,
         onChainTxHash,
+        onChainWarning: moltOnChainWarning || undefined,
         basescanUrl: onChainTxHash
           ? `https://sepolia.basescan.org/tx/${onChainTxHash}`
           : tld === ".molt" && resolvedAgent?.erc8004TokenId
@@ -5959,7 +6023,7 @@ export async function registerRoutes(
           ClawTrustEscrow:         (process.env.CLAW_TRUST_ESCROW_ADDRESS          || "0x6B676744B8c4900F9999E9a9323728C160706126") as `0x${string}`,
           ClawTrustRepAdapter:     (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS     || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as `0x${string}`,
           ClawTrustSwarmValidator: (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as `0x${string}`,
-          ClawTrustBond:           (process.env.CLAW_TRUST_BOND_ADDRESS            || "0x686E75159a7d65E4B32f7039c5AcB70454eadd7e") as `0x${string}`,
+          ClawTrustBond:           (process.env.CLAW_TRUST_BOND_ADDRESS            || "0x23a1E1e958C932639906d0650A13283f6E60132c") as `0x${string}`,
           ClawTrustCrew:           (process.env.CLAW_TRUST_CREW_ADDRESS            || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as `0x${string}`,
           ERC8004IdentityRegistry:    "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF" as `0x${string}`,
           ERC8004ReputationRegistry: "0x8004B663056A597Dffe9eCcC1965A193B7388713" as `0x${string}`,

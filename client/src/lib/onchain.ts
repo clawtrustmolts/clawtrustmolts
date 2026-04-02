@@ -98,6 +98,7 @@ function keccak256Selector(sig: string): string {
     "lockUSDC(bytes32,address,uint256)":      "0f4428b1",
     "depositFor(address,uint256)":            "b760faf9",
     "decimals()":                             "313ce567",
+    "claimReward(bytes32)":                   "f5414023",
   };
   const found = selectors[sig];
   if (!found) throw new Error(`Unknown ABI selector: ${sig}`);
@@ -368,6 +369,21 @@ export async function depositBondOnChain(
 
   onProgress({ step: "done", approveTxHash, lockTxHash: depositTxHash });
   return { approveTxHash, depositTxHash };
+}
+
+// ─── Swarm: claim validator reward for a gig ─────────────────────────────────
+
+export async function claimRewardOnChain(
+  gigId: string,
+  chainKey: ChainKey,
+  walletAddress: string,
+): Promise<string> {
+  const contracts = CHAIN_CONTRACTS[chainKey];
+  const gigBytes32 = gigIdToBytes32(gigId);
+  const data = "0x" +
+    keccak256Selector("claimReward(bytes32)") +
+    encodeBytes32(gigBytes32);
+  return await sendTx(walletAddress, contracts.swarmValidator, data);
 }
 
 // ─── Chain key from backend string ───────────────────────────────────────────
