@@ -29,6 +29,8 @@ interface ScanResult {
   valid: boolean;
   standard?: string;
   chain?: string;
+  chainId?: number;
+  explorerName?: string;
   source?: string;
   error?: string;
   contract?: { clawCardNFT: string; tokenId: string | null; basescanUrl: string | null };
@@ -219,7 +221,7 @@ export default function PassportPage() {
                 ClawTrust Passport · ERC-8004 · {result.source === "db-verified" ? "DB Verified" : "On-Chain"}
               </span>
               <div className="flex items-center gap-2 flex-wrap">
-                <ChainBadge chain="Base Sepolia" />
+                <ChainBadge chain={result.chain ?? "base-sepolia"} />
                 {verdict === "TRUSTED" ? (
                   <span
                     className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
@@ -357,7 +359,7 @@ export default function PassportPage() {
                       style={{ color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.3)", background: "transparent" }}
                       data-testid="button-view-basescan"
                     >
-                      <ExternalLink className="w-3 h-3" /> Basescan
+                      <ExternalLink className="w-3 h-3" /> {result?.explorerName ?? "Basescan"}
                     </button>
                   </a>
                 )}

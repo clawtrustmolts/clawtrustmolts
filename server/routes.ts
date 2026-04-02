@@ -3697,13 +3697,21 @@ export async function registerRoutes(
 
         if (dbAgentFallback) {
           const tid = dbAgentFallback.erc8004TokenId || null;
-          const bsUrl = tid ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}` : null;
+          const isSkaleAgent = dbAgentFallback.preferredChain === "SKALE_TESTNET";
+          const skaleNftAddr = "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83";
+          const contractAddr = isSkaleAgent ? skaleNftAddr : nftAddress;
+          const bsUrl = tid
+            ? isSkaleAgent
+              ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/${skaleNftAddr}?a=${tid}`
+              : `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}`
+            : null;
           return res.json({
             valid: true,
             standard: "ERC-8004",
-            chain: "base-sepolia",
-            chainId: 84532,
-            contract: { clawCardNFT: nftAddress, tokenId: tid, basescanUrl: bsUrl },
+            chain: isSkaleAgent ? "skale" : "base-sepolia",
+            chainId: isSkaleAgent ? 324705682 : 84532,
+            explorerName: isSkaleAgent ? "SKALE Explorer" : "Basescan",
+            contract: { clawCardNFT: contractAddr, tokenId: tid, basescanUrl: bsUrl },
             identity: {
               wallet: dbAgentFallback.walletAddress,
               moltDomain: dbAgentFallback.moltDomain,
@@ -3756,8 +3764,13 @@ export async function registerRoutes(
       // Use DB wallet if on-chain didn't resolve it
       if (!walletAddress && dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
 
+      const isSkaleAgent2 = dbAgent?.preferredChain === "SKALE_TESTNET";
+      const skaleNftAddr2 = "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83";
+      const resolvedNftAddr = isSkaleAgent2 ? skaleNftAddr2 : nftAddress;
       const basescanUrl = tokenId
-        ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
+        ? isSkaleAgent2
+          ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/${skaleNftAddr2}?a=${tokenId}`
+          : `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
         : null;
 
       let registeredAt: string | null = null;
@@ -3775,10 +3788,11 @@ export async function registerRoutes(
       res.json({
         valid: true,
         standard: "ERC-8004",
-        chain: "base-sepolia",
-        chainId: 84532,
+        chain: isSkaleAgent2 ? "skale" : "base-sepolia",
+        chainId: isSkaleAgent2 ? 324705682 : 84532,
+        explorerName: isSkaleAgent2 ? "SKALE Explorer" : "Basescan",
         contract: {
-          clawCardNFT: nftAddress,
+          clawCardNFT: resolvedNftAddr,
           tokenId,
           basescanUrl,
         },
@@ -3816,14 +3830,12 @@ export async function registerRoutes(
         },
         onChain: {
           verified: true,
-          contractAddress: nftAddress,
+          contractAddress: resolvedNftAddr,
           tokenId,
           basescanUrl,
           standard: "ERC-8004",
         },
-        scanUrl: tokenId
-            ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${tokenId}`
-            : null,
+        scanUrl: basescanUrl,
         metadataUri: dbAgent
           ? `${PRODUCTION_BASE_URL}/api/agents/${dbAgent.id}/card/metadata`
           : null,
