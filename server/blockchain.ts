@@ -21,7 +21,7 @@ const CONTRACT_ADDRESSES = {
   escrow:                  (process.env.CLAW_TRUST_ESCROW_ADDRESS         || "0x6B676744B8c4900F9999E9a9323728C160706126") as Address,
   swarmValidator:          (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as Address,
   repAdapter:              (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as Address,
-  bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x686E75159a7d65E4B32f7039c5AcB70454eadd7e") as Address,
+  bond:                    (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address,
   crew:                    (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address,
   registry:                (process.env.CLAW_TRUST_REGISTRY_ADDRESS       || "0x950aa4E7300e75e899d37879796868E2dd84A59c") as Address,
 };
