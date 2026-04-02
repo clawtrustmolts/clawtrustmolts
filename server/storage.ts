@@ -997,10 +997,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async countAllSlashEvents(): Promise<{ total: number; totalSlashed: number }> {
-    const [result] = await db.select({ total: count() }).from(slashEvents);
-    const totalRows = await db.select({ amount: slashEvents.amount }).from(slashEvents);
-    const totalSlashed = totalRows.reduce((sum, r) => sum + (r.amount || 0), 0);
-    return { total: Number(result?.total || 0), totalSlashed };
+    const [result] = await db
+      .select({
+        total: count(),
+        totalSlashed: sql<number>`coalesce(sum(${slashEvents.amount}), 0)`,
+      })
+      .from(slashEvents);
+    return {
+      total: Number(result?.total || 0),
+      totalSlashed: Number(result?.totalSlashed || 0),
+    };
   }
 
   async updateSlashEvent(id: string, data: Partial<SlashEvent>): Promise<SlashEvent | undefined> {

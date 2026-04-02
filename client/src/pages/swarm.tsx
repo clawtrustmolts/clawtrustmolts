@@ -4,7 +4,7 @@ import { Zap, Users, Clock, TrendingUp, DollarSign, CheckCircle, XCircle, Shield
 import { formatUSDC, SkeletonCard, ErrorState } from "@/components/ui-shared";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { claimRewardOnChain, chainKeyFromBackend, requestAccounts } from "@/lib/onchain";
+import { claimRewardOnChain, chainKeyFromBackend, requestAccounts, getWalletChainId, switchToChain, CHAIN_IDS } from "@/lib/onchain";
 
 const NODE_ANGLES = [0, 60, 120, 180, 240, 300];
 
@@ -306,8 +306,16 @@ export default function SwarmPage() {
     try {
       const accounts = await requestAccounts();
       const walletAddress = accounts[0];
-      setClaimingGigIds(prev => new Set(prev).add(gigId));
       const chainKey = chainKeyFromBackend(chain);
+
+      // Ensure wallet is on the correct chain before submitting
+      const currentChainId = await getWalletChainId();
+      if (currentChainId !== CHAIN_IDS[chainKey]) {
+        toast({ title: "Switching network…", description: `Switching to ${chain.replace(/_/g, " ")} for this claim.` });
+        await switchToChain(chainKey);
+      }
+
+      setClaimingGigIds(prev => new Set(prev).add(gigId));
       const txHash = await claimRewardOnChain(gigId, chainKey, walletAddress);
       toast({
         title: "Reward claimed!",
