@@ -1900,7 +1900,7 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
             <div className="space-y-1">
               {[
                 { label: "Performance", desc: "Gigs completed, dispute rate, repeat hires — swarm verified" },
-                { label: "On-Chain", desc: "Feedback scores recorded by ClawTrustRepAdapter on Base Sepolia" },
+                { label: "On-Chain", desc: `Feedback scores recorded by ClawTrustRepAdapter on ${agent.preferredChain === "SKALE_TESTNET" ? "SKALE (zero gas)" : "Base Sepolia"}` },
                 { label: "Bond", desc: "USDC bond held vs. slashes applied" },
                 { label: "Ecosystem", desc: "Social karma from Moltbook profile + viral bonus" },
               ].map(item => (
@@ -2040,7 +2040,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
       {/* Score + Budget Cards */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         {/* Base Sepolia */}
-        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(0,82,255,0.06)", border: "1px solid rgba(0,82,255,0.2)" }} data-testid="card-base-score">
+        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(0,82,255,0.06)", border: "1px solid rgba(0,82,255,0.2)", order: agent.preferredChain === "SKALE_TESTNET" ? 2 : 1 }} data-testid="card-base-score">
           <div className="flex items-center justify-between">
             <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff", border: "1px solid rgba(0,82,255,0.25)" }}>⬡ Base Sepolia</span>
             {base?.registered
@@ -2066,7 +2066,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
         </div>
 
         {/* SKALE */}
-        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)" }} data-testid="card-skale-score">
+        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)", order: agent.preferredChain === "SKALE_TESTNET" ? 1 : 2 }} data-testid="card-skale-score">
           <div className="flex items-center justify-between">
             <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>⬡ SKALE</span>
             {skale?.registered
@@ -2138,7 +2138,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
                 style={{ color: "#6090ff" }}
                 data-testid="link-base-nft-owner"
               >
-                <ExternalLink className="w-2.5 h-2.5" /> Token #{agent.erc8004TokenId} on BaseScan ↗
+                <ExternalLink className="w-2.5 h-2.5" /> Token #{agent.erc8004TokenId} on {agent.preferredChain === "SKALE_TESTNET" ? "SKALE Explorer" : "BaseScan"} ↗
               </a>
             )}
           </div>
@@ -2590,31 +2590,37 @@ function OverviewTab({
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>ClawCard Contract</span>
               <a
-                href="https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4"
+                href={agent.preferredChain === "SKALE_TESTNET"
+                  ? "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83"
+                  : "https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 hover:opacity-70 transition-opacity"
                 style={{ color: "var(--shell-cream)" }}
                 data-testid="link-basescan-contract"
               >
-                0xf24e41...342C4 <ExternalLink className="w-2.5 h-2.5" />
+                {agent.preferredChain === "SKALE_TESTNET" ? "0xdB7F6c...cb83" : "0xf24e41...342C4"} <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Rep Registry</span>
               <a
-                href="https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"
+                href={agent.preferredChain === "SKALE_TESTNET"
+                  ? "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xFafCA23a7c085A842E827f53A853141C8243F924"
+                  : "https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 hover:opacity-70 transition-opacity"
                 style={{ color: "var(--shell-cream)" }}
               >
-                0xEfF3d3...66DB <ExternalLink className="w-2.5 h-2.5" />
+                {agent.preferredChain === "SKALE_TESTNET" ? "0xFafCA2...F924" : "0xEfF3d3...66DB"} <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Network</span>
-              <span style={{ color: "var(--teal-glow)" }}>Base Sepolia · Chain 84532</span>
+              <span style={{ color: "var(--teal-glow)" }}>
+                {agent.preferredChain === "SKALE_TESTNET" ? "SKALE Base Sepolia · Chain 324705682" : "Base Sepolia · Chain 84532"}
+              </span>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Verified</span>
@@ -2625,14 +2631,16 @@ function OverviewTab({
           </div>
           <div className="mt-4 pt-3 border-t" style={{ borderColor: "rgba(10, 236, 184, 0.15)" }}>
             <a
-              href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
+              href={agent.preferredChain === "SKALE_TESTNET"
+                ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${erc8004.tokenId}`
+                : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[10px] font-mono flex items-center gap-1.5 hover:opacity-70 transition-opacity"
               style={{ color: "var(--teal-glow)" }}
               data-testid="link-basescan-passport"
             >
-              <ExternalLink className="w-3 h-3" /> View full passport on BaseScan ↗
+              <ExternalLink className="w-3 h-3" /> View full passport on {agent.preferredChain === "SKALE_TESTNET" ? "SKALE Explorer" : "BaseScan"} ↗
             </a>
           </div>
 
