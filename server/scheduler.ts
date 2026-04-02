@@ -5,7 +5,7 @@ import { recordRiskEvent } from "./risk-engine";
 import { moltyDailyDigest } from "./molty-automation";
 import { telegramDailyDigest, telegramBlogPost } from "./telegram-announcements";
 import { moltbookDailyDigest, moltbookClawHubSkillShare, moltbookEducationalPost, moltbookWeeklyBlog, commentOnRecentPost } from "./moltbook-agent";
-import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries, expireValidationOnChain, queueBlockchainAction, getOracleHealth } from "./blockchain";
+import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntries, expireValidationOnChain, queueBlockchainAction, getOracleHealth, skaleNotAuthorizedWallets } from "./blockchain";
 import { syncScoreToSkale } from "./skale-chain";
 import { checkAndTopUpSkaleFuel } from "./erc8183-service";
 import { isAddress } from "viem";
@@ -213,30 +213,45 @@ async function runScoreSync() {
 
       // ─── SKALE sync (zero-gas) ─────────────────────────────────────
       let skaleSyncCovered = false;
-      const skalePayload = {
-        walletAddress:    freshAgent.walletAddress,
-        fusedScore:       freshAgent.fusedScore       || 0,
-        onChainScore:     freshAgent.onChainScore     || 0,
-        moltbookScore:    freshAgent.moltbookKarma    || 0,
-        performanceScore: freshAgent.performanceScore || 0,
-        bondScore:        freshAgent.bondReliability  || 0,
-      };
-      const skaleResult = await syncScoreToSkale(skalePayload)
-        .catch((err: any) => ({ error: err?.message || "unknown" }));
+      const walletKey = (freshAgent.walletAddress || "").toLowerCase();
 
-      if (!("error" in skaleResult)) {
-        skaleUpdated++;
-        skaleSyncCovered = true;
+      // Skip SKALE sync for wallets permanently rejected by the RepAdapter (0xc8b22310)
+      if (skaleNotAuthorizedWallets.has(walletKey)) {
+        skaleSyncCovered = true; // treat as covered so we don't loop on cache miss
       } else {
-        const skaleQueueId = await queueBlockchainAction({
-          type: "SKALE_REP_SYNC",
-          agentId: freshAgent.id,
-          payload: skalePayload,
-        }).catch(() => null);
-        if (skaleQueueId !== null) {
+        const skalePayload = {
+          walletAddress:    freshAgent.walletAddress,
+          fusedScore:       freshAgent.fusedScore       || 0,
+          onChainScore:     freshAgent.onChainScore     || 0,
+          moltbookScore:    freshAgent.moltbookKarma    || 0,
+          performanceScore: freshAgent.performanceScore || 0,
+          bondScore:        freshAgent.bondReliability  || 0,
+        };
+        const skaleResult = await syncScoreToSkale(skalePayload)
+          .catch((err: any) => ({ error: err?.message || "unknown" }));
+
+        if (!("error" in skaleResult)) {
+          skaleUpdated++;
           skaleSyncCovered = true;
         } else {
-          console.warn(`[Scheduler] Score sync: failed to queue SKALE_REP_SYNC for agent ${freshAgent.id}`);
+          const skaleResultErr = skaleResult as { error: string; permanent?: boolean };
+          if (skaleResultErr.permanent) {
+            // Permanently unauthorized — blocklist and skip queueing
+            skaleNotAuthorizedWallets.add(walletKey);
+            skaleSyncCovered = true;
+            console.warn(`[Scheduler] SKALE sync permanently skipped for ${freshAgent.walletAddress} (not registered)`);
+          } else {
+            const skaleQueueId = await queueBlockchainAction({
+              type: "SKALE_REP_SYNC",
+              agentId: freshAgent.id,
+              payload: skalePayload,
+            }).catch(() => null);
+            if (skaleQueueId !== null) {
+              skaleSyncCovered = true;
+            } else {
+              console.warn(`[Scheduler] Score sync: failed to queue SKALE_REP_SYNC for agent ${freshAgent.id}`);
+            }
+          }
         }
       }
 
