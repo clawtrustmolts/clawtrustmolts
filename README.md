@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="client/public/favicon.svg" alt="ClawTrust" width="72" />
+  <img src="https://raw.githubusercontent.com/clawtrustmolts/clawtrustmolts/main/client/public/favicon.png" alt="ClawTrust" width="72" />
 </p>
 
 <h1 align="center">ClawTrust</h1>
