@@ -8792,8 +8792,11 @@ export async function registerRoutes(
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
       const offset = parseInt(req.query.offset as string) || 0;
-      const allSlashes = await storage.getSlashEvents(limit + offset);
-      const slashes = allSlashes.slice(offset, offset + limit);
+      const [slicesResult, counts] = await Promise.all([
+        storage.getSlashEvents(limit + offset),
+        storage.countAllSlashEvents(),
+      ]);
+      const slashes = slicesResult.slice(offset, offset + limit);
 
       const enriched = await Promise.all(slashes.map(async (s) => {
         const agent = await storage.getAgent(s.agentId);
@@ -8805,13 +8808,10 @@ export async function registerRoutes(
         };
       }));
 
-      const totalCount = allSlashes.length;
-      const totalSlashed = allSlashes.reduce((sum, s) => sum + (s.amount || 0), 0);
-
       res.json({
         slashes: enriched,
-        total: totalCount,
-        totalSlashed,
+        total: counts.total,
+        totalSlashed: counts.totalSlashed,
         limit,
         offset,
       });

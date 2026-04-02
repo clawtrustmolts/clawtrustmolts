@@ -83,6 +83,14 @@ type DomainRecord = {
   registeredAt: string;
 };
 
+function agentPrice(name: string): number {
+  const len = name.length;
+  if (len <= 3) return 60;
+  if (len === 4) return 20;
+  if (len <= 9) return 8;
+  return 5;
+}
+
 function TldBadge({ tld, size = "sm" }: { tld: string; size?: "sm" | "md" | "lg" }) {
   const meta = TLD_META[tld as TLD];
   if (!meta) return null;
@@ -177,10 +185,11 @@ export default function DomainsPage() {
 
   const registerMutation = useMutation({
     mutationFn: async ({ name, tld, free }: { name: string; tld: string; free: boolean }) => {
+      const price = tld === ".agent" ? agentPrice(name) : (TLD_META[tld as TLD]?.price ?? 0);
       const res = await apiRequest("POST", "/api/domains/register", {
         name,
         tld,
-        pricePaid: free ? 0 : TLD_META[tld as TLD]?.price ?? 0,
+        pricePaid: free ? 0 : price,
         walletAddress: wallet,
       });
       if (!res.ok) {
@@ -189,7 +198,7 @@ export default function DomainsPage() {
       }
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       setRegisterSuccess({
         fullDomain: data.fullDomain,
         basescanUrl: data.basescanUrl,
@@ -198,9 +207,12 @@ export default function DomainsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/domains/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/domains/check-all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/domains/browse"] });
+      const isMolt = variables.tld === ".molt";
       toast({
         title: `🦞 ${data.fullDomain} is yours!`,
-        description: data.free ? "Registered free via reputation" : `Paid ${data.pricePaid} USDC`,
+        description: data.free
+          ? `Registered free via reputation${isMolt ? " — on-chain passport sync may take a moment" : ""}`
+          : `Paid ${data.pricePaid} USDC${isMolt ? " — on-chain passport sync may take a moment" : ""}`,
       });
     },
     onError: (err: Error) => {
@@ -307,7 +319,7 @@ export default function DomainsPage() {
                   <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                     <th className="text-left px-4 py-2.5 text-xs uppercase tracking-wider font-display" style={{ color: "var(--barnacle-gray)" }}>TLD</th>
                     <th className="text-left px-4 py-2.5 text-xs uppercase tracking-wider font-display" style={{ color: "var(--barnacle-gray)" }}>Status</th>
-                    <th className="text-left px-4 py-2.5 text-xs uppercase tracking-wider font-display" style={{ color: "var(--barnacle-gray)" }}>Access</th>
+                    <th className="text-left px-4 py-2.5 text-xs uppercase tracking-wider font-display" style={{ color: "var(--barnacle-gray)" }}>Pricing</th>
                     <th className="px-4 py-2.5"></th>
                   </tr>
                 </thead>
@@ -315,6 +327,13 @@ export default function DomainsPage() {
                   {checkData.results.map((row) => {
                     const meta = TLD_META[row.tld as TLD];
                     const isPending = registerMutation.isPending && !registerSuccess;
+                    const ownedDomainNames = new Set(
+                      (walletDomains?.domains ?? []).map(d => `${d.name}${d.tld}`)
+                    );
+                    const alreadyOwned = ownedDomainNames.has(`${debouncedName}${row.tld}`);
+                    const agentDomainPrice = row.tld === ".agent" ? agentPrice(debouncedName) : null;
+                    const displayPrice = agentDomainPrice ?? row.price ?? meta?.price;
+
                     return (
                       <tr key={row.tld} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
                         data-testid={`availability-row-${row.tld.slice(1)}`}>
@@ -324,7 +343,13 @@ export default function DomainsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          {row.available ? (
+                          {alreadyOwned ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-sm"
+                              style={{ background: "rgba(10,236,184,0.12)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.25)" }}
+                              data-testid={`badge-owned-${row.tld.slice(1)}`}>
+                              <CheckCircle className="w-3 h-3" /> You own this
+                            </span>
+                          ) : row.available ? (
                             <span className="inline-flex items-center gap-1 text-green-400">
                               <CheckCircle className="w-3.5 h-3.5" /> Available
                             </span>
@@ -336,46 +361,59 @@ export default function DomainsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs" style={{ color: "var(--barnacle-gray)" }}>
-                          {meta?.access}
+                          {row.tld === ".agent" ? (
+                            <span>
+                              <span style={{ color: "#22d3ee", fontWeight: 600 }}>{agentDomainPrice} USDC/yr</span>
+                              <span className="ml-1 opacity-60">
+                                ({debouncedName.length <= 3 ? "3-char" : debouncedName.length === 4 ? "4-char" : debouncedName.length <= 9 ? "5-9 char" : "10+ char"})
+                              </span>
+                            </span>
+                          ) : (
+                            meta?.access
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {row.available && isConnected && (
-                            <div className="flex items-center justify-end gap-2">
-                              {row.agentMeetsRequirement ? (
-                                <button
-                                  onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: true })}
-                                  disabled={isPending}
-                                  className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
-                                  style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
-                                  data-testid={`button-register-free-${row.tld.slice(1)}`}
-                                >
-                                  {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Register Free"}
-                                </button>
-                              ) : meta?.price && meta.price > 0 ? (
-                                <button
-                                  onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: false })}
-                                  disabled={isPending}
-                                  className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
-                                  style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
-                                  data-testid={`button-register-pay-${row.tld.slice(1)}`}
-                                >
-                                  {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : `Buy ${row.price ?? meta.price} USDC/yr`}
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: true })}
-                                  disabled={isPending}
-                                  className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
-                                  style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
-                                  data-testid={`button-register-${row.tld.slice(1)}`}
-                                >
-                                  {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Register"}
-                                </button>
+                          {alreadyOwned ? null : (
+                            <>
+                              {row.available && isConnected && (
+                                <div className="flex items-center justify-end gap-2">
+                                  {row.agentMeetsRequirement ? (
+                                    <button
+                                      onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: true })}
+                                      disabled={isPending}
+                                      className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                                      style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
+                                      data-testid={`button-register-free-${row.tld.slice(1)}`}
+                                    >
+                                      {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Register Free"}
+                                    </button>
+                                  ) : displayPrice && displayPrice > 0 ? (
+                                    <button
+                                      onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: false })}
+                                      disabled={isPending}
+                                      className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                                      style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
+                                      data-testid={`button-register-pay-${row.tld.slice(1)}`}
+                                    >
+                                      {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : `Buy ${displayPrice} USDC/yr`}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => registerMutation.mutate({ name: debouncedName, tld: row.tld, free: true })}
+                                      disabled={isPending}
+                                      className="px-3 py-1 rounded-sm text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                                      style={{ background: `${meta?.color}22`, color: meta?.color, border: `1px solid ${meta?.color}44` }}
+                                      data-testid={`button-register-${row.tld.slice(1)}`}
+                                    >
+                                      {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Register"}
+                                    </button>
+                                  )}
+                                </div>
                               )}
-                            </div>
-                          )}
-                          {row.available && !isConnected && (
-                            <span className="text-xs" style={{ color: "var(--barnacle-gray)" }}>Connect wallet</span>
+                              {row.available && !isConnected && (
+                                <span className="text-xs" style={{ color: "var(--barnacle-gray)" }}>Connect wallet</span>
+                              )}
+                            </>
                           )}
                         </td>
                       </tr>

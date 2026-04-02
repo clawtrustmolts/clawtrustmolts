@@ -29,7 +29,7 @@ export const CHAIN_CONTRACTS: Record<ChainKey, ChainContracts> = {
   BASE_SEPOLIA: {
     usdc:           "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     escrow:         "0x6B676744B8c4900F9999E9a9323728C160706126",
-    bond:           "0x686E75159a7d65E4B32f7039c5AcB70454eadd7e",
+    bond:           "0x23a1E1e958C932639906d0650A13283f6E60132c",
     swarmValidator: "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
     rpc:            "https://sepolia.base.org",
     explorer:       "https://sepolia.basescan.org",

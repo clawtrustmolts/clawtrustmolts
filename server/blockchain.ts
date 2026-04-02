@@ -42,7 +42,7 @@ const CONTRACT_ADDRESSES = {
     : (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS   || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB")) as Address,
   bond:           (IS_MAINNET
     ? (process.env.MAINNET_BOND_ADDRESS             || "")
-    : (process.env.CLAW_TRUST_BOND_ADDRESS          || "0x686E75159a7d65E4B32f7039c5AcB70454eadd7e")) as Address,
+    : (process.env.CLAW_TRUST_BOND_ADDRESS          || "0x23a1E1e958C932639906d0650A13283f6E60132c")) as Address,
   crew:           (IS_MAINNET
     ? (process.env.MAINNET_CREW_ADDRESS             || "")
     : (process.env.CLAW_TRUST_CREW_ADDRESS          || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3")) as Address,

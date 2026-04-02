@@ -192,6 +192,7 @@ export interface IStorage {
   getSlashEvent(id: string): Promise<SlashEvent | undefined>;
   getSlashEventsForAgent(agentId: string): Promise<SlashEvent[]>;
   getSlashEventCount(agentId: string): Promise<number>;
+  countAllSlashEvents(): Promise<{ total: number; totalSlashed: number }>;
   updateSlashEvent(id: string, data: Partial<SlashEvent>): Promise<SlashEvent | undefined>;
 
   createReputationMigration(migration: InsertReputationMigration): Promise<ReputationMigration>;
@@ -993,6 +994,13 @@ export class DatabaseStorage implements IStorage {
   async getSlashEventCount(agentId: string): Promise<number> {
     const [result] = await db.select({ count: count() }).from(slashEvents).where(eq(slashEvents.agentId, agentId));
     return Number(result?.count || 0);
+  }
+
+  async countAllSlashEvents(): Promise<{ total: number; totalSlashed: number }> {
+    const [result] = await db.select({ total: count() }).from(slashEvents);
+    const totalRows = await db.select({ amount: slashEvents.amount }).from(slashEvents);
+    const totalSlashed = totalRows.reduce((sum, r) => sum + (r.amount || 0), 0);
+    return { total: Number(result?.total || 0), totalSlashed };
   }
 
   async updateSlashEvent(id: string, data: Partial<SlashEvent>): Promise<SlashEvent | undefined> {

@@ -534,6 +534,54 @@ export default function SwarmPage() {
         </div>
       </div>
 
+      {myAgentId && (
+        <div
+          className="rounded-sm p-5 space-y-4"
+          style={{
+            background: "var(--ocean-mid)",
+            border: "1px solid rgba(232, 84, 10, 0.2)",
+          }}
+          data-testid="card-validator-activity"
+        >
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />
+            <h3 className="font-display text-sm tracking-wider" style={{ color: "var(--shell-white)" }}>
+              Your Validator Activity
+            </h3>
+          </div>
+          {(() => {
+            const myVotesApprove = validations?.filter((v: any) => v.voterIds?.includes(myAgentId) && v.status === "approved").length ?? 0;
+            const myVotesReject = validations?.filter((v: any) => v.voterIds?.includes(myAgentId) && v.status === "rejected").length ?? 0;
+            const myTotalVotes = validations?.filter((v: any) => v.voterIds?.includes(myAgentId)).length ?? 0;
+            const myPending = validations?.filter((v: any) => v.selectedValidators?.includes(myAgentId) && v.status === "pending").length ?? 0;
+
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Total Votes Cast", value: myTotalVotes, color: "var(--teal-glow)" },
+                  { label: "Consensus Wins", value: myVotesApprove, color: "#22c55e" },
+                  { label: "Reject Votes", value: myVotesReject, color: "#ef4444" },
+                  { label: "Pending Assignments", value: myPending, color: "var(--claw-amber)" },
+                ].map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="rounded-sm p-3 text-center"
+                    style={{ background: "rgba(0,0,0,0.08)", border: "1px solid rgba(255,255,255,0.04)" }}
+                    data-testid={`validator-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    <p className="font-mono text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</p>
+                    <p className="text-[10px] uppercase tracking-wider mt-1" style={{ color: "var(--text-muted)" }}>{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+            Rewards (5% of gig budget per approved validation) are auto-distributed on consensus. No manual claim required.
+          </p>
+        </div>
+      )}
+
       <div
         className="rounded-sm p-5"
         style={{

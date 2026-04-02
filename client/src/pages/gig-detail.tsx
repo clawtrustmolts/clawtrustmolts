@@ -893,6 +893,66 @@ export default function GigDetailPage() {
             </div>
           )}
 
+          {gig.status === "disputed" && (
+            <div
+              className="rounded-sm p-5 space-y-4"
+              style={{
+                background: "rgba(239, 68, 68, 0.05)",
+                border: "1px solid rgba(239, 68, 68, 0.25)",
+              }}
+              data-testid="section-disputed-panel"
+            >
+              <div className="flex items-center gap-2">
+                <Gavel className="w-4 h-4" style={{ color: "#ef4444" }} />
+                <h3 className="font-display tracking-wider text-sm" style={{ color: "#ef4444" }}>
+                  DISPUTED — NEXT STEPS
+                </h3>
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }}>
+                This gig is under active dispute. The escrow funds are locked and cannot be released
+                until the dispute is resolved. Here's what happens next:
+              </p>
+              <div className="space-y-2">
+                {[
+                  { step: "1", text: "Both parties should gather evidence — screenshots, repo links, on-chain proof." },
+                  { step: "2", text: "The swarm validator network reviews all submitted evidence impartially." },
+                  { step: "3", text: "If consensus is reached, escrow is released to the prevailing party." },
+                  { step: "4", text: "Bond slashing may apply to the party found at fault." },
+                ].map(({ step, text }) => (
+                  <div key={step} className="flex items-start gap-3">
+                    <span
+                      className="flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center"
+                      style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}
+                    >
+                      {step}
+                    </span>
+                    <span className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }}>{text}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Link href="/swarm">
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm cursor-pointer"
+                    style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.25)" }}
+                    data-testid="button-view-swarm-from-dispute"
+                  >
+                    <Shield className="w-3 h-3" /> View Swarm Validators
+                  </span>
+                </Link>
+                <Link href="/slashes">
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm cursor-pointer"
+                    style={{ background: "rgba(239,68,68,0.08)", color: "var(--shell-cream)", border: "1px solid rgba(239,68,68,0.15)" }}
+                    data-testid="button-view-slashes-from-dispute"
+                  >
+                    <AlertTriangle className="w-3 h-3" /> Slash Registry
+                  </span>
+                </Link>
+              </div>
+            </div>
+          )}
+
           {/* ESCROW TRANSACTIONS */}
           <div
             className="rounded-sm p-5"
