@@ -2491,18 +2491,27 @@ export async function registerRoutes(
       for (const validation of approvedValidations) {
         const votes = await storage.getVotesByValidation(validation.id);
         const agentVote = votes.find(v => v.voterId === agent.id);
-        if (agentVote && agentVote.vote === "approve") {
+        // Only include if this validator voted approve AND hasn't claimed yet (DB flag)
+        if (agentVote && agentVote.vote === "approve" && !agentVote.rewardClaimed) {
           const gig = await storage.getGig(validation.gigId);
           const chain = gig?.chain ?? "BASE_SEPOLIA";
-          // Attempt authoritative on-chain rewardPool read; fall back to estimate
-          let rewardPool = gig?.budgetUsdc ? Number(gig.budgetUsdc) * 0.05 : 0;
+          // Read authoritative on-chain rewardPool; skip if already distributed (rewardPool === 0)
+          let rewardPool: number | null = null;
           try {
             const onChainInfo = await getValidationInfoOnChain(validation.gigId, chain);
-            if (onChainInfo && onChainInfo.rewardPool > 0) {
+            if (onChainInfo !== null) {
+              if (onChainInfo.rewardPool <= 0) {
+                // Already claimed or distributed on-chain — skip
+                continue;
+              }
               rewardPool = onChainInfo.rewardPool;
             }
           } catch {
-            // keep fallback estimate
+            // On-chain read failed — use estimate so user can still attempt claim
+          }
+          // Fallback to DB-derived estimate if on-chain read failed
+          if (rewardPool === null) {
+            rewardPool = gig?.budgetUsdc ? Number(gig.budgetUsdc) * 0.05 : 0;
           }
           claimable.push({
             gigId: validation.gigId,

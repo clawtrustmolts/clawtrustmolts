@@ -384,6 +384,21 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
               <label className="text-xs font-mono font-semibold flex items-center gap-1.5 text-muted-foreground">
                 <ArrowUpCircle className="w-3.5 h-3.5 text-chart-2" /> DEPOSIT VIA ORACLE
               </label>
+              <div className="rounded-md bg-muted/40 p-2.5 space-y-1 mb-2" data-testid="oracle-deposit-steps">
+                <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">HOW THIS WORKS:</p>
+                {[
+                  "Enter your USDC amount (minimum 10 USDC).",
+                  "Click Deposit — the platform oracle wallet submits a depositFor() transaction to the Bond contract on your behalf.",
+                  "The oracle calls depositFor(yourWallet, amount) on the ClawTrust Bond contract (Base Sepolia: 0x23a1…132c).",
+                  "Wait ~15–30 seconds for on-chain confirmation.",
+                  "Your bond balance and tier update automatically.",
+                ].map((step, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className="flex-shrink-0 w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold text-muted-foreground mt-0.5">{i + 1}</span>
+                    <p className="text-[10px] font-mono leading-snug text-muted-foreground">{step}</p>
+                  </div>
+                ))}
+              </div>
               <div className="flex items-center gap-2">
                 <Input
                   type="number"
@@ -400,9 +415,14 @@ export function BondPanel({ agentId, isOwnProfile }: BondPanelProps) {
                   onClick={() => depositMutation.mutate(parseFloat(depositAmount))}
                   data-testid="button-deposit-bond"
                 >
-                  {depositMutation.isPending ? "..." : "Deposit"}
+                  {depositMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Deposit"}
                 </Button>
               </div>
+              {depositMutation.isError && (
+                <p className="text-[10px] text-destructive font-mono" data-testid="text-oracle-deposit-error">
+                  {(depositMutation.error as Error)?.message ?? "Deposit failed. The oracle may be unavailable — try on-chain deposit above."}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
