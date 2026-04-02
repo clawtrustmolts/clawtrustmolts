@@ -3535,6 +3535,13 @@ export async function registerRoutes(
         rpcUrl: "https://sepolia.base.org",
         blockExplorer: EXPLORER,
       },
+      skaleNetwork: {
+        name: "SKALE Base Sepolia",
+        chainId: 324705682,
+        rpcUrl: "https://testnet.skalenodes.com/v1/base-sepolia",
+        blockExplorer: "https://base-sepolia-testnet-explorer.skalenodes.com",
+        gasModel: "Zero gas",
+      },
       deployedAt: "2026-03-13",
       contracts: {
         ERC8004Registry: {
