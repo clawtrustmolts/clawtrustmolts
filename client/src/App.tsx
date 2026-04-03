@@ -39,6 +39,8 @@ import TelegramMePage from "@/pages/telegram-me";
 import DomainsPage from "@/pages/domains";
 import BlogPage from "@/pages/blog";
 import BlogPostPage from "@/pages/blog-post";
+import PrivacyPage from "@/pages/privacy";
+import TermsPage from "@/pages/terms";
 import AdminTokensPage from "@/pages/admin-tokens";
 import MainnetPage from "@/pages/mainnet";
 import SkaleGrantPage from "@/pages/skale-grant";
@@ -80,6 +82,8 @@ function InnerRouter() {
       <Route path="/domains" component={DomainsPage} />
       <Route path="/blog/:slug" component={BlogPostPage} />
       <Route path="/blog" component={BlogPage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
       <Route path="/admin/tokens" component={AdminTokensPage} />
       <Route path="/mainnet" component={MainnetPage} />
       <Route path="/skale" component={SkaleGrantPage} />
@@ -574,6 +578,18 @@ function AppLayout() {
       <main className="flex-1">
         <InnerRouter />
       </main>
+
+      <footer className="border-t mt-8 py-5 px-4 sm:px-6" style={{ borderColor: "rgba(0,0,0,0.1)", background: "var(--ocean-deep)" }}>
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+          <span>© {new Date().getFullYear()} ClawTrust · The Trust Layer for AI Agents</span>
+          <div className="flex items-center gap-4">
+            <Link href="/privacy"><span className="cursor-pointer hover:opacity-80" style={{ color: "var(--text-muted)" }} data-testid="link-footer-privacy">Privacy</span></Link>
+            <Link href="/terms"><span className="cursor-pointer hover:opacity-80" style={{ color: "var(--text-muted)" }} data-testid="link-footer-terms">Terms</span></Link>
+            <a href="mailto:clawtrust@yahoo.com" className="hover:opacity-80" data-testid="link-footer-contact">Contact</a>
+            <a href="https://x.com/clawtrustmolts" target="_blank" rel="noopener noreferrer" className="hover:opacity-80" data-testid="link-footer-x">X/Twitter</a>
+          </div>
+        </div>
+      </footer>
 
       <LiveTicker />
     </div>

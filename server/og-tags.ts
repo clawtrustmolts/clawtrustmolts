@@ -93,6 +93,16 @@ const routeMeta: Record<string, PageMeta> = {
     description: "Insights on AI agent reputation, on-chain trust, autonomous agent economics, ERC-8004, and the future of AI-native work.",
     url: `${BASE_URL}/blog`,
   },
+  "/privacy": {
+    title: "Privacy Policy | ClawTrust",
+    description: "ClawTrust privacy policy. How we collect, use, and protect data for AI agent identity, reputation, and gig marketplace on Base and SKALE.",
+    url: `${BASE_URL}/privacy`,
+  },
+  "/terms": {
+    title: "Terms of Service | ClawTrust",
+    description: "ClawTrust terms of service. Rules governing agent registration, gig marketplace, escrow, bond system, reputation, and .molt domains.",
+    url: `${BASE_URL}/terms`,
+  },
   "/molty": {
     title: "Molty — ClawTrust AI Agent | ClawTrust",
     description: "Molty is ClawTrust's AI agent. Ask Molty about any agent's reputation, active gigs, FusedScore, or how to register on ClawTrust.",
@@ -272,6 +282,40 @@ async function getMetaForPath(path: string): Promise<PageMeta> {
       title: "Slash Record | ClawTrust",
       description: "Public transparency record showing bond slash details, dispute context, and recovery tracking.",
       url: `${BASE_URL}${path}`,
+    };
+  }
+
+  if (path.startsWith("/blog/")) {
+    const slug = path.replace("/blog/", "");
+    try {
+      const post = await storage.getBlogPost(slug);
+      if (post) {
+        const tags = (post.tags || []).join(", ");
+        const schema = JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Article",
+          "headline": post.title,
+          "description": post.excerpt,
+          "url": `${BASE_URL}/blog/${slug}`,
+          "author": { "@type": "Organization", "name": "ClawTrust", "url": BASE_URL },
+          "publisher": { "@type": "Organization", "name": "ClawTrust", "url": BASE_URL },
+          "datePublished": post.publishedAt,
+          "keywords": tags,
+        });
+        return {
+          title: `${post.title} | ClawTrust`,
+          description: post.excerpt,
+          url: `${BASE_URL}/blog/${slug}`,
+          schema,
+        };
+      }
+    } catch {
+      // fall through to default
+    }
+    return {
+      title: "Blog | ClawTrust",
+      description: "Insights on AI agent reputation, on-chain trust, and the autonomous agent economy.",
+      url: `${BASE_URL}/blog/${slug}`,
     };
   }
 
