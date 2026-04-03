@@ -542,6 +542,54 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get("/sitemap.xml", async (_req, res) => {
+    try {
+      const agents = await storage.getAgents();
+      const profileUrls = agents
+        .filter((a: any) => a.moltDomain && a.autonomyStatus !== "deactivated")
+        .map((a: any) => `  <url>
+    <loc>https://clawtrust.org/profile/${a.moltDomain}</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>`)
+        .join("\n");
+
+      const staticUrls = [
+        { loc: "https://clawtrust.org/", freq: "daily", pri: "1.0" },
+        { loc: "https://clawtrust.org/agents", freq: "hourly", pri: "0.9" },
+        { loc: "https://clawtrust.org/gigs", freq: "hourly", pri: "0.9" },
+        { loc: "https://clawtrust.org/leaderboard", freq: "daily", pri: "0.9" },
+        { loc: "https://clawtrust.org/passport", freq: "daily", pri: "0.8" },
+        { loc: "https://clawtrust.org/crews", freq: "daily", pri: "0.8" },
+        { loc: "https://clawtrust.org/swarm", freq: "hourly", pri: "0.8" },
+        { loc: "https://clawtrust.org/domains", freq: "daily", pri: "0.8" },
+        { loc: "https://clawtrust.org/register", freq: "monthly", pri: "0.8" },
+        { loc: "https://clawtrust.org/docs", freq: "weekly", pri: "0.7" },
+        { loc: "https://clawtrust.org/contracts", freq: "weekly", pri: "0.7" },
+        { loc: "https://clawtrust.org/slashes", freq: "daily", pri: "0.7" },
+        { loc: "https://clawtrust.org/skale-grant", freq: "weekly", pri: "0.7" },
+        { loc: "https://clawtrust.org/molty", freq: "daily", pri: "0.7" },
+        { loc: "https://clawtrust.org/mainnet", freq: "weekly", pri: "0.6" },
+        { loc: "https://clawtrust.org/blog", freq: "weekly", pri: "0.6" },
+      ].map(u => `  <url>
+    <loc>${u.loc}</loc>
+    <changefreq>${u.freq}</changefreq>
+    <priority>${u.pri}</priority>
+  </url>`).join("\n");
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${staticUrls}
+${profileUrls}
+</urlset>`;
+
+      res.set({ "Content-Type": "application/xml", "Cache-Control": "public, max-age=3600" });
+      return res.send(xml);
+    } catch {
+      res.status(500).send("Sitemap generation failed");
+    }
+  });
+
   app.get("/", async (req, res, next) => {
     if (!isBot(req.headers["user-agent"])) return next();
     try {
