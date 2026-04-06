@@ -1655,9 +1655,9 @@ export async function registerRoutes(
 
   app.post("/api/reputation/sync", apiLimiter, async (req, res) => {
     try {
+      // ── Auth: admin OR agent-self (wallet must be cryptographically verified) ──
       const adminWallet = req.headers["x-admin-wallet"] as string | undefined;
       const callerAgentId = req.headers["x-agent-id"] as string | undefined;
-      const callerWallet = req.headers["x-wallet-address"] as string | undefined;
 
       const isAdmin = (() => {
         if (!adminWallet) return false;
@@ -1682,7 +1682,54 @@ export async function registerRoutes(
           logSuspiciousActivity(req, "rep_sync_wrong_agent", `Agent ${callerAgentId} tried to sync agent ${agentId}`);
           return res.status(403).json({ message: "Agents may only sync their own reputation." });
         }
-        if (callerWallet && agent.walletAddress && callerWallet.toLowerCase() !== agent.walletAddress.toLowerCase()) {
+
+        // Require cryptographically verified wallet ownership
+        // Path A: walletAuthMiddleware already ran (req.wallet from Privy JWT)
+        // Path B: SDK agent — must provide SIWE signature proof
+        let verifiedWallet: string | undefined = (req as any).wallet as string | undefined;
+
+        if (!verifiedWallet) {
+          const walletHeader   = req.headers["x-wallet-address"] as string | undefined;
+          const signature      = req.headers["x-wallet-signature"] as string | undefined;
+          const sigTimestamp   = req.headers["x-wallet-sig-timestamp"] as string | undefined;
+
+          if (!walletHeader || !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+            logSuspiciousActivity(req, "rep_sync_no_wallet", `Agent ${agentId} rep-sync missing wallet header`);
+            return res.status(401).json({ message: "Wallet address required (x-wallet-address)." });
+          }
+
+          if (!signature || !sigTimestamp) {
+            logSuspiciousActivity(req, "rep_sync_no_sig", `Agent ${agentId} rep-sync missing SIWE signature from ${walletHeader.slice(0, 10)}`);
+            return res.status(401).json({ message: "Wallet signature required for reputation sync. Include x-wallet-signature + x-wallet-sig-timestamp." });
+          }
+
+          const ts = parseInt(sigTimestamp, 10);
+          const now = Date.now();
+          if (isNaN(ts) || now - ts > SIG_TTL_MS || ts > now + 60_000) {
+            logSuspiciousActivity(req, "rep_sync_sig_expired", `Agent ${agentId} stale SIWE timestamp`);
+            return res.status(401).json({ message: "Wallet signature expired." });
+          }
+
+          try {
+            const message = buildSignMessage(ts);
+            const valid = await verifyMessage({
+              address: walletHeader as Address,
+              message,
+              signature: signature as `0x${string}`,
+            });
+            if (!valid) {
+              logSuspiciousActivity(req, "rep_sync_sig_invalid", `Agent ${agentId} invalid SIWE sig from ${walletHeader.slice(0, 10)}`, "critical");
+              return res.status(401).json({ message: "Invalid wallet signature." });
+            }
+          } catch (err: any) {
+            logSuspiciousActivity(req, "rep_sync_sig_error", `Agent ${agentId} SIWE verification error: ${err?.message}`);
+            return res.status(401).json({ message: "Wallet signature verification failed." });
+          }
+
+          verifiedWallet = walletHeader;
+        }
+
+        if (agent.walletAddress && verifiedWallet.toLowerCase() !== agent.walletAddress.toLowerCase()) {
           logSuspiciousActivity(req, "rep_sync_wallet_mismatch", `Wallet mismatch on rep sync for agent ${agentId}`, "critical");
           return res.status(403).json({ message: "Wallet does not match agent owner." });
         }
@@ -4697,29 +4744,83 @@ export async function registerRoutes(
       return res.status(404).json({ message: "Agent not found" });
     }
 
+    // ── E2E test bypass (dev-only) ─────────────────────────────────────────
     if (isTestBypass(req)) {
       (req as any).agentId = agentId;
       (req as any).isE2EBypass = true;
       return next();
     }
 
+    // ── Admin bypass (already verified by adminAuthMiddleware) ─────────────
     if ((req as any).adminWallet) {
       (req as any).agentId = agentId;
       (req as any).isE2EBypass = false;
       return next();
     }
 
-    const callerWallet =
-      ((req as any).wallet as string | undefined) ||
-      (req.headers["x-wallet-address"] as string | undefined);
+    // ── Cryptographic wallet verification ──────────────────────────────────
+    // Path A: walletAuthMiddleware already ran (Privy JWT flow — browser users).
+    //         req.wallet is set from a verified JWT; use it directly.
+    // Path B: SDK / machine-to-machine agents without Privy JWT.
+    //         Require x-wallet-address + SIWE signature proof.
+    let verifiedWallet: string | undefined = (req as any).wallet as string | undefined;
 
-    if (!callerWallet) {
-      logSuspiciousActivity(req, "agent_auth_no_wallet", `Agent ${agentId} request missing wallet header`);
-      return res.status(401).json({ message: "Wallet address required. Send x-wallet-address header." });
+    if (!verifiedWallet) {
+      // Path B: SDK agent — must provide SIWE signature
+      const walletHeader = req.headers["x-wallet-address"] as string | undefined;
+      const signature    = req.headers["x-wallet-signature"] as string | undefined;
+      const sigTimestamp = req.headers["x-wallet-sig-timestamp"] as string | undefined;
+
+      if (!walletHeader || !/^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+        logSuspiciousActivity(req, "agent_auth_no_wallet", `Agent ${agentId} request missing wallet header`);
+        return res.status(401).json({
+          message: "Wallet address required. Send x-wallet-address header (with x-wallet-signature for SDK agents).",
+        });
+      }
+
+      if (!signature || !sigTimestamp) {
+        logSuspiciousActivity(req, "agent_auth_no_sig", `Agent ${agentId} SDK request missing SIWE signature from ${walletHeader.slice(0, 10)}`);
+        return res.status(401).json({
+          message: "Wallet signature required for agent operations. Sign the ClawTrust message and include x-wallet-signature + x-wallet-sig-timestamp.",
+        });
+      }
+
+      const ts = parseInt(sigTimestamp, 10);
+      const now = Date.now();
+      if (isNaN(ts) || now - ts > SIG_TTL_MS || ts > now + 60_000) {
+        logSuspiciousActivity(req, "agent_auth_sig_expired", `Agent ${agentId} stale SIWE timestamp from ${walletHeader.slice(0, 10)}`);
+        return res.status(401).json({ message: "Wallet signature expired. Re-sign the ClawTrust message." });
+      }
+
+      try {
+        const message = buildSignMessage(ts);
+        const valid = await verifyMessage({
+          address: walletHeader as Address,
+          message,
+          signature: signature as `0x${string}`,
+        });
+        if (!valid) {
+          logSuspiciousActivity(req, "agent_auth_sig_invalid", `Agent ${agentId} invalid SIWE sig from ${walletHeader.slice(0, 10)}`, "critical");
+          return res.status(401).json({ message: "Invalid wallet signature. Please re-sign the ClawTrust message." });
+        }
+      } catch (err: any) {
+        logSuspiciousActivity(req, "agent_auth_sig_error", `Agent ${agentId} SIWE verification error: ${err?.message}`);
+        return res.status(401).json({ message: "Wallet signature verification failed." });
+      }
+
+      // Signature verified — set wallet on request for downstream handlers
+      (req as any).wallet = walletHeader;
+      verifiedWallet = walletHeader;
     }
 
-    if (callerWallet.toLowerCase() !== agent.walletAddress.toLowerCase()) {
-      logSuspiciousActivity(req, "agent_auth_wallet_mismatch", `Caller wallet ${callerWallet.slice(0, 10)} does not own agent ${agentId}`, "critical");
+    // ── Ownership check ────────────────────────────────────────────────────
+    if (!verifiedWallet) {
+      logSuspiciousActivity(req, "agent_auth_no_wallet_post_verify", `Agent ${agentId}: verified wallet missing after auth`);
+      return res.status(401).json({ message: "Wallet authentication required." });
+    }
+
+    if (verifiedWallet.toLowerCase() !== agent.walletAddress.toLowerCase()) {
+      logSuspiciousActivity(req, "agent_auth_wallet_mismatch", `Caller wallet ${verifiedWallet.slice(0, 10)} does not own agent ${agentId}`, "critical");
       return res.status(403).json({ message: "Wallet does not match agent owner. Access denied." });
     }
 
