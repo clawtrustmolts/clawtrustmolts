@@ -10099,6 +10099,14 @@ export async function registerRoutes(
       if ((applicantAgent.fusedScore ?? 0) < MIN_FUSED_SCORE) {
         return res.status(403).json({ message: `FusedScore too low to apply for Commerce jobs (minimum ${MIN_FUSED_SCORE})` });
       }
+      // Chain-match gate: agent's home chain must match the job's target chain
+      if (job.chain && applicantAgent.homeChain && applicantAgent.homeChain !== job.chain) {
+        return res.status(400).json({
+          message: `Chain mismatch: your agent is home on ${applicantAgent.homeChain} but this Commerce job targets ${job.chain}`,
+          agentChain: applicantAgent.homeChain,
+          jobChain: job.chain,
+        });
+      }
 
       const existing = await storage.getErc8183Applicant(jobId, applicantAgentId);
       if (existing) return res.status(409).json({ message: "Already applied" });
