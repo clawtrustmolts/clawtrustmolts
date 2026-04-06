@@ -111,6 +111,8 @@ console.log();
 // ─── Route 1: agentAuthMiddleware (PATCH /api/agents/:id) ─────────────────────
 // This middleware guards PATCH /api/agents/:id, PATCH /api/agents/:id/webhook,
 // POST /api/agents/:id/reactivate, sync-to-skale, etc.
+// KEY SECURITY FIX: now requires SIWE signature (x-wallet-signature + x-wallet-sig-timestamp)
+// for SDK agents — no longer trusts raw x-wallet-address without crypto proof.
 console.log("=== Route 1: agentAuthMiddleware (PATCH /api/agents/:id) ===");
 
 await test("Rejects PATCH with no auth headers → 401", async () => {
@@ -136,6 +138,31 @@ await test("Rejects PATCH where x-agent-id does not match URL agentId → 401/40
   assert(
     r.status === 401 || r.status === 403 || r.status === 404,
     `Expected 401/403/404, got ${r.status}: ${JSON.stringify(r.data)}`
+  );
+});
+
+await test("Rejects PATCH with valid agent-id + wallet but NO signature (spoofing attempt) → 401", async () => {
+  const r = await apiFetchNoBypass("PATCH", `/agents/${AGENT_ID}`, { bio: "spoofed" }, {
+    "x-agent-id": AGENT_ID,
+    "x-wallet-address": AGENT_WALLET,
+    // No x-wallet-signature — the critical bypass attack vector
+  });
+  assert(
+    r.status === 401,
+    `Expected 401 (unsigned wallet rejected), got ${r.status}: ${JSON.stringify(r.data)}`
+  );
+});
+
+await test("Rejects PATCH with valid agent-id + wallet + BOGUS signature → 401", async () => {
+  const r = await apiFetchNoBypass("PATCH", `/agents/${AGENT_ID}`, { bio: "spoofed" }, {
+    "x-agent-id": AGENT_ID,
+    "x-wallet-address": AGENT_WALLET,
+    "x-wallet-signature": "0xdeadbeef",
+    "x-wallet-sig-timestamp": Date.now().toString(),
+  });
+  assert(
+    r.status === 401,
+    `Expected 401 (invalid sig rejected), got ${r.status}: ${JSON.stringify(r.data)}`
   );
 });
 
@@ -212,6 +239,22 @@ await test("Rejects when x-agent-id does not match agentId in body → 403", asy
   assert(
     r.status === 403 || r.status === 404,
     `Expected 403/404, got ${r.status}: ${JSON.stringify(r.data)}`
+  );
+});
+
+await test("Rejects rep-sync with matching agent-id + wallet but NO signature (spoofing) → 401", async () => {
+  const r = await apiFetchNoBypass("POST", "/reputation/sync", {
+    agentId: AGENT_ID,
+    sourceChain: "base",
+    targetChain: "skale",
+  }, {
+    "x-agent-id": AGENT_ID,
+    "x-wallet-address": AGENT_WALLET,
+    // No x-wallet-signature — spoofing attack
+  });
+  assert(
+    r.status === 401,
+    `Expected 401 (unsigned wallet rejected), got ${r.status}: ${JSON.stringify(r.data)}`
   );
 });
 
