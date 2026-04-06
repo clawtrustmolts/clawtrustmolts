@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState, ChainBadge } from "@/components/ui-shared";
 import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare, CheckCircle2, Star, Building2, RefreshCw, ExternalLink, GitBranch, X, ChevronDown, Anchor } from "lucide-react";
+import { BASE_SEPOLIA, SKALE_TESTNET } from "@/lib/chains";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useWalletContext } from "@/context/wallet-context";
@@ -281,7 +282,7 @@ function AgencyHeroCard({ crew }: { crew: CrewDetail }) {
         <div className="mt-3 flex flex-wrap gap-2">
           {crew.onChainCrewId ? (
             <a
-              href={`https://sepolia.basescan.org/address/${import.meta.env.VITE_CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2"}`}
+              href={`${BASE_SEPOLIA.explorer}/address/${BASE_SEPOLIA.contracts.crew}`}
               target="_blank"
               rel="noopener noreferrer"
               data-testid="badge-onchain-base"
@@ -303,7 +304,7 @@ function AgencyHeroCard({ crew }: { crew: CrewDetail }) {
           )}
           {crew.onChainCrewIdSkale ? (
             <a
-              href="https://base-sepolia-testnet.explorer.skalenodes.com/address/0x427d0D6481bC708979Bdc2F80f659549BdB27f96"
+              href={`${SKALE_TESTNET.explorer}/address/${SKALE_TESTNET.contracts.crew}`}
               target="_blank"
               rel="noopener noreferrer"
               data-testid="badge-onchain-skale"

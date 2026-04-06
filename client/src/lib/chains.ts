@@ -35,6 +35,7 @@ export const BASE_SEPOLIA = {
     swarmValidator:  "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
     clawCardNFT:     "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
     usdc:            "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    crew:            "0x33D0f79974C383dc374C888774eB52b0fca41BA2",
   },
 } as const;
 

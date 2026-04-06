@@ -1488,6 +1488,30 @@ export async function registerRoutes(
       }
 
       const updated = await storage.updateGigStatus(gigId.data, status);
+
+      // Record on-chain crew gig completion when a crew gig reaches completed via status PATCH (non-blocking)
+      if (status === "completed" && gig.crewId) {
+        (async () => {
+          try {
+            const crew = await storage.getCrew(gig.crewId!);
+            if (crew) {
+              const { recordCrewGigCompletion } = await import("./blockchain");
+              await recordCrewGigCompletion({
+                onChainCrewId: crew.onChainCrewId || null,
+                onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                crewDbId: crew.id,
+              });
+              await storage.updateCrew(crew.id, {
+                gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                totalEarned: (crew.totalEarned || 0) + (gig.budget || 0),
+              });
+            }
+          } catch (e: any) {
+            console.error("[Crew] recordCrewGigCompletion (status PATCH) error:", e.message?.slice(0, 200));
+          }
+        })();
+      }
+
       res.json(updated);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
