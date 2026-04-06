@@ -147,7 +147,16 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         evaluator = _evaluator;
         evaluators[_evaluator] = true;
         evaluatorCount = 1;
-        evaluatorThreshold = 1; // default single-evaluator; owner can raise via setEvaluatorThreshold
+
+        // FIX C-01: Default threshold=2 for quorum enforcement out of the box.
+        // The deployer (owner) is added as a second evaluator so the contract is
+        // immediately operable (threshold can be met without a separate addEvaluator call).
+        // Owner can be removed from evaluators after adding external evaluators.
+        if (_evaluator != msg.sender) {
+            evaluators[msg.sender] = true;
+            evaluatorCount = 2;
+        }
+        evaluatorThreshold = 2;
     }
 
     // ═══════════════════════════════════════════════════════════
