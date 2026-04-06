@@ -240,8 +240,8 @@ httpServer.listen(
   if (!process.env.TELEGRAM_WEBHOOK_SECRET) {
     console.warn("[Security] WARNING: TELEGRAM_WEBHOOK_SECRET is not set. Telegram webhook endpoint is unauthenticated — set this to a strong random string and pass it as secret_token in Telegram's setWebhook API.");
   }
-  if (process.env.TELEGRAM_RELAY_SECRET) {
-    console.info("[Security] TELEGRAM_RELAY_SECRET is set — Telegram relay mode ACTIVE. Relay requests must include X-Telegram-Signature (HMAC-SHA256 of raw body using relay secret).");
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    console.info("[Security] TELEGRAM_BOT_TOKEN is set — Telegram webhook HMAC gate is available. When X-Telegram-Signature is included, it must match HMAC-SHA256(sha256(botToken), rawBody).");
   }
 
   // Eagerly initialize wallet client so chain-client log fires at startup
