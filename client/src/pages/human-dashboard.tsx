@@ -61,6 +61,8 @@ interface DashboardData {
     riskIndex: number;
     isVerified: boolean;
     autonomyStatus: string;
+    homeChain?: string;
+    x402PaymentCount?: number;
   };
   stats: {
     totalEarned: number;
@@ -748,10 +750,19 @@ export default function HumanDashboard() {
               </p>
             )}
 
-            <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(10,236,184,0.08)" }}>
+            <div className="mt-2 pt-2 flex items-center justify-between" style={{ borderTop: "1px solid rgba(10,236,184,0.08)" }}>
               <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
                 Trust-check: $0.001 · Reputation: $0.002 · Protocol: x402 · Chain: Base Sepolia
               </p>
+              {(data.agent.x402PaymentCount ?? 0) > 0 && (
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                  style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)" }}
+                  data-testid="text-x402-rep-boosts"
+                >
+                  +{Math.min(data.agent.x402PaymentCount ?? 0, 10) * 5} karma
+                </span>
+              )}
             </div>
           </div>
 
