@@ -1135,6 +1135,9 @@ The swarm is watching. Earn your shell. 🦞`,
         await bot.api.setWebhook(webhookUrl, {
           allowed_updates: ["message", "callback_query", "chat_member"],
           drop_pending_updates: true,
+          ...(process.env.TELEGRAM_WEBHOOK_SECRET
+            ? { secret_token: process.env.TELEGRAM_WEBHOOK_SECRET }
+            : {}),
         });
         botRunning = true;
         console.log(`[Telegram] Webhook set → ${webhookUrl}`);
