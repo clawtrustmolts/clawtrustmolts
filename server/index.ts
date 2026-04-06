@@ -51,12 +51,27 @@ const ALLOWED_ORIGINS = [
   "https://clawhub.ai",
   "https://www.clawhub.ai",
 ];
+
+// Explicit dev-origin allowlist from env var (comma-separated).
+// Use ALLOWED_DEV_ORIGINS to add preview/staging URLs instead of a wildcard regex.
+const allowedDevOrigins: Set<string> = new Set(
+  (process.env.ALLOWED_DEV_ORIGINS || "")
+    .split(",")
+    .map(o => o.trim())
+    .filter(Boolean)
+);
+
+// The current Replit project's own preview domain (safe to allow automatically).
+const replitProjectDomain = process.env.REPLIT_DOMAINS
+  ? `https://${process.env.REPLIT_DOMAINS.split(",")[0].trim()}`
+  : null;
+
 const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
   if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
-  if (/^https?:\/\/[a-zA-Z0-9.-]+\.replit\.dev(:\d+)?$/.test(origin)) return true;
-  if (/^https?:\/\/[a-zA-Z0-9.-]+\.(repl\.co|replit\.app)(:\d+)?$/.test(origin)) return true;
+  if (replitProjectDomain && origin === replitProjectDomain) return true;
+  if (allowedDevOrigins.has(origin)) return true;
   return false;
 };
 
@@ -74,7 +89,23 @@ app.use(cors({
   ],
 }));
 
-const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET || "clawtrust-e2e-test-bypass";
+// E2E test secret — must be explicitly set; never falls back to the old hardcoded literal.
+// In production, bypass is always disabled regardless of this value.
+// In dev/CI, set E2E_TEST_SECRET to a random string in the environment (never the default literal).
+const E2E_DEFAULT_LITERAL = "clawtrust-e2e-test-bypass";
+const E2E_TEST_SECRET: string | null = (() => {
+  const rawSecret = process.env.E2E_TEST_SECRET;
+  if (!rawSecret) return null; // not set — bypass disabled
+  if (rawSecret === E2E_DEFAULT_LITERAL) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn("[Security] WARNING: E2E_TEST_SECRET is set to the default literal value in production — bypass DISABLED. Change E2E_TEST_SECRET to a unique random value.");
+      return null; // disable in production if still the default
+    }
+    console.warn("[Security] WARNING: E2E_TEST_SECRET is the well-known default literal. Change it to a random value to prevent unauthorized bypass.");
+  }
+  return rawSecret;
+})();
+
 const globalApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
@@ -83,7 +114,7 @@ const globalApiLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
   skip: (req) => {
     if (!req.path.startsWith("/api")) return true;
-    if (process.env.NODE_ENV !== "production" && req.headers["x-e2e-test-secret"] === E2E_TEST_SECRET) return true;
+    if (process.env.NODE_ENV !== "production" && E2E_TEST_SECRET && req.headers["x-e2e-test-secret"] === E2E_TEST_SECRET) return true;
     return false;
   },
 });
@@ -118,7 +149,7 @@ app.use((_req, res, next) => {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: https: blob:",
-      "connect-src 'self' https://sepolia.base.org https://testnet.skalenodes.com wss: ws:",
+      "connect-src 'self' https://sepolia.base.org https://testnet.skalenodes.com https://base-sepolia-testnet.skalenodes.com https://auth.privy.io https://challenges.cloudflare.com wss: ws:",
       "frame-src 'none'",
       "object-src 'none'",
       "base-uri 'self'",
