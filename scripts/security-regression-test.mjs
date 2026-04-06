@@ -1,9 +1,10 @@
 #!/usr/bin/env node
+import crypto from "crypto";
 /**
- * ClawTrust API Security Regression Tests — Task #65
+ * ClawTrust API Security Regression Tests — Tasks #65 / #66
  *
- * Verifies all 5 routes hardened during Task #65 correctly reject
- * unauthenticated / unauthorized callers.
+ * Verifies all 5 routes hardened during Task #65 and the Telegram webhook
+ * auth matrix added in Task #66 correctly reject unauthenticated callers.
  *
  * Usage:
  *   node scripts/security-regression-test.mjs
@@ -345,6 +346,67 @@ await test("Accepts valid self-sync request (via E2E bypass) — auth passes", a
     r.status !== 401 && r.status !== 403,
     `Auth should pass but got ${r.status}: ${JSON.stringify(r.data)}`
   );
+});
+
+// ─── Route 6: POST /api/telegram/webhook ─────────────────────────────────────
+console.log("\n=== Route 6: Telegram webhook (secret token + mandatory HMAC-SHA256) ===");
+
+function makeTelegramHmac(botToken, body) {
+  const key = crypto.createHash("sha256").update(botToken).digest();
+  return crypto.createHmac("sha256", key).update(Buffer.from(body, "utf8")).digest("hex");
+}
+
+const TG_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+const TG_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TG_BODY = JSON.stringify({ update_id: 999, message: { text: "/ping" } });
+
+await test("Rejects request with no headers → 401 (fail closed when secret unset)", async () => {
+  // In test env, TELEGRAM_WEBHOOK_SECRET may not be set; endpoint must still 401.
+  const url = `${BASE_URL}/telegram/webhook`;
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: TG_BODY });
+  assert(r.status === 401, `Expected 401, got ${r.status}`);
+});
+
+await test("Rejects request with wrong secret token → 401", async () => {
+  const url = `${BASE_URL}/telegram/webhook`;
+  const r = await fetch(url, { method: "POST", headers: {
+    "Content-Type": "application/json",
+    "x-telegram-bot-api-secret-token": "wrong-secret",
+  }, body: TG_BODY });
+  assert(r.status === 401, `Expected 401, got ${r.status}`);
+});
+
+await test("Rejects request with valid token but missing HMAC → 401", async () => {
+  if (!TG_SECRET) { console.log("    (skipped — TELEGRAM_WEBHOOK_SECRET not set)"); return; }
+  const url = `${BASE_URL}/telegram/webhook`;
+  const r = await fetch(url, { method: "POST", headers: {
+    "Content-Type": "application/json",
+    "x-telegram-bot-api-secret-token": TG_SECRET,
+  }, body: TG_BODY });
+  assert(r.status === 401, `Expected 401 (missing HMAC), got ${r.status}`);
+});
+
+await test("Rejects request with valid token but wrong HMAC → 401", async () => {
+  if (!TG_SECRET) { console.log("    (skipped — TELEGRAM_WEBHOOK_SECRET not set)"); return; }
+  const url = `${BASE_URL}/telegram/webhook`;
+  const r = await fetch(url, { method: "POST", headers: {
+    "Content-Type": "application/json",
+    "x-telegram-bot-api-secret-token": TG_SECRET,
+    "x-telegram-signature": "0000000000000000000000000000000000000000000000000000000000000000",
+  }, body: TG_BODY });
+  assert(r.status === 401, `Expected 401 (bad HMAC), got ${r.status}`);
+});
+
+await test("Accepts request with valid token + valid HMAC → 200", async () => {
+  if (!TG_SECRET || !TG_BOT_TOKEN) { console.log("    (skipped — TG env vars not set)"); return; }
+  const hmac = makeTelegramHmac(TG_BOT_TOKEN, TG_BODY);
+  const url = `${BASE_URL}/telegram/webhook`;
+  const r = await fetch(url, { method: "POST", headers: {
+    "Content-Type": "application/json",
+    "x-telegram-bot-api-secret-token": TG_SECRET,
+    "x-telegram-signature": hmac,
+  }, body: TG_BODY });
+  assert(r.status === 200, `Expected 200 (valid auth), got ${r.status}`);
 });
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
