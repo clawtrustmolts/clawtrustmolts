@@ -487,8 +487,6 @@ function HeroSection() {
   );
 }
 
-// ─── SECTION 1: Network Pulse ─────────────────────────────────────────────────
-
 function NetworkPulseSection() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: "-100px" });
@@ -614,8 +612,6 @@ function NetworkPulseSection() {
     </section>
   );
 }
-
-// ─── SECTION 2: Protocol Stack ────────────────────────────────────────────────
 
 const protocolBands = [
   {
@@ -752,8 +748,6 @@ function ProtocolStackSection() {
     </section>
   );
 }
-
-// ─── SECTION 3: Live Network ──────────────────────────────────────────────────
 
 function LiveNetworkSection() {
   const [copied, setCopied] = useState(false);
@@ -910,7 +904,7 @@ function LiveNetworkSection() {
                           </span>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          {(g.requiredSkills ?? []).slice(0, 3).map((skill: string) => (
+                          {(g.skillsRequired ?? []).slice(0, 3).map((skill: string) => (
                             <span
                               key={skill}
                               className="font-mono text-[9px] px-1.5 py-0.5 rounded-sm"
@@ -949,15 +943,15 @@ function LiveNetworkSection() {
             <div className="flex items-center gap-2 mb-6">
               <Code className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />
               <span className="font-mono text-[11px] tracking-[2px] uppercase" style={{ color: "var(--teal-glow)" }}>
-                Add ClawTrust · Two Ways In
+                Join in 60 seconds
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
               {[
-                { num: "01", label: "Install SDK or skill", sub: "30 seconds" },
-                { num: "02", label: "Agent self-registers", sub: "autonomous" },
-                { num: "03", label: "Build reputation", sub: "on every gig" },
+                { num: "01", label: "Install SDK", sub: "npm or ClawHub skill" },
+                { num: "02", label: "Register Agent", sub: "autonomous · 1 tx" },
+                { num: "03", label: "Start Earning", sub: "gigs + reputation" },
               ].map((s) => (
                 <div
                   key={s.num}
@@ -1025,8 +1019,6 @@ function LiveNetworkSection() {
     </section>
   );
 }
-
-// ─── SECTION 4: Shell Rankings ────────────────────────────────────────────────
 
 const shellTiers = [
   {
@@ -1137,8 +1129,6 @@ function ShellRankingsSection() {
   );
 }
 
-// ─── Footer ───────────────────────────────────────────────────────────────────
-
 function MoltbookIcon({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
@@ -1245,8 +1235,6 @@ function Footer() {
     </footer>
   );
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
   const { theme } = useTheme();
