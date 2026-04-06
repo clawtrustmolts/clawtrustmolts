@@ -715,6 +715,28 @@ export async function registerRoutes(
 
   setInterval(x402CleanupExpired, 60_000);
 
+  // ─── Crew score auto-sync: recalculate crew FusedScore every 30 minutes ──
+  async function syncAllCrewScores() {
+    try {
+      const allCrews = await storage.getCrews();
+      for (const crew of allCrews) {
+        const members = await storage.getCrewMembers(crew.id);
+        if (members.length === 0) continue;
+        const agentData = await Promise.all(members.map(m => storage.getAgent(m.agentId)));
+        const valid = agentData.filter(Boolean);
+        if (valid.length === 0) continue;
+        const avgScore = Math.round((valid.reduce((s, a) => s + (a!.fusedScore || 0), 0) / valid.length) * 10) / 10;
+        const bondPool = Math.round(valid.reduce((s, a) => s + (a!.availableBond || 0), 0) * 100) / 100;
+        if (avgScore !== crew.fusedScore || bondPool !== crew.bondPool) {
+          await storage.updateCrew(crew.id, { fusedScore: avgScore, bondPool });
+        }
+      }
+    } catch (e) {
+      // Non-critical: silently skip
+    }
+  }
+  setInterval(syncAllCrewScores, 30 * 60 * 1000); // every 30 min
+
   function x402ReplayGuard(req: Request, res: Response, next: NextFunction) {
     const paymentHeader = (req.headers["x-payment"] || req.headers["x-payment-response"]) as string | undefined;
     if (!paymentHeader) return next();
@@ -8204,6 +8226,60 @@ export async function registerRoutes(
       res.setHeader("Content-Type", "image/png");
       res.setHeader("Cache-Control", "public, max-age=300");
       res.send(imageBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Crew score sync: recalculates fusedScore & bondPool from current member scores ──
+  app.post("/api/crews/:id/sync-score", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id);
+      if (!crew) return res.status(404).json({ message: "Crew not found" });
+
+      const members = await storage.getCrewMembers(crew.id);
+      if (members.length === 0) return res.json({ ...crew, changed: false });
+
+      const memberAgents = await Promise.all(members.map(m => storage.getAgent(m.agentId)));
+      const valid = memberAgents.filter(Boolean) as Awaited<ReturnType<typeof storage.getAgent>>[];
+
+      const avgScore = valid.length > 0 ? valid.reduce((s, a) => s + (a!.fusedScore || 0), 0) / valid.length : 0;
+      const bondPool = valid.reduce((s, a) => s + (a!.availableBond || 0), 0);
+      const newScore = Math.round(avgScore * 10) / 10;
+      const newBond = Math.round(bondPool * 100) / 100;
+
+      const changed = newScore !== crew.fusedScore || newBond !== crew.bondPool;
+      if (changed) {
+        await storage.updateCrew(crew.id, { fusedScore: newScore, bondPool: newBond });
+      }
+
+      const updated = await storage.getCrew(crew.id);
+      res.json({ ...updated, tier: getCrewTier(updated?.fusedScore || 0), changed });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Crew gig browse: open crew gigs for a specific crew (matching capabilities) ──
+  app.get("/api/crews/:id/available-gigs", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id);
+      if (!crew) return res.status(404).json({ message: "Crew not found" });
+
+      const limit = Math.min(Number(req.query.limit) || 20, 50);
+      const allGigs = await storage.getGigs();
+      const crewGigs = allGigs.filter(g => g.crewGig === true && g.status === "open");
+
+      const minScore = crew.fusedScore;
+      const eligible = crewGigs.filter(g => !g.minCrewScore || g.minCrewScore <= minScore);
+
+      // Enrich with poster info
+      const enriched = await Promise.all(eligible.slice(0, limit).map(async (gig) => {
+        const poster = gig.agentId ? await storage.getAgent(gig.agentId) : null;
+        return { ...gig, poster: poster ? { handle: poster.handle, fusedScore: poster.fusedScore } : null };
+      }));
+
+      res.json({ gigs: enriched, total: enriched.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

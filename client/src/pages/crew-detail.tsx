@@ -1,7 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState, ChainBadge } from "@/components/ui-shared";
-import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare, CheckCircle2, Star, Building2 } from "lucide-react";
+import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare, CheckCircle2, Star, Building2, RefreshCw, ExternalLink } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useWalletContext } from "@/context/wallet-context";
 
 const SPECIALIZATIONS = [
   { value: "DEV_AGENCY", label: "Dev Agency", icon: "⚙️", color: "#3b82f6" },
@@ -273,13 +276,62 @@ function AgencyHeroCard({ crew }: { crew: CrewDetail }) {
   );
 }
 
+interface AvailableGig {
+  id: string;
+  title: string;
+  description: string | null;
+  budget: number;
+  currency: string;
+  chain: string;
+  status: string;
+  minCrewScore: number | null;
+  skillsRequired: string[];
+  poster: { handle: string; fusedScore: number } | null;
+}
+
 export default function CrewDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+  const { toast } = useToast();
+  const { wallet, isConnected } = useWalletContext();
 
   const { data: crew, isLoading, error } = useQuery<CrewDetail>({
     queryKey: ["/api/crews", id],
     enabled: !!id,
+  });
+
+  const { data: availGigsData } = useQuery<{ gigs: AvailableGig[]; total: number }>({
+    queryKey: ["/api/crews", id, "available-gigs"],
+    queryFn: () => apiRequest("GET", `/api/crews/${id}/available-gigs`).then(r => r.json()),
+    enabled: !!id,
+  });
+
+  const syncScoreMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/crews/${id}/sync-score`).then(r => r.json()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/crews", id] });
+      toast({
+        title: data.changed ? `Score updated → ${data.fusedScore}` : "Score already up to date",
+        description: `Bond pool: $${data.bondPool?.toFixed(2)}`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: (gigId: string) =>
+      apiRequest("POST", `/api/crews/${id}/apply/${gigId}`, { message: "" }, {
+        "x-wallet-address": wallet || "",
+      }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/crews", id, "available-gigs"] });
+      toast({ title: "Applied!", description: "Your crew has applied for this gig." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Application failed", description: err.message, variant: "destructive" });
+    },
   });
 
   if (isLoading) {
@@ -315,12 +367,22 @@ export default function CrewDetailPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
         <Link href="/crews">
           <ClawButton variant="ghost" size="sm" data-testid="button-back">
             <ArrowLeft className="w-4 h-4" /> Back to Agencies
           </ClawButton>
         </Link>
+        <button
+          onClick={() => syncScoreMutation.mutate()}
+          disabled={syncScoreMutation.isPending}
+          className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-sm transition-opacity hover:opacity-80 disabled:opacity-40"
+          style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+          data-testid="button-sync-score"
+        >
+          <RefreshCw className={`w-3 h-3 ${syncScoreMutation.isPending ? "animate-spin" : ""}`} />
+          Sync Score
+        </button>
       </div>
 
       <AgencyHeroCard crew={crew} />
@@ -503,6 +565,131 @@ export default function CrewDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Available Crew Gigs Section */}
+      <div className="space-y-4" data-testid="section-available-crew-gigs">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="font-display text-xl tracking-wider" style={{ color: "var(--shell-white)" }}>
+            OPEN CREW GIGS
+          </h2>
+          <Link href="/gigs?crewGig=true">
+            <span
+              className="text-xs font-mono flex items-center gap-1 hover:opacity-80 transition-opacity"
+              style={{ color: "var(--claw-orange)" }}
+            >
+              Browse All <ExternalLink className="w-3 h-3" />
+            </span>
+          </Link>
+        </div>
+
+        {!availGigsData ? (
+          <div className="grid md:grid-cols-2 gap-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="h-24 rounded-sm animate-pulse" style={{ background: "var(--ocean-mid)" }} />
+            ))}
+          </div>
+        ) : availGigsData.gigs.length === 0 ? (
+          <div
+            className="rounded-sm p-6 text-center"
+            style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+          >
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              No open crew gigs available right now.{" "}
+              <Link href="/gigs">
+                <span className="underline cursor-pointer" style={{ color: "var(--claw-orange)" }}>
+                  Post one
+                </span>
+              </Link>
+            </p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-3">
+            {availGigsData.gigs.map((gig) => (
+              <div
+                key={gig.id}
+                className="rounded-sm p-4 flex flex-col gap-3"
+                style={{ background: "var(--ocean-mid)", border: "1px solid rgba(10,236,184,0.15)" }}
+                data-testid={`crew-gig-card-${gig.id}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <Link href={`/gigs/${gig.id}`}>
+                      <p
+                        className="font-semibold text-sm truncate hover:opacity-80 transition-opacity cursor-pointer"
+                        style={{ color: "var(--shell-white)" }}
+                      >
+                        {gig.title}
+                      </p>
+                    </Link>
+                    {gig.poster && (
+                      <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        by @{gig.poster.handle}
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm flex-shrink-0"
+                    style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                  >
+                    <Users className="w-2.5 h-2.5" /> CREW
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono font-bold text-sm" style={{ color: "var(--teal-glow)" }}>
+                    ${gig.budget} {gig.currency}
+                  </span>
+                  <ChainBadge chain={gig.chain} />
+                  {gig.minCrewScore && (
+                    <span
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
+                      style={{ background: "rgba(242,201,76,0.08)", color: "var(--gold)", border: "1px solid rgba(242,201,76,0.2)" }}
+                    >
+                      Min Score {gig.minCrewScore}
+                    </span>
+                  )}
+                </div>
+
+                {gig.skillsRequired && gig.skillsRequired.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {gig.skillsRequired.slice(0, 4).map(s => (
+                      <span key={s} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(0,0,0,0.06)", color: "var(--text-muted)" }}>
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 pt-1" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                  {isConnected ? (
+                    <button
+                      onClick={() => applyMutation.mutate(gig.id)}
+                      disabled={applyMutation.isPending}
+                      className="flex-1 py-1.5 rounded-sm text-xs font-display tracking-wider transition-opacity hover:opacity-80 disabled:opacity-40"
+                      style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.25)" }}
+                      data-testid={`button-apply-crew-gig-${gig.id}`}
+                    >
+                      Apply as Agency
+                    </button>
+                  ) : (
+                    <span className="text-xs italic" style={{ color: "var(--text-muted)" }}>
+                      Connect wallet to apply
+                    </span>
+                  )}
+                  <Link href={`/gigs/${gig.id}`}>
+                    <span
+                      className="flex items-center gap-1 text-[10px] font-mono px-2 py-1.5 rounded-sm hover:opacity-80 transition-opacity cursor-pointer"
+                      style={{ background: "rgba(0,0,0,0.04)", color: "var(--text-muted)", border: "1px solid rgba(0,0,0,0.08)" }}
+                    >
+                      <ExternalLink className="w-3 h-3" /> View
+                    </span>
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

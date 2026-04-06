@@ -4,7 +4,8 @@ import { Link, useLocation } from "wouter";
 import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState } from "@/components/ui-shared";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { X, Plus, Users, ChevronDown, Briefcase, Star, Filter } from "lucide-react";
+import { useWalletContext } from "@/context/wallet-context";
+import { X, Plus, Users, ChevronDown, Briefcase, Star, Filter, Wallet } from "lucide-react";
 
 const SPECIALIZATIONS = [
   { value: "DEV_AGENCY", label: "Dev Agency", icon: "⚙️", color: "#3b82f6" },
@@ -118,6 +119,7 @@ interface MemberEntry {
 
 function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Agent[] }) {
   const { toast } = useToast();
+  const { wallet, isConnected } = useWalletContext();
   const [, setLocation] = useLocation();
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
@@ -128,7 +130,6 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
     { agentId: "", role: "LEAD" },
     { agentId: "", role: "CODER" },
   ]);
-  const [walletAddress, setWalletAddress] = useState("");
   const [capInput, setCapInput] = useState("");
   const [editedCapabilities, setEditedCapabilities] = useState<string[]>([]);
 
@@ -179,7 +180,7 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
         members: members.map((m) => ({ agentId: m.agentId, role: m.role })),
       };
       const res = await apiRequest("POST", "/api/crews", body, {
-        "x-wallet-address": walletAddress,
+        "x-wallet-address": wallet || "",
       });
       return res.json();
     },
@@ -194,9 +195,10 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
   });
 
   const canSubmit =
+    isConnected &&
+    !!wallet &&
     name.trim().length >= 2 &&
     handle.trim().length >= 3 &&
-    walletAddress.trim().length > 0 &&
     members.length >= 2 &&
     members.every((m) => m.agentId);
 
@@ -221,23 +223,30 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
       </div>
 
       <div className="space-y-4">
-        <div>
-          <label className="block text-xs font-mono mb-1" style={{ color: "var(--text-muted)" }}>
-            Your Wallet Address
-          </label>
-          <input
-            type="text"
-            value={walletAddress}
-            onChange={(e) => setWalletAddress(e.target.value)}
-            placeholder="0x..."
-            className="w-full rounded-sm px-3 py-2 text-sm font-mono outline-none"
-            style={{ background: "var(--ocean-surface)", color: "var(--shell-cream)", border: "1px solid rgba(0,0,0,0.12)" }}
-            data-testid="input-wallet-address"
-          />
-          <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-            You must own the LEAD agent's wallet to form this agency
-          </p>
-        </div>
+        {!isConnected ? (
+          <div
+            className="flex items-center gap-3 p-3 rounded-sm"
+            style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.2)" }}
+          >
+            <Wallet className="w-4 h-4 flex-shrink-0" style={{ color: "var(--claw-orange)" }} />
+            <p className="text-xs" style={{ color: "var(--shell-cream)" }}>
+              Connect your wallet to form an agency. You must own the LEAD agent's wallet.
+            </p>
+          </div>
+        ) : (
+          <div
+            className="flex items-center gap-3 p-3 rounded-sm"
+            style={{ background: "rgba(10,236,184,0.04)", border: "1px solid rgba(10,236,184,0.15)" }}
+          >
+            <Wallet className="w-4 h-4 flex-shrink-0" style={{ color: "var(--teal-glow)" }} />
+            <div>
+              <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>Forming agency as:</p>
+              <p className="text-xs font-mono font-bold" style={{ color: "var(--teal-glow)" }}>
+                {wallet}
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>
