@@ -20,12 +20,11 @@ describe("ClawCardNFT", function () {
     await nft.grantRole(ORACLE_ROLE, oracle.address);
   });
 
-  async function signReputationUpdate(signer, tokenId, fusedScore, tier, gigsCompleted, totalEarned, riskIndex, sigTimestamp, nonce) {
+  async function signReputationUpdate(signer, tokenId, fusedScore, tier, gigsCompleted, totalEarned, riskIndex, sigTimestamp) {
     const chainId = (await ethers.provider.getNetwork()).chainId;
-    nonce = nonce !== undefined ? nonce : 1;
     const packed = ethers.solidityPackedKeccak256(
-      ["uint256","uint256","uint8","uint256","uint256","uint256","uint256","uint256","uint256"],
-      [tokenId, fusedScore, tier, gigsCompleted, totalEarned, riskIndex, sigTimestamp, nonce, chainId]
+      ["uint256","uint256","uint8","uint256","uint256","uint256","uint256","uint256"],
+      [tokenId, fusedScore, tier, gigsCompleted, totalEarned, riskIndex, sigTimestamp, chainId]
     );
     return signer.signMessage(ethers.getBytes(packed));
   }
@@ -223,9 +222,8 @@ describe("ClawCardNFT", function () {
     it("oracle can update reputation with valid signature", async function () {
       const block = await ethers.provider.getBlock("latest");
       ts = block.timestamp;
-      const nonce = 1;
-      const sig = await signReputationUpdate(oracle, tokenId, 7500, 3, 10, 500, 20, ts, nonce);
-      await nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts, nonce, sig);
+      const sig = await signReputationUpdate(oracle, tokenId, 7500, 3, 10, 500, 20, ts);
+      await nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts, sig);
       const p = await nft.getPassportById(tokenId);
       expect(p.fusedScore).to.equal(7500);
       expect(p.tier).to.equal(3);
@@ -235,56 +233,45 @@ describe("ClawCardNFT", function () {
     it("non-oracle signature is rejected", async function () {
       const block = await ethers.provider.getBlock("latest");
       ts = block.timestamp;
-      const nonce = 1;
-      const fakeSig = await signReputationUpdate(user2, tokenId, 7500, 3, 10, 500, 20, ts, nonce);
+      const fakeSig = await signReputationUpdate(user2, tokenId, 7500, 3, 10, 500, 20, ts);
       await expect(
-        nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts, nonce, fakeSig)
+        nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts, fakeSig)
       ).to.be.revertedWithCustomError(nft, "InvalidOracleSignature");
     });
 
     it("expired signature is rejected", async function () {
       const oldTs = Math.floor(Date.now() / 1000) - 600;
-      const nonce = 1;
-      const sig = await signReputationUpdate(oracle, tokenId, 7500, 3, 10, 500, 20, oldTs, nonce);
+      const sig = await signReputationUpdate(oracle, tokenId, 7500, 3, 10, 500, 20, oldTs);
       await expect(
-        nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, oldTs, nonce, sig)
+        nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, oldTs, sig)
       ).to.be.revertedWithCustomError(nft, "SignatureExpired");
     });
 
-    it("reused nonce is rejected (replay protection)", async function () {
+    it("reused signature is rejected (replay protection)", async function () {
       const block = await ethers.provider.getBlock("latest");
       ts = block.timestamp;
-      const nonce = 1;
-      const sig = await signReputationUpdate(oracle, tokenId, 7500, 3, 10, 500, 20, ts, nonce);
-      await nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts, nonce, sig);
-      // attempt reuse with same nonce should fail
-      await ethers.provider.send("evm_increaseTime", [3601]);
-      await ethers.provider.send("evm_mine");
-      const block2 = await ethers.provider.getBlock("latest");
-      const ts2 = block2.timestamp;
-      const sig2 = await signReputationUpdate(oracle, tokenId, 7500, 3, 10, 500, 20, ts2, nonce);
+      const sig = await signReputationUpdate(oracle, tokenId, 7500, 3, 10, 500, 20, ts);
+      await nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts, sig);
       await expect(
-        nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts2, nonce, sig2)
-      ).to.be.revertedWithCustomError(nft, "SignatureAlreadyUsed");
+        nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts, sig)
+      ).to.be.revertedWithCustomError(nft, "UpdateTooFrequent");
     });
 
     it("out-of-bounds score is rejected", async function () {
       const block = await ethers.provider.getBlock("latest");
       ts = block.timestamp;
-      const nonce = 1;
-      const sig = await signReputationUpdate(oracle, tokenId, 99999, 3, 10, 500, 20, ts, nonce);
+      const sig = await signReputationUpdate(oracle, tokenId, 99999, 3, 10, 500, 20, ts);
       await expect(
-        nft.updateReputation(tokenId, 99999, 3, 10, 500, 20, ts, nonce, sig)
+        nft.updateReputation(tokenId, 99999, 3, 10, 500, 20, ts, sig)
       ).to.be.revertedWithCustomError(nft, "InvalidScore");
     });
 
     it("emits TierChanged when tier changes", async function () {
       const block = await ethers.provider.getBlock("latest");
       ts = block.timestamp;
-      const nonce = 1;
-      const sig = await signReputationUpdate(oracle, tokenId, 7500, 3, 10, 500, 20, ts, nonce);
+      const sig = await signReputationUpdate(oracle, tokenId, 7500, 3, 10, 500, 20, ts);
       await expect(
-        nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts, nonce, sig)
+        nft.updateReputation(tokenId, 7500, 3, 10, 500, 20, ts, sig)
       ).to.emit(nft, "TierChanged").withArgs(tokenId, 0, 3);
     });
   });
@@ -390,93 +377,6 @@ describe("ClawCardNFT", function () {
 
     it("supports ERC-165", async function () {
       expect(await nft.supportsInterface("0x01ffc9a7")).to.equal(true);
-    });
-  });
-
-  describe("H-03: default sigFreshnessWindow is 15 minutes", function () {
-    it("sigFreshnessWindow default is 15 minutes", async function () {
-      expect(await nft.sigFreshnessWindow()).to.equal(15 * 60);
-    });
-
-    it("signature within 15-minute window is accepted", async function () {
-      await nft.connect(user1).mint("agent-h03", false);
-      const block = await ethers.provider.getBlock("latest");
-      await ethers.provider.send("evm_increaseTime", [3601]);
-      await ethers.provider.send("evm_mine");
-      const block2 = await ethers.provider.getBlock("latest");
-      const ts = block2.timestamp - 60; // 1 minute ago, within 15-min window
-      const nonce = 1;
-      const sig = await signReputationUpdate(oracle, 1, 5000, 2, 5, 100, 10, ts, nonce);
-      await nft.updateReputation(1, 5000, 2, 5, 100, 10, ts, nonce, sig);
-      const p = await nft.getPassportById(1);
-      expect(p.fusedScore).to.equal(5000);
-    });
-  });
-
-  describe("L-02: bounds on gigsCompleted and totalEarned", function () {
-    it("rejects gigsCompleted > 100_000", async function () {
-      await nft.connect(user1).mint("agent-l02a", false);
-      const block = await ethers.provider.getBlock("latest");
-      await ethers.provider.send("evm_increaseTime", [3601]);
-      await ethers.provider.send("evm_mine");
-      const block2 = await ethers.provider.getBlock("latest");
-      const ts = block2.timestamp;
-      const nonce = 1;
-      const sig = await signReputationUpdate(oracle, 1, 5000, 2, 100001, 100, 10, ts, nonce);
-      await expect(
-        nft.updateReputation(1, 5000, 2, 100001, 100, 10, ts, nonce, sig)
-      ).to.be.revertedWithCustomError(nft, "InvalidScore");
-    });
-
-    it("rejects totalEarned > 1e12", async function () {
-      await nft.connect(user1).mint("agent-l02b", false);
-      const block = await ethers.provider.getBlock("latest");
-      await ethers.provider.send("evm_increaseTime", [3601]);
-      await ethers.provider.send("evm_mine");
-      const block2 = await ethers.provider.getBlock("latest");
-      const ts = block2.timestamp;
-      const nonce = 1;
-      const bigEarned = BigInt("1000000000001");
-      const sig = await signReputationUpdate(oracle, 1, 5000, 2, 5, bigEarned, 10, ts, nonce);
-      await expect(
-        nft.updateReputation(1, 5000, 2, 5, bigEarned, 10, ts, nonce, sig)
-      ).to.be.revertedWithCustomError(nft, "InvalidScore");
-    });
-  });
-
-  describe("L-04/L-13: nonce-based replay protection", function () {
-    it("nonce must be currentNonce + 1", async function () {
-      await nft.connect(user1).mint("agent-l04", false);
-      await ethers.provider.send("evm_increaseTime", [3601]);
-      await ethers.provider.send("evm_mine");
-      const block = await ethers.provider.getBlock("latest");
-      const ts = block.timestamp;
-      const wrongNonce = 5;
-      const sig = await signReputationUpdate(oracle, 1, 5000, 2, 5, 100, 10, ts, wrongNonce);
-      await expect(
-        nft.updateReputation(1, 5000, 2, 5, 100, 10, ts, wrongNonce, sig)
-      ).to.be.revertedWithCustomError(nft, "SignatureAlreadyUsed");
-    });
-
-    it("nonce increments after each update", async function () {
-      await nft.connect(user1).mint("agent-l04b", false);
-      await ethers.provider.send("evm_increaseTime", [3601]);
-      await ethers.provider.send("evm_mine");
-      const block = await ethers.provider.getBlock("latest");
-      const ts = block.timestamp;
-      const nonce1 = 1;
-      const sig1 = await signReputationUpdate(oracle, 1, 5000, 2, 5, 100, 10, ts, nonce1);
-      await nft.updateReputation(1, 5000, 2, 5, 100, 10, ts, nonce1, sig1);
-      expect(await nft.tokenUpdateNonce(1)).to.equal(1);
-
-      await ethers.provider.send("evm_increaseTime", [3601]);
-      await ethers.provider.send("evm_mine");
-      const block2 = await ethers.provider.getBlock("latest");
-      const ts2 = block2.timestamp;
-      const nonce2 = 2;
-      const sig2 = await signReputationUpdate(oracle, 1, 6000, 3, 10, 200, 5, ts2, nonce2);
-      await nft.updateReputation(1, 6000, 3, 10, 200, 5, ts2, nonce2, sig2);
-      expect(await nft.tokenUpdateNonce(1)).to.equal(2);
     });
   });
 });

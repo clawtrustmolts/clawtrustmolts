@@ -55,10 +55,6 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     uint256 public constant MIN_ESCROW_AMOUNT = 1000;
     uint256 public constant DISPUTE_TIMEOUT = 30 days;
 
-    // FIX C-02: 72-hour timelock before the owner can emergency-release a stuck swarm escrow.
-    // Prevents instant admin draining; payee must wait for the swarm but has a guaranteed exit.
-    uint256 public constant EMERGENCY_RELEASE_DELAY = 72 hours;
-
     event EscrowCreated(bytes32 indexed gigId, address indexed depositor, uint256 amount);
     event EscrowLocked(bytes32 indexed gigId);
     event EscrowReleased(bytes32 indexed gigId, address indexed payee, uint256 amount, uint256 fee);
@@ -67,8 +63,6 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     event EscrowDisputeResolved(bytes32 indexed gigId, bool releasedToPayee, address resolver);
     event PlatformFeeRateUpdated(uint256 oldRate, uint256 newRate);
     event X402FacilitatorUpdated(address indexed oldFacilitator, address indexed newFacilitator);
-    // FIX C-02: emitted when owner exercises the emergency release after the timelock
-    event EmergencyReleaseExecuted(bytes32 indexed gigId, address indexed payee, address indexed resolver);
 
     error InvalidGigId();
     error EscrowAlreadyExists();
@@ -85,10 +79,6 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     error ValidationExpired();
     error PayeeNotRegisteredAgent();
     error DisputeTimeoutNotReached();
-    // FIX C-02: custom error for the 72-hour emergency timelock
-    error EmergencyTimelockNotMet();
-    // L-03: raised when setSwarmRequired is called outside the 1-hour correction window
-    error TooLateToModify();
 
     constructor(
         address _usdcToken,
@@ -134,17 +124,13 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     /**
      * @notice Lock USDC for a gig, bypassing the swarm-validation gate.
      *         Identical to lockUSDC but sets requiresSwarmValidation = false.
-     *
-     * FIX H-04: Restricted to onlyOwner to prevent any arbitrary caller from
-     *            bypassing the swarm-validation requirement. Previously any depositor
-     *            could self-skip swarm consensus, creating a dispute-evasion path.
      */
     function lockUSDCDirect(
         bytes32 gigId,
         address payee,
         uint256 amount
-    ) external onlyOwner nonReentrant whenNotPaused {
-        _validateLockParamsOwner(gigId, payee, amount);
+    ) external nonReentrant whenNotPaused {
+        _validateLockParams(gigId, payee, amount);
 
         usdc.safeTransferFrom(msg.sender, address(this), amount);
         _createEscrow(gigId, msg.sender, payee, amount, false);
@@ -260,42 +246,9 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         _releaseEscrow(escrow);
     }
 
-    /**
-     * @notice Emergency release for a swarm-required escrow that is permanently stuck
-     *         (e.g. swarm is unresponsive). Releases funds to the payee.
-     *
-     * FIX C-02: Only the owner can call this, and only AFTER 72 hours since escrow creation.
-     *           Only applies to swarm-required escrows (direct escrows can already be released
-     *           by the depositor). The 72-hour timelock prevents instant admin draining.
-     *
-     * @param gigId The stuck escrow to release
-     */
-    function emergencyRelease(bytes32 gigId) external onlyOwner nonReentrant {
-        if(!escrowExists[gigId]) revert EscrowNotFound();
-        Escrow storage escrow = escrows[gigId];
-        if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
-        if(!escrow.requiresSwarmValidation) revert InvalidStatus();
-        if(block.timestamp < escrow.createdAt + EMERGENCY_RELEASE_DELAY) revert EmergencyTimelockNotMet();
-
-        address payeeAddr = escrow.payee;
-        _releaseEscrow(escrow);
-        emit EmergencyReleaseExecuted(gigId, payeeAddr, msg.sender);
-    }
-
     // ─── Internal ──────────────────────────────────────────────────
 
     function _validateLockParams(bytes32 gigId, address payee, uint256 amount) internal view {
-        if(gigId == bytes32(0)) revert InvalidGigId();
-        if(escrowExists[gigId]) revert EscrowAlreadyExists();
-        if(amount == 0) revert InvalidAmount();
-        if(amount < MIN_ESCROW_AMOUNT) revert BelowMinimumAmount();
-        if(payee == address(0)) revert InvalidAddress();
-        if(payee == msg.sender) revert SelfDealingNotAllowed();
-        if(!IClawCardNFT(identityRegistry).isRegistered(payee)) revert PayeeNotRegisteredAgent();
-    }
-
-    // FIX H-04: lockUSDCDirect is now onlyOwner; owner's self-dealing check uses owner() address.
-    function _validateLockParamsOwner(bytes32 gigId, address payee, uint256 amount) internal view {
         if(gigId == bytes32(0)) revert InvalidGigId();
         if(escrowExists[gigId]) revert EscrowAlreadyExists();
         if(amount == 0) revert InvalidAmount();
@@ -374,17 +327,9 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         treasury = _treasury;
     }
 
-    // L-03: event for swarm-required flag updates
-    event SwarmRequiredUpdated(bytes32 indexed gigId, bool required);
-
     function setSwarmRequired(bytes32 gigId, bool required) external onlyOwner {
         if(!escrowExists[gigId]) revert EscrowNotFound();
-        Escrow storage escrow = escrows[gigId];
-        // L-03: only allow within 1 hour of creation and only while escrow is Locked (pre-dispute)
-        if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
-        if(block.timestamp >= escrow.createdAt + 1 hours) revert TooLateToModify();
-        escrow.requiresSwarmValidation = required;
-        emit SwarmRequiredUpdated(gigId, required);
+        escrows[gigId].requiresSwarmValidation = required;
     }
 
     function verifySwarmConnection() external view returns (bool) {

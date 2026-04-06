@@ -61,9 +61,9 @@ describe("ClawTrustRegistry", function () {
     });
 
     it("should register a .shell domain", async function () {
-      await registry.connect(registrar).register("worker", ".shell", user1.address, 100e6);
+      await registry.connect(registrar).register("agent", ".shell", user1.address, 100e6);
       const domain = await registry.getDomain(1);
-      expect(domain.name).to.equal("worker");
+      expect(domain.name).to.equal("agent");
       expect(domain.tld).to.equal(".shell");
       expect(domain.pricePaid).to.equal(100e6);
     });
@@ -477,63 +477,6 @@ describe("ClawTrustRegistry", function () {
 
     it("should support AccessControl interface", async function () {
       expect(await registry.supportsInterface("0x7965db0b")).to.be.true;
-    });
-  });
-
-  describe("M-02: burnExpired removes zombie NFTs", function () {
-    it("anyone can burn an expired domain NFT", async function () {
-      await registry.connect(registrar).register("zombie", ".claw", user1.address, 0);
-      const d = await registry.domains(1);
-      const expiry = d.expiresAt;
-      await ethers.provider.send("evm_setNextBlockTimestamp", [Number(expiry) + 1]);
-      await ethers.provider.send("evm_mine");
-      await registry.burnExpired(1);
-      await expect(registry.ownerOf(1)).to.be.reverted;
-    });
-
-    it("cannot burn a non-expired domain", async function () {
-      await registry.connect(registrar).register("fresh", ".claw", user1.address, 0);
-      await expect(registry.burnExpired(1)).to.be.revertedWithCustomError(registry, "DomainNotExpired");
-    });
-  });
-
-  describe("L-04: per-wallet domain cap (active domains only)", function () {
-    it("rejects registering more than MAX_DOMAINS_PER_WALLET active domains", async function () {
-      const MAX = await registry.MAX_DOMAINS_PER_WALLET();
-      for (let i = 0; i < Number(MAX); i++) {
-        await registry.connect(registrar).register(`domain${i}`, ".claw", user1.address, 0);
-      }
-      await expect(
-        registry.connect(registrar).register("overflow", ".claw", user1.address, 0)
-      ).to.be.revertedWithCustomError(registry, "TooManyDomains");
-    });
-
-    it("user can reclaim cap slot after burning an expired domain (active-count fix)", async function () {
-      // Register a domain for user1
-      const tx = await registry.connect(registrar).register("reclaim-a", ".claw", user1.address, 0);
-      const receipt = await tx.wait();
-      // Find DomainRegistered event to get tokenId
-      let tokenId;
-      for (const log of receipt.logs) {
-        try {
-          const parsed = registry.interface.parseLog(log);
-          if (parsed.name === "DomainRegistered") { tokenId = parsed.args[0]; break; }
-        } catch {}
-      }
-
-      // Advance time past 1-year expiry
-      await ethers.provider.send("evm_increaseTime", [366 * 24 * 3600]);
-      await ethers.provider.send("evm_mine");
-
-      // Burn the expired domain — active-count cap slot freed
-      await registry.burnExpired(tokenId);
-
-      // A new domain registration should succeed (active count = 0 after burn)
-      await registry.connect(registrar).register("reclaim-b", ".claw", user1.address, 0);
-
-      // getOwnerTokenIds filters to active (non-expired, non-burned) domains only — should be 1
-      const activeIds = await registry.getOwnerTokenIds(user1.address);
-      expect(activeIds.length).to.equal(1); // only reclaim-b is active
     });
   });
 });

@@ -71,29 +71,8 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     mapping(bytes32 => uint256) public submittedAt;
     uint256 private _jobCounter;
 
-    // L-06: rate-limit job creation to max 10 jobs per address per hour
-    mapping(address => uint256) public lastJobCreatedAt;
-    mapping(address => uint256) public jobsThisHour;
-    uint256 public constant MAX_JOBS_PER_HOUR = 10;
-
     address public treasury;
-
-    // ─── Legacy single evaluator (kept for backward-read-compatibility) ───
     address public evaluator;
-
-    // ─── FIX C-01: Multi-evaluator threshold system ───────────────────────
-    // Replaces the single-evaluator single point of failure.
-    // Any evaluator can call complete() to record an approval.
-    // Payout only executes when approvalCount[jobId] >= evaluatorThreshold.
-    mapping(address => bool) public evaluators;
-    uint256 public evaluatorCount;
-    uint256 public evaluatorThreshold; // defaults to 1 for backward compat; set to 2+ for multi-sig
-    mapping(bytes32 => mapping(address => bool)) public evaluatorApprovals;
-    mapping(bytes32 => uint256) public approvalCount;
-
-    // ─── FIX H-01: Track funds locked in active jobs ──────────────────────
-    // Prevents recoverStuckUSDC from draining funds owed to active job participants.
-    uint256 public totalLockedBudget;
 
     uint256 public totalJobsCreated;
     uint256 public totalJobsCompleted;
@@ -113,18 +92,12 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     error JobAlreadyExpired();
     error ProviderNotRegistered();
     error SelfDealingNotAllowed();
-    // L-06: raised when a client exceeds MAX_JOBS_PER_HOUR job creations
-    error RateLimitExceeded();
 
     // ═══════════════════════════════════════════════════════════
-    // EVENTS
+    // ADDITIONAL EVENTS
     // ═══════════════════════════════════════════════════════════
 
     event EvaluatorUpdated(address indexed oldEvaluator, address indexed newEvaluator);
-    event EvaluatorAdded(address indexed evaluator);
-    event EvaluatorRemoved(address indexed evaluator);
-    event EvaluatorThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
-    event JobApproved(bytes32 indexed jobId, address indexed evaluator, uint256 approvalCount);
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     event FeesCollected(bytes32 indexed jobId, uint256 amount);
 
@@ -149,21 +122,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         bond = IClawTrustBond(_bond);
         usdc = IERC20(_usdc);
         treasury = _treasury;
-
-        // Primary evaluator (legacy address + multi-sig mapping)
         evaluator = _evaluator;
-        evaluators[_evaluator] = true;
-        evaluatorCount = 1;
-
-        // FIX C-01: Default threshold=2 for quorum enforcement out of the box.
-        // The deployer (owner) is added as a second evaluator so the contract is
-        // immediately operable (threshold can be met without a separate addEvaluator call).
-        // Owner can be removed from evaluators after adding external evaluators.
-        if (_evaluator != msg.sender) {
-            evaluators[msg.sender] = true;
-            evaluatorCount = 2;
-        }
-        evaluatorThreshold = 2;
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -185,15 +144,6 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         if (budget < MIN_BUDGET) revert InvalidAmount();
         if (durationSeconds < MIN_DURATION || durationSeconds > MAX_DURATION) revert InvalidDuration();
         if (bytes(description).length > 1000) revert InvalidAmount();
-
-        // L-06: enforce max 10 jobs per address per hour to prevent storage spam
-        if (block.timestamp >= lastJobCreatedAt[msg.sender] + 1 hours) {
-            // new hour window — reset counter
-            jobsThisHour[msg.sender] = 0;
-            lastJobCreatedAt[msg.sender] = block.timestamp;
-        }
-        jobsThisHour[msg.sender]++;
-        if (jobsThisHour[msg.sender] > MAX_JOBS_PER_HOUR) revert RateLimitExceeded();
 
         _jobCounter++;
         // abi.encode (not encodePacked) prevents hash-collision between different-length inputs
@@ -238,9 +188,6 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         usdc.safeTransferFrom(msg.sender, address(this), job.budget);
         job.status = JobStatus.Funded;
 
-        // FIX H-01: track locked budget so recoverStuckUSDC cannot drain active jobs
-        totalLockedBudget += job.budget;
-
         emit JobFunded(jobId, msg.sender, job.budget);
     }
 
@@ -278,8 +225,6 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         if (job.status != JobStatus.Assigned) revert InvalidStatus();
         if (msg.sender != job.provider) revert Unauthorized();
         if (block.timestamp >= job.expiredAt) revert JobAlreadyExpired();
-        // M-05: reject empty deliverableHash — providers must submit a real proof
-        if (deliverableHash == bytes32(0)) revert InvalidAmount();
 
         job.deliverableHash = deliverableHash;
         job.status = JobStatus.Submitted;
@@ -289,64 +234,26 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Record an evaluator's approval for a submitted job.
-     *
-     * FIX C-01 (primary path): Evaluators call this function to add their approval on-chain.
-     * Payout fires automatically when `approvalCount[jobId] >= evaluatorThreshold`.
-     * Each evaluator can approve at most once per job (idempotent; duplicate calls are no-ops).
-     * If the threshold is not met, the function succeeds (approval persisted) but no USDC moves.
-     *
-     * @param jobId  The job to approve
+     * @notice Mark a submitted job as completed. Releases USDC to provider.
+     * @dev Only the evaluator (oracle) can call this. Platform fee deducted.
+     * @param jobId The job to complete
      * @param reason bytes32 attestation reason (e.g. keccak of "SWARM_APPROVED")
      */
     // slither-disable-next-line reentrancy-benign
-    // Protected by `nonReentrant`. USDC transfer happens inside _executeCompletion, after state
-    // is fully updated (job.status = Completed, totalLockedBudget adjusted).
-    function approveCompletion(bytes32 jobId, bytes32 reason) external nonReentrant whenNotPaused {
-        _recordApprovalAndMaybeComplete(jobId, reason);
-    }
-
-    /**
-     * @notice ERC-8183 backward-compatible alias for approveCompletion.
-     *         Delegates fully to approveCompletion semantics (quorum-gated, no owner bypass).
-     *
-     * @param jobId  The job to complete
-     * @param reason bytes32 attestation reason
-     */
+    // Protected by `nonReentrant`. State is updated before safeTransfer payouts. Any re-entry
+    // from USDC token callbacks is blocked by the mutex. Slither reports benign because the
+    // written vars (job.status, job.outcomeReason) are not re-readable by the external call.
     function complete(bytes32 jobId, bytes32 reason) external override nonReentrant whenNotPaused {
-        _recordApprovalAndMaybeComplete(jobId, reason);
-    }
-
-    // ─── Internal: approval accumulation + conditional payout ──────
-
-    function _recordApprovalAndMaybeComplete(bytes32 jobId, bytes32 reason) internal {
-        if (!evaluators[msg.sender]) revert Unauthorized();
+        if (msg.sender != evaluator && msg.sender != owner()) {
+            if (block.timestamp < submittedAt[jobId] + DISPUTE_WINDOW) revert Unauthorized();
+        }
 
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
         if (job.status != JobStatus.Submitted) revert InvalidStatus();
 
-        // Record approval — idempotent: each evaluator can approve at most once per job
-        if (!evaluatorApprovals[jobId][msg.sender]) {
-            evaluatorApprovals[jobId][msg.sender] = true;
-            approvalCount[jobId]++;
-            emit JobApproved(jobId, msg.sender, approvalCount[jobId]);
-        }
-
-        // Execute payout only when quorum is reached; otherwise return (approval persisted)
-        if (approvalCount[jobId] >= evaluatorThreshold) {
-            _executeCompletion(jobId, reason, job);
-        }
-    }
-
-    // slither-disable-next-line reentrancy-benign
-    // Called from nonReentrant functions only. State updated before transfers.
-    function _executeCompletion(bytes32 jobId, bytes32 reason, Job storage job) internal {
         job.status = JobStatus.Completed;
         job.outcomeReason = reason;
-
-        // FIX H-01: release from locked budget accounting
-        totalLockedBudget -= job.budget;
 
         uint256 fee = (job.budget * PLATFORM_FEE_BPS) / BPS_DENOMINATOR;
         uint256 payout = job.budget - fee;
@@ -365,12 +272,12 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
 
     /**
      * @notice Mark a submitted job as rejected. Refunds USDC to client.
-     * @dev Only a registered evaluator or the owner can call this.
+     * @dev Only the evaluator (oracle) can call this.
      * @param jobId The job to reject
      * @param reason bytes32 attestation reason (e.g. keccak of "SWARM_REJECTED")
      */
     function reject(bytes32 jobId, bytes32 reason) external override nonReentrant whenNotPaused {
-        if (!evaluators[msg.sender] && msg.sender != owner()) revert Unauthorized();
+        if (msg.sender != evaluator && msg.sender != owner()) revert Unauthorized();
 
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
@@ -378,9 +285,6 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
 
         job.status = JobStatus.Rejected;
         job.outcomeReason = reason;
-
-        // FIX H-01: release from locked budget accounting
-        totalLockedBudget -= job.budget;
 
         usdc.safeTransfer(job.client, job.budget);
 
@@ -402,8 +306,6 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         job.status = JobStatus.Cancelled;
 
         if (wasFunded) {
-            // FIX H-01: release from locked budget accounting
-            totalLockedBudget -= job.budget;
             usdc.safeTransfer(job.client, job.budget);
         }
 
@@ -426,8 +328,6 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         job.status = JobStatus.Expired;
 
         if (hadFunds) {
-            // FIX H-01: release from locked budget accounting
-            totalLockedBudget -= job.budget;
             usdc.safeTransfer(job.client, job.budget);
         }
 
@@ -490,56 +390,10 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     // ADMIN FUNCTIONS
     // ═══════════════════════════════════════════════════════════
 
-    /**
-     * @notice Set the primary evaluator (legacy address) and add it to the evaluators mapping.
-     * @dev Kept for backward compatibility. Use addEvaluator / removeEvaluator for multi-sig.
-     */
     function setEvaluator(address _evaluator) external onlyOwner {
         if (_evaluator == address(0)) revert InvalidAddress();
         emit EvaluatorUpdated(evaluator, _evaluator);
         evaluator = _evaluator;
-        // Also register in the multi-evaluator mapping if not already present
-        if (!evaluators[_evaluator]) {
-            evaluators[_evaluator] = true;
-            evaluatorCount++;
-            emit EvaluatorAdded(_evaluator);
-        }
-    }
-
-    /**
-     * @notice Add an evaluator to the multi-sig set.
-     * @dev Use setEvaluatorThreshold to require quorum after adding.
-     */
-    function addEvaluator(address _evaluator) external onlyOwner {
-        if (_evaluator == address(0)) revert InvalidAddress();
-        if (!evaluators[_evaluator]) {
-            evaluators[_evaluator] = true;
-            evaluatorCount++;
-            emit EvaluatorAdded(_evaluator);
-        }
-    }
-
-    /**
-     * @notice Remove an evaluator from the multi-sig set.
-     * @dev evaluatorThreshold is NOT automatically lowered — call setEvaluatorThreshold if needed.
-     */
-    function removeEvaluator(address _evaluator) external onlyOwner {
-        if (evaluators[_evaluator]) {
-            evaluators[_evaluator] = false;
-            if (evaluatorCount > 0) evaluatorCount--;
-            emit EvaluatorRemoved(_evaluator);
-        }
-    }
-
-    /**
-     * @notice Set the minimum number of evaluator approvals required to complete a job.
-     * @param _threshold Must be >= 1 and <= evaluatorCount.
-     */
-    function setEvaluatorThreshold(uint256 _threshold) external onlyOwner {
-        if (_threshold == 0 || _threshold > evaluatorCount) revert InvalidAmount();
-        uint256 old = evaluatorThreshold;
-        evaluatorThreshold = _threshold;
-        emit EvaluatorThresholdUpdated(old, _threshold);
     }
 
     function setTreasury(address _treasury) external onlyOwner {
@@ -557,20 +411,9 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         IERC20(token).safeTransfer(to, amount);
     }
 
-    /**
-     * @notice Recover USDC that is genuinely stuck (not owed to active jobs).
-     *
-     * FIX H-01: Only recovers the surplus above totalLockedBudget.
-     * This prevents draining funds that belong to active job participants.
-     *
-     * @param to       Recipient address
-     * @param amount   Amount to recover (must be <= balance - totalLockedBudget)
-     */
-    function recoverStuckUSDC(address to, uint256 amount) external onlyOwner nonReentrant {
+    function recoverStuckUSDC(address to) external onlyOwner nonReentrant {
         if (to == address(0)) revert InvalidAddress();
         uint256 balance = usdc.balanceOf(address(this));
-        uint256 recoverable = balance > totalLockedBudget ? balance - totalLockedBudget : 0;
-        if (amount > recoverable) revert InvalidAmount();
-        usdc.safeTransfer(to, amount);
+        usdc.safeTransfer(to, balance);
     }
 }

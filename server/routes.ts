@@ -542,67 +542,6 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.get("/sitemap.xml", async (_req, res) => {
-    try {
-      const agents = await storage.getAgents();
-      const profileUrls = agents
-        .filter((a: any) => a.moltDomain && a.autonomyStatus !== "deactivated")
-        .map((a: any) => `  <url>
-    <loc>https://clawtrust.org/profile/${a.moltDomain}</loc>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
-  </url>`)
-        .join("\n");
-
-      const staticUrls = [
-        { loc: "https://clawtrust.org/", freq: "daily", pri: "1.0" },
-        { loc: "https://clawtrust.org/agents", freq: "hourly", pri: "0.9" },
-        { loc: "https://clawtrust.org/gigs", freq: "hourly", pri: "0.9" },
-        { loc: "https://clawtrust.org/leaderboard", freq: "daily", pri: "0.9" },
-        { loc: "https://clawtrust.org/passport", freq: "daily", pri: "0.8" },
-        { loc: "https://clawtrust.org/crews", freq: "daily", pri: "0.8" },
-        { loc: "https://clawtrust.org/swarm", freq: "hourly", pri: "0.8" },
-        { loc: "https://clawtrust.org/domains", freq: "daily", pri: "0.8" },
-        { loc: "https://clawtrust.org/register", freq: "monthly", pri: "0.8" },
-        { loc: "https://clawtrust.org/docs", freq: "weekly", pri: "0.7" },
-        { loc: "https://clawtrust.org/contracts", freq: "weekly", pri: "0.7" },
-        { loc: "https://clawtrust.org/slashes", freq: "daily", pri: "0.7" },
-        { loc: "https://clawtrust.org/skale-grant", freq: "weekly", pri: "0.7" },
-        { loc: "https://clawtrust.org/molty", freq: "daily", pri: "0.7" },
-        { loc: "https://clawtrust.org/mainnet", freq: "weekly", pri: "0.6" },
-        { loc: "https://clawtrust.org/blog", freq: "weekly", pri: "0.8" },
-        { loc: "https://clawtrust.org/privacy", freq: "monthly", pri: "0.4" },
-        { loc: "https://clawtrust.org/terms", freq: "monthly", pri: "0.4" },
-      ].map(u => `  <url>
-    <loc>${u.loc}</loc>
-    <changefreq>${u.freq}</changefreq>
-    <priority>${u.pri}</priority>
-  </url>`).join("\n");
-
-      const blogPosts = await storage.getBlogPosts().catch(() => []);
-      const blogUrls = blogPosts
-        .filter((p: any) => p.published)
-        .map((p: any) => `  <url>
-    <loc>https://clawtrust.org/blog/${p.slug}</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>`)
-        .join("\n");
-
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${staticUrls}
-${blogUrls}
-${profileUrls}
-</urlset>`;
-
-      res.set({ "Content-Type": "application/xml", "Cache-Control": "public, max-age=3600" });
-      return res.send(xml);
-    } catch {
-      res.status(500).send("Sitemap generation failed");
-    }
-  });
-
   app.get("/", async (req, res, next) => {
     if (!isBot(req.headers["user-agent"])) return next();
     try {
@@ -1714,12 +1653,40 @@ ${profileUrls}
     }
   });
 
-  app.post("/api/reputation/sync", async (req, res) => {
+  app.post("/api/reputation/sync", apiLimiter, async (req, res) => {
     try {
+      const adminWallet = req.headers["x-admin-wallet"] as string | undefined;
+      const callerAgentId = req.headers["x-agent-id"] as string | undefined;
+      const callerWallet = req.headers["x-wallet-address"] as string | undefined;
+
+      const isAdmin = (() => {
+        if (!adminWallet) return false;
+        const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
+        return ADMIN_WALLETS.includes(adminWallet.toLowerCase());
+      })();
+
+      if (!isAdmin && !isTestBypass(req)) {
+        if (!callerAgentId || !uuidPattern.test(callerAgentId)) {
+          logSuspiciousActivity(req, "rep_sync_no_auth", "Unauthenticated reputation sync attempt");
+          return res.status(401).json({ message: "Authentication required. Send x-agent-id (for agent) or x-admin-wallet (for admin)." });
+        }
+      }
+
       const { agentId, sourceChain, targetChain } = req.body;
       if (!agentId) return res.status(400).json({ message: "agentId required" });
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      if (!isAdmin && !isTestBypass(req) && callerAgentId) {
+        if (callerAgentId !== agentId) {
+          logSuspiciousActivity(req, "rep_sync_wrong_agent", `Agent ${callerAgentId} tried to sync agent ${agentId}`);
+          return res.status(403).json({ message: "Agents may only sync their own reputation." });
+        }
+        if (callerWallet && agent.walletAddress && callerWallet.toLowerCase() !== agent.walletAddress.toLowerCase()) {
+          logSuspiciousActivity(req, "rep_sync_wallet_mismatch", `Wallet mismatch on rep sync for agent ${agentId}`, "critical");
+          return res.status(403).json({ message: "Wallet does not match agent owner." });
+        }
+      }
 
       let newScore = agent.fusedScore;
       try {
@@ -3758,21 +3725,13 @@ ${profileUrls}
 
         if (dbAgentFallback) {
           const tid = dbAgentFallback.erc8004TokenId || null;
-          const isSkaleAgent = dbAgentFallback.preferredChain === "SKALE_TESTNET";
-          const skaleNftAddr = "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83";
-          const contractAddr = isSkaleAgent ? skaleNftAddr : nftAddress;
-          const bsUrl = tid
-            ? isSkaleAgent
-              ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/${skaleNftAddr}?a=${tid}`
-              : `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}`
-            : null;
+          const bsUrl = tid ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}` : null;
           return res.json({
             valid: true,
             standard: "ERC-8004",
-            chain: isSkaleAgent ? "skale" : "base-sepolia",
-            chainId: isSkaleAgent ? 324705682 : 84532,
-            explorerName: isSkaleAgent ? "SKALE Explorer" : "Basescan",
-            contract: { clawCardNFT: contractAddr, tokenId: tid, basescanUrl: bsUrl },
+            chain: "base-sepolia",
+            chainId: 84532,
+            contract: { clawCardNFT: nftAddress, tokenId: tid, basescanUrl: bsUrl },
             identity: {
               wallet: dbAgentFallback.walletAddress,
               moltDomain: dbAgentFallback.moltDomain,
@@ -3825,13 +3784,8 @@ ${profileUrls}
       // Use DB wallet if on-chain didn't resolve it
       if (!walletAddress && dbAgent?.walletAddress) walletAddress = dbAgent.walletAddress;
 
-      const isSkaleAgent2 = dbAgent?.preferredChain === "SKALE_TESTNET";
-      const skaleNftAddr2 = "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83";
-      const resolvedNftAddr = isSkaleAgent2 ? skaleNftAddr2 : nftAddress;
       const basescanUrl = tokenId
-        ? isSkaleAgent2
-          ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/${skaleNftAddr2}?a=${tokenId}`
-          : `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
+        ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tokenId}`
         : null;
 
       let registeredAt: string | null = null;
@@ -3849,11 +3803,10 @@ ${profileUrls}
       res.json({
         valid: true,
         standard: "ERC-8004",
-        chain: isSkaleAgent2 ? "skale" : "base-sepolia",
-        chainId: isSkaleAgent2 ? 324705682 : 84532,
-        explorerName: isSkaleAgent2 ? "SKALE Explorer" : "Basescan",
+        chain: "base-sepolia",
+        chainId: 84532,
         contract: {
-          clawCardNFT: resolvedNftAddr,
+          clawCardNFT: nftAddress,
           tokenId,
           basescanUrl,
         },
@@ -3891,12 +3844,14 @@ ${profileUrls}
         },
         onChain: {
           verified: true,
-          contractAddress: resolvedNftAddr,
+          contractAddress: nftAddress,
           tokenId,
           basescanUrl,
           standard: "ERC-8004",
         },
-        scanUrl: basescanUrl,
+        scanUrl: tokenId
+            ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${tokenId}`
+            : null,
         metadataUri: dbAgent
           ? `${PRODUCTION_BASE_URL}/api/agents/${dbAgent.id}/card/metadata`
           : null,
@@ -4728,7 +4683,7 @@ ${profileUrls}
     }
   });
 
-  function agentAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  async function agentAuthMiddleware(req: Request, res: Response, next: NextFunction) {
     const agentId = req.headers["x-agent-id"] as string | undefined;
     if (!agentId) {
       return res.status(401).json({ message: "Agent authentication required. Send x-agent-id header." });
@@ -4736,8 +4691,40 @@ ${profileUrls}
     if (!uuidPattern.test(agentId)) {
       return res.status(400).json({ message: "Invalid x-agent-id format" });
     }
+
+    const agent = await storage.getAgent(agentId);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    if (isTestBypass(req)) {
+      (req as any).agentId = agentId;
+      (req as any).isE2EBypass = true;
+      return next();
+    }
+
+    if ((req as any).adminWallet) {
+      (req as any).agentId = agentId;
+      (req as any).isE2EBypass = false;
+      return next();
+    }
+
+    const callerWallet =
+      ((req as any).wallet as string | undefined) ||
+      (req.headers["x-wallet-address"] as string | undefined);
+
+    if (!callerWallet) {
+      logSuspiciousActivity(req, "agent_auth_no_wallet", `Agent ${agentId} request missing wallet header`);
+      return res.status(401).json({ message: "Wallet address required. Send x-wallet-address header." });
+    }
+
+    if (callerWallet.toLowerCase() !== agent.walletAddress.toLowerCase()) {
+      logSuspiciousActivity(req, "agent_auth_wallet_mismatch", `Caller wallet ${callerWallet.slice(0, 10)} does not own agent ${agentId}`, "critical");
+      return res.status(403).json({ message: "Wallet does not match agent owner. Access denied." });
+    }
+
     (req as any).agentId = agentId;
-    (req as any).isE2EBypass = isTestBypass(req);
+    (req as any).isE2EBypass = false;
     next();
   }
 
@@ -6923,7 +6910,7 @@ ${profileUrls}
     }
   });
 
-  app.post("/api/bond/:agentId/sync-performance", async (req, res) => {
+  app.post("/api/bond/:agentId/sync-performance", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
       const agentId = safeId.safeParse(req.params.agentId);
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
@@ -9058,10 +9045,22 @@ ${profileUrls}
   app.post("/api/agents/:id/inherit-reputation", strictLimiter, async (req, res) => {
     try {
       const oldAgentId = req.params.id as string;
-      const { newWallet, oldWallet, signature, newAgentId } = req.body;
+      const { newWallet, oldWallet, signature, sigTimestamp, newAgentId } = req.body;
 
       if (!newWallet || !oldWallet || !newAgentId) {
         return res.status(400).json({ message: "newWallet, oldWallet, and newAgentId are required" });
+      }
+
+      if (!signature || !sigTimestamp) {
+        logSuspiciousActivity(req, "inherit_rep_no_sig", `inherit-reputation attempted without signature from ${oldWallet}`);
+        return res.status(401).json({ message: "Wallet signature required. Sign the migration message with your wallet." });
+      }
+
+      const ts = parseInt(sigTimestamp, 10);
+      const now = Date.now();
+      if (isNaN(ts) || now - ts > SENSITIVE_SIG_TTL_MS || ts > now + 60_000) {
+        logSuspiciousActivity(req, "inherit_rep_sig_expired", `inherit-reputation signature expired for ${oldWallet}`);
+        return res.status(401).json({ message: "Signature expired. Please re-sign within 30 minutes." });
       }
 
       const oldAgent = await storage.getAgent(oldAgentId);
@@ -9071,6 +9070,22 @@ ${profileUrls}
 
       if (oldAgent.walletAddress.toLowerCase() !== oldWallet.toLowerCase()) {
         return res.status(400).json({ message: "oldWallet does not match agent's registered wallet" });
+      }
+
+      const migrationMessage = `ClawTrust reputation migration.\nOld agent: ${oldAgentId}\nOld wallet: ${oldWallet}\nNew agent: ${newAgentId}\nNew wallet: ${newWallet}\nTimestamp: ${ts}`;
+      try {
+        const valid = await verifyMessage({
+          address: oldWallet as Address,
+          message: migrationMessage,
+          signature: signature as `0x${string}`,
+        });
+        if (!valid) {
+          logSuspiciousActivity(req, "inherit_rep_sig_invalid", `Invalid signature for reputation migration from ${oldWallet}`, "critical");
+          return res.status(401).json({ message: "Invalid wallet signature. Signature must be from the registered wallet of the source agent." });
+        }
+      } catch (sigErr: any) {
+        logSuspiciousActivity(req, "inherit_rep_sig_error", `Signature verification error for ${oldWallet}: ${sigErr?.message}`);
+        return res.status(401).json({ message: "Wallet signature verification failed." });
       }
 
       const newAgent = await storage.getAgent(newAgentId);
@@ -9204,8 +9219,14 @@ ${profileUrls}
   });
 
   // ─── SKALE Multi-chain: Sync score Base → SKALE ─────────────────────
-  app.post("/api/agents/:id/sync-to-skale", apiLimiter, async (req, res) => {
+  app.post("/api/agents/:id/sync-to-skale", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
+      const authenticatedAgentId = (req as any).agentId as string;
+      if (authenticatedAgentId && authenticatedAgentId !== req.params.id) {
+        logSuspiciousActivity(req, "skale_sync_wrong_agent", `Agent ${authenticatedAgentId} tried to sync agent ${req.params.id}`, "critical");
+        return res.status(403).json({ message: "You may only sync your own agent to SKALE." });
+      }
+
       const agent = await storage.getAgent(req.params.id as string);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
@@ -9227,8 +9248,6 @@ ${profileUrls}
       if ("error" in result) {
         return res.status(500).json({ message: result.error, walletAddress: agent.walletAddress });
       }
-
-      await storage.updateAgent(agent.id, { preferredChain: "SKALE_TESTNET" as any });
 
       return res.json({
         success: true,

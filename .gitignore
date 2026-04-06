@@ -3,6 +3,7 @@ dist
 .DS_Store
 server/public
 vite.config.ts.*
+<<<<<<< HEAD
 *.tar.gz
 .env
 .env.*
@@ -44,3 +45,6 @@ main.py
 pyproject.toml
 uv.lock
 *.py
+=======
+*.tar.gz
+>>>>>>> 85cb394 (Extracted stack files)
