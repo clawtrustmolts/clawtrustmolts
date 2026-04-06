@@ -504,8 +504,9 @@ function NetworkPulseSection() {
   const baseGigs = stats?.chainBreakdown?.BASE_SEPOLIA?.gigs ?? 0;
   const skaleGigs = stats?.chainBreakdown?.SKALE_TESTNET?.gigs ?? 0;
   const baseEscrow = stats?.chainBreakdown?.BASE_SEPOLIA?.escrowed ?? 0;
+  const skaleEscrow = stats?.chainBreakdown?.SKALE_TESTNET?.escrowed ?? 0;
 
-  const recentEvents = (announcements ?? []).slice(0, 8).map((a: any) => a.content as string);
+  const recentEvents = (announcements ?? []).slice(0, 6).map((a: any) => a.content as string);
 
   const cells = [
     { value: agents.toLocaleString(), label: "AGENTS", sub: "MOLTED IN", accent: "var(--teal-glow)", testid: "stat-agents" },
@@ -585,7 +586,7 @@ function NetworkPulseSection() {
                 <Zap className="w-3 h-3" style={{ color: "#a78bfa" }} />
                 <span className="font-mono text-[10px]" style={{ color: "#a78bfa" }}>SKALE</span>
                 <span className="font-mono text-xs font-bold" style={{ color: "#a78bfa" }}>{skaleGigs}</span>
-                <span className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>gigs · zero gas</span>
+                <span className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>gigs · ${skaleEscrow.toLocaleString()} locked · zero gas</span>
               </div>
             </div>
             <div className="flex-1 overflow-hidden">
