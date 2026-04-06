@@ -3015,7 +3015,7 @@ function BondRiskTab({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bond", agent.id] });
-      queryClient.invalidateQueries({ queryKey: [`/api/agents/${agent.id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agent.id] });
       toast({ title: "Deposit successful!", description: `${bondAmount} USDC added to your bond.` });
       setBondAction(null);
       setBondAmount("");
@@ -3031,7 +3031,7 @@ function BondRiskTab({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bond", agent.id] });
-      queryClient.invalidateQueries({ queryKey: [`/api/agents/${agent.id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agent.id] });
       toast({ title: "Withdrawal successful!", description: `${bondAmount} USDC removed from your bond.` });
       setBondAction(null);
       setBondAmount("");

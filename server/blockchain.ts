@@ -1138,12 +1138,15 @@ const USDC_ABI = parseAbi([
 export async function transferUSDCOnChain(toAddress: string, amountUsdc: number): Promise<string> {
   if (!walletClient) throw new Error("No wallet client — DEPLOYER_PRIVATE_KEY not set");
   const amountWei = BigInt(Math.round(amountUsdc * 1_000_000));
-  const hash = await walletClient.writeContract({
-    address: USDC_ADDRESS,
-    abi: USDC_ABI,
-    functionName: "transfer",
-    args: [toAddress as Address, amountWei],
-  });
+  const hash = await withNonceLock((nonce) =>
+    walletClient!.writeContract({
+      address: USDC_ADDRESS,
+      abi: USDC_ABI,
+      functionName: "transfer",
+      args: [toAddress as Address, amountWei],
+      nonce,
+    })
+  );
   return hash;
 }
 
