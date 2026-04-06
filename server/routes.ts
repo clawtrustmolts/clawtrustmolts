@@ -1655,20 +1655,65 @@ export async function registerRoutes(
 
   app.post("/api/reputation/sync", apiLimiter, async (req, res) => {
     try {
-      // ── Auth: admin OR agent-self (wallet must be cryptographically verified) ──
-      const adminWallet = req.headers["x-admin-wallet"] as string | undefined;
-      const callerAgentId = req.headers["x-agent-id"] as string | undefined;
+      // ── Auth: admin (full SIWE) OR agent-self (wallet must be SIWE-verified) ──
+      const adminWalletHeader = req.headers["x-admin-wallet"] as string | undefined;
+      const callerAgentId     = req.headers["x-agent-id"] as string | undefined;
 
-      const isAdmin = (() => {
-        if (!adminWallet) return false;
+      // ── Admin path: require full adminAuthMiddleware-equivalent verification ──
+      let isAdmin = false;
+      if (adminWalletHeader) {
         const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
-        return ADMIN_WALLETS.includes(adminWallet.toLowerCase());
-      })();
+        if (ADMIN_WALLETS.length === 0) {
+          logSuspiciousActivity(req, "rep_sync_admin_not_configured", "Admin rep-sync attempted but ADMIN_WALLETS not configured", "critical");
+          return res.status(503).json({ message: "Admin access not configured." });
+        }
+        if (!/^0x[a-fA-F0-9]{40}$/.test(adminWalletHeader)) {
+          logSuspiciousActivity(req, "rep_sync_admin_invalid_wallet", `Invalid admin wallet format: ${adminWalletHeader.slice(0, 20)}`);
+          return res.status(400).json({ message: "Invalid admin wallet address format." });
+        }
+        if (!ADMIN_WALLETS.includes(adminWalletHeader.toLowerCase())) {
+          logSuspiciousActivity(req, "rep_sync_unauthorized_admin", `Non-admin wallet ${adminWalletHeader} attempted admin rep-sync`, "critical");
+          return res.status(403).json({ message: "Wallet not authorized for admin actions." });
+        }
+
+        if (!isTestBypass(req)) {
+          const adminSig   = req.headers["x-admin-signature"] as string | undefined;
+          const adminSigTs = req.headers["x-admin-sig-timestamp"] as string | undefined;
+          if (!adminSig || !adminSigTs) {
+            logSuspiciousActivity(req, "rep_sync_admin_no_sig", `Admin ${adminWalletHeader} sent rep-sync without signature — rejected`);
+            return res.status(401).json({ message: "Admin signature required (x-admin-signature + x-admin-sig-timestamp)." });
+          }
+          const ts = parseInt(adminSigTs, 10);
+          const now = Date.now();
+          if (isNaN(ts) || now - ts > SENSITIVE_SIG_TTL_MS || ts > now + 60_000) {
+            logSuspiciousActivity(req, "rep_sync_admin_sig_expired", `Admin ${adminWalletHeader} sent expired signature on rep-sync`);
+            return res.status(401).json({ message: "Admin signature expired. Re-sign within 30 minutes." });
+          }
+          try {
+            const message = buildSignMessage(ts);
+            const valid = await verifyMessage({
+              address: adminWalletHeader as Address,
+              message,
+              signature: adminSig as `0x${string}`,
+            });
+            if (!valid) {
+              logSuspiciousActivity(req, "rep_sync_admin_sig_invalid", `Admin signature verification failed for ${adminWalletHeader}`, "critical");
+              return res.status(401).json({ message: "Invalid admin signature." });
+            }
+          } catch (err: any) {
+            logSuspiciousActivity(req, "rep_sync_admin_sig_error", `Admin sig verification error on rep-sync: ${err?.message}`);
+            return res.status(401).json({ message: "Admin signature verification failed." });
+          }
+        }
+
+        (req as any).adminWallet = adminWalletHeader;
+        isAdmin = true;
+      }
 
       if (!isAdmin && !isTestBypass(req)) {
         if (!callerAgentId || !uuidPattern.test(callerAgentId)) {
           logSuspiciousActivity(req, "rep_sync_no_auth", "Unauthenticated reputation sync attempt");
-          return res.status(401).json({ message: "Authentication required. Send x-agent-id (for agent) or x-admin-wallet (for admin)." });
+          return res.status(401).json({ message: "Authentication required. Send x-agent-id (for agent) or x-admin-wallet+signature (for admin)." });
         }
       }
 
