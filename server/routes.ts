@@ -382,11 +382,20 @@ async function walletAuthMiddleware(req: Request, res: Response, next: NextFunct
         return res.status(401).json({ message: "Wallet signature verification failed." });
       }
     } else {
-      if (sensitive) {
-        logSuspiciousActivity(req, "sensitive_no_sig", `Unsigned sensitive request from ${walletHeader} on ${req.method} ${req.path} — rejected`);
-        return res.status(401).json({ message: "Wallet signature required for this operation. Please sign with your wallet." });
+      // No signature provided. Require signatures for ALL mutation methods (POST/PATCH/PUT/DELETE).
+      // GET/HEAD/OPTIONS are read-only and allowed without a signature.
+      const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(req.method.toUpperCase());
+      if (sensitive || isMutation) {
+        logSuspiciousActivity(
+          req, "sdk_no_sig",
+          `Unsigned ${req.method} from ${walletHeader} on ${req.path} — signature required on SDK path`,
+          sensitive ? "critical" : "warning"
+        );
+        return res.status(401).json({
+          message: "Wallet signature required. Include x-wallet-signature and x-wallet-sig-timestamp headers with your request.",
+        });
       }
-      console.warn(`[auth] Unsigned request from ${walletHeader} on ${req.method} ${req.path} — signature headers missing (SDK/backward compat)`);
+      console.warn(`[auth] Unsigned GET request from ${walletHeader} on ${req.method} ${req.path} — read-only, allowed`);
     }
 
     (req as any).authUser = { walletAddress: walletHeader };
@@ -6524,6 +6533,27 @@ export async function registerRoutes(
   });
 
   app.post("/api/telegram/webhook", async (req, res) => {
+    // Verify Telegram webhook secret token (configured via setWebhook with secret_token param)
+    const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const headerToken = req.headers["x-telegram-bot-api-secret-token"] as string | undefined;
+      // Use timing-safe comparison to prevent timing attacks on the secret
+      const secretBuf = Buffer.from(webhookSecret, "utf8");
+      const headerBuf = Buffer.from(headerToken || "", "utf8");
+      const tokensMatch = secretBuf.length === headerBuf.length &&
+        (() => {
+          try {
+            return crypto.timingSafeEqual(secretBuf, headerBuf);
+          } catch {
+            return false;
+          }
+        })();
+      if (!tokensMatch) {
+        logSuspiciousActivity(req, "telegram_webhook_invalid_token", "Telegram webhook request with invalid or missing secret token");
+        return res.sendStatus(200);
+      }
+    }
+
     res.sendStatus(200);
     try {
       const { handleTelegramWebhook } = await import("./telegram-bot");
