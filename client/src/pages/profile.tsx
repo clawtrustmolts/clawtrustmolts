@@ -510,6 +510,22 @@ export default function ProfilePage() {
     enabled: !!agentId && (activeTab === "commerce" || activeTab === "overview"),
   });
 
+  const { data: profileMultichain } = useQuery<{
+    chains: {
+      BASE_SEPOLIA: { registered: boolean; tokenId: string | null };
+      SKALE_TESTNET: { registered: boolean; hasScore: boolean; fusedScore: number | null };
+    };
+  }>({
+    queryKey: ["/api/multichain", agentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/multichain/${agentId}`);
+      if (!res.ok) return null as any;
+      return res.json();
+    },
+    enabled: !!agentId,
+    staleTime: 60_000,
+  });
+
   if (isAgentLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto" data-testid="loading-state">
@@ -544,6 +560,12 @@ export default function ProfilePage() {
   }
 
   const agent = displayAgent;
+
+  const hasSkalePresence =
+    agent.preferredChain === "SKALE_TESTNET" ||
+    (profileMultichain?.chains?.SKALE_TESTNET?.hasScore ?? false) ||
+    (profileMultichain?.chains?.SKALE_TESTNET?.registered ?? false);
+  const hasBasePresence = !!agent.erc8004TokenId || agent.preferredChain !== "SKALE_TESTNET";
 
   const breakdown = repData?.breakdown;
   const events = repData?.events || [];
@@ -663,7 +685,7 @@ export default function ProfilePage() {
               </span>
               {agent.erc8004TokenId ? (
                 <a
-                  href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                  href={hasSkalePresence ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
@@ -750,7 +772,7 @@ export default function ProfilePage() {
                       );
                     })()}
                     <TierBadge tier={tier} size="sm" />
-                    <ChainBadge chain={agent.preferredChain || "BASE_SEPOLIA"} />
+                    <ChainBadge chain={hasSkalePresence ? "SKALE_TESTNET" : (agent.preferredChain || "BASE_SEPOLIA")} />
                     <span
                       className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
                       style={{ background: `${autoStatus.color}12`, color: autoStatus.color, border: `1px solid ${autoStatus.color}30` }}
@@ -774,21 +796,15 @@ export default function ProfilePage() {
                         <Shield className="w-2.5 h-2.5" /> ERC-8004 ↗
                       </a>
                     )}
-                    {(() => {
-                      const onSkale = agent.preferredChain === "SKALE_TESTNET";
-                      const onBase = !onSkale;
-                      return (
-                        <div className="inline-flex items-center rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }} data-testid="badge-chains-active">
-                          <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>ON</span>
-                          {onBase && (
-                            <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff" }} data-testid="badge-active-base">⬡ Base</span>
-                          )}
-                          {onSkale && (
-                            <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", borderLeft: onBase ? "1px solid rgba(255,255,255,0.06)" : "none" }} data-testid="badge-active-skale">⬡ SKALE</span>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    <div className="inline-flex items-center rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }} data-testid="badge-chains-active">
+                      <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>ON</span>
+                      {hasBasePresence && (
+                        <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff" }} data-testid="badge-active-base">⬡ Base</span>
+                      )}
+                      {hasSkalePresence && (
+                        <span className="px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", borderLeft: hasBasePresence ? "1px solid rgba(255,255,255,0.06)" : "none" }} data-testid="badge-active-skale">⬡ SKALE</span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 text-[11px] font-mono pt-0.5">
                     {agent.registeredAt && (
@@ -1096,14 +1112,14 @@ export default function ProfilePage() {
                     ) : agent.moltDomain ? (
                       <a
                         href={agent.erc8004TokenId
-                          ? agent.preferredChain === "SKALE_TESTNET"
+                          ? hasSkalePresence
                             ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`
                             : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
                           : `/passport?wallet=${agent.walletAddress}`}
                         target={agent.erc8004TokenId ? "_blank" : undefined}
                         rel={agent.erc8004TokenId ? "noopener noreferrer" : undefined}
                         title={agent.erc8004TokenId
-                          ? agent.preferredChain === "SKALE_TESTNET"
+                          ? hasSkalePresence
                             ? "View identity on SKALE Explorer"
                             : "View name NFT on BaseScan"
                           : "View passport"}
@@ -2040,7 +2056,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
       {/* Score + Budget Cards */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         {/* Base Sepolia */}
-        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(0,82,255,0.06)", border: "1px solid rgba(0,82,255,0.2)", order: agent.preferredChain === "SKALE_TESTNET" ? 2 : 1 }} data-testid="card-base-score">
+        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(0,82,255,0.06)", border: "1px solid rgba(0,82,255,0.2)", order: (hasSkale || agent.preferredChain === "SKALE_TESTNET") ? 2 : 1 }} data-testid="card-base-score">
           <div className="flex items-center justify-between">
             <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(0,82,255,0.12)", color: "#6090ff", border: "1px solid rgba(0,82,255,0.25)" }}>⬡ Base Sepolia</span>
             {base?.registered
@@ -2066,7 +2082,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
         </div>
 
         {/* SKALE */}
-        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)", order: agent.preferredChain === "SKALE_TESTNET" ? 1 : 2 }} data-testid="card-skale-score">
+        <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)", order: (hasSkale || agent.preferredChain === "SKALE_TESTNET") ? 1 : 2 }} data-testid="card-skale-score">
           <div className="flex items-center justify-between">
             <span className="text-[9px] font-mono px-1 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>⬡ SKALE</span>
             {skale?.registered

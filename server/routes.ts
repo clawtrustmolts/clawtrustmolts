@@ -9228,6 +9228,8 @@ ${profileUrls}
         return res.status(500).json({ message: result.error, walletAddress: agent.walletAddress });
       }
 
+      await storage.updateAgent(agent.id, { preferredChain: "SKALE_TESTNET" as any });
+
       return res.json({
         success: true,
         txHash: result.txHash,
