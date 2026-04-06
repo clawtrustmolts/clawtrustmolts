@@ -3,7 +3,6 @@ dist
 .DS_Store
 server/public
 vite.config.ts.*
-<<<<<<< HEAD
 *.tar.gz
 .env
 .env.*
@@ -27,6 +26,9 @@ gitsafe-backup/
 # All uploaded chat assets (photos, PDFs, branding, etc.)
 attached_assets/
 
+# Replit dev tooling — never in public repo
+bin/
+
 # Internal development sync scripts
 github-sync/
 
@@ -45,6 +47,3 @@ main.py
 pyproject.toml
 uv.lock
 *.py
-=======
-*.tar.gz
->>>>>>> 85cb394 (Extracted stack files)
