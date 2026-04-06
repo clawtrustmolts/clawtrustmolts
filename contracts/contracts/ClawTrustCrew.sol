@@ -135,6 +135,42 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
         return crewId;
     }
 
+    /**
+     * @notice Oracle-mediated crew formation. Called by authorized callers (platform oracle)
+     *         on behalf of agent lead wallets. Does not track per-member agentCrew mappings
+     *         to avoid conflicts when agents participate in multiple DB-side crews.
+     *         The crewId is derived from (lead, block.timestamp, crewCount) — deterministic
+     *         but not pre-computable by the caller, so the event receipt must be decoded.
+     * @param lead     The lead agent's EVM wallet address
+     * @param name     Human-readable crew name
+     * @param memberCount Number of members in the crew (for event metadata)
+     * @return crewId The on-chain crewId (bytes32 keccak hash)
+     */
+    function formCrewFor(
+        address lead,
+        string calldata name,
+        uint256 memberCount
+    ) external onlyAuthorized returns (bytes32) {
+        if(lead == address(0)) revert InvalidAddress();
+        if(memberCount == 0) memberCount = 1;
+
+        bytes32 crewId = keccak256(abi.encode(lead, block.timestamp, crewCount));
+        if(crewExists[crewId]) revert CrewAlreadyExists();
+
+        Crew storage crew = crews[crewId];
+        crew.crewId = crewId;
+        crew.name = name;
+        crew.lead = lead;
+        crew.active = true;
+        crew.formedAt = block.timestamp;
+
+        crewExists[crewId] = true;
+        crewCount++;
+
+        emit CrewFormed(crewId, lead, name, memberCount);
+        return crewId;
+    }
+
     function addMember(bytes32 crewId, address member, uint8 role) external onlyCrewLead(crewId) {
         Crew storage crew = crews[crewId];
         if(member == address(0)) revert InvalidAddress();

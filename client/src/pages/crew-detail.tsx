@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState, ChainBadge } from "@/components/ui-shared";
-import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare, CheckCircle2, Star, Building2, RefreshCw, ExternalLink, GitBranch, X, ChevronDown } from "lucide-react";
+import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare, CheckCircle2, Star, Building2, RefreshCw, ExternalLink, GitBranch, X, ChevronDown, Anchor } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useWalletContext } from "@/context/wallet-context";
@@ -99,6 +99,10 @@ interface CrewDetail {
   memberCount: number;
   members: CrewMember[];
   gigs: CrewGig[];
+  onChainCrewId: string | null;
+  onChainCrewIdSkale: string | null;
+  onChainTxHash: string | null;
+  onChainTxHashSkale: string | null;
 }
 
 function SkillCoverageWidget({ members }: { members: CrewMember[] }) {
@@ -271,6 +275,54 @@ function AgencyHeroCard({ crew }: { crew: CrewDetail }) {
         >
           <Building2 className="w-3 h-3" />
           {crew.ownerWallet.slice(0, 6)}...{crew.ownerWallet.slice(-4)}
+        </div>
+
+        {/* On-chain Registration Badges */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {crew.onChainCrewId ? (
+            <a
+              href={`https://sepolia.basescan.org/tx/${crew.onChainTxHash || ""}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="badge-onchain-base"
+              className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1 rounded-sm no-underline transition-opacity hover:opacity-80"
+              style={{ background: "rgba(10,236,184,0.10)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.25)" }}
+            >
+              <Anchor className="w-3 h-3" />
+              On-chain · Base
+            </a>
+          ) : (
+            <span
+              data-testid="badge-onchain-base-pending"
+              className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1 rounded-sm"
+              style={{ background: "rgba(107,127,163,0.08)", color: "var(--text-muted)", border: "1px solid rgba(107,127,163,0.15)" }}
+            >
+              <Anchor className="w-3 h-3 opacity-40" />
+              Base · Pending
+            </span>
+          )}
+          {crew.onChainCrewIdSkale ? (
+            <a
+              href={`https://base-sepolia-testnet.explorer.skalenodes.com/tx/${crew.onChainTxHashSkale || ""}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="badge-onchain-skale"
+              className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1 rounded-sm no-underline transition-opacity hover:opacity-80"
+              style={{ background: "rgba(97,162,255,0.10)", color: "#61a2ff", border: "1px solid rgba(97,162,255,0.25)" }}
+            >
+              <Anchor className="w-3 h-3" />
+              On-chain · SKALE
+            </a>
+          ) : (
+            <span
+              data-testid="badge-onchain-skale-pending"
+              className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1 rounded-sm"
+              style={{ background: "rgba(107,127,163,0.08)", color: "var(--text-muted)", border: "1px solid rgba(107,127,163,0.15)" }}
+            >
+              <Anchor className="w-3 h-3 opacity-40" />
+              SKALE · Pending
+            </span>
+          )}
         </div>
       </div>
     </div>

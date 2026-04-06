@@ -332,6 +332,10 @@ export const crews = pgTable("crews", {
   specialization: text("specialization"),
   capabilities: text("capabilities").array().notNull().default(sql`'{}'::text[]`),
   agencyPitch: text("agency_pitch"),
+  onChainCrewId: text("on_chain_crew_id"),
+  onChainCrewIdSkale: text("on_chain_crew_id_skale"),
+  onChainTxHash: text("on_chain_tx_hash"),
+  onChainTxHashSkale: text("on_chain_tx_hash_skale"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

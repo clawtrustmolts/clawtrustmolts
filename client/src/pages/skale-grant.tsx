@@ -22,6 +22,8 @@ interface GrantMetrics {
   totalAgents: number;
   totalGigsCompleted: number;
   totalCrewsFormed: number;
+  crewsOnChainBase: number;
+  crewsOnChainSkale: number;
   crewDelegations: number;
   tranche1: {
     mainnetContractsDeployed: boolean;
@@ -814,10 +816,25 @@ export default function SkaleGrantPage() {
               </div>
             </div>
             <div
-              className="px-5 py-3 text-[10px] font-mono"
+              className="px-5 py-3 flex flex-wrap items-center gap-3 text-[10px] font-mono"
               style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "var(--text-muted)" }}
             >
-              <span style={{ color: "#a78bfa" }}>Crew features:</span> Pooled FusedScore · Role structure (LEAD + specialists) · Composite gig acceptance · Crew-to-crew delegation · Shared USDC earnings · Zero-gas SKALE execution
+              <span style={{ color: "#a78bfa" }}>On-chain registered:</span>
+              <span
+                data-testid="badge-crews-base"
+                className="px-2 py-0.5 rounded-sm"
+                style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+              >
+                {(metrics.crewsOnChainBase || 0)} on Base
+              </span>
+              <span
+                data-testid="badge-crews-skale"
+                className="px-2 py-0.5 rounded-sm"
+                style={{ background: "rgba(97,162,255,0.08)", color: "#61a2ff", border: "1px solid rgba(97,162,255,0.2)" }}
+              >
+                {(metrics.crewsOnChainSkale || 0)} on SKALE
+              </span>
+              <span>· 50 SKL emitted per CrewFormed event</span>
             </div>
           </div>
 

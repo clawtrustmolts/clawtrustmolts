@@ -2130,6 +2130,28 @@ export async function registerRoutes(
           await storage.updateEscrow(escrow.id, { status: "released" });
         }
         await storage.updateGigStatus(gigId, "completed");
+        // Record on-chain crew gig completion for admin-resolved gigs (non-blocking)
+        if (gig.crewId) {
+          (async () => {
+            try {
+              const crew = await storage.getCrew(gig.crewId!);
+              if (crew) {
+                const { recordCrewGigCompletion } = await import("./blockchain");
+                await recordCrewGigCompletion({
+                  onChainCrewId: crew.onChainCrewId || null,
+                  onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                  crewDbId: crew.id,
+                });
+                await storage.updateCrew(crew.id, {
+                  gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                  totalEarned: (crew.totalEarned || 0) + (gig.budget || 0),
+                });
+              }
+            } catch (e: any) {
+              console.error("[Crew] recordCrewGigCompletion (admin-resolve) error:", e.message?.slice(0, 200));
+            }
+          })();
+        }
       } else {
         if (escrow.circleWalletId && isCircleConfigured()) {
           const depositor = await storage.getAgent(escrow.depositorId);
@@ -2488,6 +2510,29 @@ export async function registerRoutes(
         tryPostToMoltbook(`✅ Gig completed on ClawTrust. ${gig.budget} ${gig.currency} released. Swarm validated. The agent economy works. clawtrust.org`);
         notifyAgent(gig.assigneeId, "escrow_released", "Escrow Released", `${escrow.amount} ${escrow.currency} has been released for: ${gig.title}`, { gigId }).catch(() => {});
         notifyAgent(gig.posterId, "gig_completed", "Gig Completed", `${assignee.handle} completed "${gig.title}" — trust receipt ready.`, { gigId }).catch(() => {});
+      }
+
+      // If this gig was crew-assigned, record on-chain crew gig completion (non-blocking)
+      if (gig.crewId) {
+        (async () => {
+          try {
+            const crew = await storage.getCrew(gig.crewId!);
+            if (crew) {
+              const { recordCrewGigCompletion } = await import("./blockchain");
+              await recordCrewGigCompletion({
+                onChainCrewId: crew.onChainCrewId || null,
+                onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                crewDbId: crew.id,
+              });
+              await storage.updateCrew(crew.id, {
+                gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                totalEarned: (crew.totalEarned || 0) + (gig.budget || 0),
+              });
+            }
+          } catch (e: any) {
+            console.error("[Crew] recordCrewGigCompletion (escrow release) error:", e.message?.slice(0, 200));
+          }
+        })();
       }
 
       res.json({
@@ -2851,6 +2896,28 @@ export async function registerRoutes(
           await storage.updateValidation(validation.id, { status: "approved" });
           await storage.updateGigStatus(gigId, "completed");
           console.log(`[Swarm] Auto-approved validation ${validation.id} for gig ${gigId} (${autoVotescast}/${threshold} votes)`);
+          // Record on-chain crew gig completion if crew-assigned (non-blocking)
+          if (gig.crewId) {
+            (async () => {
+              try {
+                const crew = await storage.getCrew(gig.crewId!);
+                if (crew) {
+                  const { recordCrewGigCompletion } = await import("./blockchain");
+                  await recordCrewGigCompletion({
+                    onChainCrewId: crew.onChainCrewId || null,
+                    onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                    crewDbId: crew.id,
+                  });
+                  await storage.updateCrew(crew.id, {
+                    gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                    totalEarned: (crew.totalEarned || 0) + (gig.budget || 0),
+                  });
+                }
+              } catch (e: any) {
+                console.error("[Crew] recordCrewGigCompletion (swarm auto-approve) error:", e.message?.slice(0, 200));
+              }
+            })();
+          }
         }
       }
 
@@ -6191,12 +6258,16 @@ export async function registerRoutes(
       const totalAgents = agents.length;
       const totalGigsCompleted = gigs.filter(g => g.status === "completed").length;
       const totalCrewsFormed = allCrews.length;
+      const crewsOnChainBase = allCrews.filter((c: any) => c.onChainCrewId).length;
+      const crewsOnChainSkale = allCrews.filter((c: any) => c.onChainCrewIdSkale).length;
 
       res.json({
         updatedAt: new Date().toISOString(),
         totalAgents,
         totalGigsCompleted,
         totalCrewsFormed,
+        crewsOnChainBase,
+        crewsOnChainSkale,
         crewDelegations: crewDelegationsCount,
         tranche1: {
           mainnetContractsDeployed,
@@ -7202,7 +7273,7 @@ export async function registerRoutes(
           escrow: "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
           swarmValidator: "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
           bond: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
-          crew: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
+          crew: (process.env.SKALE_MAINNET_CREW_ADDRESS || "0x427d0D6481bC708979Bdc2F80f659549BdB27f96"),
           registry: "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB",
         },
       };
@@ -8073,6 +8144,33 @@ export async function registerRoutes(
         const { moltbookPostNewCrew } = await import("./moltbook-agent");
         moltbookPostNewCrew({ id: crew.id, name }, crewMembers.length, bondPool).catch(() => {});
       } catch {}
+
+      // Fire-and-forget on-chain crew registration (non-blocking)
+      (async () => {
+        try {
+          const { registerCrewOnChain } = await import("./blockchain");
+          const onChain = await registerCrewOnChain({
+            name,
+            ownerWallet,
+            memberCount: members.length,
+          });
+          const update: Record<string, string | null> = {};
+          if (onChain.base) {
+            update.onChainCrewId  = onChain.base.crewId;
+            update.onChainTxHash  = onChain.base.txHash;
+          }
+          if (onChain.skale) {
+            update.onChainCrewIdSkale = onChain.skale.crewId;
+            update.onChainTxHashSkale = onChain.skale.txHash;
+          }
+          if (Object.keys(update).length > 0) {
+            await storage.updateCrew(crew.id, update as any);
+            console.log(`[Crew] On-chain IDs saved for crewId=${crew.id} base=${onChain.base?.crewId} skale=${onChain.skale?.crewId}`);
+          }
+        } catch (e: any) {
+          console.error("[Crew] registerCrewOnChain background error:", e.message?.slice(0, 200));
+        }
+      })();
 
       res.status(201).json({
         ...updatedCrew,
@@ -9812,7 +9910,7 @@ export async function registerRoutes(
               escrow: "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
               swarmValidator: "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
               bond: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
-              crew: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
+              crew: (process.env.SKALE_MAINNET_CREW_ADDRESS || "0x427d0D6481bC708979Bdc2F80f659549BdB27f96"),
               registry: "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084",
             },
           },

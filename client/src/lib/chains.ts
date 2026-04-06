@@ -70,7 +70,7 @@ export const SKALE_TESTNET = {
     escrow:          "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
     swarmValidator:  "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
     bond:            "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
-    crew:            "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
+    crew:            "0x427d0D6481bC708979Bdc2F80f659549BdB27f96",
     registry:        "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084",
   },
 } as const;

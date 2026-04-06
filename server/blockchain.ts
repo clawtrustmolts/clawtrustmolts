@@ -223,6 +223,15 @@ export const skaleSwarmValidator = getContract({
   client: { public: skaleSwarmPublicClient, wallet: skaleWalletClient ?? undefined },
 });
 
+// ─── SKALE Crew contract (v2 with formCrewFor) ────────────────────────────────
+const SKALE_CREW_ADDRESS = (process.env.SKALE_MAINNET_CREW_ADDRESS || "0x427d0D6481bC708979Bdc2F80f659549BdB27f96") as Address;
+
+export const skaleCrewContract = getContract({
+  address: SKALE_CREW_ADDRESS,
+  abi: ABIS.crew,
+  client: { public: skaleSwarmPublicClient, wallet: skaleWalletClient ?? undefined },
+});
+
 // ─── Local Nonce Manager ─────────────────────────────────────────────────────
 // Base Sepolia (and SKALE) RPC nodes sometimes don't reflect pending txs quickly
 // enough when eth_getTransactionCount("pending") is called for rapid sequential
@@ -1298,4 +1307,125 @@ export async function isDomainAvailableOnChain(name: string, tld: string): Promi
   } catch {
     return true;
   }
+}
+
+// ─── Crew on-chain registration (formCrewFor — authorized oracle call) ─────────
+/**
+ * Registers a crew on both Base Sepolia and SKALE by calling formCrewFor()
+ * on the updated ClawTrustCrew v2 contract (oracle-authorized).
+ * Returns the on-chain crewId bytes32 hash decoded from the CrewFormed event.
+ * Non-blocking: errors are caught and logged; crew creation in DB is not blocked.
+ */
+export async function registerCrewOnChain(crew: {
+  name: string;
+  ownerWallet: string;
+  memberCount: number;
+}): Promise<{
+  base: { crewId: string; txHash: string } | null;
+  skale: { crewId: string; txHash: string } | null;
+}> {
+  const leadAddr = (isAddress(crew.ownerWallet) ? crew.ownerWallet : null) as Address | null;
+
+  async function callOnBase() {
+    if (!isWriteReady()) return null;
+    if (!leadAddr) return null;
+    try {
+      const txHash = await withNonceLock((nonce) =>
+        (crewContract as any).write.formCrewFor(
+          [leadAddr, crew.name, BigInt(crew.memberCount || 1)],
+          { nonce }
+        )
+      );
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      const crewFormedTopic = keccak256(toHex("CrewFormed(bytes32,address,string,uint256)"));
+      let crewId: string | null = null;
+      for (const log of receipt.logs) {
+        if (log.topics[0]?.toLowerCase() === crewFormedTopic.toLowerCase()) {
+          crewId = log.topics[1] as string;
+          break;
+        }
+      }
+      if (!crewId) crewId = txHash;
+      console.log(`[Crew] formCrewFor on Base Sepolia: crewId=${crewId} tx=${txHash}`);
+      return { crewId, txHash };
+    } catch (err: any) {
+      console.error("[Crew] formCrewFor Base Sepolia failed:", err.message?.slice(0, 200));
+      return null;
+    }
+  }
+
+  async function callOnSkale() {
+    if (!isSkaleWriteReady()) return null;
+    if (!leadAddr) return null;
+    try {
+      const txHash = await withSkaleNonceLock((nonce) =>
+        (skaleCrewContract as any).write.formCrewFor(
+          [leadAddr, crew.name, BigInt(crew.memberCount || 1)],
+          { nonce }
+        )
+      );
+      const receipt = await skaleSwarmPublicClient.waitForTransactionReceipt({ hash: txHash });
+      const crewFormedTopic = keccak256(toHex("CrewFormed(bytes32,address,string,uint256)"));
+      let crewId: string | null = null;
+      for (const log of receipt.logs) {
+        if (log.topics[0]?.toLowerCase() === crewFormedTopic.toLowerCase()) {
+          crewId = log.topics[1] as string;
+          break;
+        }
+      }
+      if (!crewId) crewId = txHash;
+      console.log(`[Crew] formCrewFor on SKALE: crewId=${crewId} tx=${txHash}`);
+      return { crewId, txHash };
+    } catch (err: any) {
+      console.error("[Crew] formCrewFor SKALE failed:", err.message?.slice(0, 200));
+      return null;
+    }
+  }
+
+  const [base, skale] = await Promise.allSettled([callOnBase(), callOnSkale()]);
+  return {
+    base:  base.status  === "fulfilled" ? base.value  : null,
+    skale: skale.status === "fulfilled" ? skale.value : null,
+  };
+}
+
+/**
+ * Records a gig completion for a crew on both Base Sepolia and SKALE.
+ * Only works if the crew was previously registered on-chain via formCrewFor.
+ * Non-blocking: errors are caught and logged.
+ */
+export async function recordCrewGigCompletion(opts: {
+  onChainCrewId: string | null;
+  onChainCrewIdSkale: string | null;
+  crewDbId: string;
+}): Promise<void> {
+  async function callOnBase() {
+    if (!opts.onChainCrewId || !isWriteReady()) return;
+    try {
+      const crewId = opts.onChainCrewId as `0x${string}`;
+      const txHash = await withNonceLock((nonce) =>
+        (crewContract as any).write.recordGigCompletion([crewId], { nonce })
+      );
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      console.log(`[Crew] recordGigCompletion Base Sepolia crewDbId=${opts.crewDbId} tx=${txHash}`);
+    } catch (err: any) {
+      console.error("[Crew] recordGigCompletion Base Sepolia failed:", err.message?.slice(0, 200));
+    }
+  }
+
+  async function callOnSkale() {
+    if (!opts.onChainCrewIdSkale || !isSkaleWriteReady()) return;
+    try {
+      const crewId = opts.onChainCrewIdSkale as `0x${string}`;
+      const txHash = await withSkaleNonceLock((nonce) =>
+        (skaleCrewContract as any).write.recordGigCompletion([crewId], { nonce })
+      );
+      await skaleSwarmPublicClient.waitForTransactionReceipt({ hash: txHash });
+      console.log(`[Crew] recordGigCompletion SKALE crewDbId=${opts.crewDbId} tx=${txHash}`);
+    } catch (err: any) {
+      console.error("[Crew] recordGigCompletion SKALE failed:", err.message?.slice(0, 200));
+    }
+  }
+
+  await Promise.allSettled([callOnBase(), callOnSkale()]);
 }

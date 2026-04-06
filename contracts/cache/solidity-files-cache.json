@@ -1745,8 +1745,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustCrew.sol": {
-      "lastModificationDate": 1774895022740,
-      "contentHash": "785e59c60874c85b4f2659902104ffef",
+      "lastModificationDate": 1775505609574,
+      "contentHash": "abfaeb434f6f14cd234ce7642f3d8d20",
       "sourceName": "contracts/ClawTrustCrew.sol",
       "solcConfig": {
         "version": "0.8.24",
