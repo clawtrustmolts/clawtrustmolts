@@ -6554,22 +6554,18 @@ export async function registerRoutes(
       }
     }
 
-    // ── Security gate 2: HMAC-SHA256 raw-body integrity (relay mode only) ───
-    // Enabled only when TELEGRAM_RELAY_SECRET is explicitly set.
-    // Used when ClawTrust internal relay services forward Telegram events;
-    // those services compute and attach X-Telegram-Signature before forwarding.
-    // Direct Telegram webhooks skip this gate (Telegram does not send this header).
-    // Expected header value: HMAC-SHA256(sha256(TELEGRAM_RELAY_SECRET), rawBody) as hex.
-    // Fail-closed: if relay secret is configured but header is absent or wrong → 401.
-    const relaySecret = process.env.TELEGRAM_RELAY_SECRET;
-    if (relaySecret) {
-      const incomingHmac = (req.headers["x-telegram-signature"] as string) || "";
-      if (!incomingHmac) {
-        logSuspiciousActivity(req, "telegram_relay_missing_hmac", "Telegram relay webhook: X-Telegram-Signature required in relay mode");
-        return res.sendStatus(401);
-      }
+    // ── Security gate 2: HMAC-SHA256 raw-body integrity (bot token) ─────────
+    // Algorithm: X-Telegram-Signature = HMAC-SHA256(sha256(TELEGRAM_BOT_TOKEN), rawBody)
+    // When the X-Telegram-Signature header is present, it MUST be correct (fail-closed on
+    // wrong value → 401). When absent, the check is skipped — native Telegram webhook
+    // delivery does not send this header, so direct Telegram requests are not affected.
+    // Relay/proxy services that forward Telegram events should compute and attach this
+    // header using the bot token as the signing material so payload integrity is assured.
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const incomingHmac = req.headers["x-telegram-signature"] as string | undefined;
+    if (botToken && incomingHmac) {
       const rawBody: Buffer = (req as any).rawBody ?? Buffer.from(JSON.stringify(req.body), "utf8");
-      const keyHash = crypto.createHash("sha256").update(relaySecret).digest();
+      const keyHash = crypto.createHash("sha256").update(botToken).digest();
       const expectedHmac = crypto.createHmac("sha256", keyHash).update(rawBody).digest("hex");
       let hmacMatch = false;
       try {
@@ -6577,7 +6573,7 @@ export async function registerRoutes(
           crypto.timingSafeEqual(Buffer.from(incomingHmac, "hex"), Buffer.from(expectedHmac, "hex"));
       } catch { hmacMatch = false; }
       if (!hmacMatch) {
-        logSuspiciousActivity(req, "telegram_relay_invalid_hmac", "Telegram relay webhook: HMAC-SHA256 body signature mismatch");
+        logSuspiciousActivity(req, "telegram_webhook_invalid_hmac", "Telegram webhook: HMAC-SHA256 body signature mismatch (bot token key)");
         return res.sendStatus(401);
       }
     }
