@@ -126,6 +126,9 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
         emit PerformanceScoreUpdated(agent, score);
     }
 
+    // FIX C-03: Changed `&&` to `||` — previously `score < MIN_FUSED_SCORE && totalDeposited > 0`
+    // allowed agents with zero deposit (or tiny deposit) to bypass the score gate entirely.
+    // New logic: reject if score is too low OR if the agent has no bond deposited at all.
     function lockBondForGig(bytes32 gigId, address agent, uint256 amount) external onlyAuthorized nonReentrant whenNotPaused {
         emit BondLockRequested(gigId, agent, amount, msg.sender);
 
@@ -134,7 +137,7 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
 
         Bond storage bond = bonds[agent];
         if(amount > bond.available) revert InsufficientBond();
-        if(bond.performanceScore < MIN_FUSED_SCORE && bond.totalDeposited > 0) revert ScoreTooLow();
+        if(bond.performanceScore < MIN_FUSED_SCORE || bond.totalDeposited == 0) revert ScoreTooLow();
 
         bond.available -= amount;
         bond.locked += amount;

@@ -37,6 +37,10 @@ describe("ClawTrustEscrow", function () {
 
     await mockUsdc.mint(depositor.address, ethers.parseUnits("10000", 6));
     await mockUsdc.connect(depositor).approve(await escrow.getAddress(), ethers.parseUnits("10000", 6));
+
+    // FIX H-04: lockUSDCDirect is now onlyOwner — mint + approve USDC for owner
+    await mockUsdc.mint(owner.address, ethers.parseUnits("10000", 6));
+    await mockUsdc.connect(owner).approve(await escrow.getAddress(), ethers.parseUnits("10000", 6));
   });
 
   describe("lockUSDC", function () {
@@ -77,19 +81,34 @@ describe("ClawTrustEscrow", function () {
     });
   });
 
-  describe("lockUSDCDirect", function () {
-    it("should lock USDC with requiresSwarmValidation=false", async function () {
-      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+  describe("lockUSDCDirect (H-04: onlyOwner)", function () {
+    it("owner can lock USDC with requiresSwarmValidation=false", async function () {
+      // FIX H-04: only owner can bypass swarm validation
+      await escrow.connect(owner).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
       const e = await escrow.getEscrow(GIG_ID);
       expect(e.requiresSwarmValidation).to.equal(false);
+      expect(e.depositor).to.equal(owner.address);
+    });
+
+    it("H-04: non-owner cannot call lockUSDCDirect", async function () {
+      await expect(
+        escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT)
+      ).to.be.revertedWithCustomError(escrow, "OwnableUnauthorizedAccount");
+    });
+
+    it("H-04: random user cannot call lockUSDCDirect", async function () {
+      await expect(
+        escrow.connect(other).lockUSDCDirect(GIG_ID, payee.address, AMOUNT)
+      ).to.be.revertedWithCustomError(escrow, "OwnableUnauthorizedAccount");
     });
   });
 
   describe("release", function () {
-    it("should release USDC to payee with fee (using lockUSDCDirect)", async function () {
-      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+    it("should release USDC to payee with fee (using lockUSDCDirect by owner)", async function () {
+      // FIX H-04: owner creates the direct escrow; owner can also release it
+      await escrow.connect(owner).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
       const payeeBefore = await mockUsdc.balanceOf(payee.address);
-      await escrow.connect(depositor).release(GIG_ID);
+      await escrow.connect(owner).release(GIG_ID);
       const e = await escrow.getEscrow(GIG_ID);
       expect(e.status).to.equal(2);
       const payeeAfter = await mockUsdc.balanceOf(payee.address);
@@ -98,17 +117,17 @@ describe("ClawTrustEscrow", function () {
     });
 
     it("should revert if not depositor or owner", async function () {
-      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(owner).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
       await expect(
         escrow.connect(other).release(GIG_ID)
       ).to.be.revertedWithCustomError(escrow, "Unauthorized");
     });
 
     it("should revert if already released", async function () {
-      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
-      await escrow.connect(depositor).release(GIG_ID);
+      await escrow.connect(owner).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(owner).release(GIG_ID);
       await expect(
-        escrow.connect(depositor).release(GIG_ID)
+        escrow.connect(owner).release(GIG_ID)
       ).to.be.revertedWithCustomError(escrow, "InvalidStatus");
     });
 
@@ -217,9 +236,10 @@ describe("ClawTrustEscrow", function () {
   });
 
   describe("claimAfterDisputeTimeout", function () {
-    it("should release to payee after dispute timeout", async function () {
-      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
-      await escrow.connect(depositor).dispute(GIG_ID);
+    it("should release to payee after dispute timeout (using lockUSDCDirect by owner)", async function () {
+      // FIX H-04: owner creates the direct escrow
+      await escrow.connect(owner).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(owner).dispute(GIG_ID);
       await ethers.provider.send("evm_increaseTime", [30 * 24 * 60 * 60 + 1]);
       await ethers.provider.send("evm_mine");
       const before = await mockUsdc.balanceOf(payee.address);
@@ -229,11 +249,83 @@ describe("ClawTrustEscrow", function () {
     });
 
     it("should revert before timeout", async function () {
-      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
-      await escrow.connect(depositor).dispute(GIG_ID);
+      await escrow.connect(owner).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(owner).dispute(GIG_ID);
       await expect(
         escrow.connect(other).claimAfterDisputeTimeout(GIG_ID)
       ).to.be.revertedWithCustomError(escrow, "DisputeTimeoutNotReached");
+    });
+  });
+
+  describe("C-02: emergencyRelease (72h timelock)", function () {
+    it("C-02: non-owner cannot call emergencyRelease", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await expect(
+        escrow.connect(depositor).emergencyRelease(GIG_ID)
+      ).to.be.revertedWithCustomError(escrow, "OwnableUnauthorizedAccount");
+    });
+
+    it("C-02: reverts before 72h timelock", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await expect(
+        escrow.connect(owner).emergencyRelease(GIG_ID)
+      ).to.be.revertedWithCustomError(escrow, "EmergencyTimelockNotMet");
+    });
+
+    it("C-02: reverts for non-swarm-required escrow (direct escrows already releasable)", async function () {
+      await escrow.connect(owner).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+      // Fast-forward 72 hours
+      await ethers.provider.send("evm_increaseTime", [72 * 60 * 60 + 1]);
+      await ethers.provider.send("evm_mine");
+      // Direct escrow (requiresSwarmValidation=false) cannot use emergencyRelease
+      await expect(
+        escrow.connect(owner).emergencyRelease(GIG_ID)
+      ).to.be.revertedWithCustomError(escrow, "InvalidStatus");
+    });
+
+    it("C-02: owner can emergency-release swarm escrow after 72h", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+
+      // Fast-forward 72 hours
+      await ethers.provider.send("evm_increaseTime", [72 * 60 * 60 + 1]);
+      await ethers.provider.send("evm_mine");
+
+      const payeeBefore = await mockUsdc.balanceOf(payee.address);
+      await escrow.connect(owner).emergencyRelease(GIG_ID);
+      const payeeAfter = await mockUsdc.balanceOf(payee.address);
+
+      // Payee receives payout (minus platform fee)
+      expect(payeeAfter).to.be.gt(payeeBefore);
+
+      const e = await escrow.getEscrow(GIG_ID);
+      expect(e.status).to.equal(2); // Released
+    });
+
+    it("C-02: emergencyRelease emits EmergencyReleaseExecuted event", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await ethers.provider.send("evm_increaseTime", [72 * 60 * 60 + 1]);
+      await ethers.provider.send("evm_mine");
+
+      await expect(escrow.connect(owner).emergencyRelease(GIG_ID))
+        .to.emit(escrow, "EmergencyReleaseExecuted")
+        .withArgs(GIG_ID, payee.address, owner.address);
+    });
+
+    it("C-02: reverts for non-existent escrow", async function () {
+      await expect(
+        escrow.connect(owner).emergencyRelease(ethers.id("nonexistent"))
+      ).to.be.revertedWithCustomError(escrow, "EscrowNotFound");
+    });
+
+    it("C-02: reverts for already-released escrow", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await ethers.provider.send("evm_increaseTime", [72 * 60 * 60 + 1]);
+      await ethers.provider.send("evm_mine");
+
+      await escrow.connect(owner).emergencyRelease(GIG_ID);
+      await expect(
+        escrow.connect(owner).emergencyRelease(GIG_ID)
+      ).to.be.revertedWithCustomError(escrow, "InvalidStatus");
     });
   });
 

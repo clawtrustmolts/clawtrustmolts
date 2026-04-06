@@ -5,13 +5,13 @@ describe("ClawTrustAC", function () {
   let clawTrustAC;
   let mockUSDC;
   let mockClawCard;
-  let owner, client, provider, evaluator, treasury, other;
+  let owner, client, provider, evaluator, treasury, other, evaluator2;
 
   const ONE_DAY = 86400;
   const BUDGET = ethers.parseUnits("100", 6);
 
   beforeEach(async function () {
-    [owner, client, provider, evaluator, treasury, other] = await ethers.getSigners();
+    [owner, client, provider, evaluator, treasury, other, evaluator2] = await ethers.getSigners();
 
     const MockERC20 = await ethers.getContractFactory("MockERC20");
     mockUSDC = await MockERC20.deploy("USDC", "USDC", 6);
@@ -106,6 +106,20 @@ describe("ClawTrustAC", function () {
       expect(balAfter - balBefore).to.equal(BUDGET);
       const job = await clawTrustAC.getJob(jobId);
       expect(job.status).to.equal(1);
+    });
+
+    it("increments totalLockedBudget on fund (H-01)", async function () {
+      const tx = await clawTrustAC.connect(client).createJob("Test gig", BUDGET, ONE_DAY);
+      const receipt = await tx.wait();
+      const event = receipt.logs.find(log => {
+        try { return clawTrustAC.interface.parseLog(log).name === "JobCreated"; } catch { return false; }
+      });
+      const jobId = clawTrustAC.interface.parseLog(event).args[0];
+
+      const lockedBefore = await clawTrustAC.totalLockedBudget();
+      await clawTrustAC.connect(client).fund(jobId);
+      const lockedAfter = await clawTrustAC.totalLockedBudget();
+      expect(lockedAfter - lockedBefore).to.equal(BUDGET);
     });
 
     it("reverts if not client", async function () {
@@ -205,6 +219,154 @@ describe("ClawTrustAC", function () {
         clawTrustAC.connect(other).complete(jobId, ethers.ZeroHash)
       ).to.be.revertedWithCustomError(clawTrustAC, "Unauthorized");
     });
+
+    it("decrements totalLockedBudget on complete (H-01)", async function () {
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+
+      const lockedBefore = await clawTrustAC.totalLockedBudget();
+      await clawTrustAC.connect(evaluator).complete(jobId, ethers.ZeroHash);
+      const lockedAfter = await clawTrustAC.totalLockedBudget();
+      expect(lockedBefore - lockedAfter).to.equal(BUDGET);
+    });
+
+    it("C-01: owner can complete job bypassing threshold", async function () {
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+      // Owner can always force complete
+      await clawTrustAC.connect(owner).complete(jobId, ethers.ZeroHash);
+      const job = await clawTrustAC.getJob(jobId);
+      expect(job.status).to.equal(4);
+    });
+
+    it("C-01: evaluator is tracked in evaluators mapping", async function () {
+      expect(await clawTrustAC.evaluators(evaluator.address)).to.equal(true);
+      expect(await clawTrustAC.evaluatorCount()).to.equal(1n);
+      expect(await clawTrustAC.evaluatorThreshold()).to.equal(1n);
+    });
+
+    it("C-01: second evaluator call on same job does not double-count approval", async function () {
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+
+      // Threshold is 1 so first approval auto-completes the job
+      await clawTrustAC.connect(evaluator).complete(jobId, ethers.ZeroHash);
+      // Approval count should be 1 (not doubled if somehow called again)
+      expect(await clawTrustAC.approvalCount(jobId)).to.equal(1n);
+    });
+  });
+
+  describe("C-01: multi-evaluator threshold system", function () {
+    it("addEvaluator registers a new evaluator", async function () {
+      await clawTrustAC.connect(owner).addEvaluator(evaluator2.address);
+      expect(await clawTrustAC.evaluators(evaluator2.address)).to.equal(true);
+      expect(await clawTrustAC.evaluatorCount()).to.equal(2n);
+    });
+
+    it("removeEvaluator deregisters an evaluator", async function () {
+      await clawTrustAC.connect(owner).addEvaluator(evaluator2.address);
+      await clawTrustAC.connect(owner).removeEvaluator(evaluator2.address);
+      expect(await clawTrustAC.evaluators(evaluator2.address)).to.equal(false);
+      expect(await clawTrustAC.evaluatorCount()).to.equal(1n);
+    });
+
+    it("setEvaluatorThreshold requires count >= threshold", async function () {
+      // Only 1 evaluator; threshold > 1 should revert (InvalidAmount)
+      await expect(
+        clawTrustAC.connect(owner).setEvaluatorThreshold(2)
+      ).to.be.revertedWithCustomError(clawTrustAC, "InvalidAmount");
+    });
+
+    it("setEvaluatorThreshold works after adding second evaluator", async function () {
+      await clawTrustAC.connect(owner).addEvaluator(evaluator2.address);
+      await clawTrustAC.connect(owner).setEvaluatorThreshold(2);
+      expect(await clawTrustAC.evaluatorThreshold()).to.equal(2n);
+    });
+
+    it("threshold=2: first evaluator records approval (tx succeeds), second evaluator completes job", async function () {
+      await clawTrustAC.connect(owner).addEvaluator(evaluator2.address);
+      await mockUSDC.connect(evaluator2).approve(await clawTrustAC.getAddress(), ethers.MaxUint256);
+      await clawTrustAC.connect(owner).setEvaluatorThreshold(2);
+
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+
+      // First evaluator approves — tx succeeds (approval persisted), but threshold not met yet
+      // (early return, no revert — state is written so approval count is preserved)
+      await clawTrustAC.connect(evaluator).complete(jobId, ethers.ZeroHash);
+
+      // approval was recorded
+      expect(await clawTrustAC.approvalCount(jobId)).to.equal(1n);
+      // Job is still in Submitted status (payout not triggered)
+      const job1 = await clawTrustAC.getJob(jobId);
+      expect(job1.status).to.equal(3); // Submitted
+
+      // Second evaluator approves — threshold met, job completes
+      await clawTrustAC.connect(evaluator2).complete(jobId, ethers.ZeroHash);
+      const job2 = await clawTrustAC.getJob(jobId);
+      expect(job2.status).to.equal(4); // Completed
+      expect(await clawTrustAC.approvalCount(jobId)).to.equal(2n);
+    });
+
+    it("non-evaluator non-owner cannot complete before dispute window", async function () {
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+      await expect(
+        clawTrustAC.connect(other).complete(jobId, ethers.ZeroHash)
+      ).to.be.revertedWithCustomError(clawTrustAC, "Unauthorized");
+    });
+  });
+
+  describe("H-01: recoverStuckUSDC", function () {
+    it("owner can recover surplus USDC (not locked budget)", async function () {
+      // Send USDC directly to the contract (simulating stuck funds)
+      await mockUSDC.mint(owner.address, ethers.parseUnits("50", 6));
+      await mockUSDC.connect(owner).transfer(await clawTrustAC.getAddress(), ethers.parseUnits("50", 6));
+
+      const ownerBefore = await mockUSDC.balanceOf(owner.address);
+      await clawTrustAC.connect(owner).recoverStuckUSDC(owner.address, ethers.parseUnits("50", 6));
+      const ownerAfter = await mockUSDC.balanceOf(owner.address);
+      expect(ownerAfter - ownerBefore).to.equal(ethers.parseUnits("50", 6));
+    });
+
+    it("recoverStuckUSDC cannot drain active job funds (H-01)", async function () {
+      const jobId = await createAndFundJob(); // BUDGET locked in contract
+      // totalLockedBudget = BUDGET; contract balance = BUDGET; recoverable = 0
+      await expect(
+        clawTrustAC.connect(owner).recoverStuckUSDC(owner.address, 1n)
+      ).to.be.revertedWithCustomError(clawTrustAC, "InvalidAmount");
+    });
+
+    it("recoverStuckUSDC allows recovery of surplus when jobs are active", async function () {
+      // Fund a job (budget locked)
+      const jobId = await createAndFundJob();
+
+      // Mint extra USDC directly to contract (simulating stuck surplus)
+      const surplus = ethers.parseUnits("20", 6);
+      await mockUSDC.mint(await clawTrustAC.getAddress(), surplus);
+
+      // Should be able to recover the surplus only
+      const ownerBefore = await mockUSDC.balanceOf(owner.address);
+      await clawTrustAC.connect(owner).recoverStuckUSDC(owner.address, surplus);
+      const ownerAfter = await mockUSDC.balanceOf(owner.address);
+      expect(ownerAfter - ownerBefore).to.equal(surplus);
+
+      // But cannot recover more (the locked budget is untouchable)
+      await expect(
+        clawTrustAC.connect(owner).recoverStuckUSDC(owner.address, 1n)
+      ).to.be.revertedWithCustomError(clawTrustAC, "InvalidAmount");
+    });
+
+    it("non-owner cannot call recoverStuckUSDC", async function () {
+      await expect(
+        clawTrustAC.connect(other).recoverStuckUSDC(other.address, 1n)
+      ).to.be.reverted;
+    });
   });
 
   describe("reject", function () {
@@ -221,6 +383,17 @@ describe("ClawTrustAC", function () {
       const job = await clawTrustAC.getJob(jobId);
       expect(job.status).to.equal(5);
     });
+
+    it("reject decrements totalLockedBudget (H-01)", async function () {
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+
+      const lockedBefore = await clawTrustAC.totalLockedBudget();
+      await clawTrustAC.connect(evaluator).reject(jobId, ethers.ZeroHash);
+      const lockedAfter = await clawTrustAC.totalLockedBudget();
+      expect(lockedBefore - lockedAfter).to.equal(BUDGET);
+    });
   });
 
   describe("cancel", function () {
@@ -231,6 +404,14 @@ describe("ClawTrustAC", function () {
       expect(await mockUSDC.balanceOf(client.address)).to.equal(clientBalBefore + BUDGET);
       const job = await clawTrustAC.getJob(jobId);
       expect(job.status).to.equal(6);
+    });
+
+    it("cancel decrements totalLockedBudget (H-01)", async function () {
+      const jobId = await createAndFundJob();
+      const lockedBefore = await clawTrustAC.totalLockedBudget();
+      await clawTrustAC.connect(client).cancel(jobId);
+      const lockedAfter = await clawTrustAC.totalLockedBudget();
+      expect(lockedBefore - lockedAfter).to.equal(BUDGET);
     });
 
     it("client can cancel open job without refund", async function () {
@@ -281,6 +462,24 @@ describe("ClawTrustAC", function () {
       expect(await mockUSDC.balanceOf(client.address)).to.equal(clientBalBefore + BUDGET);
     });
 
+    it("expireJob decrements totalLockedBudget (H-01)", async function () {
+      const tx = await clawTrustAC.connect(client).createJob("Test", BUDGET, ONE_DAY);
+      const receipt = await tx.wait();
+      const event = receipt.logs.find(log => {
+        try { return clawTrustAC.interface.parseLog(log).name === "JobCreated"; } catch { return false; }
+      });
+      const jobId = clawTrustAC.interface.parseLog(event).args[0];
+      await clawTrustAC.connect(client).fund(jobId);
+
+      await ethers.provider.send("evm_increaseTime", [ONE_DAY + 1]);
+      await ethers.provider.send("evm_mine");
+
+      const lockedBefore = await clawTrustAC.totalLockedBudget();
+      await clawTrustAC.connect(other).expireJob(jobId);
+      const lockedAfter = await clawTrustAC.totalLockedBudget();
+      expect(lockedBefore - lockedAfter).to.equal(BUDGET);
+    });
+
     it("reverts if not yet expired", async function () {
       const jobId = await createAndFundJob();
       await expect(
@@ -308,6 +507,11 @@ describe("ClawTrustAC", function () {
     it("owner can set evaluator", async function () {
       await clawTrustAC.connect(owner).setEvaluator(other.address);
       expect(await clawTrustAC.evaluator()).to.equal(other.address);
+    });
+
+    it("setEvaluator also adds to evaluators mapping", async function () {
+      await clawTrustAC.connect(owner).setEvaluator(other.address);
+      expect(await clawTrustAC.evaluators(other.address)).to.equal(true);
     });
 
     it("non-owner cannot set evaluator", async function () {

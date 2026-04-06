@@ -1453,8 +1453,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustEscrow.sol": {
-      "lastModificationDate": 1774897827872,
-      "contentHash": "c060687424f8f48b74a17791c69a61c3",
+      "lastModificationDate": 1775488837479,
+      "contentHash": "837c9518e8f7f95825d6a38af4b1ee6a",
       "sourceName": "contracts/ClawTrustEscrow.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -1620,8 +1620,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustBond.sol": {
-      "lastModificationDate": 1774895777461,
-      "contentHash": "b059ae08192d73a1b1059e1fa6d4cfa3",
+      "lastModificationDate": 1775488683172,
+      "contentHash": "433c793f39240a23c4ab4fb08714235a",
       "sourceName": "contracts/ClawTrustBond.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -1663,8 +1663,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustAC.sol": {
-      "lastModificationDate": 1774895831866,
-      "contentHash": "d55371b9c6881f72d132cf6fbc0fb35b",
+      "lastModificationDate": 1775489151911,
+      "contentHash": "f9a79915e956a6c9729653d6d9f8f9a8",
       "sourceName": "contracts/ClawTrustAC.sol",
       "solcConfig": {
         "version": "0.8.24",

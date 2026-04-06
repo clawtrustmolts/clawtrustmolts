@@ -118,6 +118,38 @@ describe("ClawTrustBond", function () {
         bond.lockBondForGig(GIG_ID, agent.address, LOCK_AMOUNT)
       ).to.be.revertedWithCustomError(bond, "GigAlreadyExists");
     });
+
+    // ── Security: C-03 fix ──────────────────────────────────────────
+    it("C-03: zero-deposit agent cannot lock bond (InsufficientBond fires before score gate)", async function () {
+      // Before fix: `score < MIN_FUSED_SCORE && totalDeposited > 0`
+      // A zero-deposit agent with high score would skip the score check entirely.
+      // After fix: `score < MIN_FUSED_SCORE || totalDeposited == 0`
+      // InsufficientBond still fires first for non-zero amounts, confirming dual defense.
+      await bond.updatePerformanceScore(agent.address, 80); // good score
+      // agent has NOT deposited — totalDeposited = 0
+      await bond.authorizeCaller(owner.address);
+      await expect(
+        bond.lockBondForGig(GIG_ID, agent.address, LOCK_AMOUNT)
+      ).to.be.revertedWithCustomError(bond, "InsufficientBond");
+    });
+
+    it("C-03: agent with score just below threshold (49) and deposit is blocked", async function () {
+      await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
+      await bond.updatePerformanceScore(agent.address, 49); // one below MIN_FUSED_SCORE=50
+      await bond.authorizeCaller(owner.address);
+      await expect(
+        bond.lockBondForGig(GIG_ID, agent.address, LOCK_AMOUNT)
+      ).to.be.revertedWithCustomError(bond, "ScoreTooLow");
+    });
+
+    it("C-03: agent with score exactly at threshold (50) and deposit can lock", async function () {
+      await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
+      await bond.updatePerformanceScore(agent.address, 50); // exactly MIN_FUSED_SCORE
+      await bond.authorizeCaller(owner.address);
+      await bond.lockBondForGig(GIG_ID, agent.address, LOCK_AMOUNT);
+      const b = await bond.getBond(agent.address);
+      expect(b.locked).to.equal(LOCK_AMOUNT);
+    });
   });
 
   describe("swarmVote + finalize", function () {
