@@ -4532,6 +4532,52 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/domains/:id/transfer", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const domainId = Number(req.params.id);
+      const { toWallet } = req.body;
+      const fromWallet = (req as any).wallet as string;
+
+      if (!toWallet || !/^0x[0-9a-fA-F]{40}$/.test(toWallet)) {
+        return res.status(400).json({ message: "Valid toWallet address required" });
+      }
+      if (toWallet.toLowerCase() === fromWallet.toLowerCase()) {
+        return res.status(400).json({ message: "Cannot transfer to yourself" });
+      }
+
+      const domains = await storage.getDomainsByWallet(fromWallet.toLowerCase());
+      const domain = domains.find(d => d.id === domainId);
+      if (!domain) return res.status(404).json({ message: "Domain not found or not owned by you" });
+
+      await storage.updateDomainWallet(domainId, toWallet.toLowerCase());
+
+      const REGISTRY_ADDR = "0x82AEAA9921aC1408626851c90FCf74410D059dF4";
+      const CLAWCARD_ADDR = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+      const contractAddr = domain.tld === ".molt" ? CLAWCARD_ADDR : REGISTRY_ADDR;
+      const onChainUrl = domain.onChainTokenId
+        ? `https://sepolia.basescan.org/address/${contractAddr}#writeContract`
+        : null;
+
+      res.json({
+        success: true,
+        message: `Database updated. Complete on-chain transfer via Basescan.`,
+        domain: { ...domain, walletAddress: toWallet.toLowerCase() },
+        onChainInstructions: domain.onChainTokenId
+          ? {
+              contractAddress: contractAddr,
+              tokenId: domain.onChainTokenId,
+              method: "safeTransferFrom(address from, address to, uint256 tokenId)",
+              from: fromWallet,
+              to: toWallet,
+              basescanUrl: onChainUrl,
+            }
+          : null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/domains/:fullDomain", async (req, res) => {
     try {
       const full = req.params.fullDomain?.toLowerCase();

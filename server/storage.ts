@@ -206,6 +206,7 @@ export interface IStorage {
   getAllDomainsByTld(tld?: string): Promise<MoltDomain[]>;
   searchDomains(q: string, tld?: string): Promise<MoltDomain[]>;
   updateDomainOnChain(id: number, tokenId: number, txHash: string): Promise<void>;
+  updateDomainWallet(id: number, newWallet: string): Promise<void>;
   getNextFoundingMoltNumber(): Promise<number | null>;
   countMoltDomains(): Promise<number>;
   releaseMoltDomain(name: string, force?: boolean): Promise<{ released: boolean; reason?: string }>;
@@ -1071,6 +1072,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateDomainOnChain(id: number, tokenId: number, txHash: string): Promise<void> {
     await db.update(moltDomains).set({ onChainTokenId: tokenId, onChainTxHash: txHash }).where(eq(moltDomains.id, id));
+  }
+
+  async updateDomainWallet(id: number, newWallet: string): Promise<void> {
+    await db.update(moltDomains).set({ walletAddress: newWallet.toLowerCase() }).where(eq(moltDomains.id, id));
   }
 
   async getMoltDomainByAgent(agentId: string): Promise<MoltDomain | undefined> {
