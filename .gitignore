@@ -7,7 +7,7 @@ vite.config.ts.*
 .env
 .env.*
 
-# Replit-internal — never push to public repos
+# Dev-internal config — never push to public repos
 .replit
 replit.nix
 replit_agent
@@ -26,7 +26,7 @@ gitsafe-backup/
 # All uploaded chat assets (photos, PDFs, branding, etc.)
 attached_assets/
 
-# Replit dev tooling — never in public repo
+# Dev tooling — never in public repo
 bin/
 
 # Internal development sync scripts
