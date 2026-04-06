@@ -6533,47 +6533,40 @@ export async function registerRoutes(
   });
 
   app.post("/api/telegram/webhook", async (req, res) => {
-    // ── Security gate 1: X-Telegram-Bot-Api-Secret-Token ────────────────────
-    // Primary auth for direct Telegram webhooks. Set TELEGRAM_WEBHOOK_SECRET to
-    // any strong random string, then pass it as `secret_token` when calling
-    // Telegram's setWebhook API. Telegram will include it in every delivery.
-    // Timing-safe comparison; returns 401 on mismatch.
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+    // In production, reject all requests when no webhook secret is configured.
+    if (process.env.NODE_ENV === "production" && !webhookSecret) {
+      logSuspiciousActivity(req, "telegram_webhook_no_secret", "Telegram webhook: TELEGRAM_WEBHOOK_SECRET not set in production — request rejected");
+      return res.sendStatus(401);
+    }
+
+    // Verify X-Telegram-Bot-Api-Secret-Token (configured via Telegram's setWebhook secret_token).
     if (webhookSecret) {
       const headerToken = (req.headers["x-telegram-bot-api-secret-token"] as string) || "";
       const secretBuf = Buffer.from(webhookSecret, "utf8");
       const tokenBuf = Buffer.from(headerToken, "utf8");
-      let tokensMatch = false;
-      try {
-        tokensMatch = secretBuf.length === tokenBuf.length &&
-          crypto.timingSafeEqual(secretBuf, tokenBuf);
-      } catch { tokensMatch = false; }
-      if (!tokensMatch) {
+      let match = false;
+      try { match = secretBuf.length === tokenBuf.length && crypto.timingSafeEqual(secretBuf, tokenBuf); } catch { }
+      if (!match) {
         logSuspiciousActivity(req, "telegram_webhook_invalid_token", "Telegram webhook: invalid or missing secret token");
         return res.sendStatus(401);
       }
     }
 
-    // ── Security gate 2: HMAC-SHA256 raw-body integrity (bot token) ─────────
-    // Algorithm: X-Telegram-Signature = HMAC-SHA256(sha256(TELEGRAM_BOT_TOKEN), rawBody)
-    // When the X-Telegram-Signature header is present, it MUST be correct (fail-closed on
-    // wrong value → 401). When absent, the check is skipped — native Telegram webhook
-    // delivery does not send this header, so direct Telegram requests are not affected.
-    // Relay/proxy services that forward Telegram events should compute and attach this
-    // header using the bot token as the signing material so payload integrity is assured.
+    // Optional HMAC body verification using bot token — fails closed when header is present but wrong.
+    // Relay services attach X-Telegram-Signature = HMAC-SHA256(sha256(TELEGRAM_BOT_TOKEN), rawBody).
+    // Native Telegram webhooks omit this header; absent header skips the check.
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const incomingHmac = req.headers["x-telegram-signature"] as string | undefined;
     if (botToken && incomingHmac) {
-      const rawBody: Buffer = (req as any).rawBody ?? Buffer.from(JSON.stringify(req.body), "utf8");
-      const keyHash = crypto.createHash("sha256").update(botToken).digest();
-      const expectedHmac = crypto.createHmac("sha256", keyHash).update(rawBody).digest("hex");
-      let hmacMatch = false;
-      try {
-        hmacMatch = incomingHmac.length === expectedHmac.length &&
-          crypto.timingSafeEqual(Buffer.from(incomingHmac, "hex"), Buffer.from(expectedHmac, "hex"));
-      } catch { hmacMatch = false; }
-      if (!hmacMatch) {
-        logSuspiciousActivity(req, "telegram_webhook_invalid_hmac", "Telegram webhook: HMAC-SHA256 body signature mismatch (bot token key)");
+      const raw: Buffer = (req as any).rawBody ?? Buffer.from(JSON.stringify(req.body), "utf8");
+      const key = crypto.createHash("sha256").update(botToken).digest();
+      const expected = crypto.createHmac("sha256", key).update(raw).digest("hex");
+      let match = false;
+      try { match = incomingHmac.length === expected.length && crypto.timingSafeEqual(Buffer.from(incomingHmac, "hex"), Buffer.from(expected, "hex")); } catch { }
+      if (!match) {
+        logSuspiciousActivity(req, "telegram_webhook_invalid_hmac", "Telegram webhook: HMAC-SHA256 mismatch");
         return res.sendStatus(401);
       }
     }
