@@ -26,6 +26,9 @@ gitsafe-backup/
 # All uploaded chat assets (photos, PDFs, branding, etc.)
 attached_assets/
 
+# Replit dev tooling — never in public repo
+bin/
+
 # Internal development sync scripts
 github-sync/
 
