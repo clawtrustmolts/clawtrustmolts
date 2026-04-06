@@ -34,7 +34,7 @@ contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC80
     uint256 public  constant MAX_SUPPLY         = 1_000_000;
     uint256 public  constant UPDATE_COOLDOWN    = 1 hours;
     uint256 public  constant MAX_SKILLS           = 50;
-    uint256 public  sigFreshnessWindow            = 5 minutes;
+    uint256 public  sigFreshnessWindow            = 15 minutes; // H-03: increased from 5 min for safer default under network congestion
     uint256 public  constant MAX_FUSED_SCORE    = 10_000;
 
     // ─── On-chain Passport Data ──────────────────────────────────────
@@ -65,7 +65,9 @@ contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC80
     mapping(string  => bool)    public moltDomainUsed;
     mapping(string  => uint256) public handleToToken;   // legacy agentId lookup
     mapping(string  => bool)    public handleUsed;
-    mapping(bytes32 => bool)    private _usedSigHashes;
+    // L-04/L-13: Replace unbounded _usedSigHashes mapping with per-token nonce to eliminate
+    // storage growth. Oracle must pass currentNonce + 1; contract verifies and increments.
+    mapping(uint256 => uint256) public tokenUpdateNonce;
 
     // ─── Events ─────────────────────────────────────────────────────
     event PassportMinted(address indexed wallet, uint256 indexed tokenId, uint256 timestamp);
@@ -82,6 +84,7 @@ contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC80
     error SoulboundNonTransferable();
     error AlreadyMinted();
     error InvalidAddress();
+    error InvalidAmount();
     error MoltDomainInUse();
     error InvalidMoltDomain();
     error AgentIdInUse();
@@ -248,29 +251,35 @@ contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC80
         uint256 totalEarned,
         uint256 riskIndex,
         uint256 sigTimestamp,
+        uint256 nonce,
         bytes calldata oracleSignature
     ) external whenNotPaused {
         if (tokenIdToWallet[tokenId] == address(0)) revert PassportNotFound();
         if (fusedScore > MAX_FUSED_SCORE) revert InvalidScore();
         if (tier > 4) revert InvalidTier();
         if (riskIndex > 100) revert InvalidRiskIndex();
+        // L-02: bound storage growth of counters to prevent integer arithmetic issues
+        if (gigsCompleted > 100_000) revert InvalidAmount();
+        if (totalEarned > 1e12) revert InvalidAmount();
         if (sigTimestamp > block.timestamp) revert SignatureExpired();
         if (block.timestamp > sigTimestamp + sigFreshnessWindow) revert SignatureExpired();
         if (block.timestamp < passports[tokenId].lastUpdated + UPDATE_COOLDOWN) revert UpdateTooFrequent();
 
+        // L-04/L-13: Replay protection via per-token nonce instead of unbounded hash storage.
+        // Oracle must pass tokenUpdateNonce[tokenId] + 1; contract verifies and increments.
+        if (nonce != tokenUpdateNonce[tokenId] + 1) revert SignatureAlreadyUsed();
+
         bytes32 msgHash = keccak256(abi.encodePacked(
             tokenId, fusedScore, tier, gigsCompleted,
-            totalEarned, riskIndex, sigTimestamp, block.chainid
+            totalEarned, riskIndex, sigTimestamp, nonce, block.chainid
         ));
-
-        if (_usedSigHashes[msgHash]) revert SignatureAlreadyUsed();
 
         bytes32 ethHash = MessageHashUtils.toEthSignedMessageHash(msgHash);
         address signer  = ECDSA.recover(ethHash, oracleSignature);
 
         if (!hasRole(ORACLE_ROLE, signer)) revert InvalidOracleSignature();
 
-        _usedSigHashes[msgHash] = true;
+        tokenUpdateNonce[tokenId] = nonce;
 
         PassportData storage p = passports[tokenId];
         uint8 oldTier = p.tier;

@@ -41,6 +41,9 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
     mapping(address => bool) public authorizedCallers;
     uint256 public crewCount;
 
+    // M-06: per-address formation nonce to guard against same-block re-entry in formCrew()
+    mapping(address => uint256) public formationNonce;
+
     uint256 public constant MIN_MEMBERS = 2;
     uint256 public constant MAX_MEMBERS = 10;
 
@@ -92,8 +95,12 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
         if(members.length != roles.length) revert ArrayLengthMismatch();
         if(agentCrew[msg.sender] != bytes32(0)) revert AlreadyInCrew();
 
+        // M-06: increment formation nonce at the start to guard against same-block re-entry;
+        // the nonce is included in the crewId hash to ensure uniqueness per call
+        uint256 nonce = ++formationNonce[msg.sender];
+
         // abi.encode (not encodePacked) prevents hash-collision between different-length inputs
-        bytes32 crewId = keccak256(abi.encode(msg.sender, block.timestamp, crewCount));
+        bytes32 crewId = keccak256(abi.encode(msg.sender, block.timestamp, crewCount, nonce));
         if(crewExists[crewId]) revert CrewAlreadyExists();
 
         Crew storage crew = crews[crewId];
@@ -122,6 +129,11 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
 
         if(!leadIncluded) {
             if(members.length >= MAX_MEMBERS) revert TooManyMembers();
+            // M-06: re-check agentCrew[msg.sender] inside lead-add block to guard against
+            // same-block re-entry that might have assigned the lead between the outer check
+            // and this point (in practice Solidity is synchronous, but the nonce above is
+            // the primary guard; this check is belt-and-suspenders)
+            if(agentCrew[msg.sender] != bytes32(0)) revert AlreadyInCrew();
             crew.memberAddresses.push(msg.sender);
             crew.memberRoles[msg.sender] = Role.LEAD;
             crew.isMember[msg.sender] = true;

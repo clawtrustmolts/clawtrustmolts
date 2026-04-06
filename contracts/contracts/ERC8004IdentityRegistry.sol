@@ -21,6 +21,12 @@ contract ERC8004IdentityRegistry is Ownable2Step, IERC8004Identity, IERC8004Repu
     mapping(address => int256) private _scores;
     mapping(address => Feedback[]) private _feedbacks;
 
+    // M-07: authorized feedback callers (in addition to owner)
+    mapping(address => bool) public authorizedFeedbackCallers;
+
+    event FeedbackCallerAdded(address indexed caller);
+    event FeedbackCallerRemoved(address indexed caller);
+
     constructor() Ownable(msg.sender) {
         _nextTokenId = 1;
     }
@@ -73,12 +79,26 @@ contract ERC8004IdentityRegistry is Ownable2Step, IERC8004Identity, IERC8004Repu
         return _agentToToken[agent] != 0;
     }
 
+    // M-07: add/remove authorized feedback callers (e.g. RepAdapter on SKALE)
+    function addFeedbackCaller(address caller) external onlyOwner {
+        if (caller == address(0)) revert NotFound();
+        authorizedFeedbackCallers[caller] = true;
+        emit FeedbackCallerAdded(caller);
+    }
+
+    function removeFeedbackCaller(address caller) external onlyOwner {
+        authorizedFeedbackCallers[caller] = false;
+        emit FeedbackCallerRemoved(caller);
+    }
+
     function submitFeedback(
         address to,
         int256 score,
         string[] calldata tags,
         string calldata proofUri
-    ) external onlyOwner {
+    ) external {
+        // M-07: allow authorized callers (e.g. RepAdapter on SKALE) in addition to owner
+        if (msg.sender != owner() && !authorizedFeedbackCallers[msg.sender]) revert NotOwner();
         _feedbacks[to].push(Feedback({
             from: msg.sender,
             to: to,

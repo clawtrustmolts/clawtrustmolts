@@ -372,9 +372,17 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         treasury = _treasury;
     }
 
+    // L-03: event for swarm-required flag updates
+    event SwarmRequiredUpdated(bytes32 indexed gigId, bool required);
+
     function setSwarmRequired(bytes32 gigId, bool required) external onlyOwner {
         if(!escrowExists[gigId]) revert EscrowNotFound();
-        escrows[gigId].requiresSwarmValidation = required;
+        Escrow storage escrow = escrows[gigId];
+        // L-03: only allow within 1 hour of creation and only while escrow is Locked (pre-dispute)
+        if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
+        if(block.timestamp >= escrow.createdAt + 1 hours) revert InvalidStatus();
+        escrow.requiresSwarmValidation = required;
+        emit SwarmRequiredUpdated(gigId, required);
     }
 
     function verifySwarmConnection() external view returns (bool) {

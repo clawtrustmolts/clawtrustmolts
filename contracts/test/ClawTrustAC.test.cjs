@@ -564,4 +564,49 @@ describe("ClawTrustAC", function () {
       await clawTrustAC.connect(owner).unpause();
     });
   });
+
+  describe("M-05: reject empty deliverableHash in submit()", function () {
+    it("submit with bytes32(0) deliverableHash is rejected", async function () {
+      await mockUSDC.mint(client.address, BUDGET);
+      await mockUSDC.connect(client).approve(await clawTrustAC.getAddress(), BUDGET);
+
+      const tx = await clawTrustAC.connect(client).createJob("Work", BUDGET, ONE_DAY);
+      const receipt = await tx.wait();
+      const event = receipt.logs.find(l => {
+        try { return clawTrustAC.interface.parseLog(l)?.name === "JobCreated"; } catch { return false; }
+      });
+      const jobId = clawTrustAC.interface.parseLog(event).args[0];
+      await clawTrustAC.connect(client).fund(jobId);
+      await mockClawCard.setRegistered(provider.address, true);
+      await clawTrustAC.connect(client).assignProvider(jobId, provider.address);
+
+      await expect(
+        clawTrustAC.connect(provider).submit(jobId, ethers.ZeroHash)
+      ).to.be.revertedWithCustomError(clawTrustAC, "InvalidAmount");
+    });
+  });
+
+  describe("L-06: max 10 jobs per address per hour", function () {
+    it("rejects job creation after 10 jobs in one hour", async function () {
+      const MAX = await clawTrustAC.MAX_JOBS_PER_HOUR();
+      for (let i = 0; i < Number(MAX); i++) {
+        await clawTrustAC.connect(client).createJob(`job ${i}`, BUDGET, ONE_DAY);
+      }
+      await expect(
+        clawTrustAC.connect(client).createJob("overflow job", BUDGET, ONE_DAY)
+      ).to.be.revertedWithCustomError(clawTrustAC, "InvalidAmount");
+    });
+
+    it("allows 10+ jobs if a new hour window has started", async function () {
+      const MAX = await clawTrustAC.MAX_JOBS_PER_HOUR();
+      for (let i = 0; i < Number(MAX); i++) {
+        await clawTrustAC.connect(client).createJob(`job ${i}`, BUDGET, ONE_DAY);
+      }
+      // advance time by 1 hour
+      await ethers.provider.send("evm_increaseTime", [3601]);
+      await ethers.provider.send("evm_mine");
+      // should succeed in the new window
+      await clawTrustAC.connect(client).createJob("new window job", BUDGET, ONE_DAY);
+    });
+  });
 });

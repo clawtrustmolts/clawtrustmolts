@@ -71,6 +71,11 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     mapping(bytes32 => uint256) public submittedAt;
     uint256 private _jobCounter;
 
+    // L-06: rate-limit job creation to max 10 jobs per address per hour
+    mapping(address => uint256) public lastJobCreatedAt;
+    mapping(address => uint256) public jobsThisHour;
+    uint256 public constant MAX_JOBS_PER_HOUR = 10;
+
     address public treasury;
 
     // ─── Legacy single evaluator (kept for backward-read-compatibility) ───
@@ -179,6 +184,15 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         if (durationSeconds < MIN_DURATION || durationSeconds > MAX_DURATION) revert InvalidDuration();
         if (bytes(description).length > 1000) revert InvalidAmount();
 
+        // L-06: enforce max 10 jobs per address per hour to prevent storage spam
+        if (block.timestamp >= lastJobCreatedAt[msg.sender] + 1 hours) {
+            // new hour window — reset counter
+            jobsThisHour[msg.sender] = 0;
+            lastJobCreatedAt[msg.sender] = block.timestamp;
+        }
+        jobsThisHour[msg.sender]++;
+        if (jobsThisHour[msg.sender] > MAX_JOBS_PER_HOUR) revert InvalidAmount();
+
         _jobCounter++;
         // abi.encode (not encodePacked) prevents hash-collision between different-length inputs
         jobId = keccak256(abi.encode(msg.sender, _jobCounter, block.timestamp));
@@ -262,6 +276,8 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         if (job.status != JobStatus.Assigned) revert InvalidStatus();
         if (msg.sender != job.provider) revert Unauthorized();
         if (block.timestamp >= job.expiredAt) revert JobAlreadyExpired();
+        // M-05: reject empty deliverableHash — providers must submit a real proof
+        if (deliverableHash == bytes32(0)) revert InvalidAmount();
 
         job.deliverableHash = deliverableHash;
         job.status = JobStatus.Submitted;

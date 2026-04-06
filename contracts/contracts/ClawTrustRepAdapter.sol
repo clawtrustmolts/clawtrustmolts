@@ -76,6 +76,8 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
     event ReputationRegistryCallFailed(address indexed agent, bytes reason);
     event MinOracleCountUpdated(uint256 oldCount, uint256 newCount);
     event ScoreHistoryPruned(address indexed agent, uint256 removedCount);
+    // M-03: emitted when a batch update is skipped for an agent due to rate limiting
+    event ScoreUpdateSkipped(address indexed agent);
 
     error InvalidAddress();
     error InvalidScore();
@@ -189,7 +191,11 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
         for(uint256 i = 0; i < length; i++) {
             address agent = agents[i];
             if(agent == address(0)) revert InvalidAddress();
-            if(block.timestamp < lastUpdateTime[agent] + updateCooldown) continue;
+            if(block.timestamp < lastUpdateTime[agent] + updateCooldown) {
+                // M-03: emit event instead of silently skipping rate-limited agents
+                emit ScoreUpdateSkipped(agent);
+                continue;
+            }
 
             uint256 fused = computeFusedScore(onChainScores[i], moltbookKarmas[i], performanceScores[i], bondScores[i]);
             bytes32 proofHash = keccak256(bytes(proofUris[i]));

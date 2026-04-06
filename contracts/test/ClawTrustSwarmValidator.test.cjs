@@ -242,4 +242,39 @@ describe("ClawTrustSwarmValidator", function () {
       ).to.be.revertedWithCustomError(validator, "InvalidThreshold");
     });
   });
+
+  describe("H-02: reward pool snapshot prevents dilution", function () {
+    it("eligibleVotersSnapshot is set on first claim and prevents reward dilution", async function () {
+      const rewardPool = ethers.parseEther("0.3");
+      await mockToken.mint(escrow.address, rewardPool);
+      await mockToken.connect(escrow).approve(await validator.getAddress(), rewardPool);
+      // threshold=3 but 4 candidates can vote; only 3 needed for approval
+      await validator.connect(escrow).createValidation(
+        GIG_ID, owner.address, assignee.address, [v1.address, v2.address, v3.address, v4.address], 3, rewardPool, await mockToken.getAddress()
+      );
+      // 3 votes → resolved; snapshot should lock in 3 voters
+      await validator.connect(v1).vote(GIG_ID, 1);
+      await validator.connect(v2).vote(GIG_ID, 1);
+      await validator.connect(v3).vote(GIG_ID, 1);
+
+      const expectedPerValidator = rewardPool / 3n;
+      const before = await mockToken.balanceOf(v1.address);
+      await validator.connect(v1).claimReward(GIG_ID);
+      const after = await mockToken.balanceOf(v1.address);
+      expect(after - before).to.equal(expectedPerValidator);
+    });
+  });
+
+  describe("M-04: late vote blocked after threshold reached", function () {
+    it("v4 cannot vote after validation is resolved", async function () {
+      await createBasicValidation();
+      await validator.connect(v1).vote(GIG_ID, 1);
+      await validator.connect(v2).vote(GIG_ID, 1);
+      await validator.connect(v3).vote(GIG_ID, 1);
+      // status is now Approved; v4 attempts to vote
+      await expect(
+        validator.connect(v4).vote(GIG_ID, 1)
+      ).to.be.revertedWithCustomError(validator, "ValidationAlreadyResolved");
+    });
+  });
 });

@@ -61,9 +61,9 @@ describe("ClawTrustRegistry", function () {
     });
 
     it("should register a .shell domain", async function () {
-      await registry.connect(registrar).register("agent", ".shell", user1.address, 100e6);
+      await registry.connect(registrar).register("worker", ".shell", user1.address, 100e6);
       const domain = await registry.getDomain(1);
-      expect(domain.name).to.equal("agent");
+      expect(domain.name).to.equal("worker");
       expect(domain.tld).to.equal(".shell");
       expect(domain.pricePaid).to.equal(100e6);
     });
@@ -477,6 +477,35 @@ describe("ClawTrustRegistry", function () {
 
     it("should support AccessControl interface", async function () {
       expect(await registry.supportsInterface("0x7965db0b")).to.be.true;
+    });
+  });
+
+  describe("M-02: burnExpired removes zombie NFTs", function () {
+    it("anyone can burn an expired domain NFT", async function () {
+      await registry.connect(registrar).register("zombie", ".claw", user1.address, 0);
+      const d = await registry.domains(1);
+      const expiry = d.expiresAt;
+      await ethers.provider.send("evm_setNextBlockTimestamp", [Number(expiry) + 1]);
+      await ethers.provider.send("evm_mine");
+      await registry.burnExpired(1);
+      await expect(registry.ownerOf(1)).to.be.reverted;
+    });
+
+    it("cannot burn a non-expired domain", async function () {
+      await registry.connect(registrar).register("fresh", ".claw", user1.address, 0);
+      await expect(registry.burnExpired(1)).to.be.revertedWithCustomError(registry, "DomainNotExpired");
+    });
+  });
+
+  describe("L-04: max 5 domains per wallet", function () {
+    it("rejects registering more than MAX_DOMAINS_PER_WALLET domains", async function () {
+      const MAX = await registry.MAX_DOMAINS_PER_WALLET();
+      for (let i = 0; i < Number(MAX); i++) {
+        await registry.connect(registrar).register(`domain${i}`, ".claw", user1.address, 0);
+      }
+      await expect(
+        registry.connect(registrar).register("overflow", ".claw", user1.address, 0)
+      ).to.be.revertedWithCustomError(registry, "TooManyDomains");
     });
   });
 });

@@ -362,4 +362,22 @@ describe("ClawTrustEscrow", function () {
       await expect(escrow.getEscrow(GIG_ID)).to.be.revertedWithCustomError(escrow, "EscrowNotFound");
     });
   });
+
+  describe("L-03: setSwarmRequired only before 1-hour window", function () {
+    it("setSwarmRequired succeeds when escrow is newly locked (within 1 hour)", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(owner).setSwarmRequired(GIG_ID, true);
+      const info = await escrow.getEscrow(GIG_ID);
+      expect(info.requiresSwarmValidation).to.equal(true);
+    });
+
+    it("setSwarmRequired reverts after 1 hour grace period", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await ethers.provider.send("evm_increaseTime", [3601]);
+      await ethers.provider.send("evm_mine");
+      await expect(
+        escrow.connect(owner).setSwarmRequired(GIG_ID, false)
+      ).to.be.revertedWithCustomError(escrow, "InvalidStatus");
+    });
+  });
 });

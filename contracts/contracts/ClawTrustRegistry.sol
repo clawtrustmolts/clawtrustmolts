@@ -33,6 +33,8 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
 
     uint256 private _nextTokenId = 1;
     uint256 public constant MAX_SUPPLY = 10_000_000;
+    // L-04: cap domains per wallet to prevent storage growth attacks
+    uint256 public constant MAX_DOMAINS_PER_WALLET = 20;
 
     string public constant TLD_CLAW  = ".claw";
     string public constant TLD_SHELL = ".shell";
@@ -64,6 +66,8 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         uint256 expiresAt
     );
     event DomainExpiredNotice(uint256 indexed tokenId, string fullDomain);
+    // M-02: emitted when a zombie expired domain NFT is burned
+    event DomainExpiredBurned(uint256 indexed tokenId, string name, string tld);
 
     error InvalidTLD();
     error InvalidName();
@@ -72,6 +76,10 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     error ReservedName();
     error MaxSupplyReached();
     error DomainExpired();
+    // L-04: error when a wallet hits the domain cap
+    error TooManyDomains();
+    // M-02: error when trying to burn a domain that is not yet expired
+    error DomainNotExpired();
 
     bytes32 private constant _RESERVED_ADMIN   = keccak256("admin");
     bytes32 private constant _RESERVED_API     = keccak256("api");
@@ -104,6 +112,9 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
 
         bytes32 domainKey = _domainKey(name, tld);
         if (domainTaken[domainKey]) revert DomainAlreadyTaken();
+
+        // L-04: enforce per-wallet domain cap to prevent storage growth attacks
+        if (ownerTokenIds[owner].length >= MAX_DOMAINS_PER_WALLET) revert TooManyDomains();
 
         tokenId = _nextTokenId++;
         uint256 expiresAt = block.timestamp + 365 days;
@@ -142,7 +153,32 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         bytes32 key = _domainKey(name, tld);
         if (!domainTaken[key]) return true;
         uint256 tokenId = domainToTokenId[key];
+        // M-02: treat zombie expired NFTs (burnable) as available
         return block.timestamp > domains[tokenId].expiresAt;
+    }
+
+    /**
+     * @notice Burn a zombie expired domain NFT. Anyone can call to clean up.
+     *         M-02: eliminates zombie tokens after expiry without requiring holder action.
+     * @param tokenId The token ID of the expired domain NFT to burn
+     */
+    function burnExpired(uint256 tokenId) external {
+        if (_ownerOf(tokenId) == address(0)) revert DomainNotFound();
+        DomainRecord storage d = domains[tokenId];
+        if (block.timestamp <= d.expiresAt) revert DomainNotExpired();
+
+        string memory name = d.name;
+        string memory tld  = d.tld;
+        bytes32 domainKey  = keccak256(abi.encode(name, tld));
+
+        // Clean up domain registry state
+        domainTaken[domainKey] = false;
+        delete domainToTokenId[domainKey];
+        d.active = false;
+
+        _burn(tokenId);
+
+        emit DomainExpiredBurned(tokenId, name, tld);
     }
 
     function getDomain(uint256 tokenId) external view returns (DomainRecord memory) {

@@ -33,6 +33,8 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         address escrowSnapshot;
         address rewardRefundTarget;
         mapping(address => bool) rewardClaimed;
+        // H-02: snapshot of votesFor at the time of the first reward claim to prevent dilution
+        uint256 eligibleVotersSnapshot;
     }
 
     struct ValidationInfo {
@@ -246,7 +248,15 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         if(v.rewardClaimed[msg.sender]) revert RewardAlreadyClaimed();
         if(v.rewardPool == 0 || v.votesFor == 0) revert NoRewardAvailable();
 
-        uint256 rewardPerValidator = v.rewardPool / v.votesFor;
+        // H-02: Snapshot eligibleVoters on first claim so that any votes recorded after
+        // the validation is marked Approved (theoretically in the same block) cannot
+        // dilute the reward share already owed to earlier voters.
+        if(v.eligibleVotersSnapshot == 0) {
+            v.eligibleVotersSnapshot = v.votesFor;
+        }
+        uint256 eligibleVoters = v.eligibleVotersSnapshot;
+
+        uint256 rewardPerValidator = v.rewardPool / eligibleVoters;
         if(rewardPerValidator == 0) revert NoRewardAvailable();
 
         uint256 remaining = v.rewardPool - v.rewardPoolClaimed;

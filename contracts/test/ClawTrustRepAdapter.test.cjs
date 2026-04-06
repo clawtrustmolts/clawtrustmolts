@@ -197,4 +197,36 @@ describe("ClawTrustRepAdapter", function () {
       expect(await adapter.verifyProof(agent.address, "ipfs://wrong")).to.equal(false);
     });
   });
+
+  describe("M-03: ScoreUpdateSkipped event on rate-limited agent in batch", function () {
+    it("emits ScoreUpdateSkipped for a rate-limited agent in batch update", async function () {
+      // First update sets lastUpdateTime
+      await adapter.connect(oracle).updateFusedScore(agent.address, 500, 5000, 75, 80, "ipfs://proof");
+      // Batch immediately after — agent is rate-limited, should emit ScoreUpdateSkipped
+      await expect(
+        adapter.connect(oracle).updateFusedScoreBatch(
+          [agent.address],
+          [500],
+          [5000],
+          [75],
+          [80],
+          ["ipfs://proof2"]
+        )
+      ).to.emit(adapter, "ScoreUpdateSkipped").withArgs(agent.address);
+    });
+
+    it("does NOT emit ScoreUpdateSkipped when cooldown has passed", async function () {
+      await adapter.connect(oracle).updateFusedScore(agent.address, 500, 5000, 75, 80, "ipfs://proof");
+      await ethers.provider.send("evm_increaseTime", [5 * 60 + 1]);
+      await ethers.provider.send("evm_mine");
+      const tx = await adapter.connect(oracle).updateFusedScoreBatch(
+        [agent.address], [600], [6000], [80], [85], ["ipfs://proof3"]
+      );
+      const receipt = await tx.wait();
+      const skipped = receipt.logs.some(l => {
+        try { return adapter.interface.parseLog(l)?.name === "ScoreUpdateSkipped"; } catch { return false; }
+      });
+      expect(skipped).to.equal(false);
+    });
+  });
 });

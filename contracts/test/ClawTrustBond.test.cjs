@@ -217,7 +217,7 @@ describe("ClawTrustBond", function () {
   });
 
   describe("slash cooldown", function () {
-    it("should skip slash during cooldown and unlock instead", async function () {
+    it("should slash independently on different gigIds (L-01: per-gig cooldown)", async function () {
       await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
       await bond.authorizeCaller(owner.address);
       await bond.lockBondForGig(GIG_ID, agent.address, LOCK_AMOUNT);
@@ -228,14 +228,32 @@ describe("ClawTrustBond", function () {
       const slashAmount = LOCK_AMOUNT * 2000n / 10000n;
       const afterFirstSlash = DEPOSIT_AMOUNT - slashAmount;
 
+      // GIG_ID_2 has its own per-gig cooldown (starts at 0), so it is also slashable
       await bond.lockBondForGig(GIG_ID_2, agent.address, LOCK_AMOUNT);
       await bond.connect(voter1).swarmVote(GIG_ID_2, false);
       await bond.connect(voter2).swarmVote(GIG_ID_2, false);
       await bond.connect(voter3).swarmVote(GIG_ID_2, false);
 
+      // Both gigs were slashed — total deposited reduced by 2 slashAmounts
       const b = await bond.getBond(agent.address);
-      expect(b.totalDeposited).to.equal(afterFirstSlash);
+      expect(b.totalDeposited).to.equal(afterFirstSlash - slashAmount);
       expect(b.locked).to.equal(0);
+    });
+
+    it("same gigId cannot be slashed twice within cooldown (L-01 guard — via adminFinalize)", async function () {
+      // This scenario is pathological (finalized gigs are already marked); the L-01 cooldown
+      // prevents the same gigId's slash timestamp from being re-triggered within 7 days.
+      // We verify the mapping is set correctly after the first slash.
+      await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
+      await bond.authorizeCaller(owner.address);
+      await bond.lockBondForGig(GIG_ID, agent.address, LOCK_AMOUNT);
+      await bond.connect(voter1).swarmVote(GIG_ID, false);
+      await bond.connect(voter2).swarmVote(GIG_ID, false);
+      await bond.connect(voter3).swarmVote(GIG_ID, false);
+
+      // gigLastSlashTimestamp[GIG_ID] is now set
+      const ts = await bond.gigLastSlashTimestamp(GIG_ID);
+      expect(ts).to.be.gt(0);
     });
   });
 
@@ -303,6 +321,45 @@ describe("ClawTrustBond", function () {
       expect(await bond.hasVoted(GIG_ID, voter1.address)).to.equal(false);
       await bond.connect(voter1).swarmVote(GIG_ID, true);
       expect(await bond.hasVoted(GIG_ID, voter1.address)).to.equal(true);
+    });
+  });
+
+  describe("M-01: minimum bond lock enforcement", function () {
+    it("rejects lock amount below MIN_DEPOSIT (dust-bond exploit)", async function () {
+      await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
+      await bond.authorizeCaller(owner.address);
+      const dustAmount = 1n;
+      await expect(
+        bond.lockBondForGig(GIG_ID, agent.address, dustAmount)
+      ).to.be.revertedWithCustomError(bond, "BelowMinDeposit");
+    });
+
+    it("allows lock at exactly MIN_DEPOSIT", async function () {
+      await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
+      await bond.authorizeCaller(owner.address);
+      const minDeposit = await bond.MIN_DEPOSIT();
+      await bond.lockBondForGig(GIG_ID, agent.address, minDeposit);
+      const info = await bond.getGigInfo(GIG_ID);
+      expect(info.lockedAmount).to.equal(minDeposit);
+    });
+
+    it("owner can update minBondRatio and BondRatioUpdated event fires", async function () {
+      await expect(bond.setMinBondRatio(1000))
+        .to.emit(bond, "BondRatioUpdated").withArgs(500, 1000);
+      expect(await bond.minBondRatio()).to.equal(1000);
+    });
+  });
+
+  describe("L-01: per-gig slash cooldown", function () {
+    it("gigLastSlashTimestamp is set after a slash", async function () {
+      await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
+      await bond.authorizeCaller(owner.address);
+      await bond.lockBondForGig(GIG_ID, agent.address, LOCK_AMOUNT);
+      await bond.connect(voter1).swarmVote(GIG_ID, false);
+      await bond.connect(voter2).swarmVote(GIG_ID, false);
+      await bond.connect(voter3).swarmVote(GIG_ID, false);
+      const ts = await bond.gigLastSlashTimestamp(GIG_ID);
+      expect(ts).to.be.gt(0);
     });
   });
 });

@@ -41,6 +41,12 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
     uint256 public constant SWARM_THRESHOLD = 3;
     uint256 public constant MIN_FUSED_SCORE = 50;
 
+    // M-01: minimum bond ratio in basis points (500 = 5%); configurable by owner
+    uint256 public minBondRatio = 500;
+
+    // L-01: per-gig slash cooldown tracking so the cooldown is gig-scoped, not agent-global
+    mapping(bytes32 => uint256) public gigLastSlashTimestamp;
+
     address public treasury;
 
     event BondDeposited(address indexed agent, uint256 amount);
@@ -54,6 +60,8 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
     event CallerAuthorized(address indexed caller);
     event CallerRevoked(address indexed caller);
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
+    // M-01: emitted when minBondRatio is updated by owner
+    event BondRatioUpdated(uint256 oldRatio, uint256 newRatio);
 
     error BelowMinDeposit();
     error InsufficientBond();
@@ -129,11 +137,14 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
     // FIX C-03: Changed `&&` to `||` — previously `score < MIN_FUSED_SCORE && totalDeposited > 0`
     // allowed agents with zero deposit (or tiny deposit) to bypass the score gate entirely.
     // New logic: reject if score is too low OR if the agent has no bond deposited at all.
+    // M-01: enforces hard floor of MIN_DEPOSIT (10 USDC) for any bond lock, rejecting 1-unit exploits.
     function lockBondForGig(bytes32 gigId, address agent, uint256 amount) external onlyAuthorized nonReentrant whenNotPaused {
         emit BondLockRequested(gigId, agent, amount, msg.sender);
 
         if(gigExists[gigId]) revert GigAlreadyExists();
         if(amount == 0) revert ZeroAmount();
+        // M-01: enforce minimum lock amount to prevent dust-bond exploits
+        if(amount < MIN_DEPOSIT) revert BelowMinDeposit();
 
         Bond storage bond = bonds[agent];
         if(amount > bond.available) revert InsufficientBond();
@@ -187,7 +198,9 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
             bond.available += gig.lockedAmount;
             emit BondUnlocked(gig.agent, gig.lockedAmount, gigId);
         } else {
-            if(block.timestamp < bond.lastSlashTimestamp + SLASH_COOLDOWN) {
+            // L-01: use per-gig slash cooldown so the same gig is not slashed twice,
+            // without blocking unrelated gigs for the same agent during the cooldown window
+            if(block.timestamp < gigLastSlashTimestamp[gigId] + SLASH_COOLDOWN) {
                 bond.locked -= gig.lockedAmount;
                 bond.available += gig.lockedAmount;
                 emit BondUnlocked(gig.agent, gig.lockedAmount, gigId);
@@ -201,6 +214,8 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
             bond.totalDeposited -= slashAmount;
             bond.available += remaining;
             bond.lastSlashTimestamp = block.timestamp;
+            // L-01: record the gig-level slash timestamp
+            gigLastSlashTimestamp[gigId] = block.timestamp;
 
             usdcToken.safeTransfer(treasury != address(0) ? treasury : owner(), slashAmount);
 
@@ -223,6 +238,14 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
         address old = treasury;
         treasury = _treasury;
         emit TreasuryUpdated(old, _treasury);
+    }
+
+    // M-01: allow owner to update the minimum bond ratio (in basis points)
+    function setMinBondRatio(uint256 _ratio) external onlyOwner {
+        if(_ratio > 10000) revert ZeroAmount();
+        uint256 old = minBondRatio;
+        minBondRatio = _ratio;
+        emit BondRatioUpdated(old, _ratio);
     }
 
     function authorizeCaller(address caller) external onlyOwner {

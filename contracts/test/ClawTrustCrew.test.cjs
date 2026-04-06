@@ -245,4 +245,36 @@ describe("ClawTrustCrew", function () {
       expect(members.length).to.equal(3);
     });
   });
+
+  describe("M-06: formationNonce prevents crew replay", function () {
+    it("different leads produce different crewIds even with same name", async function () {
+      const tx1 = await crew.connect(lead).formCrew(
+        "Same Name", [lead.address, m1.address], [0, 2]
+      );
+      const r1 = await tx1.wait();
+      const e1 = r1.logs.find(l => {
+        try { return crew.interface.parseLog(l)?.name === "CrewFormed"; } catch { return false; }
+      });
+      const crewId1 = crew.interface.parseLog(e1).args.crewId;
+
+      // m2 forms a different crew with the same name — different lead so different nonce
+      const tx2 = await crew.connect(m2).formCrew(
+        "Same Name", [m2.address, m3.address], [0, 2]
+      );
+      const r2 = await tx2.wait();
+      const e2 = r2.logs.find(l => {
+        try { return crew.interface.parseLog(l)?.name === "CrewFormed"; } catch { return false; }
+      });
+      const crewId2 = crew.interface.parseLog(e2).args.crewId;
+
+      expect(crewId1).to.not.equal(crewId2);
+    });
+
+    it("formationNonce increments after each formCrew", async function () {
+      const n0 = await crew.formationNonce(lead.address);
+      await crew.connect(lead).formCrew("N1", [lead.address, m1.address], [0, 2]);
+      const n1 = await crew.formationNonce(lead.address);
+      expect(n1).to.equal(n0 + 1n);
+    });
+  });
 });
