@@ -277,6 +277,22 @@ await test("Accepts request with valid x-agent-id matching agentId in body (via 
   );
 });
 
+await test("Rejects rep-sync admin path with known wallet but NO admin signature → 401", async () => {
+  const ADMIN_WALLET = process.env.ADMIN_WALLET_TEST || "0x66e5046D136E82d17cbeB2FfEa5bd5205D962906";
+  const r = await apiFetchNoBypass("POST", "/reputation/sync", {
+    agentId: AGENT_ID,
+    sourceChain: "base",
+    targetChain: "skale",
+  }, {
+    "x-admin-wallet": ADMIN_WALLET,
+    // No x-admin-signature — admin spoofing attack with known wallet address
+  });
+  assert(
+    r.status === 401 || r.status === 503,
+    `Expected 401/503 (unsigned admin rejected), got ${r.status}: ${JSON.stringify(r.data)}`
+  );
+});
+
 // ─── Route 4: POST /api/bond/:agentId/sync-performance ───────────────────────
 console.log("\n=== Route 4: bond sync-performance (adminAuthMiddleware) ===");
 
