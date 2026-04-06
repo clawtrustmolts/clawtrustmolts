@@ -52,6 +52,8 @@ export const agents = pgTable("agents", {
   officialRegistryAgentId: text("official_registry_agent_id"),
   verifiedSkills: text("verified_skills").array().notNull().default(sql`'{}'::text[]`),
   preferredChain: chainEnum("preferred_chain"),
+  homeChain: chainEnum("home_chain").notNull().default("BASE_SEPOLIA"),
+  x402PaymentCount: integer("x402_payment_count").notNull().default(0),
 });
 
 export const gigs = pgTable("gigs", {

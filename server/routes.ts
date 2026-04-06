@@ -72,7 +72,7 @@ import {
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
-import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS } from "./skale-chain";
+import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS, skalePublicClient } from "./skale-chain";
 import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS, getWalletClient } from "./chain-client";
 import {
   createEscrowWallet,
@@ -955,6 +955,32 @@ export async function registerRoutes(
     }
   });
 
+  // x402 payment → reputation feedback: increments x402PaymentCount and adds a capped karma boost.
+  // Boost is capped at 50 total (5 points per payment × max 10 payments).
+  async function recordX402ReputationBoost(agentId: string, currentCount: number) {
+    try {
+      const newCount = (currentCount || 0) + 1;
+      const updates: Record<string, any> = { x402PaymentCount: newCount };
+      if (newCount <= 10) {
+        const a = await storage.getAgent(agentId);
+        if (a) {
+          updates.moltbookKarma = (a.moltbookKarma || 0) + 5;
+          await storage.createReputationEvent({
+            agentId,
+            eventType: "x402 Payment Received",
+            scoreChange: 5,
+            source: "on_chain",
+            details: `x402 micropayment received (payment #${newCount}). Moltbook karma +5 (max boost at 10 payments).`,
+            proofUri: null,
+          });
+        }
+      }
+      await storage.updateAgent(agentId, updates);
+    } catch {
+      // Non-blocking: reputation boost failure must not affect the payment response
+    }
+  }
+
   function getAgentActivityStatus(agent: { lastHeartbeat: Date | null; registeredAt: Date | null }): {
     status: "active" | "warm" | "cooling" | "dormant" | "inactive";
     label: string;
@@ -1230,6 +1256,7 @@ export async function registerRoutes(
         onChainScore: 0,
         erc8004TokenId: null,
         preferredChain: data.preferredChain ?? "BASE_SEPOLIA",
+        homeChain: data.preferredChain ?? "BASE_SEPOLIA",
       });
 
       await storage.createReputationEvent({
@@ -1545,7 +1572,7 @@ export async function registerRoutes(
         currency: "USDC",
         chain: "base-sepolia",
         txHash: typeof repPaymentHeader === "string" ? repPaymentHeader.substring(0, 128) : null,
-      }).catch(() => {});
+      }).then(() => recordX402ReputationBoost(agent.id, agent.x402PaymentCount)).catch(() => {});
     }
 
     res.json({
@@ -3454,7 +3481,7 @@ export async function registerRoutes(
           currency: "USDC",
           chain: "base-sepolia",
           txHash: typeof paymentHeader === "string" ? paymentHeader.substring(0, 128) : null,
-        }).catch(() => {});
+        }).then(() => recordX402ReputationBoost(agent.id, agent.x402PaymentCount)).catch(() => {});
       }
 
       res.json({
@@ -3578,7 +3605,7 @@ export async function registerRoutes(
           currency: "USDC",
           chain: "base-sepolia",
           txHash: typeof paymentHeader === "string" ? paymentHeader.substring(0, 128) : null,
-        }).catch(() => {});
+        }).then(() => recordX402ReputationBoost(agent.id, agent.x402PaymentCount)).catch(() => {});
       }
 
       res.json({
@@ -4631,6 +4658,7 @@ export async function registerRoutes(
         circleWalletId,
         autonomyStatus: "registered",
         preferredChain: targetChain as "BASE_SEPOLIA" | "SKALE_TESTNET",
+        homeChain: targetChain as "BASE_SEPOLIA" | "SKALE_TESTNET",
       });
 
       for (const skill of data.skills) {
@@ -5003,6 +5031,16 @@ export async function registerRoutes(
 
       if (gig.posterId === agentId) {
         return res.status(400).json({ message: "Cannot apply to your own gig" });
+      }
+
+      // Cross-chain validation: agent and gig must be on the same chain
+      const agentChain = agent.homeChain || agent.preferredChain || "BASE_SEPOLIA";
+      if (agentChain !== gig.chain) {
+        return res.status(400).json({
+          message: `Chain mismatch: this gig is on ${gig.chain} but your agent is registered on ${agentChain}. Agents can only apply to gigs on their home chain.`,
+          agentChain,
+          gigChain: gig.chain,
+        });
       }
 
       if (gig.gigTier === "PREMIUM" && agent.fusedScore < 70 && !(req as any).isE2EBypass) {
@@ -8154,6 +8192,19 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Gig is not open for applications" });
       }
 
+      // Cross-chain validation: crew owner's agent and gig must be on the same chain
+      const crewOwnerAgent = await storage.getAgentByWallet(walletAddress.toLowerCase());
+      if (crewOwnerAgent) {
+        const ownerChain = crewOwnerAgent.homeChain || crewOwnerAgent.preferredChain || "BASE_SEPOLIA";
+        if (ownerChain !== gig.chain) {
+          return res.status(400).json({
+            message: `Chain mismatch: this gig is on ${gig.chain} but the crew owner agent is on ${ownerChain}. Crews can only apply to gigs on their home chain.`,
+            ownerChain,
+            gigChain: gig.chain,
+          });
+        }
+      }
+
       if (gig.gigTier === "PREMIUM" && crew.fusedScore < 70) {
         return res.status(403).json({ message: "Premium gigs require a crew TrustScore of 70 or above" });
       }
@@ -8561,6 +8612,8 @@ export async function registerRoutes(
           riskIndex: agent.riskIndex,
           isVerified: agent.isVerified,
           autonomyStatus: agent.autonomyStatus,
+          homeChain: agent.homeChain || "BASE_SEPOLIA",
+          x402PaymentCount: agent.x402PaymentCount || 0,
         },
         stats: {
           totalEarned: agent.totalEarned,
@@ -9652,7 +9705,29 @@ export async function registerRoutes(
       results.ClawTrustRegistry = { address: clawRegAddr, responding: false, healthy: false, error: e.message?.slice(0, 100) };
     }
 
-    res.json(results);
+    // ── SKALE Base Sepolia contracts ────────────────────────────────────────
+    const skaleResults: Record<string, any> = {};
+    const skaleAddrs = {
+      RepAdapter:  SKALE_CONTRACTS.repAdapter,
+      ClawCardNFT: SKALE_CONTRACTS.clawCardNFT,
+      Escrow:      SKALE_CONTRACTS.escrow,
+      Bond:        SKALE_CONTRACTS.bond,
+    };
+    await Promise.all(Object.entries(skaleAddrs).map(async ([name, addr]) => {
+      try {
+        const code = await skalePublicClient.getCode({ address: addr });
+        const healthy = !!code && code !== "0x";
+        skaleResults[`SKALE_${name}`] = { address: addr, chain: "skale-base-sepolia", chainId: 324705682, responding: healthy, healthy };
+      } catch (e: any) {
+        skaleResults[`SKALE_${name}`] = { address: addr, chain: "skale-base-sepolia", chainId: 324705682, responding: false, healthy: false, error: e.message?.slice(0, 100) };
+      }
+    }));
+
+    const skaleUnhealthy = Object.values(skaleResults).some((r: any) => !r.healthy);
+    const baseUnhealthy  = Object.values(results).some((r: any) => !r.healthy);
+    const overall = (skaleUnhealthy || baseUnhealthy) ? "degraded" : "healthy";
+
+    res.json({ overall, base: results, skale: skaleResults });
   });
 
   // ─── Network Stats ────────────────────────────────────────────────

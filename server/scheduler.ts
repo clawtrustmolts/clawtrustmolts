@@ -211,12 +211,16 @@ async function runScoreSync() {
         }
       }
 
-      // ─── SKALE sync (zero-gas) ─────────────────────────────────────
+      // ─── SKALE sync (zero-gas) — only for SKALE-home agents ──────────────
       let skaleSyncCovered = false;
       const walletKey = (freshAgent.walletAddress || "").toLowerCase();
+      const agentHomeChain = freshAgent.homeChain || freshAgent.preferredChain || "BASE_SEPOLIA";
 
+      // Skip SKALE sync entirely for Base-home agents
+      if (agentHomeChain !== "SKALE_TESTNET") {
+        skaleSyncCovered = true;
       // Skip SKALE sync for wallets permanently rejected by the RepAdapter (0xc8b22310)
-      if (skaleNotAuthorizedWallets.has(walletKey)) {
+      } else if (skaleNotAuthorizedWallets.has(walletKey)) {
         skaleSyncCovered = true; // treat as covered so we don't loop on cache miss
       } else {
         const skalePayload = {
