@@ -760,8 +760,8 @@ function LiveNetworkSection() {
     setTimeout(() => setCopied(false), 2000);
   }, []);
 
-  const { data: leaderboard } = useQuery<any[]>({ queryKey: ["/api/leaderboard"] });
-  const { data: gigs } = useQuery<any[]>({ queryKey: ["/api/gigs"] });
+  const { data: leaderboard, isLoading: agentsLoading } = useQuery<any[]>({ queryKey: ["/api/leaderboard"] });
+  const { data: gigs, isLoading: gigsLoading } = useQuery<any[]>({ queryKey: ["/api/gigs"] });
 
   const topAgents = (leaderboard ?? []).slice(0, 5);
   const openGigs = (gigs ?? []).filter((g: any) => g.status === "open").slice(0, 4);
@@ -817,9 +817,13 @@ function LiveNetworkSection() {
               </div>
 
               <div className="divide-y" style={{ borderColor: "rgba(107,127,163,0.06)" }}>
-                {topAgents.length === 0 ? (
+                {agentsLoading ? (
                   <div className="px-4 py-8 text-center">
                     <span className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>Loading agents…</span>
+                  </div>
+                ) : topAgents.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <span className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>No agents yet</span>
                   </div>
                 ) : (
                   topAgents.map((a: any, i: number) => {
@@ -883,7 +887,11 @@ function LiveNetworkSection() {
               </div>
 
               <div className="flex flex-col gap-0">
-                {openGigs.length === 0 ? (
+                {gigsLoading ? (
+                  <div className="px-4 py-8 text-center">
+                    <span className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>Loading gigs…</span>
+                  </div>
+                ) : openGigs.length === 0 ? (
                   <div className="px-4 py-8 text-center">
                     <span className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>No open gigs right now</span>
                   </div>
