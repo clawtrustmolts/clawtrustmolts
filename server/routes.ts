@@ -1653,12 +1653,40 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/reputation/sync", async (req, res) => {
+  app.post("/api/reputation/sync", apiLimiter, async (req, res) => {
     try {
+      const adminWallet = req.headers["x-admin-wallet"] as string | undefined;
+      const callerAgentId = req.headers["x-agent-id"] as string | undefined;
+      const callerWallet = req.headers["x-wallet-address"] as string | undefined;
+
+      const isAdmin = (() => {
+        if (!adminWallet) return false;
+        const ADMIN_WALLETS = (process.env.ADMIN_WALLETS || "").split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
+        return ADMIN_WALLETS.includes(adminWallet.toLowerCase());
+      })();
+
+      if (!isAdmin && !isTestBypass(req)) {
+        if (!callerAgentId || !uuidPattern.test(callerAgentId)) {
+          logSuspiciousActivity(req, "rep_sync_no_auth", "Unauthenticated reputation sync attempt");
+          return res.status(401).json({ message: "Authentication required. Send x-agent-id (for agent) or x-admin-wallet (for admin)." });
+        }
+      }
+
       const { agentId, sourceChain, targetChain } = req.body;
       if (!agentId) return res.status(400).json({ message: "agentId required" });
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      if (!isAdmin && !isTestBypass(req) && callerAgentId) {
+        if (callerAgentId !== agentId) {
+          logSuspiciousActivity(req, "rep_sync_wrong_agent", `Agent ${callerAgentId} tried to sync agent ${agentId}`);
+          return res.status(403).json({ message: "Agents may only sync their own reputation." });
+        }
+        if (callerWallet && agent.walletAddress && callerWallet.toLowerCase() !== agent.walletAddress.toLowerCase()) {
+          logSuspiciousActivity(req, "rep_sync_wallet_mismatch", `Wallet mismatch on rep sync for agent ${agentId}`, "critical");
+          return res.status(403).json({ message: "Wallet does not match agent owner." });
+        }
+      }
 
       let newScore = agent.fusedScore;
       try {
@@ -4655,7 +4683,7 @@ export async function registerRoutes(
     }
   });
 
-  function agentAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  async function agentAuthMiddleware(req: Request, res: Response, next: NextFunction) {
     const agentId = req.headers["x-agent-id"] as string | undefined;
     if (!agentId) {
       return res.status(401).json({ message: "Agent authentication required. Send x-agent-id header." });
@@ -4663,8 +4691,40 @@ export async function registerRoutes(
     if (!uuidPattern.test(agentId)) {
       return res.status(400).json({ message: "Invalid x-agent-id format" });
     }
+
+    const agent = await storage.getAgent(agentId);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    if (isTestBypass(req)) {
+      (req as any).agentId = agentId;
+      (req as any).isE2EBypass = true;
+      return next();
+    }
+
+    if ((req as any).adminWallet) {
+      (req as any).agentId = agentId;
+      (req as any).isE2EBypass = false;
+      return next();
+    }
+
+    const callerWallet =
+      ((req as any).wallet as string | undefined) ||
+      (req.headers["x-wallet-address"] as string | undefined);
+
+    if (!callerWallet) {
+      logSuspiciousActivity(req, "agent_auth_no_wallet", `Agent ${agentId} request missing wallet header`);
+      return res.status(401).json({ message: "Wallet address required. Send x-wallet-address header." });
+    }
+
+    if (callerWallet.toLowerCase() !== agent.walletAddress.toLowerCase()) {
+      logSuspiciousActivity(req, "agent_auth_wallet_mismatch", `Caller wallet ${callerWallet.slice(0, 10)} does not own agent ${agentId}`, "critical");
+      return res.status(403).json({ message: "Wallet does not match agent owner. Access denied." });
+    }
+
     (req as any).agentId = agentId;
-    (req as any).isE2EBypass = isTestBypass(req);
+    (req as any).isE2EBypass = false;
     next();
   }
 
@@ -6850,7 +6910,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bond/:agentId/sync-performance", async (req, res) => {
+  app.post("/api/bond/:agentId/sync-performance", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
       const agentId = safeId.safeParse(req.params.agentId);
       if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
@@ -8985,10 +9045,22 @@ export async function registerRoutes(
   app.post("/api/agents/:id/inherit-reputation", strictLimiter, async (req, res) => {
     try {
       const oldAgentId = req.params.id as string;
-      const { newWallet, oldWallet, signature, newAgentId } = req.body;
+      const { newWallet, oldWallet, signature, sigTimestamp, newAgentId } = req.body;
 
       if (!newWallet || !oldWallet || !newAgentId) {
         return res.status(400).json({ message: "newWallet, oldWallet, and newAgentId are required" });
+      }
+
+      if (!signature || !sigTimestamp) {
+        logSuspiciousActivity(req, "inherit_rep_no_sig", `inherit-reputation attempted without signature from ${oldWallet}`);
+        return res.status(401).json({ message: "Wallet signature required. Sign the migration message with your wallet." });
+      }
+
+      const ts = parseInt(sigTimestamp, 10);
+      const now = Date.now();
+      if (isNaN(ts) || now - ts > SENSITIVE_SIG_TTL_MS || ts > now + 60_000) {
+        logSuspiciousActivity(req, "inherit_rep_sig_expired", `inherit-reputation signature expired for ${oldWallet}`);
+        return res.status(401).json({ message: "Signature expired. Please re-sign within 30 minutes." });
       }
 
       const oldAgent = await storage.getAgent(oldAgentId);
@@ -8998,6 +9070,22 @@ export async function registerRoutes(
 
       if (oldAgent.walletAddress.toLowerCase() !== oldWallet.toLowerCase()) {
         return res.status(400).json({ message: "oldWallet does not match agent's registered wallet" });
+      }
+
+      const migrationMessage = `ClawTrust reputation migration.\nOld agent: ${oldAgentId}\nOld wallet: ${oldWallet}\nNew agent: ${newAgentId}\nNew wallet: ${newWallet}\nTimestamp: ${ts}`;
+      try {
+        const valid = await verifyMessage({
+          address: oldWallet as Address,
+          message: migrationMessage,
+          signature: signature as `0x${string}`,
+        });
+        if (!valid) {
+          logSuspiciousActivity(req, "inherit_rep_sig_invalid", `Invalid signature for reputation migration from ${oldWallet}`, "critical");
+          return res.status(401).json({ message: "Invalid wallet signature. Signature must be from the registered wallet of the source agent." });
+        }
+      } catch (sigErr: any) {
+        logSuspiciousActivity(req, "inherit_rep_sig_error", `Signature verification error for ${oldWallet}: ${sigErr?.message}`);
+        return res.status(401).json({ message: "Wallet signature verification failed." });
       }
 
       const newAgent = await storage.getAgent(newAgentId);
@@ -9131,8 +9219,14 @@ export async function registerRoutes(
   });
 
   // ─── SKALE Multi-chain: Sync score Base → SKALE ─────────────────────
-  app.post("/api/agents/:id/sync-to-skale", apiLimiter, async (req, res) => {
+  app.post("/api/agents/:id/sync-to-skale", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
+      const authenticatedAgentId = (req as any).agentId as string;
+      if (authenticatedAgentId && authenticatedAgentId !== req.params.id) {
+        logSuspiciousActivity(req, "skale_sync_wrong_agent", `Agent ${authenticatedAgentId} tried to sync agent ${req.params.id}`, "critical");
+        return res.status(403).json({ message: "You may only sync your own agent to SKALE." });
+      }
+
       const agent = await storage.getAgent(req.params.id as string);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
