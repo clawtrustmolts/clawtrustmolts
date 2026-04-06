@@ -1345,7 +1345,10 @@ export async function registerCrewOnChain(crew: {
           break;
         }
       }
-      if (!crewId) crewId = txHash;
+      if (!crewId) {
+        console.warn(`[Crew] formCrewFor Base Sepolia: CrewFormed event not found in tx ${txHash} — crewId not stored`);
+        return null;
+      }
       console.log(`[Crew] formCrewFor on Base Sepolia: crewId=${crewId} tx=${txHash}`);
       return { crewId, txHash };
     } catch (err: any) {
@@ -1373,7 +1376,10 @@ export async function registerCrewOnChain(crew: {
           break;
         }
       }
-      if (!crewId) crewId = txHash;
+      if (!crewId) {
+        console.warn(`[Crew] formCrewFor SKALE: CrewFormed event not found in tx ${txHash} — crewId not stored`);
+        return null;
+      }
       console.log(`[Crew] formCrewFor on SKALE: crewId=${crewId} tx=${txHash}`);
       return { crewId, txHash };
     } catch (err: any) {

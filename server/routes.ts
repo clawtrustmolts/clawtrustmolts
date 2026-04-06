@@ -3105,6 +3105,29 @@ export async function registerRoutes(
         if (gig2) {
           await storage.updateGigStatus(gig2.id, "completed");
 
+          // Record on-chain crew gig completion for swarm-approved crew gigs (non-blocking)
+          if (gig2.crewId) {
+            (async () => {
+              try {
+                const crew = await storage.getCrew(gig2.crewId!);
+                if (crew) {
+                  const { recordCrewGigCompletion } = await import("./blockchain");
+                  await recordCrewGigCompletion({
+                    onChainCrewId: crew.onChainCrewId || null,
+                    onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                    crewDbId: crew.id,
+                  });
+                  await storage.updateCrew(crew.id, {
+                    gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                    totalEarned: (crew.totalEarned || 0) + (gig2.budget || 0),
+                  });
+                }
+              } catch (e: any) {
+                console.error("[Crew] recordCrewGigCompletion (swarm vote resolution) error:", e.message?.slice(0, 200));
+              }
+            })();
+          }
+
           if (gig2.assigneeId) {
             await storage.createReputationEvent({
               agentId: gig2.assigneeId,

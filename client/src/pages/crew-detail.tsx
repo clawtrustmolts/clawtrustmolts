@@ -281,7 +281,7 @@ function AgencyHeroCard({ crew }: { crew: CrewDetail }) {
         <div className="mt-3 flex flex-wrap gap-2">
           {crew.onChainCrewId ? (
             <a
-              href={`https://sepolia.basescan.org/tx/${crew.onChainTxHash || ""}`}
+              href={`https://sepolia.basescan.org/address/${import.meta.env.VITE_CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2"}`}
               target="_blank"
               rel="noopener noreferrer"
               data-testid="badge-onchain-base"
@@ -303,7 +303,7 @@ function AgencyHeroCard({ crew }: { crew: CrewDetail }) {
           )}
           {crew.onChainCrewIdSkale ? (
             <a
-              href={`https://base-sepolia-testnet.explorer.skalenodes.com/tx/${crew.onChainTxHashSkale || ""}`}
+              href="https://base-sepolia-testnet.explorer.skalenodes.com/address/0x427d0D6481bC708979Bdc2F80f659549BdB27f96"
               target="_blank"
               rel="noopener noreferrer"
               data-testid="badge-onchain-skale"
