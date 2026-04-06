@@ -6534,18 +6534,17 @@ export async function registerRoutes(
 
   app.post("/api/telegram/webhook", async (req, res) => {
     // ── Security gate 1: X-Telegram-Bot-Api-Secret-Token ────────────────────
-    // This header is set when registering the webhook with Telegram's setWebhook API.
-    // It must match TELEGRAM_WEBHOOK_SECRET exactly (timing-safe comparison).
+    // Must match TELEGRAM_WEBHOOK_SECRET (set via Telegram's setWebhook API).
+    // Timing-safe comparison prevents timing-oracle attacks. Returns 401 on mismatch.
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (webhookSecret) {
       const headerToken = (req.headers["x-telegram-bot-api-secret-token"] as string) || "";
       const secretBuf = Buffer.from(webhookSecret, "utf8");
-      const headerBuf = Buffer.alloc(secretBuf.length);
-      headerBuf.write(headerToken.slice(0, secretBuf.length), "utf8");
+      const tokenBuf = Buffer.from(headerToken, "utf8");
       let tokensMatch = false;
       try {
-        tokensMatch = secretBuf.length === Buffer.from(headerToken, "utf8").length &&
-          crypto.timingSafeEqual(secretBuf, Buffer.from(headerToken, "utf8"));
+        tokensMatch = secretBuf.length === tokenBuf.length &&
+          crypto.timingSafeEqual(secretBuf, tokenBuf);
       } catch { tokensMatch = false; }
       if (!tokensMatch) {
         logSuspiciousActivity(req, "telegram_webhook_invalid_token", "Telegram webhook: invalid or missing secret token");
@@ -6553,15 +6552,22 @@ export async function registerRoutes(
       }
     }
 
-    // ── Security gate 2: HMAC-SHA256 raw-body integrity check ────────────────
-    // If TELEGRAM_BOT_TOKEN is set, verify the caller knows the bot token by
-    // checking X-Telegram-Signature = HMAC-SHA256(sha256(botToken), rawBody).
-    // Telegram itself does not send this header; it is used when ClawTrust's
-    // own services relay webhook events (e.g. in staging/CI).
-    // Production Telegram calls skip this check because the header is absent.
+    // ── Security gate 2: HMAC-SHA256 raw-body integrity (fail-closed) ───────
+    // When TELEGRAM_BOT_TOKEN is configured, X-Telegram-Signature is REQUIRED.
+    // Expected value: HMAC-SHA256(sha256(TELEGRAM_BOT_TOKEN), rawBody) as hex.
+    // Absent header → 401. Wrong value → 401. Both gates use timing-safe compare.
+    //
+    // NOTE: Native Telegram webhooks do not send X-Telegram-Signature, so only
+    // set TELEGRAM_BOT_TOKEN here when ClawTrust relay services forward events
+    // (they compute and attach the signature). For direct Telegram webhooks,
+    // only TELEGRAM_WEBHOOK_SECRET (Gate 1) is needed.
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const incomingHmac = req.headers["x-telegram-signature"] as string | undefined;
-    if (botToken && incomingHmac) {
+    if (botToken) {
+      const incomingHmac = (req.headers["x-telegram-signature"] as string) || "";
+      if (!incomingHmac) {
+        logSuspiciousActivity(req, "telegram_webhook_missing_hmac", "Telegram webhook: X-Telegram-Signature header required when TELEGRAM_BOT_TOKEN is set");
+        return res.sendStatus(401);
+      }
       const rawBody: Buffer = (req as any).rawBody ?? Buffer.from(JSON.stringify(req.body), "utf8");
       const keyHash = crypto.createHash("sha256").update(botToken).digest();
       const expectedHmac = crypto.createHmac("sha256", keyHash).update(rawBody).digest("hex");
