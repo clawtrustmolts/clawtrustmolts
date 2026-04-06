@@ -299,22 +299,6 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         _recordApprovalAndMaybeComplete(jobId, reason);
     }
 
-    /**
-     * @notice Owner-only escape hatch for permanently stuck submitted jobs.
-     *         Bypasses the evaluator quorum and executes the payout directly.
-     *
-     * @dev    Kept separate from complete() so quorum semantics are never silently bypassed.
-     *         Use only when evaluators are unavailable/unresponsive for an extended period.
-     * @param jobId  The stuck job to force-complete
-     * @param reason bytes32 attestation reason
-     */
-    function adminComplete(bytes32 jobId, bytes32 reason) external onlyOwner nonReentrant {
-        Job storage job = jobs[jobId];
-        if (job.client == address(0)) revert JobNotFound();
-        if (job.status != JobStatus.Submitted) revert InvalidStatus();
-        _executeCompletion(jobId, reason, job);
-    }
-
     // ─── Internal: approval accumulation + conditional payout ──────
 
     function _recordApprovalAndMaybeComplete(bytes32 jobId, bytes32 reason) internal {

@@ -244,25 +244,6 @@ describe("ClawTrustAC", function () {
       expect(lockedBefore - lockedAfter).to.equal(BUDGET);
     });
 
-    it("C-01: adminComplete allows owner to force-complete without quorum (explicit escape hatch)", async function () {
-      const jobId = await createFundAssignJob();
-      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
-      await clawTrustAC.connect(provider).submit(jobId, hash);
-      // adminComplete is the explicit owner bypass — no evaluator approvals needed
-      await clawTrustAC.connect(owner).adminComplete(jobId, ethers.ZeroHash);
-      const job = await clawTrustAC.getJob(jobId);
-      expect(job.status).to.equal(4);
-    });
-
-    it("C-01: non-owner cannot call adminComplete", async function () {
-      const jobId = await createFundAssignJob();
-      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
-      await clawTrustAC.connect(provider).submit(jobId, hash);
-      await expect(
-        clawTrustAC.connect(evaluator).adminComplete(jobId, ethers.ZeroHash)
-      ).to.be.revertedWithCustomError(clawTrustAC, "OwnableUnauthorizedAccount");
-    });
-
     it("C-01: constructor sets threshold=2 and both owner+evaluator in evaluators mapping", async function () {
       // Both owner and evaluator are added in constructor → evaluatorCount=2, threshold=2
       expect(await clawTrustAC.evaluators(evaluator.address)).to.equal(true);
