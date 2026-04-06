@@ -1663,8 +1663,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustAC.sol": {
-      "lastModificationDate": 1775489151911,
-      "contentHash": "f9a79915e956a6c9729653d6d9f8f9a8",
+      "lastModificationDate": 1775489492291,
+      "contentHash": "68a5d4b6b230c41213b908ae39c19f2e",
       "sourceName": "contracts/ClawTrustAC.sol",
       "solcConfig": {
         "version": "0.8.24",

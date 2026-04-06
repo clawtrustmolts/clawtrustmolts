@@ -262,47 +262,75 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Mark a submitted job as completed. Releases USDC to provider.
+     * @notice Record an evaluator's approval for a submitted job.
      *
-     * FIX C-01: Multi-evaluator threshold. Any registered evaluator can call this
-     * to record an approval. Payout executes only when approvalCount >= evaluatorThreshold,
-     * OR when the caller is the owner, OR when the 48h dispute window has passed (timeout release).
+     * FIX C-01 (primary path): Evaluators call this function to add their approval on-chain.
+     * Payout fires automatically when `approvalCount[jobId] >= evaluatorThreshold`.
+     * Each evaluator can approve at most once per job (idempotent; duplicate calls are no-ops).
+     * If the threshold is not met, the function succeeds (approval persisted) but no USDC moves.
      *
-     * Design: when threshold is NOT yet met, the call succeeds (approval is persisted, event emitted)
-     * but returns before executing the payout. This allows each evaluator to record independently
-     * without the state being rolled back by a revert.
-     *
-     * @param jobId The job to complete
+     * @param jobId  The job to approve
      * @param reason bytes32 attestation reason (e.g. keccak of "SWARM_APPROVED")
      */
     // slither-disable-next-line reentrancy-benign
-    // Protected by `nonReentrant`. State is updated before safeTransfer payouts.
-    function complete(bytes32 jobId, bytes32 reason) external override nonReentrant whenNotPaused {
-        bool isEvaluator = evaluators[msg.sender];
-        bool isOwner = msg.sender == owner();
-        bool disputeWindowPassed = block.timestamp >= submittedAt[jobId] + DISPUTE_WINDOW;
+    // Protected by `nonReentrant`. USDC transfer happens inside _executeCompletion, after state
+    // is fully updated (job.status = Completed, totalLockedBudget adjusted).
+    function approveCompletion(bytes32 jobId, bytes32 reason) external nonReentrant whenNotPaused {
+        _recordApprovalAndMaybeComplete(jobId, reason);
+    }
 
-        // Access gate: must be an evaluator, the owner, OR past the dispute window
-        if (!isEvaluator && !isOwner && !disputeWindowPassed) revert Unauthorized();
+    /**
+     * @notice ERC-8183 backward-compatible alias for approveCompletion.
+     *         Delegates fully to approveCompletion semantics (quorum-gated, no owner bypass).
+     *
+     * @param jobId  The job to complete
+     * @param reason bytes32 attestation reason
+     */
+    function complete(bytes32 jobId, bytes32 reason) external override nonReentrant whenNotPaused {
+        _recordApprovalAndMaybeComplete(jobId, reason);
+    }
+
+    /**
+     * @notice Owner-only escape hatch for permanently stuck submitted jobs.
+     *         Bypasses the evaluator quorum and executes the payout directly.
+     *
+     * @dev    Kept separate from complete() so quorum semantics are never silently bypassed.
+     *         Use only when evaluators are unavailable/unresponsive for an extended period.
+     * @param jobId  The stuck job to force-complete
+     * @param reason bytes32 attestation reason
+     */
+    function adminComplete(bytes32 jobId, bytes32 reason) external onlyOwner nonReentrant {
+        Job storage job = jobs[jobId];
+        if (job.client == address(0)) revert JobNotFound();
+        if (job.status != JobStatus.Submitted) revert InvalidStatus();
+        _executeCompletion(jobId, reason, job);
+    }
+
+    // ─── Internal: approval accumulation + conditional payout ──────
+
+    function _recordApprovalAndMaybeComplete(bytes32 jobId, bytes32 reason) internal {
+        if (!evaluators[msg.sender]) revert Unauthorized();
 
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
         if (job.status != JobStatus.Submitted) revert InvalidStatus();
 
-        // Record approval if caller is a registered evaluator (idempotent per evaluator per job)
-        if (isEvaluator && !evaluatorApprovals[jobId][msg.sender]) {
+        // Record approval — idempotent: each evaluator can approve at most once per job
+        if (!evaluatorApprovals[jobId][msg.sender]) {
             evaluatorApprovals[jobId][msg.sender] = true;
             approvalCount[jobId]++;
             emit JobApproved(jobId, msg.sender, approvalCount[jobId]);
         }
 
-        // Threshold gate: owner and dispute-window callers bypass; evaluators must accumulate quorum.
-        // IMPORTANT: We use `return` (not `revert`) so the approval is persisted on-chain.
-        bool thresholdMet = approvalCount[jobId] >= evaluatorThreshold;
-        if (!thresholdMet && !isOwner && !disputeWindowPassed) {
-            return;
+        // Execute payout only when quorum is reached; otherwise return (approval persisted)
+        if (approvalCount[jobId] >= evaluatorThreshold) {
+            _executeCompletion(jobId, reason, job);
         }
+    }
 
+    // slither-disable-next-line reentrancy-benign
+    // Called from nonReentrant functions only. State updated before transfers.
+    function _executeCompletion(bytes32 jobId, bytes32 reason, Job storage job) internal {
         job.status = JobStatus.Completed;
         job.outcomeReason = reason;
 

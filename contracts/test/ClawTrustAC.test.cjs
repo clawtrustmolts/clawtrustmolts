@@ -231,14 +231,23 @@ describe("ClawTrustAC", function () {
       expect(lockedBefore - lockedAfter).to.equal(BUDGET);
     });
 
-    it("C-01: owner can complete job bypassing threshold", async function () {
+    it("C-01: adminComplete allows owner to force-complete without quorum (explicit escape hatch)", async function () {
       const jobId = await createFundAssignJob();
       const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
       await clawTrustAC.connect(provider).submit(jobId, hash);
-      // Owner can always force complete
-      await clawTrustAC.connect(owner).complete(jobId, ethers.ZeroHash);
+      // adminComplete is the explicit owner bypass (complete() no longer has owner bypass)
+      await clawTrustAC.connect(owner).adminComplete(jobId, ethers.ZeroHash);
       const job = await clawTrustAC.getJob(jobId);
       expect(job.status).to.equal(4);
+    });
+
+    it("C-01: non-owner cannot call adminComplete", async function () {
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+      await expect(
+        clawTrustAC.connect(evaluator).adminComplete(jobId, ethers.ZeroHash)
+      ).to.be.revertedWithCustomError(clawTrustAC, "OwnableUnauthorizedAccount");
     });
 
     it("C-01: evaluator is tracked in evaluators mapping", async function () {
@@ -247,15 +256,29 @@ describe("ClawTrustAC", function () {
       expect(await clawTrustAC.evaluatorThreshold()).to.equal(1n);
     });
 
-    it("C-01: second evaluator call on same job does not double-count approval", async function () {
+    it("C-01: approveCompletion registers approval same as complete()", async function () {
       const jobId = await createFundAssignJob();
       const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
       await clawTrustAC.connect(provider).submit(jobId, hash);
 
-      // Threshold is 1 so first approval auto-completes the job
-      await clawTrustAC.connect(evaluator).complete(jobId, ethers.ZeroHash);
-      // Approval count should be 1 (not doubled if somehow called again)
+      // approveCompletion is the primary C-01 path; complete() is a backward-compat alias
+      await clawTrustAC.connect(evaluator).approveCompletion(jobId, ethers.ZeroHash);
+      // With threshold=1, approval immediately fires payout
+      const job = await clawTrustAC.getJob(jobId);
+      expect(job.status).to.equal(4);
       expect(await clawTrustAC.approvalCount(jobId)).to.equal(1n);
+    });
+
+    it("C-01: duplicate approveCompletion call on completed job reverts (InvalidStatus)", async function () {
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+
+      await clawTrustAC.connect(evaluator).approveCompletion(jobId, ethers.ZeroHash);
+      // Job is now Completed — second call should revert InvalidStatus
+      await expect(
+        clawTrustAC.connect(evaluator).approveCompletion(jobId, ethers.ZeroHash)
+      ).to.be.revertedWithCustomError(clawTrustAC, "InvalidStatus");
     });
   });
 
