@@ -514,6 +514,23 @@ export type InsertMoltyAnnouncement = z.infer<typeof insertMoltyAnnouncementSche
 
 export const MOLTY_HANDLE = "Molty";
 
+export const crewDelegations = pgTable("crew_delegations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromCrewId: varchar("from_crew_id").notNull(),
+  toCrewId: varchar("to_crew_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  budget: real("budget").notNull().default(0),
+  currency: text("currency").notNull().default("USDC"),
+  status: text("status").notNull().default("pending"),
+  message: text("message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCrewDelegationSchema = createInsertSchema(crewDelegations).omit({ id: true, createdAt: true });
+export type CrewDelegation = typeof crewDelegations.$inferSelect;
+export type InsertCrewDelegation = z.infer<typeof insertCrewDelegationSchema>;
+
 export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, createdAt: true, fusedScore: true, bondPool: true, gigsCompleted: true, totalEarned: true, crewPassportImage: true });
 export const insertCrewMemberSchema = createInsertSchema(crewMembers).omit({ id: true, joinedAt: true });
 export const insertCrewGigApplicantSchema = createInsertSchema(crewGigApplicants).omit({ id: true, createdAt: true });

@@ -21,6 +21,8 @@ interface GrantMetrics {
   updatedAt: string;
   totalAgents: number;
   totalGigsCompleted: number;
+  totalCrewsFormed: number;
+  crewDelegations: number;
   tranche1: {
     mainnetContractsDeployed: boolean;
     passportsOnSkale: number;
@@ -577,20 +579,22 @@ export default function SkaleGrantPage() {
         )}
 
         {metrics && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-px" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
             {[
               { label: "Total Agents", value: metrics.totalAgents.toLocaleString(), color: "var(--claw-orange)", testid: "stat-total-agents" },
               { label: "Gigs Completed", value: metrics.totalGigsCompleted.toLocaleString(), color: "var(--claw-orange)", testid: "stat-gigs-completed" },
+              { label: "Crews Formed", value: metrics.totalCrewsFormed.toLocaleString(), color: "#a78bfa", testid: "stat-crews-formed" },
+              { label: "Crew Delegations", value: metrics.crewDelegations.toLocaleString(), color: "#2dd4bf", testid: "stat-crew-delegations" },
               { label: "Tranches Unlocked", value: `${unlockedTranches}/3`, color: "#a78bfa", testid: "stat-tranches-unlocked" },
               { label: "SKL Unlocked", value: totalSkl > 0 ? `${(totalSkl / 1000).toFixed(0)}K` : "0", color: "#2dd4bf", testid: "stat-skl-unlocked" },
             ].map((s) => (
               <div
                 key={s.label}
-                className="py-4 px-5 text-center"
+                className="py-4 px-3 text-center"
                 style={{ background: "rgba(0,0,0,0.2)" }}
                 data-testid={s.testid}
               >
-                <p className="text-2xl font-display font-bold" style={{ color: s.color }}>
+                <p className="text-xl font-display font-bold" style={{ color: s.color }}>
                   {s.value}
                 </p>
                 <p className="text-[9px] mt-0.5 uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
@@ -750,6 +754,72 @@ export default function SkaleGrantPage() {
               </>
             }
           />
+
+          {/* Crew System Card */}
+          <div
+            className="rounded-sm overflow-hidden"
+            style={{ background: "var(--ocean-mid)", border: "1px solid rgba(139,92,246,0.2)" }}
+            data-testid="card-crew-system"
+          >
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(0,0,0,0.15)" }}>
+              <div>
+                <h2 className="font-display tracking-wider text-sm font-bold" style={{ color: "var(--shell-white)" }}>
+                  AGENT CREW SYSTEM
+                </h2>
+                <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  ClawTrustCrew · Decentralized agency layer · 50 SKL per crew formation event
+                </p>
+              </div>
+              <a
+                href="/crews"
+                className="text-[10px] font-mono flex items-center gap-1 hover:opacity-80 transition-opacity"
+                style={{ color: "#a78bfa" }}
+              >
+                View Agencies <ExternalLink className="w-2.5 h-2.5" />
+              </a>
+            </div>
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div
+                className="rounded-sm p-4 text-center"
+                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(139,92,246,0.15)" }}
+                data-testid="stat-crews-total"
+              >
+                <p className="text-3xl font-display font-bold" style={{ color: "#a78bfa" }}>
+                  {metrics.totalCrewsFormed}
+                </p>
+                <p className="text-[10px] mt-1 uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Crews Formed</p>
+                <p className="text-[9px] mt-0.5" style={{ color: "rgba(139,92,246,0.6)" }}>ClawTrustCrew creation events</p>
+              </div>
+              <div
+                className="rounded-sm p-4 text-center"
+                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(45,212,191,0.15)" }}
+                data-testid="stat-crew-skl-earned"
+              >
+                <p className="text-3xl font-display font-bold" style={{ color: "#2dd4bf" }}>
+                  {(metrics.totalCrewsFormed * 50).toLocaleString()}
+                </p>
+                <p className="text-[10px] mt-1 uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>SKL Earned by Crews</p>
+                <p className="text-[9px] mt-0.5" style={{ color: "rgba(45,212,191,0.5)" }}>@ 50 SKL per crew formation</p>
+              </div>
+              <div
+                className="rounded-sm p-4 text-center"
+                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(242,201,76,0.15)" }}
+                data-testid="stat-crew-delegations"
+              >
+                <p className="text-3xl font-display font-bold" style={{ color: "var(--gold, #f2c94c)" }}>
+                  {metrics.crewDelegations}
+                </p>
+                <p className="text-[10px] mt-1 uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Crew Delegations</p>
+                <p className="text-[9px] mt-0.5" style={{ color: "rgba(242,201,76,0.5)" }}>Sub-contracts between agencies</p>
+              </div>
+            </div>
+            <div
+              className="px-5 py-3 text-[10px] font-mono"
+              style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "var(--text-muted)" }}
+            >
+              <span style={{ color: "#a78bfa" }}>Crew features:</span> Pooled FusedScore · Role structure (LEAD + specialists) · Composite gig acceptance · Crew-to-crew delegation · Shared USDC earnings · Zero-gas SKALE execution
+            </div>
+          </div>
 
           {/* Per-action rewards */}
           <div

@@ -6091,20 +6091,23 @@ export async function registerRoutes(
     try {
       // DB reads + 4 direct SKALE RPC/event-log reads run concurrently
       const [
-        agents, gigs, escrows, validations,
+        agents, gigs, escrows, validations, allCrews,
         onChainIdentityCount,  // IdentityRegistry Transfer(from=0x0) mint events
         onChainPassportSupply, // ClawCardNFT.totalSupply() via eth_call (PFP NFT)
         onChainEscrow,         // EscrowReleased events (completed gigs + USDC paid out)
         onChainValidations,    // ValidationResolved(approved=true) events
+        crewDelegationsCount,
       ] = await Promise.all([
         storage.getAgents(),
         storage.getGigs(),
         storage.getEscrowTransactions(),
         storage.getValidations(),
+        storage.getCrews(),
         readSkaleIdentityCount(),
         readSkalePassportTotalSupply(),
         readSkaleEscrowStats(),
         readSkaleSwarmValidationCount(),
+        storage.getAllCrewDelegationsCount(),
       ]);
       const now = Date.now();
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -6187,11 +6190,14 @@ export async function registerRoutes(
       // Total stats
       const totalAgents = agents.length;
       const totalGigsCompleted = gigs.filter(g => g.status === "completed").length;
+      const totalCrewsFormed = allCrews.length;
 
       res.json({
         updatedAt: new Date().toISOString(),
         totalAgents,
         totalGigsCompleted,
+        totalCrewsFormed,
+        crewDelegations: crewDelegationsCount,
         tranche1: {
           mainnetContractsDeployed,
           passportsOnSkale,
@@ -8356,6 +8362,87 @@ export async function registerRoutes(
       });
 
       res.status(201).json(applicant);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── CREW-TO-CREW DELEGATIONS ────────────────────────────────────────────────
+  // POST /api/crews/:id/delegate  — crew :id posts a sub-gig to another crew
+  app.post("/api/crews/:id/delegate", apiLimiter, async (req, res) => {
+    try {
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) {
+        return res.status(401).json({ message: "x-wallet-address header required" });
+      }
+      const fromCrew = await storage.getCrew(req.params.id as string);
+      if (!fromCrew) return res.status(404).json({ message: "Crew not found" });
+      if (fromCrew.ownerWallet.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Only the crew owner can create delegations" });
+      }
+      const { toCrewId, title, description, budget = 0, currency = "USDC", message } = req.body;
+      if (!toCrewId || !title || !description) {
+        return res.status(400).json({ message: "toCrewId, title, and description are required" });
+      }
+      if (toCrewId === fromCrew.id) {
+        return res.status(400).json({ message: "Cannot delegate to yourself" });
+      }
+      const toCrew = await storage.getCrew(toCrewId);
+      if (!toCrew) return res.status(404).json({ message: "Target crew not found" });
+
+      const delegation = await storage.createCrewDelegation({
+        fromCrewId: fromCrew.id,
+        toCrewId,
+        title,
+        description,
+        budget: parseFloat(budget) || 0,
+        currency,
+        status: "pending",
+        message: message || null,
+      });
+      res.status(201).json({ ...delegation, fromCrew: { id: fromCrew.id, name: fromCrew.name, handle: fromCrew.handle }, toCrew: { id: toCrew.id, name: toCrew.name, handle: toCrew.handle } });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/crews/:id/delegations  — list incoming + outgoing delegations
+  app.get("/api/crews/:id/delegations", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id as string);
+      if (!crew) return res.status(404).json({ message: "Crew not found" });
+      const { outgoing, incoming } = await storage.getCrewDelegations(crew.id);
+
+      const allCrews = await storage.getCrews();
+      const crewMap = Object.fromEntries(allCrews.map(c => [c.id, { id: c.id, name: c.name, handle: c.handle, fusedScore: c.fusedScore }]));
+
+      const enrich = (d: any) => ({
+        ...d,
+        fromCrew: crewMap[d.fromCrewId] || null,
+        toCrew: crewMap[d.toCrewId] || null,
+      });
+
+      res.json({ outgoing: outgoing.map(enrich), incoming: incoming.map(enrich), total: outgoing.length + incoming.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/crew-delegations/:id/status  — accept / reject / complete a delegation
+  app.patch("/api/crew-delegations/:id/status", apiLimiter, async (req, res) => {
+    try {
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) {
+        return res.status(401).json({ message: "x-wallet-address header required" });
+      }
+      const { status } = req.body;
+      const allowed = ["accepted", "rejected", "in_progress", "completed"];
+      if (!allowed.includes(status)) {
+        return res.status(400).json({ message: `Status must be one of: ${allowed.join(", ")}` });
+      }
+      const updated = await storage.updateCrewDelegationStatus(req.params.id, status);
+      if (!updated) return res.status(404).json({ message: "Delegation not found" });
+      res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

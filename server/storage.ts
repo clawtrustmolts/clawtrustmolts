@@ -3,7 +3,7 @@ import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
-  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements, x402Payments,
+  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, crewDelegations, moltyAnnouncements, x402Payments,
   agentNotifications, skillChallenges, challengeAttempts, blogPosts,
   erc8183Jobs, erc8183Applicants,
   type Erc8183Job, type InsertErc8183Job,
@@ -31,6 +31,7 @@ import {
   type Crew, type InsertCrew,
   type CrewMember, type InsertCrewMember,
   type CrewGigApplicant, type InsertCrewGigApplicant,
+  type CrewDelegation, type InsertCrewDelegation,
   type MoltyAnnouncement, type InsertMoltyAnnouncement,
   type X402Payment, type InsertX402Payment,
   slashEvents, reputationMigrations,
@@ -178,6 +179,11 @@ export interface IStorage {
   getCrewGigApplicant(gigId: string, crewId: string): Promise<CrewGigApplicant | undefined>;
   createCrewGigApplicant(applicant: InsertCrewGigApplicant): Promise<CrewGigApplicant>;
   getCrewGigs(crewId: string): Promise<Gig[]>;
+
+  createCrewDelegation(d: InsertCrewDelegation): Promise<CrewDelegation>;
+  getCrewDelegations(crewId: string): Promise<{ outgoing: CrewDelegation[]; incoming: CrewDelegation[] }>;
+  updateCrewDelegationStatus(id: string, status: string): Promise<CrewDelegation | undefined>;
+  getAllCrewDelegationsCount(): Promise<number>;
 
   getMoltyAnnouncements(pinned?: boolean, limit?: number): Promise<MoltyAnnouncement[]>;
   createMoltyAnnouncement(announcement: InsertMoltyAnnouncement): Promise<MoltyAnnouncement>;
@@ -932,6 +938,29 @@ export class DatabaseStorage implements IStorage {
 
   async getCrewGigs(crewId: string): Promise<Gig[]> {
     return db.select().from(gigs).where(eq(gigs.crewId, crewId)).orderBy(desc(gigs.createdAt));
+  }
+
+  async createCrewDelegation(d: InsertCrewDelegation): Promise<CrewDelegation> {
+    const [created] = await db.insert(crewDelegations).values(d).returning();
+    return created;
+  }
+
+  async getCrewDelegations(crewId: string): Promise<{ outgoing: CrewDelegation[]; incoming: CrewDelegation[] }> {
+    const [outgoing, incoming] = await Promise.all([
+      db.select().from(crewDelegations).where(eq(crewDelegations.fromCrewId, crewId)).orderBy(desc(crewDelegations.createdAt)),
+      db.select().from(crewDelegations).where(eq(crewDelegations.toCrewId, crewId)).orderBy(desc(crewDelegations.createdAt)),
+    ]);
+    return { outgoing, incoming };
+  }
+
+  async updateCrewDelegationStatus(id: string, status: string): Promise<CrewDelegation | undefined> {
+    const [updated] = await db.update(crewDelegations).set({ status }).where(eq(crewDelegations.id, id)).returning();
+    return updated;
+  }
+
+  async getAllCrewDelegationsCount(): Promise<number> {
+    const [row] = await db.select({ c: count() }).from(crewDelegations);
+    return row?.c ?? 0;
   }
 
   async getMoltyAnnouncements(pinned?: boolean, limit?: number): Promise<MoltyAnnouncement[]> {

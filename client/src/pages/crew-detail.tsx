@@ -1,10 +1,11 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState, ChainBadge } from "@/components/ui-shared";
-import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare, CheckCircle2, Star, Building2, RefreshCw, ExternalLink } from "lucide-react";
+import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare, CheckCircle2, Star, Building2, RefreshCw, ExternalLink, GitBranch, X, ChevronDown } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useWalletContext } from "@/context/wallet-context";
+import { useState } from "react";
 
 const SPECIALIZATIONS = [
   { value: "DEV_AGENCY", label: "Dev Agency", icon: "⚙️", color: "#3b82f6" },
@@ -334,6 +335,58 @@ export default function CrewDetailPage() {
     },
   });
 
+  const [delegateOpen, setDelegateOpen] = useState(false);
+  const [delegateForm, setDelegateForm] = useState({ toCrewId: "", title: "", description: "", budget: "", currency: "USDC", message: "" });
+
+  const { data: delegationsData, refetch: refetchDelegations } = useQuery<{
+    outgoing: any[];
+    incoming: any[];
+    total: number;
+  }>({
+    queryKey: ["/api/crews", id, "delegations"],
+    queryFn: () => apiRequest("GET", `/api/crews/${id}/delegations`).then(r => r.json()),
+    enabled: !!id,
+  });
+
+  const { data: allCrewsData } = useQuery<any[]>({
+    queryKey: ["/api/crews"],
+    enabled: delegateOpen,
+  });
+
+  const delegateMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/crews/${id}/delegate`, {
+      toCrewId: delegateForm.toCrewId,
+      title: delegateForm.title,
+      description: delegateForm.description,
+      budget: parseFloat(delegateForm.budget) || 0,
+      currency: delegateForm.currency,
+      message: delegateForm.message || undefined,
+    }, { "x-wallet-address": wallet || "" }).then(r => r.json()),
+    onSuccess: () => {
+      setDelegateOpen(false);
+      setDelegateForm({ toCrewId: "", title: "", description: "", budget: "", currency: "USDC", message: "" });
+      queryClient.invalidateQueries({ queryKey: ["/api/crews", id, "delegations"] });
+      refetchDelegations();
+      toast({ title: "Delegation sent!", description: "The target agency has received your sub-contract request." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Delegation failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateDelegationStatus = useMutation({
+    mutationFn: ({ delegationId, status }: { delegationId: string; status: string }) =>
+      apiRequest("PATCH", `/api/crew-delegations/${delegationId}/status`, { status }, { "x-wallet-address": wallet || "" }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/crews", id, "delegations"] });
+      refetchDelegations();
+      toast({ title: "Status updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
@@ -373,17 +426,165 @@ export default function CrewDetailPage() {
             <ArrowLeft className="w-4 h-4" /> Back to Agencies
           </ClawButton>
         </Link>
-        <button
-          onClick={() => syncScoreMutation.mutate()}
-          disabled={syncScoreMutation.isPending}
-          className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-sm transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
-          data-testid="button-sync-score"
-        >
-          <RefreshCw className={`w-3 h-3 ${syncScoreMutation.isPending ? "animate-spin" : ""}`} />
-          Sync Score
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {isConnected && crew?.ownerWallet?.toLowerCase() === wallet?.toLowerCase() && (
+            <button
+              onClick={() => setDelegateOpen(true)}
+              className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-sm transition-opacity hover:opacity-80"
+              style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}
+              data-testid="button-delegate-work"
+            >
+              <GitBranch className="w-3 h-3" />
+              Delegate Work
+            </button>
+          )}
+          <button
+            onClick={() => syncScoreMutation.mutate()}
+            disabled={syncScoreMutation.isPending}
+            className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-sm transition-opacity hover:opacity-80 disabled:opacity-40"
+            style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+            data-testid="button-sync-score"
+          >
+            <RefreshCw className={`w-3 h-3 ${syncScoreMutation.isPending ? "animate-spin" : ""}`} />
+            Sync Score
+          </button>
+        </div>
       </div>
+
+      {/* Delegate Work Modal */}
+      {delegateOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.7)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setDelegateOpen(false); }}
+        >
+          <div
+            className="w-full max-w-lg rounded-sm overflow-hidden"
+            style={{ background: "var(--ocean-mid)", border: "1px solid rgba(139,92,246,0.3)" }}
+            data-testid="modal-delegate"
+          >
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)" }}>
+              <div className="flex items-center gap-2">
+                <GitBranch className="w-4 h-4" style={{ color: "#a78bfa" }} />
+                <h3 className="font-display tracking-wider text-sm font-bold" style={{ color: "var(--shell-white)" }}>
+                  DELEGATE WORK TO ANOTHER AGENCY
+                </h3>
+              </div>
+              <button onClick={() => setDelegateOpen(false)} className="hover:opacity-70 transition-opacity" data-testid="button-close-delegate">
+                <X className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Post a sub-contract to a specialized agency. They can accept, work on it, and complete it under your umbrella engagement.
+              </p>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  Target Agency *
+                </label>
+                <div className="relative">
+                  <select
+                    value={delegateForm.toCrewId}
+                    onChange={e => setDelegateForm(f => ({ ...f, toCrewId: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-sm text-sm appearance-none pr-8"
+                    style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: "var(--shell-white)", outline: "none" }}
+                    data-testid="select-target-crew"
+                  >
+                    <option value="">Select an agency...</option>
+                    {(allCrewsData || []).filter(c => c.id !== id).map((c: any) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} (@{c.handle}) — Score {c.fusedScore?.toFixed(0) ?? 0}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 pointer-events-none" style={{ color: "var(--text-muted)" }} />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  Sub-Contract Title *
+                </label>
+                <input
+                  value={delegateForm.title}
+                  onChange={e => setDelegateForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="e.g. Audit the escrow contract"
+                  className="w-full px-3 py-2 rounded-sm text-sm"
+                  style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: "var(--shell-white)", outline: "none" }}
+                  data-testid="input-delegation-title"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  Description *
+                </label>
+                <textarea
+                  value={delegateForm.description}
+                  onChange={e => setDelegateForm(f => ({ ...f, description: e.target.value }))}
+                  rows={3}
+                  placeholder="Describe the deliverable, scope, and expectations..."
+                  className="w-full px-3 py-2 rounded-sm text-sm resize-none"
+                  style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: "var(--shell-white)", outline: "none" }}
+                  data-testid="textarea-delegation-description"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                    Budget (USDC)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={delegateForm.budget}
+                    onChange={e => setDelegateForm(f => ({ ...f, budget: e.target.value }))}
+                    placeholder="0"
+                    className="w-full px-3 py-2 rounded-sm text-sm"
+                    style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: "var(--shell-white)", outline: "none" }}
+                    data-testid="input-delegation-budget"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                    Message (optional)
+                  </label>
+                  <input
+                    value={delegateForm.message}
+                    onChange={e => setDelegateForm(f => ({ ...f, message: e.target.value }))}
+                    placeholder="Private note..."
+                    className="w-full px-3 py-2 rounded-sm text-sm"
+                    style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: "var(--shell-white)", outline: "none" }}
+                    data-testid="input-delegation-message"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={() => delegateMutation.mutate()}
+                  disabled={delegateMutation.isPending || !delegateForm.toCrewId || !delegateForm.title || !delegateForm.description}
+                  className="flex-1 py-2.5 rounded-sm text-sm font-display tracking-wider transition-opacity hover:opacity-80 disabled:opacity-40"
+                  style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}
+                  data-testid="button-submit-delegation"
+                >
+                  {delegateMutation.isPending ? "Sending..." : "Send Sub-Contract"}
+                </button>
+                <button
+                  onClick={() => setDelegateOpen(false)}
+                  className="px-4 py-2.5 rounded-sm text-sm transition-opacity hover:opacity-80"
+                  style={{ background: "rgba(0,0,0,0.1)", color: "var(--text-muted)", border: "1px solid rgba(0,0,0,0.1)" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AgencyHeroCard crew={crew} />
 
@@ -690,6 +891,176 @@ export default function CrewDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Agency Delegations Section */}
+      <div className="space-y-4" data-testid="section-delegations">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <GitBranch className="w-4 h-4" style={{ color: "#a78bfa" }} />
+            <h2 className="font-display text-xl tracking-wider" style={{ color: "var(--shell-white)" }}>
+              AGENCY DELEGATIONS
+            </h2>
+          </div>
+          {isConnected && crew?.ownerWallet?.toLowerCase() === wallet?.toLowerCase() && (
+            <button
+              onClick={() => setDelegateOpen(true)}
+              className="text-[10px] font-mono flex items-center gap-1 hover:opacity-80 transition-opacity px-2 py-1 rounded-sm"
+              style={{ background: "rgba(139,92,246,0.08)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.2)" }}
+              data-testid="button-new-delegation"
+            >
+              + New Sub-Contract
+            </button>
+          )}
+        </div>
+
+        {!delegationsData ? (
+          <div className="grid md:grid-cols-2 gap-3">
+            {[0, 1].map(i => <div key={i} className="h-20 rounded-sm animate-pulse" style={{ background: "var(--ocean-mid)" }} />)}
+          </div>
+        ) : (delegationsData.outgoing.length === 0 && delegationsData.incoming.length === 0) ? (
+          <div
+            className="rounded-sm p-6 text-center"
+            style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+          >
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              No delegations yet. Use{" "}
+              <span className="font-semibold" style={{ color: "#a78bfa" }}>Delegate Work</span>{" "}
+              to sub-contract part of a larger engagement to a specialized agency.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {delegationsData.outgoing.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  Outgoing — Sub-contracts this agency has posted
+                </p>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {delegationsData.outgoing.map((d: any) => (
+                    <DelegationCard
+                      key={d.id}
+                      delegation={d}
+                      direction="outgoing"
+                      currentCrewId={id!}
+                      isOwner={isConnected && crew?.ownerWallet?.toLowerCase() === wallet?.toLowerCase()}
+                      onStatusChange={(status) => updateDelegationStatus.mutate({ delegationId: d.id, status })}
+                      isPending={updateDelegationStatus.isPending}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {delegationsData.incoming.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  Incoming — Sub-contracts posted to this agency
+                </p>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {delegationsData.incoming.map((d: any) => (
+                    <DelegationCard
+                      key={d.id}
+                      delegation={d}
+                      direction="incoming"
+                      currentCrewId={id!}
+                      isOwner={isConnected && crew?.ownerWallet?.toLowerCase() === wallet?.toLowerCase()}
+                      onStatusChange={(status) => updateDelegationStatus.mutate({ delegationId: d.id, status })}
+                      isPending={updateDelegationStatus.isPending}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const delegationStatusColors: Record<string, { color: string; bg: string; border: string }> = {
+  pending:     { color: "#f59e0b", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)" },
+  accepted:    { color: "var(--teal-glow)", bg: "rgba(10,236,184,0.08)", border: "rgba(10,236,184,0.2)" },
+  in_progress: { color: "#3b82f6", bg: "rgba(59,130,246,0.08)", border: "rgba(59,130,246,0.2)" },
+  completed:   { color: "#22c55e", bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.2)" },
+  rejected:    { color: "#ef4444", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.2)" },
+};
+
+function DelegationCard({ delegation, direction, isOwner, onStatusChange, isPending }: {
+  delegation: any;
+  direction: "outgoing" | "incoming";
+  currentCrewId: string;
+  isOwner: boolean | null | undefined;
+  onStatusChange: (status: string) => void;
+  isPending: boolean;
+}) {
+  const sc = delegationStatusColors[delegation.status] || delegationStatusColors.pending;
+  const otherCrew = direction === "outgoing" ? delegation.toCrew : delegation.fromCrew;
+  const actions =
+    direction === "incoming" && delegation.status === "pending"
+      ? [{ label: "Accept", status: "accepted" }, { label: "Reject", status: "rejected" }]
+      : direction === "incoming" && delegation.status === "accepted"
+      ? [{ label: "Mark In Progress", status: "in_progress" }]
+      : direction === "incoming" && delegation.status === "in_progress"
+      ? [{ label: "Complete", status: "completed" }]
+      : direction === "outgoing" && delegation.status === "accepted"
+      ? [{ label: "Mark In Progress", status: "in_progress" }]
+      : [];
+
+  return (
+    <div
+      className="rounded-sm p-4 flex flex-col gap-2.5"
+      style={{ background: "var(--ocean-mid)", border: `1px solid ${sc.border}` }}
+      data-testid={`delegation-card-${delegation.id}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-semibold text-sm truncate" style={{ color: "var(--shell-white)" }}>{delegation.title}</p>
+          {otherCrew && (
+            <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+              {direction === "outgoing" ? "→" : "←"}{" "}
+              <Link href={`/crews/${otherCrew.id}`}>
+                <span className="cursor-pointer hover:opacity-80" style={{ color: "#a78bfa" }}>@{otherCrew.handle}</span>
+              </Link>
+            </p>
+          )}
+        </div>
+        <span
+          className="text-[9px] font-mono px-2 py-0.5 rounded-sm flex-shrink-0"
+          style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}
+        >
+          {delegation.status.replace("_", " ").toUpperCase()}
+        </span>
+      </div>
+
+      <p className="text-xs line-clamp-2" style={{ color: "var(--shell-cream)" }}>{delegation.description}</p>
+
+      <div className="flex items-center gap-2">
+        {delegation.budget > 0 && (
+          <span className="font-mono text-xs font-bold" style={{ color: "var(--teal-glow)" }}>
+            ${delegation.budget} {delegation.currency}
+          </span>
+        )}
+        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+          {new Date(delegation.createdAt).toLocaleDateString()}
+        </span>
+      </div>
+
+      {isOwner && actions.length > 0 && (
+        <div className="flex items-center gap-2 pt-1" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+          {actions.map(a => (
+            <button
+              key={a.status}
+              onClick={() => onStatusChange(a.status)}
+              disabled={isPending}
+              className="flex-1 py-1.5 rounded-sm text-[10px] font-display tracking-wider transition-opacity hover:opacity-80 disabled:opacity-40"
+              style={{ background: delegationStatusColors[a.status]?.bg || "rgba(0,0,0,0.06)", color: delegationStatusColors[a.status]?.color || "var(--text-muted)", border: `1px solid ${delegationStatusColors[a.status]?.border || "rgba(0,0,0,0.1)"}` }}
+              data-testid={`button-delegation-${a.status}`}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
