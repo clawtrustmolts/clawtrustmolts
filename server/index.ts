@@ -236,12 +236,9 @@ httpServer.listen(
     console.warn("[Security] WARNING: WEBHOOK_SECRET is not set in production. Outgoing webhook delivery is disabled until this is configured.");
   }
 
-  // Telegram webhook security startup audit
+  // Telegram webhook security audit
   if (!process.env.TELEGRAM_WEBHOOK_SECRET) {
-    console.warn("[Security] WARNING: TELEGRAM_WEBHOOK_SECRET is not set. Telegram webhook endpoint is unauthenticated — set this to a strong random string and pass it as secret_token in Telegram's setWebhook API.");
-  }
-  if (process.env.TELEGRAM_BOT_TOKEN) {
-    console.info("[Security] TELEGRAM_BOT_TOKEN is set — Telegram webhook HMAC gate is available. When X-Telegram-Signature is included, it must match HMAC-SHA256(sha256(botToken), rawBody).");
+    console.warn("[Security] WARNING: TELEGRAM_WEBHOOK_SECRET is not set — /api/telegram/webhook will reject all requests (401). Set this env var and pass it as secret_token in setWebhook().");
   }
 
   // Eagerly initialize wallet client so chain-client log fires at startup
