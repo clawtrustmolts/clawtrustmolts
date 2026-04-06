@@ -425,7 +425,7 @@ describe("ClawCardNFT", function () {
       const sig = await signReputationUpdate(oracle, 1, 5000, 2, 100001, 100, 10, ts, nonce);
       await expect(
         nft.updateReputation(1, 5000, 2, 100001, 100, 10, ts, nonce, sig)
-      ).to.be.revertedWithCustomError(nft, "InvalidAmount");
+      ).to.be.revertedWithCustomError(nft, "InvalidScore");
     });
 
     it("rejects totalEarned > 1e12", async function () {
@@ -440,7 +440,7 @@ describe("ClawCardNFT", function () {
       const sig = await signReputationUpdate(oracle, 1, 5000, 2, 5, bigEarned, 10, ts, nonce);
       await expect(
         nft.updateReputation(1, 5000, 2, 5, bigEarned, 10, ts, nonce, sig)
-      ).to.be.revertedWithCustomError(nft, "InvalidAmount");
+      ).to.be.revertedWithCustomError(nft, "InvalidScore");
     });
   });
 

@@ -497,8 +497,8 @@ describe("ClawTrustRegistry", function () {
     });
   });
 
-  describe("L-04: max 5 domains per wallet", function () {
-    it("rejects registering more than MAX_DOMAINS_PER_WALLET domains", async function () {
+  describe("L-04: per-wallet domain cap (active domains only)", function () {
+    it("rejects registering more than MAX_DOMAINS_PER_WALLET active domains", async function () {
       const MAX = await registry.MAX_DOMAINS_PER_WALLET();
       for (let i = 0; i < Number(MAX); i++) {
         await registry.connect(registrar).register(`domain${i}`, ".claw", user1.address, 0);
@@ -506,6 +506,34 @@ describe("ClawTrustRegistry", function () {
       await expect(
         registry.connect(registrar).register("overflow", ".claw", user1.address, 0)
       ).to.be.revertedWithCustomError(registry, "TooManyDomains");
+    });
+
+    it("user can reclaim cap slot after burning an expired domain (active-count fix)", async function () {
+      // Register a domain for user1
+      const tx = await registry.connect(registrar).register("reclaim-a", ".claw", user1.address, 0);
+      const receipt = await tx.wait();
+      // Find DomainRegistered event to get tokenId
+      let tokenId;
+      for (const log of receipt.logs) {
+        try {
+          const parsed = registry.interface.parseLog(log);
+          if (parsed.name === "DomainRegistered") { tokenId = parsed.args[0]; break; }
+        } catch {}
+      }
+
+      // Advance time past 1-year expiry
+      await ethers.provider.send("evm_increaseTime", [366 * 24 * 3600]);
+      await ethers.provider.send("evm_mine");
+
+      // Burn the expired domain — active-count cap slot freed
+      await registry.burnExpired(tokenId);
+
+      // A new domain registration should succeed (active count = 0 after burn)
+      await registry.connect(registrar).register("reclaim-b", ".claw", user1.address, 0);
+
+      // getOwnerTokenIds filters to active (non-expired, non-burned) domains only — should be 1
+      const activeIds = await registry.getOwnerTokenIds(user1.address);
+      expect(activeIds.length).to.equal(1); // only reclaim-b is active
     });
   });
 });

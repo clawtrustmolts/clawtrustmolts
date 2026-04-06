@@ -36,6 +36,9 @@ contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC80
     uint256 public  constant MAX_SKILLS           = 50;
     uint256 public  sigFreshnessWindow            = 15 minutes; // H-03: increased from 5 min for safer default under network congestion
     uint256 public  constant MAX_FUSED_SCORE    = 10_000;
+    // L-02: named caps for oracle-supplied counters to prevent overflow and storage abuse
+    uint256 public  constant MAX_GIGS_COMPLETED = 100_000;
+    uint256 public  constant MAX_TOTAL_EARNED   = 1e12;    // 1 million USDC in 6-decimal base units
 
     // ─── On-chain Passport Data ──────────────────────────────────────
     struct PassportData {
@@ -259,8 +262,8 @@ contract ClawCardNFT is ERC721, AccessControl, Pausable, ReentrancyGuard, IERC80
         if (tier > 4) revert InvalidTier();
         if (riskIndex > 100) revert InvalidRiskIndex();
         // L-02: bound storage growth of counters to prevent integer arithmetic issues
-        if (gigsCompleted > 100_000) revert InvalidAmount();
-        if (totalEarned > 1e12) revert InvalidAmount();
+        if (gigsCompleted > MAX_GIGS_COMPLETED) revert InvalidScore();
+        if (totalEarned > MAX_TOTAL_EARNED) revert InvalidScore();
         if (sigTimestamp > block.timestamp) revert SignatureExpired();
         if (block.timestamp > sigTimestamp + sigFreshnessWindow) revert SignatureExpired();
         if (block.timestamp < passports[tokenId].lastUpdated + UPDATE_COOLDOWN) revert UpdateTooFrequent();

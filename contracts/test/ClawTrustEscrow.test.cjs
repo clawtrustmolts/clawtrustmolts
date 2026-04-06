@@ -377,7 +377,7 @@ describe("ClawTrustEscrow", function () {
       await ethers.provider.send("evm_mine");
       await expect(
         escrow.connect(owner).setSwarmRequired(GIG_ID, false)
-      ).to.be.revertedWithCustomError(escrow, "InvalidStatus");
+      ).to.be.revertedWithCustomError(escrow, "TooLateToModify");
     });
   });
 });

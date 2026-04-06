@@ -87,6 +87,8 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
     error DisputeTimeoutNotReached();
     // FIX C-02: custom error for the 72-hour emergency timelock
     error EmergencyTimelockNotMet();
+    // L-03: raised when setSwarmRequired is called outside the 1-hour correction window
+    error TooLateToModify();
 
     constructor(
         address _usdcToken,
@@ -380,7 +382,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         Escrow storage escrow = escrows[gigId];
         // L-03: only allow within 1 hour of creation and only while escrow is Locked (pre-dispute)
         if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
-        if(block.timestamp >= escrow.createdAt + 1 hours) revert InvalidStatus();
+        if(block.timestamp >= escrow.createdAt + 1 hours) revert TooLateToModify();
         escrow.requiresSwarmValidation = required;
         emit SwarmRequiredUpdated(gigId, required);
     }

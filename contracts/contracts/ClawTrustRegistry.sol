@@ -113,8 +113,19 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         bytes32 domainKey = _domainKey(name, tld);
         if (domainTaken[domainKey]) revert DomainAlreadyTaken();
 
-        // L-04: enforce per-wallet domain cap to prevent storage growth attacks
-        if (ownerTokenIds[owner].length >= MAX_DOMAINS_PER_WALLET) revert TooManyDomains();
+        // L-04: enforce per-wallet domain cap — count only active (non-expired, non-burned)
+        // domains so that users who burn expired NFTs can reclaim cap slots.
+        {
+            uint256[] storage ownerIds = ownerTokenIds[owner];
+            uint256 activeCount = 0;
+            for (uint256 i = 0; i < ownerIds.length; i++) {
+                if (_ownerOf(ownerIds[i]) == owner &&
+                    block.timestamp <= domains[ownerIds[i]].expiresAt) {
+                    activeCount++;
+                }
+            }
+            if (activeCount >= MAX_DOMAINS_PER_WALLET) revert TooManyDomains();
+        }
 
         tokenId = _nextTokenId++;
         uint256 expiresAt = block.timestamp + 365 days;

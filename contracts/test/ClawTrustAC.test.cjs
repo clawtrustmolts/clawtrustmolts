@@ -594,7 +594,7 @@ describe("ClawTrustAC", function () {
       }
       await expect(
         clawTrustAC.connect(client).createJob("overflow job", BUDGET, ONE_DAY)
-      ).to.be.revertedWithCustomError(clawTrustAC, "InvalidAmount");
+      ).to.be.revertedWithCustomError(clawTrustAC, "RateLimitExceeded");
     });
 
     it("allows 10+ jobs if a new hour window has started", async function () {

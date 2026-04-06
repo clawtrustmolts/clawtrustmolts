@@ -113,6 +113,8 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
     error JobAlreadyExpired();
     error ProviderNotRegistered();
     error SelfDealingNotAllowed();
+    // L-06: raised when a client exceeds MAX_JOBS_PER_HOUR job creations
+    error RateLimitExceeded();
 
     // ═══════════════════════════════════════════════════════════
     // EVENTS
@@ -191,7 +193,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
             lastJobCreatedAt[msg.sender] = block.timestamp;
         }
         jobsThisHour[msg.sender]++;
-        if (jobsThisHour[msg.sender] > MAX_JOBS_PER_HOUR) revert InvalidAmount();
+        if (jobsThisHour[msg.sender] > MAX_JOBS_PER_HOUR) revert RateLimitExceeded();
 
         _jobCounter++;
         // abi.encode (not encodePacked) prevents hash-collision between different-length inputs
