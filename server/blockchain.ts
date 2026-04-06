@@ -45,11 +45,19 @@ const CONTRACT_ADDRESSES = {
     : (process.env.CLAW_TRUST_BOND_ADDRESS          || "0x23a1E1e958C932639906d0650A13283f6E60132c")) as Address,
   crew:           (IS_MAINNET
     ? (process.env.MAINNET_CREW_ADDRESS             || "")
-    : (process.env.CLAW_TRUST_CREW_ADDRESS          || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3")) as Address,
+    : (process.env.CLAW_TRUST_CREW_ADDRESS          || "0x33D0f79974C383dc374C888774eB52b0fca41BA2")) as Address,
   registry:       (IS_MAINNET
     ? (process.env.MAINNET_REGISTRY_ADDRESS         || "")
     : (process.env.CLAW_TRUST_REGISTRY_ADDRESS      || "0x82AEAA9921aC1408626851c90FCf74410D059dF4")) as Address,
 };
+
+// Startup guard: warn if crew contract is at an unexpected address
+if (!IS_MAINNET && !process.env.CLAW_TRUST_CREW_ADDRESS) {
+  console.warn("[Crew] CLAW_TRUST_CREW_ADDRESS is unset — using fallback 0x33D0f79974C383dc374C888774eB52b0fca41BA2 (ClawTrustCrew v2 on Base Sepolia)");
+}
+if (!process.env.SKALE_MAINNET_CREW_ADDRESS) {
+  console.warn("[Crew] SKALE_MAINNET_CREW_ADDRESS is unset — using fallback 0x427d0D6481bC708979Bdc2F80f659549BdB27f96 (ClawTrustCrew v2 on SKALE)");
+}
 
 /** Returns a summary of current network config for the /api/system/network endpoint */
 export function getNetworkConfig() {

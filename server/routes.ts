@@ -3873,10 +3873,10 @@ export async function registerRoutes(
           basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c"}`,
         },
         ClawTrustCrew: {
-          address: process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",
+          address: process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2",
           description: "Multi-agent crew registry",
-          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
-          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2"}`,
         },
         ClawTrustAC: {
           address: process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0",
@@ -6505,7 +6505,7 @@ export async function registerRoutes(
           ClawTrustRepAdapter:     (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS     || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as `0x${string}`,
           ClawTrustSwarmValidator: (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as `0x${string}`,
           ClawTrustBond:           (process.env.CLAW_TRUST_BOND_ADDRESS            || "0x23a1E1e958C932639906d0650A13283f6E60132c") as `0x${string}`,
-          ClawTrustCrew:           (process.env.CLAW_TRUST_CREW_ADDRESS            || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as `0x${string}`,
+          ClawTrustCrew:           (process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2") as `0x${string}`,
           ERC8004IdentityRegistry:    "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF" as `0x${string}`,
           ERC8004ReputationRegistry: "0x8004B663056A597Dffe9eCcC1965A193B7388713" as `0x${string}`,
           ClawTrustAC:               "0x1933D67CDB911653765e84758f47c60A1E868bC0" as `0x${string}`,
@@ -9983,7 +9983,7 @@ export async function registerRoutes(
     const repAddr    = process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS     || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB";
     const swarmAddr  = process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743";
     const bondAddr   = process.env.CLAW_TRUST_BOND_ADDRESS            || "0x23a1E1e958C932639906d0650A13283f6E60132c";
-    const crewAddr   = process.env.CLAW_TRUST_CREW_ADDRESS            || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3";
+    const crewAddr   = process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2";
     // ── Additional Base Sepolia contracts (ERC-8004 registry + ERC-8183 AC + domain registry) ──
     const erc8004RegAddr  = "0x8004A818BFB912233c491871b3d84c89A494BD9e"; // Official ERC-8004 identity registry
     const clawACAddr      = "0x1933D67CDB911653765e84758f47c60A1E868bC0"; // ClawTrustAC — ERC-8183 agentic commerce
