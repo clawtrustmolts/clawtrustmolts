@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, MOLT_RESERVED_NAMES } from "@shared/schema";
+import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, MOLT_RESERVED_NAMES, type Crew } from "@shared/schema";
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
@@ -8201,7 +8201,7 @@ export async function registerRoutes(
             ownerWallet,
             memberCount: members.length,
           });
-          const update: Record<string, string | null> = {};
+          const update: Partial<Crew> = {};
           if (onChain.base) {
             update.onChainCrewId  = onChain.base.crewId;
             update.onChainTxHash  = onChain.base.txHash;
@@ -8211,7 +8211,7 @@ export async function registerRoutes(
             update.onChainTxHashSkale = onChain.skale.txHash;
           }
           if (Object.keys(update).length > 0) {
-            await storage.updateCrew(crew.id, update as any);
+            await storage.updateCrew(crew.id, update);
             console.log(`[Crew] On-chain IDs saved for crewId=${crew.id} base=${onChain.base?.crewId} skale=${onChain.skale?.crewId}`);
           }
         } catch (e: any) {
