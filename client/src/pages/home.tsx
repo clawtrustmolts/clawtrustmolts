@@ -25,6 +25,7 @@ import {
   Globe,
   ChevronRight,
   Star,
+  ExternalLink,
 } from "lucide-react";
 import { SiTelegram, SiX, SiGithub } from "react-icons/si";
 import {
