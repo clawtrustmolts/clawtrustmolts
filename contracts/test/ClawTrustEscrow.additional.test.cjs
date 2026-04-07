@@ -154,4 +154,171 @@ describe("ClawTrustEscrow — additional coverage", function () {
       expect(await escrow.verifySwarmConnection()).to.equal(true);
     });
   });
+
+  // ─── TVL cap + per-gig cap ──────────────────────────────────────
+
+  describe("deposit cap: maxGigAmount", function () {
+    const CAP = ethers.parseUnits("1000", 6); // $1K cap for test
+
+    beforeEach(async function () {
+      await mockUsdc.mint(depositor.address, ethers.parseUnits("10000", 6));
+      await mockUsdc.connect(depositor).approve(await escrow.getAddress(), ethers.MaxUint256);
+    });
+
+    it("default maxGigAmount is 50,000 USDC", async function () {
+      expect(await escrow.maxGigAmount()).to.equal(ethers.parseUnits("50000", 6));
+    });
+
+    it("owner can lower the per-gig cap", async function () {
+      await escrow.connect(owner).setMaxGigAmount(CAP);
+      expect(await escrow.maxGigAmount()).to.equal(CAP);
+    });
+
+    it("setMaxGigAmount emits MaxGigAmountUpdated", async function () {
+      const old = await escrow.maxGigAmount();
+      await expect(escrow.connect(owner).setMaxGigAmount(CAP))
+        .to.emit(escrow, "MaxGigAmountUpdated")
+        .withArgs(old, CAP);
+    });
+
+    it("lockUSDC reverts when amount exceeds cap", async function () {
+      await escrow.connect(owner).setMaxGigAmount(CAP);
+      const over = CAP + 1n;
+
+      await expect(
+        escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, over)
+      ).to.be.revertedWithCustomError(escrow, "GigAmountExceedsCap");
+    });
+
+    it("lockUSDC succeeds at exactly the cap", async function () {
+      await escrow.connect(owner).setMaxGigAmount(CAP);
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, CAP);
+      const e = await escrow.getEscrow(GIG_ID);
+      expect(e.amount).to.equal(CAP);
+    });
+
+    it("setting cap to 0 disables the check (unlimited)", async function () {
+      await escrow.connect(owner).setMaxGigAmount(0);
+      const bigAmount = ethers.parseUnits("5000", 6);
+      await mockUsdc.mint(depositor.address, bigAmount);
+      // Should not revert
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, bigAmount);
+    });
+
+    it("non-owner cannot change the cap", async function () {
+      await expect(
+        escrow.connect(depositor).setMaxGigAmount(CAP)
+      ).to.be.revertedWithCustomError(escrow, "OwnableUnauthorizedAccount");
+    });
+  });
+
+  describe("TVL cap: maxTVL + totalLockedUSDC", function () {
+    const GIG_A = ethers.id("tvl-gig-A");
+    const GIG_B = ethers.id("tvl-gig-B");
+    const GIG_C = ethers.id("tvl-gig-C");
+    const UNIT = ethers.parseUnits("100", 6); // $100 per gig
+
+    beforeEach(async function () {
+      await mockUsdc.mint(depositor.address, ethers.parseUnits("10000", 6));
+      await mockUsdc.connect(depositor).approve(await escrow.getAddress(), ethers.MaxUint256);
+      // Set a tight TVL cap: $250
+      await escrow.connect(owner).setMaxTVL(ethers.parseUnits("250", 6));
+      // Also remove per-gig cap so it doesn't interfere
+      await escrow.connect(owner).setMaxGigAmount(0);
+    });
+
+    it("default maxTVL is 500,000 USDC", async function () {
+      const fresh = await ethers.deployContract("ClawTrustEscrow", [
+        await mockUsdc.getAddress(),
+        await (await ethers.getContractFactory("ClawTrustSwarmValidator")).deploy(owner.address).then(c => c.getAddress()),
+        250,
+        await mockUsdc.getAddress(), // placeholder
+        ethers.ZeroAddress
+      ]);
+      expect(await fresh.maxTVL()).to.equal(ethers.parseUnits("500000", 6));
+    });
+
+    it("totalLockedUSDC starts at 0", async function () {
+      expect(await escrow.totalLockedUSDC()).to.equal(0);
+    });
+
+    it("totalLockedUSDC increases on each lockUSDC", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_A, payee.address, UNIT);
+      expect(await escrow.totalLockedUSDC()).to.equal(UNIT);
+      await escrow.connect(depositor).lockUSDC(GIG_B, payee.address, UNIT);
+      expect(await escrow.totalLockedUSDC()).to.equal(UNIT * 2n);
+    });
+
+    it("lockUSDC reverts when TVL cap would be exceeded", async function () {
+      // Lock $100 + $100 = $200 (within $250 cap)
+      await escrow.connect(depositor).lockUSDC(GIG_A, payee.address, UNIT);
+      await escrow.connect(depositor).lockUSDC(GIG_B, payee.address, UNIT);
+      // Third $100 would make $300 > $250 cap
+      await expect(
+        escrow.connect(depositor).lockUSDC(GIG_C, payee.address, UNIT)
+      ).to.be.revertedWithCustomError(escrow, "TVLCapExceeded");
+    });
+
+    it("totalLockedUSDC decreases when a gig is released", async function () {
+      // lockUSDCDirect: requiresSwarmValidation = false, so release() works without swarm approval
+      await escrow.connect(depositor).lockUSDCDirect(GIG_A, payee.address, UNIT);
+      expect(await escrow.totalLockedUSDC()).to.equal(UNIT);
+      await escrow.connect(depositor).release(GIG_A);
+      expect(await escrow.totalLockedUSDC()).to.equal(0n);
+    });
+
+    it("totalLockedUSDC decreases when a gig is refunded", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_A, payee.address, UNIT);
+      await escrow.connect(depositor).refund(GIG_A);
+      expect(await escrow.totalLockedUSDC()).to.equal(0n);
+    });
+
+    it("can lock again after a gig is released (TVL freed up)", async function () {
+      // lockUSDCDirect for GIG_A so release() doesn't require swarm approval
+      await escrow.connect(depositor).lockUSDCDirect(GIG_A, payee.address, UNIT);
+      await escrow.connect(depositor).lockUSDC(GIG_B, payee.address, UNIT);
+      // Release one → TVL back to $100
+      await escrow.connect(depositor).release(GIG_A);
+      // Can now lock $100 again (total $200 < $250 cap)
+      await escrow.connect(depositor).lockUSDC(GIG_C, payee.address, UNIT);
+      expect(await escrow.totalLockedUSDC()).to.equal(UNIT * 2n);
+    });
+
+    it("remainingTVLCapacity returns correct headroom", async function () {
+      const cap = ethers.parseUnits("250", 6);
+      await escrow.connect(depositor).lockUSDC(GIG_A, payee.address, UNIT);
+      const remaining = await escrow.remainingTVLCapacity();
+      expect(remaining).to.equal(cap - UNIT);
+    });
+
+    it("remainingTVLCapacity returns max uint256 when cap is disabled", async function () {
+      await escrow.connect(owner).setMaxTVL(0);
+      expect(await escrow.remainingTVLCapacity()).to.equal(ethers.MaxUint256);
+    });
+
+    it("remainingTVLCapacity returns 0 when fully capped", async function () {
+      await escrow.connect(owner).setMaxTVL(UNIT);
+      await escrow.connect(depositor).lockUSDC(GIG_A, payee.address, UNIT);
+      expect(await escrow.remainingTVLCapacity()).to.equal(0n);
+    });
+
+    it("setMaxTVL emits MaxTVLUpdated event", async function () {
+      const old = await escrow.maxTVL();
+      const newCap = ethers.parseUnits("1000000", 6);
+      await expect(escrow.connect(owner).setMaxTVL(newCap))
+        .to.emit(escrow, "MaxTVLUpdated")
+        .withArgs(old, newCap);
+    });
+
+    it("setting TVL cap to 0 disables it (unlimited)", async function () {
+      // Fill to $200
+      await escrow.connect(depositor).lockUSDC(GIG_A, payee.address, UNIT);
+      await escrow.connect(depositor).lockUSDC(GIG_B, payee.address, UNIT);
+      // Remove cap
+      await escrow.connect(owner).setMaxTVL(0);
+      // Can now add more even beyond old $250 cap
+      await escrow.connect(depositor).lockUSDC(GIG_C, payee.address, UNIT);
+      expect(await escrow.totalLockedUSDC()).to.equal(UNIT * 3n);
+    });
+  });
 });

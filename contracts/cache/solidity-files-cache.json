@@ -1452,8 +1452,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustEscrow.sol": {
-      "lastModificationDate": 1775580633778,
-      "contentHash": "fcc7e7a3f4431c9fde1f33ff685a565e",
+      "lastModificationDate": 1775590282171,
+      "contentHash": "81cd2da4b048cfc21242a83587033521",
       "sourceName": "contracts/ClawTrustEscrow.sol",
       "solcConfig": {
         "version": "0.8.24",

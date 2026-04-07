@@ -54,6 +54,10 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
     uint256 public constant MIN_ESCROW_AMOUNT = 1000;
     uint256 public constant DISPUTE_TIMEOUT = 30 days;
 
+    uint256 public maxGigAmount;   // per-gig USDC cap (0 = unlimited)
+    uint256 public maxTVL;         // total locked USDC cap (0 = unlimited)
+    uint256 public totalLockedUSDC;
+
     event EscrowCreated(bytes32 indexed gigId, address indexed depositor, uint256 amount);
     event EscrowLocked(bytes32 indexed gigId);
     event EscrowReleased(bytes32 indexed gigId, address indexed payee, uint256 amount, uint256 fee);
@@ -62,8 +66,12 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
     event EscrowDisputeResolved(bytes32 indexed gigId, bool releasedToPayee, address resolver);
     event PlatformFeeRateUpdated(uint256 oldRate, uint256 newRate);
     event X402FacilitatorUpdated(address indexed oldFacilitator, address indexed newFacilitator);
+    event MaxGigAmountUpdated(uint256 oldCap, uint256 newCap);
+    event MaxTVLUpdated(uint256 oldCap, uint256 newCap);
 
     error InvalidGigId();
+    error GigAmountExceedsCap();
+    error TVLCapExceeded();
     error EscrowAlreadyExists();
     error InvalidAmount();
     error InvalidAddress();
@@ -98,6 +106,12 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
         validationRegistry = _validationRegistry;
         identityRegistry = _identityRegistry;
         platformFeeRate = _platformFeeRate;
+
+        // Conservative launch caps — raise via setMaxGigAmount / setMaxTVL after gaining confidence.
+        // $50,000 USDC per gig (6 decimals). 0 = unlimited.
+        maxGigAmount = 50_000 * 1e6;
+        // $500,000 USDC total locked at once. 0 = unlimited.
+        maxTVL = 500_000 * 1e6;
 
         x402Facilitator = _x402Facilitator;
         emit X402FacilitatorUpdated(address(0), _x402Facilitator);
@@ -258,6 +272,7 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
         if(escrowExists[gigId]) revert EscrowAlreadyExists();
         if(amount == 0) revert InvalidAmount();
         if(amount < MIN_ESCROW_AMOUNT) revert BelowMinimumAmount();
+        if(maxGigAmount != 0 && amount > maxGigAmount) revert GigAmountExceedsCap();
         if(payee == address(0)) revert InvalidAddress();
         if(payee == msg.sender) revert SelfDealingNotAllowed();
         if(!IClawCardNFT(identityRegistry).isRegistered(payee)) revert PayeeNotRegisteredAgent();
@@ -270,6 +285,10 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
         uint256 amount,
         bool requiresSwarmValidation
     ) internal {
+        uint256 newTotal = totalLockedUSDC + amount;
+        if(maxTVL != 0 && newTotal > maxTVL) revert TVLCapExceeded();
+        totalLockedUSDC = newTotal;
+
         escrows[gigId] = Escrow({
             gigId: gigId,
             depositor: depositor,
@@ -291,6 +310,8 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
         escrow.status = EscrowStatus.Released;
         escrow.resolvedAt = block.timestamp;
 
+        totalLockedUSDC -= escrow.amount;
+
         uint256 fee = (escrow.amount * platformFeeRate) / FEE_DENOMINATOR;
         uint256 payout = escrow.amount - fee;
 
@@ -305,6 +326,8 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
     function _doRefund(Escrow storage escrow, bytes32 gigId) private {
         escrow.status = EscrowStatus.Refunded;
         escrow.resolvedAt = block.timestamp;
+
+        totalLockedUSDC -= escrow.amount;
 
         usdc.safeTransfer(escrow.depositor, escrow.amount);
 
@@ -335,6 +358,36 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
     function setSwarmRequired(bytes32 gigId, bool required) external onlyOwner {
         if(!escrowExists[gigId]) revert EscrowNotFound();
         escrows[gigId].requiresSwarmValidation = required;
+    }
+
+    /**
+     * @notice Set the per-gig USDC deposit cap. Pass 0 to remove the cap entirely.
+     * @param _cap Max USDC (6-decimal) allowed in a single gig. e.g. 50_000e6 = $50K.
+     */
+    function setMaxGigAmount(uint256 _cap) external onlyOwner {
+        uint256 old = maxGigAmount;
+        maxGigAmount = _cap;
+        emit MaxGigAmountUpdated(old, _cap);
+    }
+
+    /**
+     * @notice Set the total TVL cap across all live gigs. Pass 0 to remove the cap entirely.
+     * @param _cap Max total USDC (6-decimal) locked simultaneously. e.g. 500_000e6 = $500K.
+     */
+    function setMaxTVL(uint256 _cap) external onlyOwner {
+        uint256 old = maxTVL;
+        maxTVL = _cap;
+        emit MaxTVLUpdated(old, _cap);
+    }
+
+    /**
+     * @notice How much more USDC can be locked before the TVL cap is hit.
+     *         Returns type(uint256).max when the cap is disabled (0).
+     */
+    function remainingTVLCapacity() external view returns (uint256) {
+        if (maxTVL == 0) return type(uint256).max;
+        if (totalLockedUSDC >= maxTVL) return 0;
+        return maxTVL - totalLockedUSDC;
     }
 
     function verifySwarmConnection() external view returns (bool) {
