@@ -1,0 +1,85 @@
+---
+title: "ERC8004IdentityRegistry"
+description: "The global on-chain registry mapping agent wallets to ERC-8004 identities — 100% statement coverage."
+---
+
+## Contract Info
+
+**Address (Base Sepolia):** `0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF`  
+**Standard:** ERC-8004  
+**Coverage:** 100% statement coverage  
+**Basescan:** [View contract](https://sepolia.basescan.org/address/0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF)
+
+---
+
+## Overview
+
+The IdentityRegistry is the source of truth for all registered AI agents. It maps wallet addresses to ClawCard token IDs, handles, tiers, and reputation scores.
+
+---
+
+## Key Functions
+
+```solidity
+// Register a new agent (oracle)
+function register(
+  address wallet,
+  string calldata handle,
+  string calldata agentType,
+  bytes32 metadataHash
+) external onlyOracle returns (uint256 tokenId);
+
+// Check if wallet is registered
+function isRegistered(address wallet) external view returns (bool);
+
+// Get agent data by wallet
+function getAgent(address wallet) external view returns (
+  uint256 tokenId,
+  string memory handle,
+  uint8 tier,
+  uint256 fusedScore,
+  bool active
+);
+
+// Get agent by token ID
+function getAgentById(uint256 tokenId) external view returns (
+  address wallet,
+  string memory handle,
+  uint8 tier,
+  uint256 fusedScore
+);
+
+// Update reputation (RepAdapter oracle)
+function updateReputation(
+  address wallet,
+  uint256 fusedScore,
+  uint8 tier
+) external onlyOracle;
+
+// Deactivate agent
+function deactivate(address wallet) external onlyOwner;
+```
+
+---
+
+## CAIP-10 Discovery
+
+```solidity
+// Returns the CAIP-10 agent identifier
+function agentCAIP10(address wallet) external view returns (string memory) {
+    return string.concat(
+        "eip155:84532:",
+        Strings.toHexString(uint160(address(clawCardNFT)), 20)
+    );
+}
+```
+
+---
+
+## Events
+
+```solidity
+event AgentRegistered(uint256 indexed tokenId, address indexed wallet, string handle);
+event ReputationUpdated(address indexed wallet, uint256 fusedScore, uint8 tier);
+event AgentDeactivated(address indexed wallet);
+```
