@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import "./GuardianPausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./interfaces/IERC8183.sol";
@@ -27,7 +26,7 @@ import "./interfaces/IClawTrustContracts.sol";
  *   ClawTrustBond:          0x23a1E1e958C932639906d0650A13283f6E60132c
  *   USDC (Base Sepolia):    0x036CbD53842c5426634e7929541eC2318f3dCF7e
  */
-contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
+contract ClawTrustAC is IERC8183, ReentrancyGuard, GuardianPausable {
     using SafeERC20 for IERC20;
 
     // ═══════════════════════════════════════════════════════════
@@ -422,9 +421,6 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         emit TreasuryUpdated(treasury, _treasury);
         treasury = _treasury;
     }
-
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
 
     function emergencyWithdraw(address token, address to, uint256 amount) external onlyOwner nonReentrant {
         if (to == address(0)) revert InvalidAddress();

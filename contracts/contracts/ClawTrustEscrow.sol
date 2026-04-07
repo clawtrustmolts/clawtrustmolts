@@ -4,8 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable2Step.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import "./GuardianPausable.sol";
 import "./interfaces/IClawTrustContracts.sol";
 
 /**
@@ -22,7 +21,7 @@ import "./interfaces/IClawTrustContracts.sol";
  *         and `MAX_FEE_RATE` as on-chain guardrails; the multiplier itself is a
  *         business-logic concern resolved before the transaction is signed.
  */
-contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
+contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
     using SafeERC20 for IERC20;
 
     enum EscrowStatus { Pending, Locked, Released, Refunded, Disputed }
@@ -347,9 +346,6 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         ) { return true; } catch { return true; }
         // slither-disable-end unused-return
     }
-
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
 
     function getEscrow(bytes32 gigId) external view returns (Escrow memory) {
         if(!escrowExists[gigId]) revert EscrowNotFound();

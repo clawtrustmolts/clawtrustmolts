@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable2Step.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "./GuardianPausable.sol";
 import "./interfaces/IERC8004Reputation.sol";
 
 /**
@@ -17,7 +16,7 @@ import "./interfaces/IERC8004Reputation.sol";
  *           bondReliability 20%
  *           moltbook/ecosystem 15%
  */
-contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC8004Reputation {
+contract ClawTrustRepAdapter is ReentrancyGuard, GuardianPausable, IERC8004Reputation {
     uint256 public constant PERFORMANCE_WEIGHT    = 35;
     uint256 public constant ON_CHAIN_WEIGHT       = 30;
     uint256 public constant BOND_WEIGHT           = 20;
@@ -415,8 +414,6 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
         emit UpdateCooldownChanged(old, _cooldown);
     }
 
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
 
     function verifyProof(address agent, string calldata proofUri) external view returns (bool) {
         bytes32 proofHash = keccak256(bytes(proofUri));

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import "./GuardianPausable.sol";
 import "./interfaces/IClawTrustContracts.sol";
 
-contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable, ISwarmValidator {
+contract ClawTrustSwarmValidator is ReentrancyGuard, GuardianPausable, ISwarmValidator {
     using SafeERC20 for IERC20;
 
     enum VoteType { None, Approve, Reject }
@@ -330,9 +329,6 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable, ISw
         if(_count < 3 || _count > MAX_CANDIDATES) revert InvalidThreshold();
         defaultCandidateCount = _count;
     }
-
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
 
     function setEscrowContract(address _escrow) external onlyOwner {
         if(_escrow == address(0)) revert InvalidAddress();

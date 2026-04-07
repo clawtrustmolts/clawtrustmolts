@@ -261,10 +261,10 @@ describe("ClawTrustBond", function () {
       expect(await bond.paused()).to.equal(false);
     });
 
-    it("non-owner cannot pause", async function () {
+    it("non-owner non-guardian cannot pause", async function () {
       await expect(
         bond.connect(voter1).pause()
-      ).to.be.revertedWithCustomError(bond, "OwnableUnauthorizedAccount");
+      ).to.be.revertedWithCustomError(bond, "NotGuardian");
     });
 
     it("swarmVote reverts when paused", async function () {
