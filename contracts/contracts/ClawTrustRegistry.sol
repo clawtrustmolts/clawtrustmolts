@@ -92,7 +92,7 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
     }
 
     function register(
-        string calldata name,
+        string calldata domainName,
         string calldata tld,
         address         owner,
         uint256         pricePaid
@@ -100,16 +100,16 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         if (_nextTokenId > MAX_SUPPLY) revert MaxSupplyReached();
 
         _validateTLD(tld);
-        _validateName(name);
+        _validateName(domainName);
 
-        bytes32 domainKey = _domainKey(name, tld);
+        bytes32 domainKey = _domainKey(domainName, tld);
         if (domainTaken[domainKey]) revert DomainAlreadyTaken();
 
         tokenId = _nextTokenId++;
         uint256 expiresAt = block.timestamp + 365 days;
 
         domains[tokenId] = DomainRecord({
-            name:         name,
+            name:         domainName,
             tld:          tld,
             owner:        owner,
             registeredAt: block.timestamp,
@@ -125,12 +125,12 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         _safeMint(owner, tokenId);
 
         // slither-disable-next-line encode-packed-collision -- display-only string for event; collision safety enforced by _domainKey (abi.encode)
-        string memory full = string(abi.encodePacked(name, tld));
-        emit DomainRegistered(tokenId, name, tld, full, owner, pricePaid, expiresAt);
+        string memory full = string(abi.encodePacked(domainName, tld));
+        emit DomainRegistered(tokenId, domainName, tld, full, owner, pricePaid, expiresAt);
     }
 
-    function resolve(string calldata name, string calldata tld) external view returns (address owner) {
-        bytes32 key = _domainKey(name, tld);
+    function resolve(string calldata domainName, string calldata tld) external view returns (address owner) {
+        bytes32 key = _domainKey(domainName, tld);
         if (!domainTaken[key]) revert DomainNotFound();
         uint256 tokenId = domainToTokenId[key];
         DomainRecord storage d = domains[tokenId];
@@ -138,8 +138,8 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         return d.owner;
     }
 
-    function isAvailable(string calldata name, string calldata tld) external view returns (bool) {
-        bytes32 key = _domainKey(name, tld);
+    function isAvailable(string calldata domainName, string calldata tld) external view returns (bool) {
+        bytes32 key = _domainKey(domainName, tld);
         if (!domainTaken[key]) return true;
         uint256 tokenId = domainToTokenId[key];
         return block.timestamp > domains[tokenId].expiresAt;
@@ -223,8 +223,8 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         if (!ok) revert InvalidTLD();
     }
 
-    function _validateName(string calldata name) internal pure {
-        bytes memory b = bytes(name);
+    function _validateName(string calldata domainName) internal pure {
+        bytes memory b = bytes(domainName);
         if (b.length < 3 || b.length > 32) revert InvalidName();
 
         for (uint256 i = 0; i < b.length; i++) {
@@ -251,8 +251,8 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
         ) revert ReservedName();
     }
 
-    function _domainKey(string calldata name, string calldata tld) internal pure returns (bytes32) {
-        return keccak256(abi.encode(name, tld));
+    function _domainKey(string calldata domainName, string calldata tld) internal pure returns (bytes32) {
+        return keccak256(abi.encode(domainName, tld));
     }
 
     // [I] Transfer-owner sync hook: keeps domains[].owner in sync with

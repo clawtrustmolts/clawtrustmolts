@@ -2,7 +2,7 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/home/runner/workspace/contracts/contracts/ClawCardNFT.sol": {
-      "lastModificationDate": 1773782687664,
+      "lastModificationDate": 1775494931410,
       "contentHash": "80890720a462a424ea1b75d6ee58168c",
       "sourceName": "contracts/ClawCardNFT.sol",
       "solcConfig": {
@@ -84,45 +84,6 @@
         "IERC8004Identity"
       ]
     },
-    "/home/runner/workspace/node_modules/@openzeppelin/contracts/utils/Pausable.sol": {
-      "lastModificationDate": 1774191433153,
-      "contentHash": "0d47b53e10b1985efbb396f937626279",
-      "sourceName": "@openzeppelin/contracts/utils/Pausable.sol",
-      "solcConfig": {
-        "version": "0.8.24",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "viaIR": true,
-          "evmVersion": "cancun",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "../utils/Context.sol"
-      ],
-      "versionPragmas": [
-        "^0.8.20"
-      ],
-      "artifacts": [
-        "Pausable"
-      ]
-    },
     "/home/runner/workspace/node_modules/@openzeppelin/contracts/access/AccessControl.sol": {
       "lastModificationDate": 1774191433091,
       "contentHash": "798a29e3c30dbd3eda1a67add26571e2",
@@ -162,6 +123,45 @@
       ],
       "artifacts": [
         "AccessControl"
+      ]
+    },
+    "/home/runner/workspace/node_modules/@openzeppelin/contracts/utils/Pausable.sol": {
+      "lastModificationDate": 1774191433153,
+      "contentHash": "0d47b53e10b1985efbb396f937626279",
+      "sourceName": "@openzeppelin/contracts/utils/Pausable.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "cancun",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "../utils/Context.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "Pausable"
       ]
     },
     "/home/runner/workspace/node_modules/@openzeppelin/contracts/utils/ReentrancyGuard.sol": {
@@ -245,6 +245,45 @@
         "Strings"
       ]
     },
+    "/home/runner/workspace/node_modules/@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol": {
+      "lastModificationDate": 1774191433149,
+      "contentHash": "fab97298382d4c32182a66ec35255b71",
+      "sourceName": "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "cancun",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "../Strings.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.24"
+      ],
+      "artifacts": [
+        "MessageHashUtils"
+      ]
+    },
     "/home/runner/workspace/node_modules/@openzeppelin/contracts/token/ERC721/ERC721.sol": {
       "lastModificationDate": 1774191433118,
       "contentHash": "ad5144b924800b6f617bc84e4f1fb556",
@@ -288,45 +327,6 @@
       ],
       "artifacts": [
         "ERC721"
-      ]
-    },
-    "/home/runner/workspace/node_modules/@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol": {
-      "lastModificationDate": 1774191433149,
-      "contentHash": "fab97298382d4c32182a66ec35255b71",
-      "sourceName": "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol",
-      "solcConfig": {
-        "version": "0.8.24",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "viaIR": true,
-          "evmVersion": "cancun",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "../Strings.sol"
-      ],
-      "versionPragmas": [
-        "^0.8.24"
-      ],
-      "artifacts": [
-        "MessageHashUtils"
       ]
     },
     "/home/runner/workspace/node_modules/@openzeppelin/contracts/utils/cryptography/ECDSA.sol": {
@@ -1250,7 +1250,7 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ERC8004IdentityRegistry.sol": {
-      "lastModificationDate": 1773956959340,
+      "lastModificationDate": 1775494931411,
       "contentHash": "91fb76d59f0c1416d722d8ce9746291a",
       "sourceName": "contracts/ERC8004IdentityRegistry.sol",
       "solcConfig": {
@@ -1328,8 +1328,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustRepAdapter.sol": {
-      "lastModificationDate": 1775547505779,
-      "contentHash": "999e705626d6140069528497eee4b9b5",
+      "lastModificationDate": 1775548431143,
+      "contentHash": "164a220873dfbb16a440f8b82c42b0bb",
       "sourceName": "contracts/ClawTrustRepAdapter.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -1453,8 +1453,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustEscrow.sol": {
-      "lastModificationDate": 1775547475908,
-      "contentHash": "85b673c461592141d2ee23b360901ebb",
+      "lastModificationDate": 1775548491365,
+      "contentHash": "f6b9e94a09ae2e6865fd15a412b61163",
       "sourceName": "contracts/ClawTrustEscrow.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -1537,8 +1537,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustRegistry.sol": {
-      "lastModificationDate": 1775547549721,
-      "contentHash": "8399d7a9dbe2272293e8ac29b1122ced",
+      "lastModificationDate": 1775548414878,
+      "contentHash": "d2b3f57e584d68ca504cb1ea46e33881",
       "sourceName": "contracts/ClawTrustRegistry.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -1619,6 +1619,47 @@
         "Base64"
       ]
     },
+    "/home/runner/workspace/contracts/contracts/ClawTrustCrew.sol": {
+      "lastModificationDate": 1775547538147,
+      "contentHash": "f5a26fc075ccb14fbcbe5e202c317901",
+      "sourceName": "contracts/ClawTrustCrew.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "cancun",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/access/Ownable2Step.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+        "@openzeppelin/contracts/utils/Pausable.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "ClawTrustCrew"
+      ]
+    },
     "/home/runner/workspace/contracts/contracts/ClawTrustBond.sol": {
       "lastModificationDate": 1775547491284,
       "contentHash": "4f586f16ffb44eb3e94f7f41917f5de6",
@@ -1663,8 +1704,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustAC.sol": {
-      "lastModificationDate": 1775546883986,
-      "contentHash": "24921c6f9491c42374f6f989574f7e9a",
+      "lastModificationDate": 1775548452993,
+      "contentHash": "aa9822a2a9a2aba8cb3f5832a4c146ff",
       "sourceName": "contracts/ClawTrustAC.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -1742,47 +1783,6 @@
       ],
       "artifacts": [
         "IERC8183"
-      ]
-    },
-    "/home/runner/workspace/contracts/contracts/ClawTrustCrew.sol": {
-      "lastModificationDate": 1775547538147,
-      "contentHash": "f5a26fc075ccb14fbcbe5e202c317901",
-      "sourceName": "contracts/ClawTrustCrew.sol",
-      "solcConfig": {
-        "version": "0.8.24",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "viaIR": true,
-          "evmVersion": "cancun",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "@openzeppelin/contracts/access/Ownable2Step.sol",
-        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
-        "@openzeppelin/contracts/utils/Pausable.sol"
-      ],
-      "versionPragmas": [
-        "^0.8.20"
-      ],
-      "artifacts": [
-        "ClawTrustCrew"
       ]
     },
     "/home/runner/workspace/contracts/contracts/MockERC20.sol": {

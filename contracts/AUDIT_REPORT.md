@@ -341,3 +341,53 @@ Second-pass review comparing all 9 contracts against OpenZeppelin, ENS, Livepeer
 ### Accepted — L-02: recoverStuckUSDC
 
 `ClawTrustAC.recoverStuckUSDC()` is an emergency-only owner function that can sweep all USDC including active job budgets. This is intentional design — in a true emergency the operator must be able to drain the contract. The Ownable2Step ownership model and off-chain monitoring are the mitigations. A comment noting the behavior has been added to the existing audit entry.
+
+---
+
+## Slither Static Analysis Run (2026-04-07)
+
+**Tool:** Slither v0.11.x (Trail of Bits) — GitHub: [crytic/slither](https://github.com/crytic/slither)
+**Scope:** All 9 production contracts + 4 mock/test helpers
+**Solc version:** 0.8.20
+**Command:** `slither . --exclude naming-convention,solc-version,low-level-calls`
+
+### Summary
+
+| Severity | Before | After | Delta |
+|---|---|---|---|
+| High | 0 | 0 | — |
+| Medium | 0 | 0 | — |
+| Low (actionable) | 7 | 1 | -6 |
+| Informational | 18 | 18 | — |
+| Optimization | 2 | 1 | -1 |
+| **Total (our contracts)** | **44** | **37** | **-7** |
+
+### Findings Fixed by This Run
+
+| ID | Contract | Check | Description | Fix |
+|---|---|---|---|---|
+| S-01 | ClawTrustRegistry | `shadowing-local` | Parameter `name` shadowed ERC721's `name()` function in 5 places | Renamed to `domainName` |
+| S-02 | ClawTrustRepAdapter | `events-maths` | `setUpdateCooldown()` changed state without emitting an event | Added `UpdateCooldownChanged(old, new)` event |
+| S-03 | ClawTrustAC | `immutable-states` | `evaluatorThreshold` set once in constructor, never changed — should be `immutable` | Added `immutable` keyword |
+
+### Remaining Findings — All Accepted
+
+**`timestamp` (24 findings — accepted):**
+`block.timestamp` used for escrow timeouts, domain expiry, cooldowns, and voting windows. This is fundamental to the protocol design and cannot be avoided. EVM block timestamps are manipulable by validators within ~12 seconds — well within the multi-day windows used in this protocol (30-day escrow, 7-day bond cooldown, 365-day domain expiry). Impact: negligible.
+
+**`missing-zero-check` for `_x402Facilitator` constructor (1 finding — accepted with documentation):**
+x402 is an optional integration enabled post-deploy. The constructor comment documents that `address(0)` is valid at deploy time. The `setX402Facilitator()` setter already enforces a zero-check when the integration is actually enabled.
+
+**Informational (18 findings):**
+- `missing-inheritance` (6): `ClawTrustBond`, `ClawTrustRepAdapter`, `ClawTrustSwarmValidator`, and 3 mocks do not formally inherit their interfaces. No runtime impact; interfaces are still used for internal typing.
+- `costly-loop` (1): `dissolveCrew()` deletes mapping entries in a loop. Bounded by max crew size (50 members); gas risk is acceptable.
+- `cyclomatic-complexity` (2): `formCrew()` and `createValidation()` have complexity 14 and 13 respectively. Already mitigated with inline comments.
+- `pragma` (1): `^0.8.20` allows newer patch versions. Intentional — OpenZeppelin recommends this pattern.
+- `unindexed-event-address` (1): `SwarmVote` event in Bond. Low operational impact; bytes32 `gigId` is already indexed.
+
+**Optimization (1 remaining):**
+- `MockERC20._decimals` should be `immutable` — test mock only, not production code.
+
+### Test Results After Slither Fixes
+
+**282 passing, 0 failing** — all tests pass after S-01, S-02, S-03 applied.

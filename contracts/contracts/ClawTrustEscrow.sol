@@ -91,6 +91,9 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         if(_validationRegistry == address(0)) revert InvalidAddress();
         if(_identityRegistry == address(0)) revert InvalidAddress();
         if(_platformFeeRate > MAX_FEE_RATE) revert FeeTooHigh();
+        // [A] _x402Facilitator intentionally allows address(0) at deploy: x402 is an optional
+        // integration that can be enabled post-deploy via setX402Facilitator(). Zero-check is
+        // enforced there instead.
 
         usdc = IERC20(_usdcToken);
         validationRegistry = _validationRegistry;

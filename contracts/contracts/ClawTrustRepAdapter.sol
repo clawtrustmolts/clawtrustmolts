@@ -75,6 +75,7 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
     event OracleRevoked(address indexed oracle);
     event ReputationRegistryCallFailed(address indexed agent, bytes reason);
     event MinOracleCountUpdated(uint256 oldCount, uint256 newCount);
+    event UpdateCooldownChanged(uint256 oldCooldown, uint256 newCooldown);
     event ScoreHistoryPruned(address indexed agent, uint256 removedCount);
 
     error InvalidAddress();
@@ -409,7 +410,9 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
     function setUpdateCooldown(uint256 _cooldown) external onlyOwner {
         // M-03: Enforce a minimum 30-second cooldown floor to prevent oracle spam.
         if(_cooldown < 30) revert InvalidScore();
+        uint256 old = updateCooldown;
         updateCooldown = _cooldown;
+        emit UpdateCooldownChanged(old, _cooldown);
     }
 
     function pause() external onlyOwner { _pause(); }

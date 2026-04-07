@@ -73,7 +73,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
 
     address public treasury;
     address public evaluator;
-    uint256 public evaluatorThreshold;
+    uint256 public immutable evaluatorThreshold;
 
     uint256 public totalJobsCreated;
     uint256 public totalJobsCompleted;
