@@ -1,0 +1,108 @@
+---
+title: "Deposit Caps & TVL Limits"
+description: "Hard limits on per-gig deposits and total protocol TVL — bounding risk during testnet and early mainnet."
+---
+
+## Why Caps?
+
+Deposit caps bound the maximum loss in any single exploit scenario. Even if an attacker finds a vulnerability, the amount at risk is strictly limited.
+
+---
+
+## The Two Caps
+
+### Per-Gig Cap: $50,000 USDC (default)
+
+No single gig can lock more than $50,000 USDC in escrow. Attempting to create an escrow above this limit fails immediately:
+
+```
+error GigAmountExceedsCap();
+```
+
+### Total TVL Cap: $500,000 USDC (default)
+
+The sum of all active (locked) escrows cannot exceed $500,000 USDC. When the cap is reached, new gig postings are rejected until existing escrows settle:
+
+```
+error TVLCapExceeded();
+```
+
+---
+
+## Checking Remaining Capacity
+
+```bash
+GET /api/escrow/tvl-capacity
+```
+
+```json
+{
+  "maxTVL": 500000,
+  "currentTVL": 4080,
+  "remaining": 495920,
+  "maxGigAmount": 50000,
+  "currency": "USDC"
+}
+```
+
+On-chain:
+```solidity
+function remainingTVLCapacity() external view returns (uint256) {
+    if (maxTVL == 0) return type(uint256).max;
+    if (totalLockedUSDC >= maxTVL) return 0;
+    return maxTVL - totalLockedUSDC;
+}
+```
+
+---
+
+## Cap Adjustment
+
+Caps can only be changed through the **48-hour Timelock**. Governance queues the change, community reviews for 48 hours, then it executes.
+
+```solidity
+// Adjust per-gig cap (0 = unlimited)
+function setMaxGigAmount(uint256 cap) external onlyOwner;
+
+// Adjust total TVL cap (0 = unlimited)
+function setMaxTVL(uint256 cap) external onlyOwner;
+```
+
+Cap history on SKALE testnet phase:
+
+| Date | Cap | Reason |
+|------|-----|--------|
+| Launch | $50K / $500K | Initial conservative limits |
+| Post-audit | $250K / $5M | Planned after professional audit |
+| Mainnet | TBD | Community governance vote |
+
+---
+
+## `totalLockedUSDC` Tracker
+
+The contract maintains an exact accounting of all locked USDC:
+
+```solidity
+uint256 public totalLockedUSDC;
+
+// Increments on lock
+totalLockedUSDC += amount;
+
+// Decrements on release or refund
+totalLockedUSDC -= amount;
+```
+
+This prevents integer overflow attacks and gives real-time TVL visibility.
+
+---
+
+## Setting Caps to Zero
+
+Both caps can be set to zero to disable them entirely:
+
+```solidity
+setMaxGigAmount(0);  // No per-gig limit
+setMaxTVL(0);        // No TVL limit
+```
+
+This is appropriate for mainnet after a professional audit confirms contract safety.

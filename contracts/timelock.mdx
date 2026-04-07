@@ -1,0 +1,134 @@
+---
+title: "ClawTrustTimelock"
+description: "48-hour TimelockController — all admin operations are public, delayed, and cancellable before execution."
+---
+
+## Contract Info
+
+**Standard:** OpenZeppelin TimelockController  
+**Deploy:** `contracts/scripts/deploy-timelock.cjs`  
+**Address:** Deterministic (see deployment output)
+
+---
+
+## Purpose
+
+ClawTrustTimelock makes it impossible for ClawTrust team members to make silent admin changes. Every owner-level operation is:
+
+1. Queued on-chain (visible immediately)
+2. Delayed 48 hours minimum
+3. Executable by anyone after the delay
+4. Cancellable by the Gnosis Safe before execution
+
+---
+
+## Constructor Parameters
+
+```solidity
+constructor(
+  uint256 minDelay,          // 172800 (48h) on mainnet, 300 (5m) on testnet
+  address[] memory proposers, // [gnosisSafeAddress]
+  address[] memory executors, // [address(0)] — anyone can execute
+  address admin               // address(0) — no admin
+)
+```
+
+---
+
+## Core Functions (inherited from TimelockController)
+
+```solidity
+// Queue an operation (PROPOSER_ROLE required)
+function schedule(
+  address target,
+  uint256 value,
+  bytes calldata data,
+  bytes32 predecessor,
+  bytes32 salt,
+  uint256 delay
+) external;
+
+// Execute after delay (anyone)
+function execute(
+  address target,
+  uint256 value,
+  bytes calldata data,
+  bytes32 predecessor,
+  bytes32 salt
+) external payable;
+
+// Cancel before execution (CANCELLER_ROLE required)
+function cancel(bytes32 id) external;
+
+// Check minimum delay
+function getMinDelay() external view returns (uint256); // 172800
+
+// Check operation status
+function isOperationPending(bytes32 id) external view returns (bool);
+function isOperationReady(bytes32 id) external view returns (bool);
+function isOperationDone(bytes32 id) external view returns (bool);
+
+// Role management
+function hasRole(bytes32 role, address account) external view returns (bool);
+```
+
+---
+
+## Roles
+
+| Role | Bytes32 | Holder | Power |
+|------|---------|--------|-------|
+| `PROPOSER_ROLE` | `0xb09...` | Gnosis Safe | Queue operations |
+| `CANCELLER_ROLE` | `0xfd6...` | Gnosis Safe | Cancel pending ops |
+| `EXECUTOR_ROLE` | `0xd8a...` | `address(0)` = anyone | Execute after delay |
+| `TIMELOCK_ADMIN_ROLE` | `0x5f5...` | nobody | Admin (burned) |
+
+---
+
+## Example: Increasing TVL Cap
+
+```bash
+# 1. Safe encodes the call
+calldata = abi.encodeCall(escrow.setMaxTVL, [1_000_000e6])
+
+# 2. Safe calls schedule() on Timelock
+timelock.schedule(
+  target = escrow.address,
+  value = 0,
+  data = calldata,
+  predecessor = bytes32(0),
+  salt = keccak256("tvl-increase-may-2026"),
+  delay = 172800
+)
+
+# 3. Operation is now visible on-chain — anyone can monitor it
+
+# 4. 48 hours later — anyone calls execute()
+timelock.execute(
+  target = escrow.address,
+  value = 0,
+  data = calldata,
+  predecessor = bytes32(0),
+  salt = keccak256("tvl-increase-may-2026")
+)
+```
+
+---
+
+## Deployment Guide
+
+Full instructions: [contracts/MULTISIG_SETUP.md](https://github.com/clawtrustorg/contracts/blob/main/MULTISIG_SETUP.md)
+
+```bash
+# Deploy timelock (set GNOSIS_SAFE_ADDRESS in env first)
+cd contracts
+node scripts/deploy-timelock.cjs
+
+# Verify deployment
+npx hardhat run scripts/deploy-timelock.cjs --network baseSepolia
+```
+
+The script:
+1. Deploys ClawTrustTimelock with 300s delay (testnet) or 172800s (mainnet)
+2. Verifies PROPOSER_ROLE is held by the Gnosis Safe
+3. Outputs the Timelock address and operation ID format

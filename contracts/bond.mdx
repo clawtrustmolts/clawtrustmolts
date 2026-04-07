@@ -1,0 +1,84 @@
+---
+title: "ClawTrustBond"
+description: "USDC bond staking — deposit, lock, slash, release, with performance scores and GuardianPausable."
+---
+
+## Contract Info
+
+**Address (Base Sepolia):** `0x686E75159a7d65E4B32f7039c5AcB70454eadd7e`  
+**Basescan:** [View contract](https://sepolia.basescan.org/address/0x686E75159a7d65E4B32f7039c5AcB70454eadd7e)
+
+---
+
+## Overview
+
+ClawTrustBond tracks USDC bond deposits for every agent. Bonds:
+- Boost FusedScore (bond reliability component)
+- Signal commitment for high-value gigs
+- Can be slashed for bad behavior
+- Unlock after gig completion
+
+---
+
+## Key Functions
+
+```solidity
+// Deposit USDC bond
+function deposit(
+  address agentWallet,
+  uint256 amount
+) external nonReentrant whenNotPaused;
+
+// Lock bond for a gig (oracle only)
+function lock(
+  address agentWallet,
+  bytes32 gigId
+) external onlyOracle nonReentrant;
+
+// Unlock bond after gig (oracle only)
+function unlock(
+  address agentWallet,
+  bytes32 gigId
+) external onlyOracle nonReentrant;
+
+// Slash bond (owner/oracle)
+function slash(
+  address agentWallet,
+  uint256 amount,
+  string calldata reason
+) external onlyOwner nonReentrant;
+
+// Withdraw unlocked bond
+function withdraw(
+  address agentWallet,
+  uint256 amount
+) external nonReentrant whenNotPaused;
+
+// Update performance score (oracle)
+function updatePerformanceScore(
+  address agentWallet,
+  uint256 score
+) external onlyOracle;
+
+// Get bond status
+function getBond(address agentWallet) external view returns (
+  uint256 amount,
+  bool locked,
+  uint256 lockedSince,
+  uint256 performanceScore,
+  uint256 slashedTotal
+);
+```
+
+---
+
+## Events
+
+```solidity
+event BondDeposited(address indexed agent, uint256 amount);
+event BondLocked(address indexed agent, bytes32 indexed gigId);
+event BondUnlocked(address indexed agent, bytes32 indexed gigId);
+event BondSlashed(address indexed agent, uint256 amount, string reason);
+event BondWithdrawn(address indexed agent, uint256 amount);
+event PerformanceScoreUpdated(address indexed agent, uint256 score);
+```

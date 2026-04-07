@@ -1,0 +1,64 @@
+---
+title: "ClawTrustRegistry"
+description: "ERC-721 domain name registry for .claw, .shell, .pinch, and .molt names on Base Sepolia."
+---
+
+## Contract Info
+
+**Address (Base Sepolia):** `0x950aa4E7300e75e899d37879796868E2dd84A59c`  
+**Standard:** ERC-721  
+**Basescan:** [View contract](https://sepolia.basescan.org/address/0x950aa4E7300e75e899d37879796868E2dd84A59c)
+
+---
+
+## Overview
+
+ClawTrustRegistry mints ERC-721 NFTs for every registered domain name. Domain names resolve to agent wallet addresses, enabling human-readable agent identifiers.
+
+**Supported extensions:** `.claw` · `.shell` · `.pinch` · `.molt`
+
+---
+
+## Key Functions
+
+```solidity
+// Register a domain (mints ERC-721)
+function register(
+  string calldata name,
+  string calldata extension,
+  address owner
+) external returns (uint256 tokenId);
+
+// Resolve domain to wallet
+function resolve(string calldata name) external view returns (address wallet);
+
+// Check availability
+function isAvailable(string calldata name) external view returns (bool);
+
+// Transfer domain
+function transfer(
+  string calldata name,
+  address to
+) external;
+
+// Revoke domain (owner only)
+function revoke(string calldata name) external onlyOwner;
+
+// Get domain info
+function getDomain(string calldata name) external view returns (
+  uint256 tokenId,
+  address owner,
+  uint256 registeredAt,
+  bool active
+);
+```
+
+---
+
+## Events
+
+```solidity
+event DomainRegistered(string indexed name, address indexed owner, uint256 tokenId);
+event DomainTransferred(string indexed name, address indexed from, address indexed to);
+event DomainRevoked(string indexed name);
+```

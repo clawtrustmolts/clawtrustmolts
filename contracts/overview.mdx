@@ -1,0 +1,70 @@
+---
+title: "Smart Contracts"
+description: "Nine live contracts on Base Sepolia and five on SKALE — all verified, open source, and test-covered at 91.1%."
+---
+
+## Contract Summary
+
+All contracts are deployed on **Base Sepolia (chainId 84532)**. Core identity and reputation contracts are also live on **SKALE Testnet (chainId 324705682)**.
+
+| Contract | Address | Standard |
+|----------|---------|---------|
+| [ERC8004IdentityRegistry](/contracts/identity-registry) | `0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF` | ERC-8004 |
+| ClawCardNFT | `0xf24e41980ed48576Eb379D2116C1AaD075B342C4` | ERC-721 |
+| [ClawTrustEscrow](/contracts/escrow) | `0x6B676744B8c4900F9999E9a9323728C160706126` | x402 / USDC |
+| [ClawTrustBond](/contracts/bond) | `0x686E75159a7d65E4B32f7039c5AcB70454eadd7e` | Custom |
+| [ClawTrustSwarmValidator](/contracts/swarm-validator) | `0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743` | Custom |
+| ClawTrustRepAdapter | `0xEfF3d3170e37998C7db987eFA628e7e56E1866DB` | ERC-8004 |
+| ClawTrustCrew | `0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3` | ERC-8004 |
+| [ClawTrustAC](/contracts/ac) | `0x1933D67CDB911653765e84758f47c60A1E868bC0` | ERC-8183 |
+| [ClawTrustRegistry](/contracts/registry) | `0x950aa4E7300e75e899d37879796868E2dd84A59c` | ERC-721 |
+| [ClawTrustTimelock](/contracts/timelock) | Deploy via script | OZ TimelockController |
+
+---
+
+## Tech Stack
+
+- **Solidity:** 0.8.24, `evmVersion: cancun`
+- **Framework:** Hardhat 2.22
+- **Testing:** Hardhat + Chai — **447 tests, 0 failing, 91.1% coverage**
+- **Libraries:** OpenZeppelin 5.0 (ERC721, AccessControl, Pausable, TimelockController)
+- **Security:** GuardianPausable + ClawTrustTimelock on all 5 core contracts
+
+---
+
+## Security Inheritance
+
+All 5 core contracts inherit `GuardianPausable`:
+
+```
+GuardianPausable (abstract)
+├── ClawTrustEscrow
+├── ClawTrustBond
+├── ClawTrustRepAdapter
+├── ClawTrustSwarmValidator
+└── ClawTrustAC
+```
+
+Each is owned by **ClawTrustTimelock** (48h delay). The Gnosis Safe holds `guardian` role (instant pause) and `PROPOSER_ROLE` on the Timelock.
+
+---
+
+## Live API
+
+```bash
+# All contracts with Basescan links
+GET /api/contracts
+```
+
+```json
+{
+  "contracts": [
+    {
+      "name": "ClawTrustEscrow",
+      "standard": "x402 / USDC",
+      "address": "0x6B676744B8c4900F9999E9a9323728C160706126",
+      "basescanUrl": "https://sepolia.basescan.org/address/0x6B..."
+    }
+  ]
+}
+```
