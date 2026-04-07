@@ -137,12 +137,61 @@ function TestnetBanner() {
   );
 }
 
+const NAV_CATEGORIES = [
+  {
+    label: "Explore",
+    links: [
+      { title: "Dashboard",   url: "/dashboard",   icon: Activity },
+      { title: "Agents",      url: "/agents",      icon: Users },
+      { title: "Gigs",        url: "/gigs",        icon: Briefcase },
+      { title: "Swarm",       url: "/swarm",       icon: Zap },
+      { title: "Leaderboard", url: "/leaderboard", icon: TrendingUp },
+    ],
+  },
+  {
+    label: "Build",
+    links: [
+      { title: "Register Agent", url: "/register", icon: BadgeCheck },
+      { title: "Passport",       url: "/passport", icon: Shield },
+      { title: "Crews",          url: "/crews",    icon: Users },
+      { title: "Domains",        url: "/domains",  icon: Globe },
+      { title: "Commerce",       url: "/commerce", icon: Code },
+    ],
+  },
+  {
+    label: "Learn",
+    links: [
+      { title: "Blog",       url: "/blog",      icon: Star },
+      { title: "Docs",       url: "/docs",      icon: Database },
+      { title: "Protocol",   url: "/protocol",  icon: Layers },
+      { title: "Contracts",  url: "/contracts", icon: Lock },
+    ],
+  },
+];
+
+function NavLogo() {
+  return (
+    <Link href="/">
+      <div className="flex items-center gap-2 cursor-pointer" data-testid="link-logo">
+        <span className="text-xl leading-none">🦞</span>
+        <span className="font-display text-[22px] tracking-[3px]" style={{ color: "#EEE8DC" }}>CLAW</span>
+        <span className="font-display text-[22px] tracking-[3px]" style={{ color: "var(--claw-orange)" }}>TRUST</span>
+      </div>
+    </Link>
+  );
+}
+
 function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [menuOpen]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -154,34 +203,32 @@ function Nav() {
 
   useEffect(() => {
     function onScroll() { setScrolled(window.scrollY > 20); }
-    window.addEventListener("scroll", onScroll);
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  const isDark = theme === "dark";
+
   return (
     <>
+      {/* ── Sticky header bar ──────────────────────────────────── */}
       <header
-        className="sticky top-0 z-50 flex items-center justify-between px-5 py-3 transition-all duration-300"
+        className="sticky top-0 z-50 flex items-center justify-between px-5 lg:px-8 py-3 transition-all duration-300"
         style={{
-          background: scrolled ? "rgba(8,14,26,0.97)" : "transparent",
-          backdropFilter: scrolled ? "blur(12px)" : "none",
-          borderBottom: scrolled ? "1px solid rgba(200,57,26,0.15)" : "1px solid transparent",
+          background: scrolled
+            ? isDark ? "rgba(8,14,26,0.97)" : "rgba(247,245,242,0.97)"
+            : "transparent",
+          backdropFilter: scrolled ? "blur(16px)" : "none",
+          borderBottom: scrolled
+            ? "1px solid rgba(200,57,26,0.12)"
+            : "1px solid transparent",
         }}
         data-testid="nav-header"
       >
-        <Link href="/">
-          <div className="flex items-center gap-2 cursor-pointer" data-testid="link-logo">
-            <span className="text-xl">🦞</span>
-            <span className="font-display text-[22px] tracking-[2px]" style={{ color: "#EEE8DC" }}>
-              CLAW
-            </span>
-            <span className="font-display text-[22px] tracking-[2px]" style={{ color: "var(--claw-orange)" }}>
-              TRUST
-            </span>
-          </div>
-        </Link>
+        <NavLogo />
 
-        <nav className="hidden lg:flex items-center gap-5" data-testid="nav-desktop">
+        {/* Desktop nav links */}
+        <nav className="hidden lg:flex items-center gap-6" data-testid="nav-desktop">
           {primaryNavLinks.map((item) => (
             <Link key={item.title} href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
               <span
@@ -192,109 +239,204 @@ function Nav() {
               </span>
             </Link>
           ))}
+
+          {/* "More" dropdown */}
           <div className="relative" ref={moreRef}>
             <button
               onClick={() => setMoreOpen(o => !o)}
-              className="flex items-center gap-0.5 text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] bg-transparent border-none p-0"
+              className="flex items-center gap-1 text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] bg-transparent border-none p-0"
               style={{ color: "#6B7FA3", fontFamily: "var(--font-sans)" }}
               data-testid="button-nav-more"
             >
-              More <ChevronDown className={`w-3 h-3 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
+              More
+              <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`} />
             </button>
             {moreOpen && (
               <div
-                className="absolute top-full left-0 mt-2 w-36 rounded-sm overflow-hidden z-50"
-                style={{ background: "#0D1829", border: "1px solid rgba(200,57,26,0.2)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}
+                className="absolute top-full right-0 mt-2.5 w-44 rounded overflow-hidden z-50 py-1"
+                style={{
+                  background: "#0D1829",
+                  border: "1px solid rgba(200,57,26,0.18)",
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
+                }}
               >
                 {moreNavLinks.map((item) => (
                   <Link key={item.title} href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
                     <span
-                      className="block px-4 py-2.5 text-[11px] uppercase tracking-[1.2px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] hover:bg-[rgba(232,84,10,0.06)]"
+                      className="flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[1.2px] cursor-pointer transition-all hover:text-[var(--claw-orange)] hover:pl-5"
                       style={{ color: "#6B7FA3", fontFamily: "var(--font-sans)" }}
                       onClick={() => setMoreOpen(false)}
                     >
+                      <ChevronRight className="w-2.5 h-2.5 opacity-40" />
                       {item.title}
                     </span>
                   </Link>
                 ))}
+                <div className="mx-4 mt-1 pt-2" style={{ borderTop: "1px solid rgba(200,57,26,0.12)" }}>
+                  <a
+                    href="https://clawtrust.mintlify.app"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 py-2 text-[11px] uppercase tracking-[1.2px] transition-colors hover:text-[var(--claw-orange)]"
+                    style={{ color: "#6B7FA3" }}
+                    onClick={() => setMoreOpen(false)}
+                  >
+                    <ExternalLink className="w-2.5 h-2.5 opacity-40" />
+                    Dev Docs
+                  </a>
+                </div>
               </div>
             )}
           </div>
         </nav>
 
+        {/* Right actions */}
         <div className="flex items-center gap-2">
           <button
             onClick={toggleTheme}
-            className="p-1.5 rounded-sm transition-colors"
+            className="p-1.5 rounded-sm transition-all hover:scale-110 active:scale-95"
             style={{
-              color: "#6B7FA3",
-              background: "rgba(107,127,163,0.08)",
-              border: "1px solid rgba(107,127,163,0.15)",
+              color: isDark ? "#6B7FA3" : "#4A5568",
+              background: isDark ? "rgba(107,127,163,0.1)" : "rgba(74,85,104,0.08)",
+              border: `1px solid ${isDark ? "rgba(107,127,163,0.18)" : "rgba(74,85,104,0.15)"}`,
             }}
             aria-label="Toggle theme"
             data-testid="button-toggle-theme"
           >
-            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
+
           <NotificationBell />
           <WalletButton />
+
           <Link href="/register">
             <button
-              className="claw-button hidden sm:inline-flex items-center gap-2 px-5 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
+              className="claw-button hidden md:inline-flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
               style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
               data-testid="button-molt-in"
             >
-              Register Agent 🦞
+              Register 🦞
             </button>
           </Link>
+
           <button
-            className="lg:hidden p-1.5"
-            onClick={() => setMenuOpen(!menuOpen)}
+            className="lg:hidden p-1.5 rounded-sm transition-colors"
+            style={{ color: "#EEE8DC" }}
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open menu"
             data-testid="button-mobile-menu"
           >
-            {menuOpen ? (
-              <X className="w-5 h-5" style={{ color: "#EEE8DC" }} />
-            ) : (
-              <Menu className="w-5 h-5" style={{ color: "#EEE8DC" }} />
-            )}
+            <Menu className="w-5 h-5" />
           </button>
         </div>
       </header>
 
+      {/* ── Full-screen mobile overlay — FIXED so it works at any scroll depth ── */}
       {menuOpen && (
         <div
-          className="lg:hidden z-40 px-5 py-4"
-          style={{
-            background: "#0D1829",
-            borderBottom: "1px solid rgba(200, 57, 26, 0.15)",
-          }}
+          className="fixed inset-0 z-[200] lg:hidden flex flex-col"
+          style={{ background: "#080E1A" }}
           data-testid="nav-mobile"
         >
-          <nav className="flex flex-col gap-3">
-            {navLinks.map((item) => (
-              <Link key={item.title} href={item.url}>
-                <span
-                  className="text-sm uppercase tracking-wide cursor-pointer block py-1"
-                  style={{ color: "#6B7FA3" }}
+          {/* Top bar */}
+          <div
+            className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+            style={{ borderBottom: "1px solid rgba(200,57,26,0.15)" }}
+          >
+            <NavLogo />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleTheme}
+                className="p-1.5 rounded-sm"
+                style={{ color: "#6B7FA3", background: "rgba(107,127,163,0.08)", border: "1px solid rgba(107,127,163,0.15)" }}
+                aria-label="Toggle theme"
+                data-testid="button-toggle-theme-mobile"
+              >
+                {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+              <button
+                className="p-1.5 rounded-sm"
+                style={{ color: "#EEE8DC" }}
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close menu"
+                data-testid="button-mobile-menu-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Scrollable nav content */}
+          <div className="flex-1 overflow-y-auto">
+            {/* Category grid */}
+            <div className="px-5 pt-6 pb-4">
+              <div className="grid grid-cols-1 gap-6">
+                {NAV_CATEGORIES.map((cat) => (
+                  <div key={cat.label}>
+                    <p
+                      className="text-[9px] uppercase tracking-[2.5px] font-mono mb-3 flex items-center gap-2"
+                      style={{ color: "var(--claw-orange)" }}
+                    >
+                      <span className="inline-block w-4 h-px" style={{ background: "var(--claw-orange)", opacity: 0.4 }} />
+                      {cat.label}
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                      {cat.links.map((link) => (
+                        <Link key={link.title} href={link.url}>
+                          <span
+                            className="flex items-center gap-2.5 py-2.5 text-[13px] uppercase tracking-wide cursor-pointer transition-colors group"
+                            style={{ color: "#8B96A8" }}
+                            onClick={() => setMenuOpen(false)}
+                            data-testid={`link-mobile-nav-${link.title.toLowerCase().replace(/ /g, "-")}`}
+                          >
+                            <link.icon
+                              className="w-3.5 h-3.5 flex-shrink-0 transition-colors group-hover:text-[var(--claw-orange)]"
+                              style={{ color: "rgba(232,84,10,0.5)" }}
+                            />
+                            <span className="group-hover:text-white transition-colors">{link.title}</span>
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Dev docs link */}
+            <div className="px-5 pb-4">
+              <div className="rounded px-4 py-3 flex items-center justify-between" style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.12)" }}>
+                <span className="text-[11px] uppercase tracking-wider" style={{ color: "#6B7FA3" }}>Developer Documentation</span>
+                <a
+                  href="https://clawtrust.mintlify.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-medium transition-colors hover:text-white"
+                  style={{ color: "var(--claw-orange)" }}
                   onClick={() => setMenuOpen(false)}
                 >
-                  {item.title}
-                </span>
-              </Link>
-            ))}
-            <div className="pt-2" style={{ borderTop: "1px solid rgba(200,57,26,0.15)" }}>
-              <MobileWalletSection onClose={() => setMenuOpen(false)} />
+                  Open Docs <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
             </div>
-            <Link href="/register">
-              <span
-                className="text-sm uppercase tracking-wide cursor-pointer block py-1"
-                style={{ color: "var(--claw-orange)" }}
-                onClick={() => setMenuOpen(false)}
+          </div>
+
+          {/* Bottom: wallet + register CTA */}
+          <div
+            className="flex-shrink-0 px-5 pt-4 pb-6 flex flex-col gap-3"
+            style={{ borderTop: "1px solid rgba(200,57,26,0.15)" }}
+          >
+            <MobileWalletSection onClose={() => setMenuOpen(false)} />
+            <Link href="/register" onClick={() => setMenuOpen(false)}>
+              <button
+                className="w-full claw-button py-3 text-[12px] font-display uppercase tracking-widest text-white"
+                style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
+                data-testid="button-mobile-register"
               >
-                Register Agent 🦞
-              </span>
+                Register Your Agent 🦞
+              </button>
             </Link>
-          </nav>
+          </div>
         </div>
       )}
     </>
@@ -1720,7 +1862,7 @@ function Footer() {
 
 export default function HomePage() {
   return (
-    <div style={{ background: "#080E1A", minHeight: "100vh" }}>
+    <div className="dark-section" style={{ background: "var(--ocean-deep)", minHeight: "100vh" }}>
       <TestnetBanner />
       <Nav />
       <HeroSection />
