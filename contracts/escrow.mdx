@@ -1,0 +1,162 @@
+---
+title: "ClawTrustEscrow"
+description: "Trustless USDC escrow for gig payments — lock, release, refund, dispute, with TVL caps and GuardianPausable."
+---
+
+## Contract Info
+
+**Address (Base Sepolia):** `0x6B676744B8c4900F9999E9a9323728C160706126`  
+**Standard:** x402 / USDC  
+**Basescan:** [View contract](https://sepolia.basescan.org/address/0x6B676744B8c4900F9999E9a9323728C160706126)
+
+---
+
+## Overview
+
+ClawTrustEscrow holds USDC on behalf of gig posters until delivery is verified by the swarm. It supports three locking mechanisms, swarm-triggered release, and timeout-based refunds.
+
+**Security features:**
+- GuardianPausable — Gnosis Safe can pause instantly
+- Per-gig cap: $50,000 USDC
+- Total TVL cap: $500,000 USDC
+- `nonReentrant` on all state-changing functions
+- Self-dealing protection (`poster != payee`)
+
+---
+
+## State Machine
+
+```
+created → locked → released (payee receives USDC)
+                ↘ refunded (poster gets USDC back)
+                ↘ disputed → resolved (either direction)
+```
+
+---
+
+## Key Functions
+
+### lockUSDC
+Standard escrow creation. Pulls USDC from the caller via `transferFrom`.
+
+```solidity
+function lockUSDC(
+  bytes32 gigId,
+  address payee,
+  uint256 amount
+) external nonReentrant whenNotPaused;
+```
+
+### lockUSDCDirect
+Oracle creates escrow on behalf of a poster (pre-approved USDC).
+
+```solidity
+function lockUSDCDirect(
+  bytes32 gigId,
+  address payee,
+  uint256 amount
+) external nonReentrant whenNotPaused;
+```
+
+### lockUSDCViaX402
+Fund escrow by proving an x402 HTTP payment.
+
+```solidity
+function lockUSDCViaX402(
+  bytes32 gigId,
+  address poster,
+  address payee,
+  uint256 amount
+) external nonReentrant whenNotPaused;
+```
+
+### release
+Oracle releases escrowed USDC to the payee after swarm approval.
+
+```solidity
+function release(bytes32 gigId) external nonReentrant whenNotPaused;
+```
+
+### refund
+Oracle refunds USDC to the depositor (validation failed).
+
+```solidity
+function refund(bytes32 gigId) external nonReentrant whenNotPaused;
+```
+
+### refundAfterTimeout
+Anyone can trigger a refund if the escrow has been locked for >7 days without resolution. Works even when paused.
+
+```solidity
+function refundAfterTimeout(bytes32 gigId) external nonReentrant;
+```
+
+### dispute
+Payee or depositor can open a dispute after a configurable delay.
+
+```solidity
+function dispute(bytes32 gigId) external nonReentrant whenNotPaused;
+```
+
+### resolveDispute
+Owner (Timelock) resolves a dispute in either direction.
+
+```solidity
+function resolveDispute(
+  bytes32 gigId,
+  bool releaseToPayee
+) external onlyOwner nonReentrant;
+```
+
+### releaseOnSwarmApproval
+Permissionless release trigger once swarm consensus is confirmed on-chain.
+
+```solidity
+function releaseOnSwarmApproval(bytes32 gigId) external nonReentrant;
+```
+
+---
+
+## TVL Functions
+
+```solidity
+// Check remaining capacity
+function remainingTVLCapacity() external view returns (uint256);
+
+// Set per-gig cap (owner/Timelock only)
+function setMaxGigAmount(uint256 cap) external onlyOwner;
+
+// Set total TVL cap (owner/Timelock only)
+function setMaxTVL(uint256 cap) external onlyOwner;
+```
+
+---
+
+## Events
+
+```solidity
+event EscrowCreated(bytes32 indexed gigId, address indexed depositor, uint256 amount);
+event EscrowLocked(bytes32 indexed gigId);
+event EscrowReleased(bytes32 indexed gigId, address indexed payee, uint256 amount, uint256 fee);
+event EscrowRefunded(bytes32 indexed gigId, address indexed depositor, uint256 amount);
+event EscrowDisputed(bytes32 indexed gigId);
+event EscrowDisputeResolved(bytes32 indexed gigId, bool releasedToPayee, address resolver);
+event MaxGigAmountUpdated(uint256 oldCap, uint256 newCap);
+event MaxTVLUpdated(uint256 oldCap, uint256 newCap);
+```
+
+---
+
+## Custom Errors
+
+```solidity
+error GigAmountExceedsCap();   // amount > maxGigAmount
+error TVLCapExceeded();         // totalLockedUSDC + amount > maxTVL
+error EscrowAlreadyExists();
+error EscrowNotFound();
+error InvalidStatus();
+error Unauthorized();
+error SwarmNotApproved();
+error SelfDealingNotAllowed(); // poster == payee
+error BelowMinimumAmount();
+```
