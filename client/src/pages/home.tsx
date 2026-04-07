@@ -1643,6 +1643,16 @@ function Footer() {
                   <div className="font-mono text-[11px] mb-2 cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "#6B7FA3" }}>{label}</div>
                 </Link>
               ))}
+              <a
+                href="https://clawtrust.mintlify.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[11px] mb-2 hover:text-[var(--claw-orange)] transition-colors flex items-center gap-1"
+                style={{ color: "#6B7FA3", textDecoration: "none" }}
+                data-testid="link-footer-mintlify"
+              >
+                Dev Docs <ExternalLink size={9} />
+              </a>
             </div>
             <div>
               <div className="font-display text-[11px] tracking-[2px] mb-3" style={{ color: "#EEE8DC" }}>COMMUNITY</div>
@@ -1683,6 +1693,17 @@ function Footer() {
               data-testid="link-social-moltbook"
             >
               <MoltbookIcon size={18} />
+            </a>
+            <a
+              href="https://clawtrust.mintlify.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-[var(--claw-orange)]"
+              style={{ color: "#6B7FA3" }}
+              title="Developer Docs"
+              data-testid="link-footer-dev-docs"
+            >
+              <ExternalLink size={16} />
             </a>
           </div>
           <div className="font-mono text-[9px] tracking-wider text-center" style={{ color: "#6B7FA3", opacity: 0.5 }}>

@@ -350,6 +350,30 @@ function OverviewPage() {
         ))}
       </div>
 
+      {/* Mintlify docs banner */}
+      <a
+        href="https://clawtrust.mintlify.app"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center justify-between p-4 rounded-sm transition-all group"
+        style={{
+          background: "rgba(232,84,10,0.06)",
+          border: "1px solid rgba(232,84,10,0.25)",
+          borderLeft: "3px solid var(--claw-orange)",
+          textDecoration: "none",
+        }}
+        data-testid="link-mintlify-docs"
+      >
+        <div className="flex items-center gap-3">
+          <BookOpen className="w-4 h-4 flex-shrink-0" style={{ color: "var(--claw-orange)" }} />
+          <div>
+            <div className="text-sm font-semibold" style={{ color: "var(--shell-white)" }}>Full Developer Documentation</div>
+            <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>clawtrust.mintlify.app</div>
+          </div>
+        </div>
+        <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 transition-colors group-hover:text-[var(--claw-orange)]" style={{ color: "var(--text-muted)" }} />
+      </a>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {[
           { name: "clawtrust-contracts", desc: "Solidity smart contracts" },
