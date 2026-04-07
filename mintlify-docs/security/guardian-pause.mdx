@@ -1,0 +1,108 @@
+---
+title: "GuardianPausable"
+description: "Emergency pause mechanism — a Gnosis Safe guardian can freeze all contracts in seconds, with asymmetric unpause requiring the 48h Timelock."
+---
+
+## Design Philosophy
+
+The GuardianPausable contract solves a critical timing problem in DeFi: exploits happen in seconds but teams respond in minutes. By the time an admin key is found and a transaction broadcast, funds can be gone.
+
+ClawTrust's solution: **separate pause from unpause**.
+
+- **Pause** — instant, single-party (Safe), no delay
+- **Unpause** — slow, goes through 48h Timelock, community can review
+
+---
+
+## How It Works
+
+All five ClawTrust contracts inherit `GuardianPausable`:
+
+```solidity
+abstract contract GuardianPausable is Ownable, Pausable {
+    address public guardian;
+
+    // Guardian (Safe) can pause immediately — no delay
+    function pause() external {
+        require(msg.sender == guardian, "Not guardian");
+        _pause();
+    }
+
+    // Only owner (Timelock) can unpause — 48h minimum delay
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    // Only owner (Timelock) can rotate the guardian address
+    function setGuardian(address newGuardian) external onlyOwner {
+        guardian = newGuardian;
+    }
+}
+```
+
+---
+
+## Emergency Response Playbook
+
+<Steps>
+  <Step title="Anomaly detected">
+    Oracle detects abnormal fund movement or a researcher reports a critical bug.
+  </Step>
+  <Step title="Safe signers notified">
+    Two of three Gnosis Safe signers are alerted via Telegram/Signal.
+  </Step>
+  <Step title="Pause transaction submitted">
+    Either signer calls `pause()` from the Safe. Any 2-of-3 confirmation freezes all contracts immediately.
+  </Step>
+  <Step title="All operations halt">
+    `lockUSDC`, `release`, `refund`, `vote`, and `bond deposit` all revert with `EnforcedPause` while paused.
+  </Step>
+  <Step title="Investigation begins">
+    Team identifies root cause. If a patch is needed, it is queued in the Timelock.
+  </Step>
+  <Step title="Community review">
+    Queued patch is visible on-chain for 48 hours. Auditors, users, and integrators can review.
+  </Step>
+  <Step title="Unpause (post-patch)">
+    Safe proposes unpause via Timelock. After 48 hours, anyone executes. Contracts resume.
+  </Step>
+</Steps>
+
+---
+
+## What Stays Accessible During Pause
+
+| Function | Paused? |
+|----------|---------|
+| `lockUSDC` | ✗ Blocked |
+| `release` | ✗ Blocked |
+| `refund` | ✗ Blocked |
+| `dispute` | ✗ Blocked |
+| `refundAfterTimeout` | ✅ Still works (user self-help) |
+| `claimAfterDisputeTimeout` | ✅ Still works |
+| View functions (balances, status) | ✅ Always available |
+
+<Note>
+  Timeout-based refunds are intentionally left unpaused so users can always recover their funds without relying on the team.
+</Note>
+
+---
+
+## Guardian Rotation
+
+The guardian address (Gnosis Safe) can only be changed through the Timelock — preventing the guardian from replacing itself silently:
+
+```bash
+# Safe queues rotation (visible on-chain for 48h)
+Timelock.schedule(
+  escrow.address,
+  0,
+  escrow.setGuardian.selector + newGuardian,
+  predecessor,
+  salt,
+  48 * 3600
+)
+
+# 48 hours later — anyone executes
+Timelock.execute(...)
+```
