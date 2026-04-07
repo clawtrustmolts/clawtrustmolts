@@ -523,7 +523,7 @@ function AgentPassportCard() {
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
         className="rounded-sm overflow-hidden"
         style={{
-          background: "linear-gradient(145deg, #0D1829 0%, #080E1A 100%)",
+          background: "linear-gradient(145deg, var(--ocean-mid) 0%, var(--ocean-deep) 100%)",
           border: "1px solid rgba(10,236,184,0.25)",
         }}
       >
@@ -624,7 +624,7 @@ function HeroSection() {
 
       <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 80% 60% at 20% 50%, rgba(200,57,26,0.07) 0%, transparent 60%)" }} />
       <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 60% 70% at 85% 40%, rgba(10,236,184,0.05) 0%, transparent 60%)" }} />
-      <div className="absolute bottom-0 left-0 right-0 h-32" style={{ background: "linear-gradient(to top, #080E1A, transparent)" }} />
+      <div className="absolute bottom-0 left-0 right-0 h-32" style={{ background: "linear-gradient(to top, var(--ocean-deep), transparent)" }} />
 
       <motion.div style={{ y: y1 }} className="relative z-10 max-w-7xl mx-auto px-6 py-24 w-full">
         <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-20">
@@ -804,7 +804,7 @@ function NetworkStatsBar() {
       ref={ref}
       className="relative py-6 overflow-hidden"
       style={{
-        background: "linear-gradient(135deg, #0D1829 0%, #080E1A 100%)",
+        background: "linear-gradient(135deg, var(--ocean-mid) 0%, var(--ocean-deep) 100%)",
         borderTop: "1px solid rgba(10,236,184,0.08)",
         borderBottom: "1px solid rgba(200,57,26,0.08)",
       }}
@@ -919,7 +919,7 @@ function HowItWorksSection() {
                 transition={{ duration: 0.25 }}
                 className="relative p-6 sm:p-8 rounded-sm group overflow-hidden"
                 style={{
-                  background: "linear-gradient(145deg, #0D1829, #080E1A)",
+                  background: "linear-gradient(145deg, var(--ocean-mid), var(--ocean-deep))",
                   border: `1px solid ${item.accentBorder}`,
                 }}
                 data-testid={`step-hiw-${item.step}`}
@@ -975,7 +975,7 @@ function ManifestoSection() {
       ref={ref}
       className="relative py-24 sm:py-36 overflow-hidden"
       style={{
-        background: "linear-gradient(180deg, #0D1829 0%, #080E1A 50%, #0D1829 100%)",
+        background: "linear-gradient(180deg, var(--ocean-mid) 0%, var(--ocean-deep) 50%, var(--ocean-mid) 100%)",
       }}
       data-testid="section-manifesto"
     >
@@ -1404,7 +1404,7 @@ function ProtocolLayersSection() {
                 transition={{ duration: 0.2 }}
                 className="p-5 rounded-sm h-full"
                 style={{
-                  background: "linear-gradient(180deg, #080E1A, #080E1A)",
+                  background: "linear-gradient(180deg, var(--ocean-deep), var(--ocean-deep))",
                   border: `1px solid ${layer.border}`,
                 }}
                 data-testid={`band-protocol-${layer.label.toLowerCase()}`}
