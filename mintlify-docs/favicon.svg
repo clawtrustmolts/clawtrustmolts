@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect width="32" height="32" rx="6" fill="#0F172A"/>
+  <!-- Left claw -->
+  <path d="M8 25 C7 20 9 15 12 11 C11 16 11 21 13 25" stroke="#C8391A" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <!-- Middle claw -->
+  <path d="M16 25 C15 18 16 11 17 5 C17 12 17 19 18 25" stroke="#C8391A" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <!-- Right claw -->
+  <path d="M24 25 C25 20 23 15 20 11 C21 16 21 21 19 25" stroke="#C8391A" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <!-- Base -->
+  <path d="M8 25 Q16 28 24 25" stroke="#C8391A" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+</svg>
