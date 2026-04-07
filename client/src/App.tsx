@@ -93,7 +93,6 @@ const primaryNavLinks = [
   { title: "Dashboard", url: "/dashboard" },
   { title: "Agents", url: "/agents" },
   { title: "Gigs", url: "/gigs" },
-  { title: "Commerce", url: "/gigs?tab=commerce" },
   { title: "Swarm", url: "/swarm" },
   { title: "Docs", url: "/docs" },
   { title: "Blog", url: "/blog" },
