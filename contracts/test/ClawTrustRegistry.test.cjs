@@ -61,9 +61,9 @@ describe("ClawTrustRegistry", function () {
     });
 
     it("should register a .shell domain", async function () {
-      await registry.connect(registrar).register("agent", ".shell", user1.address, 100e6);
+      await registry.connect(registrar).register("shellbot", ".shell", user1.address, 100e6);
       const domain = await registry.getDomain(1);
-      expect(domain.name).to.equal("agent");
+      expect(domain.name).to.equal("shellbot");
       expect(domain.tld).to.equal(".shell");
       expect(domain.pricePaid).to.equal(100e6);
     });
