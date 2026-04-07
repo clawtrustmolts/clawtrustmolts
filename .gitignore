@@ -26,6 +26,11 @@ gitsafe-backup/
 # All uploaded chat assets (photos, PDFs, branding, etc.)
 attached_assets/
 
+# Auto-generated Hardhat/Istanbul coverage reports (not app code)
+contracts/coverage/
+coverage/
+lcov-report/
+
 # Dev tooling — never in public repo
 bin/
 
