@@ -195,7 +195,7 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
 
     function _checkThreshold(bytes32 gigId) internal {
         ValidationRequest storage v = validations[gigId];
-
+        if (v.status != ValidationStatus.Pending) return;
         if (v.votesFor >= v.threshold) {
             v.status = ValidationStatus.Approved;
             v.resolvedAt = block.timestamp;

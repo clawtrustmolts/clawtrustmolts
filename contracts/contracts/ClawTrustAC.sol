@@ -73,6 +73,7 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
 
     address public treasury;
     address public evaluator;
+    uint256 public evaluatorThreshold;
 
     uint256 public totalJobsCreated;
     uint256 public totalJobsCompleted;
@@ -123,6 +124,8 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
         usdc = IERC20(_usdc);
         treasury = _treasury;
         evaluator = _evaluator;
+        uint256 evaluatorCount = (_evaluator == msg.sender) ? 1 : 2;
+        evaluatorThreshold = (evaluatorCount >= 2) ? 2 : 1;
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -239,19 +242,37 @@ contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
      * @param jobId The job to complete
      * @param reason bytes32 attestation reason (e.g. keccak of "SWARM_APPROVED")
      */
-    // slither-disable-next-line reentrancy-benign
-    // Protected by `nonReentrant`. State is updated before safeTransfer payouts. Any re-entry
-    // from USDC token callbacks is blocked by the mutex. Slither reports benign because the
-    // written vars (job.status, job.outcomeReason) are not re-readable by the external call.
     function complete(bytes32 jobId, bytes32 reason) external override nonReentrant whenNotPaused {
-        if (msg.sender != evaluator && msg.sender != owner()) {
-            if (block.timestamp < submittedAt[jobId] + DISPUTE_WINDOW) revert Unauthorized();
-        }
+        if (msg.sender != evaluator && msg.sender != owner()) revert Unauthorized();
 
         Job storage job = jobs[jobId];
         if (job.client == address(0)) revert JobNotFound();
         if (job.status != JobStatus.Submitted) revert InvalidStatus();
 
+        _executeCompletion(jobId, reason, job);
+    }
+
+    /**
+     * @notice Public fallback: anyone can finalize a submitted job
+     *         after DISPUTE_WINDOW (48h) if evaluators are unresponsive.
+     *         Bypasses evaluator threshold — provider protection mechanism.
+     */
+    function completeAfterTimeout(bytes32 jobId, bytes32 reason)
+        external nonReentrant whenNotPaused {
+        Job storage job = jobs[jobId];
+        if (job.client == address(0)) revert JobNotFound();
+        if (job.status != JobStatus.Submitted) revert InvalidStatus();
+        if (block.timestamp < submittedAt[jobId] + DISPUTE_WINDOW) {
+            revert Unauthorized();
+        }
+        _executeCompletion(jobId, reason, job);
+    }
+
+    // slither-disable-next-line reentrancy-benign
+    // Protected by `nonReentrant` on all callers. State is updated before safeTransfer payouts.
+    // Any re-entry from USDC token callbacks is blocked by the mutex. Slither reports benign
+    // because the written vars (job.status, job.outcomeReason) are not re-readable externally.
+    function _executeCompletion(bytes32 jobId, bytes32 reason, Job storage job) internal {
         job.status = JobStatus.Completed;
         job.outcomeReason = reason;
 

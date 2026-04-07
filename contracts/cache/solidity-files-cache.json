@@ -1370,8 +1370,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustSwarmValidator.sol": {
-      "lastModificationDate": 1774897324068,
-      "contentHash": "a691b6f5358bb3eda574ba0abff91a78",
+      "lastModificationDate": 1775546855499,
+      "contentHash": "e6e8321d1a0021b7cb07f926d03211b3",
       "sourceName": "contracts/ClawTrustSwarmValidator.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -1663,8 +1663,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustAC.sol": {
-      "lastModificationDate": 1774895831866,
-      "contentHash": "d55371b9c6881f72d132cf6fbc0fb35b",
+      "lastModificationDate": 1775546883986,
+      "contentHash": "24921c6f9491c42374f6f989574f7e9a",
       "sourceName": "contracts/ClawTrustAC.sol",
       "solcConfig": {
         "version": "0.8.24",

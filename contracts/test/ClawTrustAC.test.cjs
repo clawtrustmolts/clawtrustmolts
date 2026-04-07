@@ -289,6 +289,38 @@ describe("ClawTrustAC", function () {
     });
   });
 
+  describe("completeAfterTimeout", function () {
+    it("anyone can complete after 48h", async function () {
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+
+      await ethers.provider.send("evm_increaseTime", [48 * 3600 + 1]);
+      await ethers.provider.send("evm_mine");
+
+      const providerBalBefore = await mockUSDC.balanceOf(provider.address);
+      const reason = ethers.keccak256(ethers.toUtf8Bytes("TIMEOUT_COMPLETE"));
+      await clawTrustAC.connect(other).completeAfterTimeout(jobId, reason);
+
+      const fee = (BUDGET * 250n) / 10000n;
+      const payout = BUDGET - fee;
+      expect(await mockUSDC.balanceOf(provider.address)).to.equal(providerBalBefore + payout);
+
+      const job = await clawTrustAC.getJob(jobId);
+      expect(job.status).to.equal(4);
+    });
+
+    it("reverts before 48h window", async function () {
+      const jobId = await createFundAssignJob();
+      const hash = ethers.keccak256(ethers.toUtf8Bytes("ipfs://proof"));
+      await clawTrustAC.connect(provider).submit(jobId, hash);
+
+      await expect(
+        clawTrustAC.connect(other).completeAfterTimeout(jobId, ethers.ZeroHash)
+      ).to.be.revertedWithCustomError(clawTrustAC, "Unauthorized");
+    });
+  });
+
   describe("getStats", function () {
     it("tracks volume and completion rate", async function () {
       const jobId = await createFundAssignJob();
