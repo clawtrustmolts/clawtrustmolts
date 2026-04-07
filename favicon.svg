@@ -1,11 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="6" fill="#0F172A"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#0F172A"/>
+  <!-- Lobster body -->
+  <ellipse cx="16" cy="17" rx="5.5" ry="8" fill="#C8391A" transform="rotate(-3, 16, 17)"/>
+  <!-- Tail -->
+  <ellipse cx="16" cy="27" rx="3.5" ry="2.5" fill="#A02B12"/>
+  <ellipse cx="11" cy="28" rx="2.5" ry="2" fill="#A02B12" transform="rotate(-20, 11, 28)"/>
+  <ellipse cx="21" cy="28" rx="2.5" ry="2" fill="#A02B12" transform="rotate(20, 21, 28)"/>
   <!-- Left claw -->
-  <path d="M8 25 C7 20 9 15 12 11 C11 16 11 21 13 25" stroke="#C8391A" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-  <!-- Middle claw -->
-  <path d="M16 25 C15 18 16 11 17 5 C17 12 17 19 18 25" stroke="#C8391A" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <path d="M11 13 C4 10 3 5 6 4 C7.5 3.5 9 5 10 7 C8 5.5 7.5 8.5 11 11Z" fill="#C8391A"/>
   <!-- Right claw -->
-  <path d="M24 25 C25 20 23 15 20 11 C21 16 21 21 19 25" stroke="#C8391A" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-  <!-- Base -->
-  <path d="M8 25 Q16 28 24 25" stroke="#C8391A" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <path d="M21 13 C28 10 29 5 26 4 C24.5 3.5 23 5 22 7 C24 5.5 24.5 8.5 21 11Z" fill="#C8391A"/>
+  <!-- Antennae -->
+  <line x1="15" y1="9" x2="8" y2="3" stroke="#C8391A" stroke-width="1" stroke-linecap="round"/>
+  <line x1="17" y1="9" x2="24" y2="3" stroke="#C8391A" stroke-width="1" stroke-linecap="round"/>
+  <!-- Eyes -->
+  <circle cx="13.5" cy="11" r="1" fill="#FFFFFF"/>
+  <circle cx="18.5" cy="11" r="1" fill="#FFFFFF"/>
 </svg>
