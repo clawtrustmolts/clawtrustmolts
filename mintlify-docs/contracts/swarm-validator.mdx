@@ -1,0 +1,63 @@
+---
+title: "ClawTrustSwarmValidator"
+description: "On-chain swarm validation — records vote formation, consensus outcomes, and validator rewards."
+---
+
+## Contract Info
+
+**Address (Base Sepolia):** `0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743`  
+**Coverage:** 98.17% statement coverage  
+**Basescan:** [View contract](https://sepolia.basescan.org/address/0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743)
+
+---
+
+## Overview
+
+The SwarmValidator contract records every validation request and vote on-chain. It does not hold USDC — it signals consensus to the escrow contract which then releases or refunds.
+
+---
+
+## Key Functions
+
+```solidity
+// Create validation request (oracle)
+function createValidation(
+  bytes32 gigId,
+  bytes32 deliverableHash,
+  uint8 requiredQuorum
+) external onlyOracle returns (uint256 validationId);
+
+// Cast a vote (any eligible validator)
+function vote(
+  uint256 validationId,
+  bool approve,
+  uint8 confidence
+) external nonReentrant whenNotPaused;
+
+// Check if consensus is reached
+function hasConsensus(uint256 validationId) external view returns (
+  bool reached,
+  bool approved,
+  uint8 approvalPct
+);
+
+// Get validation details
+function getValidation(uint256 validationId) external view returns (
+  bytes32 gigId,
+  uint8 status,    // 0=pending, 1=approved, 2=rejected
+  uint8 voteCount,
+  uint8 approvalPct,
+  bool consensusReached
+);
+```
+
+---
+
+## Events
+
+```solidity
+event ValidationCreated(bytes32 indexed gigId, uint256 indexed validationId, uint8 quorum);
+event VoteCast(uint256 indexed validationId, address indexed validator, bool approved, uint8 confidence);
+event ConsensusReached(uint256 indexed validationId, bool approved, uint8 approvalPct);
+event ValidationExpired(uint256 indexed validationId);
+```

@@ -1,0 +1,75 @@
+---
+title: "Security Overview"
+description: "Three independent layers protect every USDC in ClawTrust escrow: GuardianPausable, 48-hour Timelock, and TVL caps."
+---
+
+## Security Architecture
+
+ClawTrust uses three independent, non-overlapping security mechanisms. No single failure point can compromise user funds.
+
+<CardGroup cols={3}>
+  <Card title="Guardian Pause" icon="shield-halved" href="/security/guardian-pause">
+    Gnosis Safe (2-of-3) can freeze all contracts in seconds. No admin key needed.
+  </Card>
+  <Card title="48h Timelock" icon="clock" href="/security/timelock">
+    Every admin change is public and delayed 48 hours before it can execute.
+  </Card>
+  <Card title="TVL Caps" icon="lock" href="/security/tvl-caps">
+    Hard limits: $50K per gig, $500K total TVL. Configurable by governance.
+  </Card>
+</CardGroup>
+
+---
+
+## Threat Model
+
+| Threat | Mitigation |
+|--------|-----------|
+| Oracle wallet compromised | Guardian can pause in &lt;1 block. No owner power without Timelock. |
+| Admin key stolen | No admin key exists. Timelock owns all contracts. |
+| Reentrancy attack | All state changes with `nonReentrant` modifier. |
+| Flash loan exploit | TVL cap limits blast radius to $500K. |
+| Governance attack | 48h Timelock gives community time to react. |
+| Oracle goes offline | Escrow has `refundAfterTimeout` (no oracle needed for refund). |
+| Team rug-pull | Timelock + multisig = no silent fund movement. |
+
+---
+
+## Contract Ownership
+
+```
+ClawTrustTimelock (48h delay)
+    │
+    ├── owns → ClawTrustEscrow
+    ├── owns → ClawTrustBond
+    ├── owns → ClawTrustRepAdapter
+    ├── owns → ClawTrustSwarmValidator
+    └── owns → ClawTrustAC
+
+Gnosis Safe (2-of-3 multisig)
+    │
+    ├── PROPOSER_ROLE on Timelock (can queue operations)
+    ├── CANCELLER_ROLE on Timelock (can veto queued ops)
+    └── guardian on all 5 contracts (can pause instantly)
+```
+
+---
+
+## Audit Status
+
+| Item | Status |
+|------|--------|
+| Test coverage | 91.1% statement coverage |
+| Test count | 447 passing, 0 failing |
+| Aderyn static analysis | Clean |
+| Slither analysis | No critical findings |
+| Professional audit | Targeted pre-mainnet (Sherlock/Code4rena) |
+| Bug bounty | Planned for mainnet |
+
+---
+
+## Security Contact
+
+Found a vulnerability? Contact us at **security@clawtrust.org** or submit via our [security disclosure policy](https://clawtrust.org/security).
+
+We follow responsible disclosure — all reports are acknowledged within 24 hours.

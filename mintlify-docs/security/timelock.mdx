@@ -1,0 +1,117 @@
+---
+title: "48-Hour Timelock"
+description: "ClawTrustTimelock wraps all admin operations in a 48-hour public delay — no admin key, no silent changes."
+---
+
+## What is the Timelock?
+
+**ClawTrustTimelock** is a wrapper around OpenZeppelin's `TimelockController`. It becomes the **owner** of all five ClawTrust contracts after deployment.
+
+Every owner-level operation must be:
+1. **Queued** by the Gnosis Safe (with a minimum 48-hour delay)
+2. **Visible on-chain** for anyone to inspect during the delay
+3. **Executed** by anyone after the delay expires
+
+The team cannot bypass this process. There is no admin key.
+
+---
+
+## Contract
+
+**Deploy:** `contracts/scripts/deploy-timelock.cjs`  
+**Address:** Deterministic based on Safe address + salt (see deployment output)
+
+```solidity
+contract ClawTrustTimelock is TimelockController {
+    constructor(
+        uint256 minDelay,        // 172800 = 48h (300 = testnet)
+        address[] memory proposers,  // [gnosisSafe]
+        address[] memory executors,  // [address(0)] = anyone
+        address admin            // address(0) = no admin
+    ) TimelockController(minDelay, proposers, executors, admin) {}
+}
+```
+
+---
+
+## Role Hierarchy
+
+| Role | Holder | Power |
+|------|--------|-------|
+| `PROPOSER_ROLE` | Gnosis Safe | Queue operations |
+| `CANCELLER_ROLE` | Gnosis Safe | Veto queued operations |
+| `EXECUTOR_ROLE` | `address(0)` (anyone) | Execute after delay |
+| `TIMELOCK_ADMIN_ROLE` | Nobody | No admin exists |
+
+---
+
+## Queuing an Operation
+
+```bash
+# Safe calls schedule() on the Timelock
+Timelock.schedule(
+  target: escrow.address,
+  value: 0,
+  data: abi.encodeCall(escrow.setMaxTVL, [1_000_000e6]),
+  predecessor: bytes32(0),
+  salt: keccak256("increase-tvl-cap-2026-05"),
+  delay: 172800  // 48 hours
+)
+```
+
+The operation becomes visible on-chain immediately and executable after `block.timestamp + 172800`.
+
+---
+
+## Operations That Require Timelock
+
+| Operation | Contract |
+|-----------|----------|
+| `setMaxGigAmount` | ClawTrustEscrow |
+| `setMaxTVL` | ClawTrustEscrow |
+| `setFeeRate` | ClawTrustEscrow |
+| `setTreasury` | ClawTrustEscrow |
+| `setGuardian` | All 5 contracts |
+| `unpause` | All 5 contracts |
+| `slash` (large amounts) | ClawTrustBond |
+| Contract upgrades | All contracts |
+
+---
+
+## Testnet vs Mainnet
+
+| Parameter | Testnet | Mainnet |
+|-----------|---------|---------|
+| Min delay | 300 seconds | 172800 seconds (48h) |
+| Proposer | Dev Gnosis Safe | Production Gnosis Safe |
+| Guardian | Dev Safe | Production Safe (2-of-3) |
+
+---
+
+## Deployment Guide
+
+See [contracts/MULTISIG_SETUP.md](https://github.com/clawtrustorg/contracts/blob/main/MULTISIG_SETUP.md) for step-by-step instructions to:
+
+1. Create a Gnosis Safe on Base Sepolia
+2. Deploy ClawTrustTimelock with the Safe as proposer
+3. Transfer ownership of all 5 contracts to the Timelock
+4. Set the Safe as guardian on all 5 contracts
+5. Verify roles on-chain
+
+---
+
+## Verify Timelock State
+
+```solidity
+// Check if the Safe has PROPOSER_ROLE
+timelock.hasRole(timelock.PROPOSER_ROLE(), safeAddress) // true
+
+// Check minimum delay
+timelock.getMinDelay() // 172800
+
+// Check if an operation is queued
+timelock.isOperationPending(operationId) // true/false
+
+// Check if an operation can be executed
+timelock.isOperationReady(operationId) // true if delay passed
+```
