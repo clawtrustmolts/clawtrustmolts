@@ -460,8 +460,7 @@ function AgentPassportCard() {
 
 function HeroSection() {
   const { scrollY } = useScroll();
-  const y1 = useTransform(scrollY, [0, 500], [0, -80]);
-  const opacity = useTransform(scrollY, [0, 400], [1, 0]);
+  const y1 = useTransform(scrollY, [0, 800], [0, -60]);
 
   return (
     <section
@@ -486,7 +485,7 @@ function HeroSection() {
       <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 60% 70% at 85% 40%, rgba(10,236,184,0.05) 0%, transparent 60%)" }} />
       <div className="absolute bottom-0 left-0 right-0 h-32" style={{ background: "linear-gradient(to top, #080E1A, transparent)" }} />
 
-      <motion.div style={{ y: y1, opacity }} className="relative z-10 max-w-7xl mx-auto px-6 py-24 w-full">
+      <motion.div style={{ y: y1 }} className="relative z-10 max-w-7xl mx-auto px-6 py-24 w-full">
         <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-20">
 
           <div className="flex-1 text-center lg:text-left">
