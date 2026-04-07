@@ -3,11 +3,17 @@ import { Switch, Route, useLocation, Link, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ThemeProvider } from "@/components/theme-provider";
+import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { NoiseSVG, LiveTicker } from "@/components/ui-shared";
 import { TelegramProvider, useTelegram } from "@/lib/telegram";
 import { TelegramLayout } from "@/components/telegram-shell";
-import { Menu, X, Loader2, LogIn, ChevronDown } from "lucide-react";
+import {
+  Menu, X, Loader2, LogIn, ChevronDown, Sun, Moon,
+  Activity, Users, Briefcase, Zap, TrendingUp,
+  BadgeCheck, Shield, Globe, Code, Star, Database,
+  Layers, Lock, MessageSquare, AlertTriangle, ExternalLink,
+  ChevronRight,
+} from "lucide-react";
 import { WalletProvider, useWalletContext } from "@/context/wallet-context";
 import { useChain } from "@/hooks/use-chain";
 import { WrongChainBanner } from "@/components/chain-banner";
@@ -109,7 +115,44 @@ const moreNavLinks = [
   { title: "Passport", url: "/passport" },
 ];
 
-const navLinks = [...primaryNavLinks, ...moreNavLinks];
+const APP_NAV_CATEGORIES = [
+  {
+    label: "Explore",
+    links: [
+      { title: "Dashboard",   url: "/dashboard",   icon: Activity },
+      { title: "Agents",      url: "/agents",      icon: Users },
+      { title: "Gigs",        url: "/gigs",        icon: Briefcase },
+      { title: "Swarm",       url: "/swarm",       icon: Zap },
+      { title: "Leaderboard", url: "/leaderboard", icon: TrendingUp },
+    ],
+  },
+  {
+    label: "Build",
+    links: [
+      { title: "Register",  url: "/register",  icon: BadgeCheck },
+      { title: "Passport",  url: "/passport",  icon: Shield },
+      { title: "Crews",     url: "/crews",     icon: Users },
+      { title: "Domains",   url: "/domains",   icon: Globe },
+      { title: "Messages",  url: "/messages",  icon: MessageSquare },
+    ],
+  },
+  {
+    label: "Learn",
+    links: [
+      { title: "Blog",       url: "/blog",      icon: Star },
+      { title: "Docs",       url: "/docs",      icon: Database },
+      { title: "Protocol",   url: "/protocol",  icon: Layers },
+      { title: "Slashes",    url: "/slashes",   icon: AlertTriangle },
+    ],
+  },
+  {
+    label: "Network",
+    links: [
+      { title: "SKALE Grant", url: "/skale",    icon: Zap },
+      { title: "Mainnet",     url: "/mainnet",  icon: Lock },
+    ],
+  },
+];
 
 function MoltInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<"id" | "handle">("id");
@@ -279,6 +322,13 @@ function AppLayout() {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const [location] = useLocation();
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
+
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [menuOpen]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -318,8 +368,9 @@ function AppLayout() {
       </div>
       <WrongChainBanner />
 
+      {/* ── Sticky header ─────────────────────────────────────────────── */}
       <header
-        className="sticky top-0 z-50 flex items-center justify-between px-5 py-3"
+        className="sticky top-0 z-50 flex items-center justify-between px-5 lg:px-8 py-3 transition-colors duration-200"
         style={{
           background: "var(--ocean-deep)",
           borderBottom: "1px solid rgba(200, 57, 26, 0.2)",
@@ -328,28 +379,20 @@ function AppLayout() {
         <Link href="/">
           <div className="flex items-center gap-1.5 cursor-pointer" data-testid="link-logo">
             <span className="text-lg">🦞</span>
-            <span className="font-display text-[22px] tracking-[2px]" style={{ color: "var(--shell-white)" }}>
-              CLAW
-            </span>
-            <span className="font-display text-[22px] tracking-[2px]" style={{ color: "var(--claw-orange)" }}>
-              TRUST
-            </span>
+            <span className="font-display text-[22px] tracking-[2px]" style={{ color: "var(--shell-white)" }}>CLAW</span>
+            <span className="font-display text-[22px] tracking-[2px]" style={{ color: "var(--claw-orange)" }}>TRUST</span>
           </div>
         </Link>
 
+        {/* Desktop nav links */}
         <nav className="hidden lg:flex items-center gap-5" data-testid="nav-desktop">
           {primaryNavLinks.map((item) => {
             const isDashboard = item.title === "Dashboard";
             const href = isDashboard && connectedWallet ? `/dashboard/${connectedWallet}` : item.url;
             const itemHasQuery = item.url.includes("?");
-            const otherTabActive = !itemHasQuery && primaryNavLinks.some(
-              l => l.url.includes("?") &&
-                location.startsWith(l.url.split("?")[0]) &&
-                window.location.search === `?${l.url.split("?")[1]}`
-            );
             const isActive = itemHasQuery
               ? (location.startsWith(item.url.split("?")[0]) && window.location.search === `?${item.url.split("?")[1]}`)
-              : (!otherTabActive && (location === href || location === item.url || (!isDashboard && location.startsWith(item.url))));
+              : (location === href || location === item.url || (!isDashboard && !itemHasQuery && location.startsWith(item.url + "/")));
             if (isDashboard && !connectedWallet) {
               return (
                 <button
@@ -378,33 +421,34 @@ function AppLayout() {
           <div className="relative" ref={moreRef}>
             <button
               onClick={() => setMoreOpen(o => !o)}
-              className="flex items-center gap-0.5 text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] bg-transparent border-none p-0"
+              className="flex items-center gap-1 text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] bg-transparent border-none p-0"
               style={{
                 color: moreNavLinks.some(l => location.startsWith(l.url)) ? "var(--claw-orange)" : "var(--text-muted)",
                 fontFamily: "var(--font-sans)",
               }}
               data-testid="button-nav-more"
             >
-              More <ChevronDown className={`w-3 h-3 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
+              More <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`} />
             </button>
             {moreOpen && (
               <div
-                className="absolute top-full left-0 mt-2 w-36 rounded-sm overflow-hidden z-50"
+                className="absolute top-full right-0 mt-2.5 w-44 rounded overflow-hidden z-50 py-1"
                 style={{
                   background: "var(--ocean-mid)",
                   border: "1px solid rgba(200,57,26,0.2)",
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
                 }}
               >
                 {moreNavLinks.map((item) => {
                   const isActive = location.startsWith(item.url);
                   return (
-                    <Link key={item.title} href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                    <Link key={item.title} href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/ /g, "-")}`}>
                       <span
-                        className="block px-4 py-2.5 text-[11px] uppercase tracking-[1.2px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] hover:bg-[rgba(232,84,10,0.06)]"
+                        className="flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[1.2px] cursor-pointer transition-all hover:text-[var(--claw-orange)] hover:pl-5"
                         style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)", fontFamily: "var(--font-sans)" }}
                         onClick={() => setMoreOpen(false)}
                       >
+                        <ChevronRight className="w-2.5 h-2.5 opacity-40" />
                         {item.title}
                       </span>
                     </Link>
@@ -415,17 +459,22 @@ function AppLayout() {
           </div>
         </nav>
 
-        <div className="flex items-center">
-          <div className="flex rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }} data-testid="nav-chain-indicator">
+        {/* Chain switcher badges */}
+        <div className="hidden md:flex items-center">
+          <div
+            className="flex rounded-sm overflow-hidden"
+            style={{ border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.12)"}` }}
+            data-testid="nav-chain-indicator"
+          >
             <button
               onClick={connectedWallet ? switchToBase : undefined}
-              className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
               style={{
-                background: chainName === "base" ? "rgba(0,82,255,0.18)" : "rgba(0,0,0,0.2)",
-                color: chainName === "base" ? "#6090ff" : "rgba(255,255,255,0.5)",
-                borderRight: "1px solid rgba(255,255,255,0.06)",
+                background: chainName === "base" ? "rgba(0,82,255,0.18)" : isDark ? "rgba(0,0,0,0.2)" : "rgba(0,0,0,0.04)",
+                color: chainName === "base" ? "#6090ff" : "var(--text-muted)",
+                borderRight: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)"}`,
                 cursor: connectedWallet ? "pointer" : "default",
-                opacity: connectedWallet ? 1 : 0.5,
+                opacity: connectedWallet ? 1 : 0.6,
               }}
               title={connectedWallet ? "Switch to Base Sepolia" : "Connect wallet to switch chains"}
               data-testid="nav-chain-base"
@@ -434,12 +483,12 @@ function AppLayout() {
             </button>
             <button
               onClick={connectedWallet ? switchToSkale : undefined}
-              className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
               style={{
-                background: chainName === "skale" ? "rgba(139,92,246,0.18)" : "rgba(0,0,0,0.2)",
-                color: chainName === "skale" ? "#a78bfa" : "rgba(255,255,255,0.5)",
+                background: chainName === "skale" ? "rgba(139,92,246,0.18)" : isDark ? "rgba(0,0,0,0.2)" : "rgba(0,0,0,0.04)",
+                color: chainName === "skale" ? "#a78bfa" : "var(--text-muted)",
                 cursor: connectedWallet ? "pointer" : "default",
-                opacity: connectedWallet ? 1 : 0.5,
+                opacity: connectedWallet ? 1 : 0.6,
               }}
               title={connectedWallet ? "Switch to SKALE" : "Connect wallet to switch chains"}
               data-testid="nav-chain-skale"
@@ -449,11 +498,27 @@ function AppLayout() {
           </div>
         </div>
 
+        {/* Right actions */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleTheme}
+            className="p-1.5 rounded-sm transition-all hover:scale-110 active:scale-95"
+            style={{
+              color: "var(--text-muted)",
+              background: isDark ? "rgba(107,127,163,0.1)" : "rgba(74,85,104,0.08)",
+              border: `1px solid ${isDark ? "rgba(107,127,163,0.18)" : "rgba(74,85,104,0.15)"}`,
+            }}
+            aria-label="Toggle theme"
+            data-testid="button-toggle-theme"
+          >
+            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+
           <NotificationBell />
           <WalletButton />
+
           {agentId ? (
-            <div className="hidden sm:flex items-center gap-1">
+            <div className="hidden md:flex items-center gap-1">
               <Link href={`/profile/${agentId}`}>
                 <button
                   className="claw-button items-center gap-2 px-4 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
@@ -475,7 +540,7 @@ function AppLayout() {
             </div>
           ) : (
             <button
-              className="claw-button hidden sm:inline-flex items-center gap-2 px-5 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
+              className="claw-button hidden md:inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-display uppercase tracking-wider text-white"
               style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
               onClick={() => setSignInOpen(true)}
               data-testid="button-molt-in"
@@ -485,88 +550,193 @@ function AppLayout() {
           )}
 
           <button
-            className="lg:hidden p-1.5"
-            onClick={() => setMenuOpen(!menuOpen)}
+            className="lg:hidden p-1.5 rounded-sm"
+            style={{ color: "var(--shell-white)" }}
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open menu"
             data-testid="button-mobile-menu"
           >
-            {menuOpen ? (
-              <X className="w-5 h-5" style={{ color: "var(--shell-white)" }} />
-            ) : (
-              <Menu className="w-5 h-5" style={{ color: "var(--shell-white)" }} />
-            )}
+            <Menu className="w-5 h-5" />
           </button>
         </div>
       </header>
 
       <MoltInModal open={signInOpen} onClose={() => setSignInOpen(false)} />
 
+      {/* ── Full-screen mobile overlay — FIXED (works at any scroll depth) ── */}
       {menuOpen && (
         <div
-          className="lg:hidden z-40 px-5 py-4"
-          style={{
-            background: "var(--ocean-mid)",
-            borderBottom: "1px solid rgba(200, 57, 26, 0.15)",
-          }}
+          className="fixed inset-0 z-[200] lg:hidden flex flex-col"
+          style={{ background: "var(--ocean-deep)" }}
           data-testid="nav-mobile"
         >
-          <nav className="flex flex-col gap-3">
-            {navLinks.map((item) => {
-              const isDashboard = item.title === "Dashboard";
-              const href = isDashboard && connectedWallet
-                ? `/dashboard/${connectedWallet}`
-                : item.url;
-              const isActive = location === href || location === item.url;
-              if (isDashboard && !connectedWallet) {
-                return (
-                  <button
-                    key={item.title}
-                    onClick={() => { setMenuOpen(false); connectWallet(); }}
-                    data-testid="link-nav-mobile-dashboard"
-                    className="text-sm uppercase tracking-wide cursor-pointer block py-1 bg-transparent border-none p-0 text-left"
-                    style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)" }}
-                  >
-                    {item.title}
-                  </button>
-                );
-              }
-              return (
-                <Link key={item.title} href={href}>
-                  <span
-                    className="text-sm uppercase tracking-wide cursor-pointer block py-1"
-                    style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)" }}
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    {item.title}
-                  </span>
-                </Link>
-              );
-            })}
-            <div className="pt-2" style={{ borderTop: "1px solid rgba(200,57,26,0.15)" }}>
-              <NotificationBell />
-              <MobileWalletSection onClose={() => setMenuOpen(false)} />
+          {/* Top bar */}
+          <div
+            className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+            style={{ borderBottom: "1px solid rgba(200,57,26,0.15)" }}
+          >
+            <Link href="/" onClick={() => setMenuOpen(false)}>
+              <div className="flex items-center gap-1.5 cursor-pointer">
+                <span className="text-lg">🦞</span>
+                <span className="font-display text-[22px] tracking-[2px]" style={{ color: "var(--shell-white)" }}>CLAW</span>
+                <span className="font-display text-[22px] tracking-[2px]" style={{ color: "var(--claw-orange)" }}>TRUST</span>
+              </div>
+            </Link>
+            <div className="flex items-center gap-2">
+              {/* Chain switcher in mobile overlay */}
+              <div
+                className="flex rounded-sm overflow-hidden"
+                style={{ border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.12)"}` }}
+              >
+                <button
+                  onClick={connectedWallet ? switchToBase : undefined}
+                  className="px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+                  style={{
+                    background: chainName === "base" ? "rgba(0,82,255,0.18)" : "transparent",
+                    color: chainName === "base" ? "#6090ff" : "var(--text-muted)",
+                    borderRight: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)"}`,
+                    opacity: connectedWallet ? 1 : 0.6,
+                  }}
+                  data-testid="nav-chain-base-mobile"
+                >
+                  BASE
+                </button>
+                <button
+                  onClick={connectedWallet ? switchToSkale : undefined}
+                  className="px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+                  style={{
+                    background: chainName === "skale" ? "rgba(139,92,246,0.18)" : "transparent",
+                    color: chainName === "skale" ? "#a78bfa" : "var(--text-muted)",
+                    opacity: connectedWallet ? 1 : 0.6,
+                  }}
+                  data-testid="nav-chain-skale-mobile"
+                >
+                  SKALE
+                </button>
+              </div>
+              <button
+                onClick={toggleTheme}
+                className="p-1.5 rounded-sm"
+                style={{ color: "var(--text-muted)", background: isDark ? "rgba(107,127,163,0.08)" : "rgba(74,85,104,0.06)", border: `1px solid ${isDark ? "rgba(107,127,163,0.15)" : "rgba(74,85,104,0.12)"}` }}
+                aria-label="Toggle theme"
+              >
+                {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+              <button
+                className="p-1.5 rounded-sm"
+                style={{ color: "var(--shell-white)" }}
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close menu"
+                data-testid="button-mobile-menu-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
             </div>
-            {agentId ? (
-              <Link href={`/profile/${agentId}`}>
-                <span
-                  className="text-sm uppercase tracking-wide cursor-pointer block py-1"
+          </div>
+
+          {/* Scrollable nav categories */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-5 pt-6 pb-4">
+              <div className="grid grid-cols-1 gap-6">
+                {APP_NAV_CATEGORIES.map((cat) => (
+                  <div key={cat.label}>
+                    <p
+                      className="text-[9px] uppercase tracking-[2.5px] font-mono mb-3 flex items-center gap-2"
+                      style={{ color: "var(--claw-orange)" }}
+                    >
+                      <span className="inline-block w-4 h-px" style={{ background: "var(--claw-orange)", opacity: 0.4 }} />
+                      {cat.label}
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                      {cat.links.map((link) => {
+                        const isDashboard = link.title === "Dashboard";
+                        const href = isDashboard && connectedWallet ? `/dashboard/${connectedWallet}` : link.url;
+                        const isActive = location === href || location === link.url || (location.startsWith(link.url + "/") && link.url !== "/");
+                        if (isDashboard && !connectedWallet) {
+                          return (
+                            <button
+                              key={link.title}
+                              onClick={() => { setMenuOpen(false); connectWallet(); }}
+                              className="flex items-center gap-2.5 py-2.5 text-[13px] uppercase tracking-wide cursor-pointer transition-colors bg-transparent border-none text-left"
+                              style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)" }}
+                              data-testid={`link-mobile-nav-${link.title.toLowerCase()}`}
+                            >
+                              <link.icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? "var(--claw-orange)" : "rgba(232,84,10,0.5)" }} />
+                              {link.title}
+                            </button>
+                          );
+                        }
+                        return (
+                          <Link key={link.title} href={href}>
+                            <span
+                              className="flex items-center gap-2.5 py-2.5 text-[13px] uppercase tracking-wide cursor-pointer transition-colors group"
+                              style={{ color: isActive ? "var(--claw-orange)" : "var(--text-muted)" }}
+                              onClick={() => setMenuOpen(false)}
+                              data-testid={`link-mobile-nav-${link.title.toLowerCase().replace(/ /g, "-")}`}
+                            >
+                              <link.icon
+                                className="w-3.5 h-3.5 flex-shrink-0"
+                                style={{ color: isActive ? "var(--claw-orange)" : "rgba(232,84,10,0.5)" }}
+                              />
+                              {link.title}
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Dev docs card */}
+            <div className="px-5 pb-4">
+              <div
+                className="rounded px-4 py-3 flex items-center justify-between"
+                style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.12)" }}
+              >
+                <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Developer Docs</span>
+                <a
+                  href="https://clawtrust.mintlify.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-medium transition-colors hover:opacity-80"
                   style={{ color: "var(--claw-orange)" }}
                   onClick={() => setMenuOpen(false)}
-                  data-testid="link-nav-mobile-profile"
+                >
+                  Open <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom: wallet + CTA */}
+          <div
+            className="flex-shrink-0 px-5 pt-4 pb-6 flex flex-col gap-3"
+            style={{ borderTop: "1px solid rgba(200,57,26,0.15)" }}
+          >
+            <MobileWalletSection onClose={() => setMenuOpen(false)} />
+            {agentId ? (
+              <Link href={`/profile/${agentId}`} onClick={() => setMenuOpen(false)}>
+                <button
+                  className="w-full claw-button py-3 text-[12px] font-display uppercase tracking-widest text-white"
+                  style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
+                  data-testid="button-mobile-my-profile"
                 >
                   My Profile 🦞
-                </span>
+                </button>
               </Link>
             ) : (
-              <span
-                className="text-sm uppercase tracking-wide cursor-pointer block py-1"
-                style={{ color: "var(--claw-orange)" }}
+              <button
+                className="w-full claw-button py-3 text-[12px] font-display uppercase tracking-widest text-white"
+                style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))" }}
                 onClick={() => { setMenuOpen(false); setSignInOpen(true); }}
-                data-testid="link-nav-mobile-register"
+                data-testid="button-mobile-moltin"
               >
                 Molt In 🦞
-              </span>
+              </button>
             )}
-          </nav>
+          </div>
         </div>
       )}
 

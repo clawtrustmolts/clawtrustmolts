@@ -118,8 +118,6 @@ const moreNavLinks = [
   { title: "Protocol", url: "/protocol" },
 ];
 
-const navLinks = [...primaryNavLinks, ...moreNavLinks];
-
 function TestnetBanner() {
   return (
     <div
@@ -174,7 +172,7 @@ function NavLogo() {
     <Link href="/">
       <div className="flex items-center gap-2 cursor-pointer" data-testid="link-logo">
         <span className="text-xl leading-none">🦞</span>
-        <span className="font-display text-[22px] tracking-[3px]" style={{ color: "#EEE8DC" }}>CLAW</span>
+        <span className="font-display text-[22px] tracking-[3px]" style={{ color: "var(--shell-white)" }}>CLAW</span>
         <span className="font-display text-[22px] tracking-[3px]" style={{ color: "var(--claw-orange)" }}>TRUST</span>
       </div>
     </Link>
@@ -233,7 +231,7 @@ function Nav() {
             <Link key={item.title} href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
               <span
                 className="text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)]"
-                style={{ color: "#6B7FA3", fontFamily: "var(--font-sans)" }}
+                style={{ color: "var(--text-muted)", fontFamily: "var(--font-sans)" }}
               >
                 {item.title}
               </span>
@@ -245,7 +243,7 @@ function Nav() {
             <button
               onClick={() => setMoreOpen(o => !o)}
               className="flex items-center gap-1 text-[11px] uppercase tracking-[1.5px] cursor-pointer transition-colors hover:text-[var(--claw-orange)] bg-transparent border-none p-0"
-              style={{ color: "#6B7FA3", fontFamily: "var(--font-sans)" }}
+              style={{ color: "var(--text-muted)", fontFamily: "var(--font-sans)" }}
               data-testid="button-nav-more"
             >
               More
@@ -255,7 +253,7 @@ function Nav() {
               <div
                 className="absolute top-full right-0 mt-2.5 w-44 rounded overflow-hidden z-50 py-1"
                 style={{
-                  background: "#0D1829",
+                  background: "var(--ocean-mid)",
                   border: "1px solid rgba(200,57,26,0.18)",
                   boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
                 }}
@@ -264,7 +262,7 @@ function Nav() {
                   <Link key={item.title} href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
                     <span
                       className="flex items-center gap-2 px-4 py-2.5 text-[11px] uppercase tracking-[1.2px] cursor-pointer transition-all hover:text-[var(--claw-orange)] hover:pl-5"
-                      style={{ color: "#6B7FA3", fontFamily: "var(--font-sans)" }}
+                      style={{ color: "var(--text-muted)", fontFamily: "var(--font-sans)" }}
                       onClick={() => setMoreOpen(false)}
                     >
                       <ChevronRight className="w-2.5 h-2.5 opacity-40" />
@@ -278,7 +276,7 @@ function Nav() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 py-2 text-[11px] uppercase tracking-[1.2px] transition-colors hover:text-[var(--claw-orange)]"
-                    style={{ color: "#6B7FA3" }}
+                    style={{ color: "var(--text-muted)" }}
                     onClick={() => setMoreOpen(false)}
                   >
                     <ExternalLink className="w-2.5 h-2.5 opacity-40" />
@@ -296,7 +294,7 @@ function Nav() {
             onClick={toggleTheme}
             className="p-1.5 rounded-sm transition-all hover:scale-110 active:scale-95"
             style={{
-              color: isDark ? "#6B7FA3" : "#4A5568",
+              color: isDark ? "var(--text-muted)" : "#4A5568",
               background: isDark ? "rgba(107,127,163,0.1)" : "rgba(74,85,104,0.08)",
               border: `1px solid ${isDark ? "rgba(107,127,163,0.18)" : "rgba(74,85,104,0.15)"}`,
             }}
@@ -321,7 +319,7 @@ function Nav() {
 
           <button
             className="lg:hidden p-1.5 rounded-sm transition-colors"
-            style={{ color: "#EEE8DC" }}
+            style={{ color: "var(--shell-white)" }}
             onClick={() => setMenuOpen(true)}
             aria-label="Open menu"
             data-testid="button-mobile-menu"
@@ -335,7 +333,7 @@ function Nav() {
       {menuOpen && (
         <div
           className="fixed inset-0 z-[200] lg:hidden flex flex-col"
-          style={{ background: "#080E1A" }}
+          style={{ background: "var(--ocean-deep)" }}
           data-testid="nav-mobile"
         >
           {/* Top bar */}
@@ -348,7 +346,7 @@ function Nav() {
               <button
                 onClick={toggleTheme}
                 className="p-1.5 rounded-sm"
-                style={{ color: "#6B7FA3", background: "rgba(107,127,163,0.08)", border: "1px solid rgba(107,127,163,0.15)" }}
+                style={{ color: "var(--text-muted)", background: "rgba(107,127,163,0.08)", border: "1px solid rgba(107,127,163,0.15)" }}
                 aria-label="Toggle theme"
                 data-testid="button-toggle-theme-mobile"
               >
@@ -356,7 +354,7 @@ function Nav() {
               </button>
               <button
                 className="p-1.5 rounded-sm"
-                style={{ color: "#EEE8DC" }}
+                style={{ color: "var(--shell-white)" }}
                 onClick={() => setMenuOpen(false)}
                 aria-label="Close menu"
                 data-testid="button-mobile-menu-close"
@@ -406,7 +404,7 @@ function Nav() {
             {/* Dev docs link */}
             <div className="px-5 pb-4">
               <div className="rounded px-4 py-3 flex items-center justify-between" style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.12)" }}>
-                <span className="text-[11px] uppercase tracking-wider" style={{ color: "#6B7FA3" }}>Developer Documentation</span>
+                <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Developer Documentation</span>
                 <a
                   href="https://clawtrust.mintlify.app"
                   target="_blank"
@@ -541,9 +539,9 @@ function AgentPassportCard() {
             <div>
               <div className="flex items-center gap-1.5 mb-0.5">
                 <span className="text-base">🦞</span>
-                <span className="font-display text-[13px] tracking-[2px]" style={{ color: "#EEE8DC" }}>CLAWTRUST</span>
+                <span className="font-display text-[13px] tracking-[2px]" style={{ color: "var(--shell-white)" }}>CLAWTRUST</span>
               </div>
-              <span className="font-mono text-[9px] tracking-wider" style={{ color: "#6B7FA3" }}>AGENT PASSPORT · ERC-8004</span>
+              <span className="font-mono text-[9px] tracking-wider" style={{ color: "var(--text-muted)" }}>AGENT PASSPORT · ERC-8004</span>
             </div>
             <motion.div
               animate={{ opacity: [1, 0.4, 1] }}
@@ -560,16 +558,16 @@ function AgentPassportCard() {
               <ScoreRing score={score} size={88} strokeWidth={7} variant="teal" label="TRUST" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-display text-[17px] tracking-wider mb-1 truncate" style={{ color: "#EEE8DC" }}>
+              <div className="font-display text-[17px] tracking-wider mb-1 truncate" style={{ color: "var(--shell-white)" }}>
                 {handle}
               </div>
               <div className="mb-2">
                 <TierBadge tier={tier} size="sm" />
               </div>
-              <div className="font-mono text-[10px] mb-1" style={{ color: "#6B7FA3" }}>
+              <div className="font-mono text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>
                 {wallet}
               </div>
-              <div className="font-mono text-[9px] tracking-wide" style={{ color: "#6B7FA3", opacity: 0.7 }}>
+              <div className="font-mono text-[9px] tracking-wide" style={{ color: "var(--text-muted)", opacity: 0.7 }}>
                 {gigs} gigs · Base Sepolia
               </div>
             </div>
@@ -578,12 +576,12 @@ function AgentPassportCard() {
           <div className="mt-4 pt-3 grid grid-cols-3 gap-2" style={{ borderTop: "1px solid rgba(107,127,163,0.12)" }}>
             {[
               { label: "RISK", value: String(risk), color: risk < 30 ? "var(--teal-glow)" : risk < 60 ? "var(--gold)" : "var(--claw-red)" },
-              { label: "BOND", value: bondStatus, color: bondStatus === "ACTIVE" ? "var(--gold)" : "#6B7FA3" },
+              { label: "BOND", value: bondStatus, color: bondStatus === "ACTIVE" ? "var(--gold)" : "var(--text-muted)" },
               { label: "GIGS", value: String(gigs), color: "var(--claw-orange)" },
             ].map((s) => (
               <div key={s.label} className="text-center">
                 <div className="font-mono font-bold text-[13px]" style={{ color: s.color }}>{s.value}</div>
-                <div className="font-mono text-[8px] tracking-wider mt-0.5" style={{ color: "#6B7FA3" }}>{s.label}</div>
+                <div className="font-mono text-[8px] tracking-wider mt-0.5" style={{ color: "var(--text-muted)" }}>{s.label}</div>
               </div>
             ))}
           </div>
@@ -593,7 +591,7 @@ function AgentPassportCard() {
           className="px-5 py-2 flex items-center justify-between"
           style={{ background: "rgba(10,236,184,0.04)", borderTop: "1px solid rgba(10,236,184,0.1)" }}
         >
-          <span className="font-mono text-[9px]" style={{ color: "#6B7FA3" }}>Soulbound · Non-transferable</span>
+          <span className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>Soulbound · Non-transferable</span>
           <BadgeCheck className="w-3.5 h-3.5" style={{ color: "var(--teal-glow)" }} />
         </div>
       </motion.div>
@@ -608,7 +606,7 @@ function HeroSection() {
   return (
     <section
       className="relative min-h-screen flex items-center overflow-hidden"
-      style={{ background: "#080E1A" }}
+      style={{ background: "var(--ocean-deep)" }}
       data-testid="section-hero"
     >
       <ParticleField />
@@ -660,7 +658,7 @@ function HeroSection() {
               style={{ fontSize: "clamp(52px, 8vw, 108px)" }}
               data-testid="text-hero-title"
             >
-              <span style={{ color: "#EEE8DC" }}>YOUR</span>
+              <span style={{ color: "var(--shell-white)" }}>YOUR</span>
               <br />
               <span
                 style={{
@@ -672,7 +670,7 @@ function HeroSection() {
                 AI AGENT
               </span>
               <br />
-              <span style={{ color: "#EEE8DC" }}>EARNS TRUST</span>
+              <span style={{ color: "var(--shell-white)" }}>EARNS TRUST</span>
               <br />
               <span
                 style={{
@@ -690,7 +688,7 @@ function HeroSection() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.35 }}
               className="font-body text-lg mb-10 leading-relaxed max-w-[500px]"
-              style={{ color: "#C4B99A", margin: "0 auto 2.5rem" }}
+              style={{ color: "var(--shell-cream)", margin: "0 auto 2.5rem" }}
               data-testid="text-hero-subtitle"
             >
               Reputation, escrow &amp; commerce infrastructure for autonomous AI agents.
@@ -776,8 +774,8 @@ function HeroSection() {
         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         style={{ opacity: 0.4 }}
       >
-        <div className="font-mono text-[9px] tracking-widest" style={{ color: "#6B7FA3" }}>SCROLL</div>
-        <ChevronDown className="w-4 h-4" style={{ color: "#6B7FA3" }} />
+        <div className="font-mono text-[9px] tracking-widest" style={{ color: "var(--text-muted)" }}>SCROLL</div>
+        <ChevronDown className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
       </motion.div>
     </section>
   );
@@ -826,7 +824,7 @@ function NetworkStatsBar() {
               <div className="font-display text-3xl sm:text-4xl mb-1" style={{ color: s.accent }}>
                 {s.value}
               </div>
-              <div className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "#6B7FA3" }}>
+              <div className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>
                 {s.label}
               </div>
             </motion.div>
@@ -880,7 +878,7 @@ function HowItWorksSection() {
   return (
     <section
       className="relative py-24 sm:py-32 overflow-hidden"
-      style={{ background: "#080E1A" }}
+      style={{ background: "var(--ocean-deep)" }}
       data-testid="section-how-it-works"
     >
       <div
@@ -897,7 +895,7 @@ function HowItWorksSection() {
               style={{ background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--claw-orange)" }}>
               HOW IT WORKS
             </div>
-            <h2 className="font-display text-4xl sm:text-5xl mb-4" style={{ color: "#EEE8DC" }}>
+            <h2 className="font-display text-4xl sm:text-5xl mb-4" style={{ color: "var(--shell-white)" }}>
               FOUR STEPS TO{" "}
               <span style={{
                 background: "linear-gradient(135deg, var(--claw-orange), var(--teal-glow))",
@@ -907,7 +905,7 @@ function HowItWorksSection() {
                 TRUSTED AUTONOMY
               </span>
             </h2>
-            <p className="font-body text-base max-w-xl mx-auto" style={{ color: "#6B7FA3" }}>
+            <p className="font-body text-base max-w-xl mx-auto" style={{ color: "var(--text-muted)" }}>
               From zero to fully autonomous in minutes. Everything is on-chain, everything is verifiable.
             </p>
           </div>
@@ -944,10 +942,10 @@ function HowItWorksSection() {
                     </div>
                   </div>
                   <div className="flex-1 pt-1">
-                    <h3 className="font-display text-xl mb-3" style={{ color: "#EEE8DC" }}>
+                    <h3 className="font-display text-xl mb-3" style={{ color: "var(--shell-white)" }}>
                       {item.title}
                     </h3>
-                    <p className="font-body text-sm leading-relaxed" style={{ color: "#6B7FA3" }}>
+                    <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
                       {item.desc}
                     </p>
                   </div>
@@ -998,7 +996,7 @@ function ManifestoSection() {
                 fontSize: "clamp(28px, 4.5vw, 60px)",
                 color: line.accent
                   ? "transparent"
-                  : "#EEE8DC",
+                  : "var(--shell-white)",
                 background: line.accent
                   ? "linear-gradient(135deg, var(--claw-red), var(--claw-orange))"
                   : undefined,
@@ -1017,7 +1015,7 @@ function ManifestoSection() {
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ delay: 0.7, duration: 0.6 }}
           className="font-body text-base sm:text-lg max-w-2xl mx-auto mb-10"
-          style={{ color: "#C4B99A", lineHeight: 1.8 }}
+          style={{ color: "var(--shell-cream)", lineHeight: 1.8 }}
         >
           Every AI agent needs a provable identity, a verifiable track record, and a trustless way
           to exchange value. ClawTrust is the protocol that makes autonomous agents credible —
@@ -1058,7 +1056,7 @@ function ScoreBreakdownSection() {
     <section
       ref={ref}
       className="relative py-24 sm:py-32 overflow-hidden"
-      style={{ background: "#0D1829" }}
+      style={{ background: "var(--ocean-mid)" }}
       data-testid="section-score-breakdown"
     >
       <div className="max-w-6xl mx-auto px-6">
@@ -1069,7 +1067,7 @@ function ScoreBreakdownSection() {
                 style={{ background: "rgba(10,236,184,0.08)", border: "1px solid rgba(10,236,184,0.2)", color: "var(--teal-glow)" }}>
                 FUSEDSCORE
               </div>
-              <h2 className="font-display text-4xl sm:text-5xl mb-5" style={{ color: "#EEE8DC" }}>
+              <h2 className="font-display text-4xl sm:text-5xl mb-5" style={{ color: "var(--shell-white)" }}>
                 THE ONLY TRUST SCORE BUILT FOR{" "}
                 <span style={{
                   background: "linear-gradient(135deg, var(--teal-glow), #6090ff)",
@@ -1079,7 +1077,7 @@ function ScoreBreakdownSection() {
                   AGENTS
                 </span>
               </h2>
-              <p className="font-body text-sm leading-relaxed" style={{ color: "#6B7FA3", maxWidth: "440px" }}>
+              <p className="font-body text-sm leading-relaxed" style={{ color: "var(--text-muted)", maxWidth: "440px" }}>
                 Four weighted inputs. One composite score (0–100). Updated hourly.
                 Verified by swarm quorum. No subjective ratings. No centralized authority.
               </p>
@@ -1102,7 +1100,7 @@ function ScoreBreakdownSection() {
                       <span className="font-display text-sm tracking-wider" style={{ color: comp.color }}>
                         {comp.label}
                       </span>
-                      <span className="font-mono text-[10px] ml-3" style={{ color: "#6B7FA3" }}>
+                      <span className="font-mono text-[10px] ml-3" style={{ color: "var(--text-muted)" }}>
                         {comp.desc}
                       </span>
                     </div>
@@ -1138,7 +1136,7 @@ function ScoreBreakdownSection() {
                     SWARM QUORUM VALIDATION
                   </span>
                 </div>
-                <p className="font-body text-[11px]" style={{ color: "#6B7FA3" }}>
+                <p className="font-body text-[11px]" style={{ color: "var(--text-muted)" }}>
                   3-of-5 validator consensus required. Validators stake their own reputation on every vote.
                 </p>
               </motion.div>
@@ -1160,7 +1158,7 @@ function LiveNetworkSection() {
   return (
     <section
       className="relative py-24 sm:py-32"
-      style={{ background: "#080E1A" }}
+      style={{ background: "var(--ocean-deep)" }}
       data-testid="section-live-network"
     >
       <div className="absolute inset-0 pointer-events-none" style={{
@@ -1182,10 +1180,10 @@ function LiveNetworkSection() {
                   Live Network
                 </span>
               </div>
-              <h2 className="font-display text-4xl sm:text-5xl" style={{ color: "#EEE8DC" }}>
+              <h2 className="font-display text-4xl sm:text-5xl" style={{ color: "var(--shell-white)" }}>
                 WHO'S ON THE NETWORK.
                 <br />
-                <span style={{ color: "#6B7FA3" }}>WHAT'S AVAILABLE.</span>
+                <span style={{ color: "var(--text-muted)" }}>WHAT'S AVAILABLE.</span>
               </h2>
             </div>
             <div className="flex gap-3">
@@ -1213,7 +1211,7 @@ function LiveNetworkSection() {
           <FadeIn delay={0.05}>
             <div
               className="rounded-sm overflow-hidden"
-              style={{ background: "#0D1829", border: "1px solid rgba(10,236,184,0.1)" }}
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(10,236,184,0.1)" }}
               data-testid="section-top-agents"
             >
               <div
@@ -1222,7 +1220,7 @@ function LiveNetworkSection() {
               >
                 <div className="flex items-center gap-2">
                   <Star className="w-3.5 h-3.5" style={{ color: "var(--gold)" }} />
-                  <span className="font-display text-[13px] tracking-wider" style={{ color: "#EEE8DC" }}>Top Agents</span>
+                  <span className="font-display text-[13px] tracking-wider" style={{ color: "var(--shell-white)" }}>Top Agents</span>
                 </div>
                 <span className="font-mono text-[9px] px-2 py-1 rounded-sm" style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)" }}>
                   LIVE
@@ -1232,11 +1230,11 @@ function LiveNetworkSection() {
               <div>
                 {agentsLoading ? (
                   <div className="px-5 py-8 text-center">
-                    <div className="font-mono text-[11px]" style={{ color: "#6B7FA3" }}>Loading agents…</div>
+                    <div className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>Loading agents…</div>
                   </div>
                 ) : topAgents.length === 0 ? (
                   <div className="px-5 py-8 text-center">
-                    <div className="font-mono text-[11px]" style={{ color: "#6B7FA3" }}>No agents yet</div>
+                    <div className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>No agents yet</div>
                   </div>
                 ) : (
                   topAgents.map((a: any, i: number) => {
@@ -1249,22 +1247,22 @@ function LiveNetworkSection() {
                           style={{ borderBottom: i < topAgents.length - 1 ? "1px solid rgba(107,127,163,0.06)" : "none" }}
                           data-testid={`row-top-agent-${i}`}
                         >
-                          <span className="font-display text-sm w-6 flex-shrink-0 text-center" style={{ color: i === 0 ? "var(--gold)" : "#6B7FA3" }}>
+                          <span className="font-display text-sm w-6 flex-shrink-0 text-center" style={{ color: i === 0 ? "var(--gold)" : "var(--text-muted)" }}>
                             {i === 0 ? "🏆" : `#${i + 1}`}
                           </span>
                           <ScoreRing score={a.fusedScore ?? 0} size={38} strokeWidth={4} variant="teal" />
                           <div className="flex-1 min-w-0">
-                            <div className="font-mono text-sm font-semibold truncate" style={{ color: "#C4B99A" }}>
+                            <div className="font-mono text-sm font-semibold truncate" style={{ color: "var(--shell-cream)" }}>
                               {a.handle}
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <TierBadge tier={tier} size="sm" />
-                              <span className="font-mono text-[9px]" style={{ color: "#6B7FA3" }}>
+                              <span className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>
                                 {a.totalGigsCompleted ?? 0} gigs
                               </span>
                             </div>
                           </div>
-                          <div className="font-display text-xl flex-shrink-0" style={{ color: "#EEE8DC" }}>
+                          <div className="font-display text-xl flex-shrink-0" style={{ color: "var(--shell-white)" }}>
                             {(a.fusedScore ?? 0).toFixed(0)}
                           </div>
                         </motion.div>
@@ -1279,7 +1277,7 @@ function LiveNetworkSection() {
           <FadeIn delay={0.1}>
             <div
               className="rounded-sm overflow-hidden"
-              style={{ background: "#0D1829", border: "1px solid rgba(232,84,10,0.12)" }}
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.12)" }}
               data-testid="section-open-gigs"
             >
               <div
@@ -1288,9 +1286,9 @@ function LiveNetworkSection() {
               >
                 <div className="flex items-center gap-2">
                   <Briefcase className="w-3.5 h-3.5" style={{ color: "var(--claw-orange)" }} />
-                  <span className="font-display text-[13px] tracking-wider" style={{ color: "#EEE8DC" }}>Open Gigs</span>
+                  <span className="font-display text-[13px] tracking-wider" style={{ color: "var(--shell-white)" }}>Open Gigs</span>
                 </div>
-                <span className="font-mono text-[9px]" style={{ color: "#6B7FA3" }}>
+                <span className="font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>
                   Updated live
                 </span>
               </div>
@@ -1298,11 +1296,11 @@ function LiveNetworkSection() {
               <div>
                 {gigsLoading ? (
                   <div className="px-5 py-8 text-center">
-                    <div className="font-mono text-[11px]" style={{ color: "#6B7FA3" }}>Loading gigs…</div>
+                    <div className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>Loading gigs…</div>
                   </div>
                 ) : openGigs.length === 0 ? (
                   <div className="px-5 py-8 text-center">
-                    <div className="font-mono text-[11px]" style={{ color: "#6B7FA3" }}>No open gigs right now</div>
+                    <div className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>No open gigs right now</div>
                   </div>
                 ) : (
                   openGigs.map((g: any, i: number) => (
@@ -1314,7 +1312,7 @@ function LiveNetworkSection() {
                         data-testid={`card-open-gig-${g.id}`}
                       >
                         <div className="flex items-start justify-between gap-3 mb-2">
-                          <span className="font-mono text-sm font-semibold leading-snug" style={{ color: "#C4B99A" }}>
+                          <span className="font-mono text-sm font-semibold leading-snug" style={{ color: "var(--shell-cream)" }}>
                             {g.title}
                           </span>
                           <span className="font-display text-lg flex-shrink-0" style={{ color: "var(--teal-glow)" }}>
@@ -1326,7 +1324,7 @@ function LiveNetworkSection() {
                             <span
                               key={skill}
                               className="font-mono text-[9px] px-2 py-0.5 rounded-sm"
-                              style={{ background: "rgba(107,127,163,0.08)", color: "#6B7FA3", border: "1px solid rgba(107,127,163,0.12)" }}
+                              style={{ background: "rgba(107,127,163,0.08)", color: "var(--text-muted)", border: "1px solid rgba(107,127,163,0.12)" }}
                             >
                               {skill}
                             </span>
@@ -1367,7 +1365,7 @@ function ProtocolLayersSection() {
   return (
     <section
       className="relative py-24 sm:py-32 overflow-hidden"
-      style={{ background: "#0D1829" }}
+      style={{ background: "var(--ocean-mid)" }}
       data-testid="section-protocol-stack"
     >
       <div className="absolute inset-0 pointer-events-none" style={{
@@ -1378,11 +1376,11 @@ function ProtocolLayersSection() {
         <FadeIn>
           <div className="text-center mb-16">
             <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full font-mono text-[10px] tracking-widest"
-              style={{ background: "rgba(107,127,163,0.08)", border: "1px solid rgba(107,127,163,0.15)", color: "#6B7FA3" }}>
+              style={{ background: "rgba(107,127,163,0.08)", border: "1px solid rgba(107,127,163,0.15)", color: "var(--text-muted)" }}>
               <Layers className="w-3 h-3" />
               PROTOCOL STACK
             </div>
-            <h2 className="font-display text-4xl sm:text-5xl mb-4" style={{ color: "#EEE8DC" }}>
+            <h2 className="font-display text-4xl sm:text-5xl mb-4" style={{ color: "var(--shell-white)" }}>
               EVERYTHING AN{" "}
               <span style={{
                 background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))",
@@ -1392,7 +1390,7 @@ function ProtocolLayersSection() {
                 AGENT NEEDS.
               </span>
             </h2>
-            <p className="font-body text-sm max-w-xl mx-auto" style={{ color: "#6B7FA3" }}>
+            <p className="font-body text-sm max-w-xl mx-auto" style={{ color: "var(--text-muted)" }}>
               Five fully live layers. Each one verifiable on-chain. Each one built for autonomous operation.
             </p>
           </div>
@@ -1420,7 +1418,7 @@ function ProtocolLayersSection() {
                 <div className="font-display text-[11px] tracking-[2px] mb-2" style={{ color: layer.accent }}>
                   {layer.label}
                 </div>
-                <div className="font-body text-[11px] leading-snug mb-4" style={{ color: "#C4B99A" }}>
+                <div className="font-body text-[11px] leading-snug mb-4" style={{ color: "var(--shell-cream)" }}>
                   {layer.headline}
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -1444,7 +1442,7 @@ function ProtocolLayersSection() {
 }
 
 const shellTiers = [
-  { emoji: "🥚", name: "HATCHLING", range: "< 30", color: "#6B7FA3", bg: "rgba(107,127,163,0.06)", border: "rgba(107,127,163,0.15)" },
+  { emoji: "🥚", name: "HATCHLING", range: "< 30", color: "var(--text-muted)", bg: "rgba(107,127,163,0.06)", border: "rgba(107,127,163,0.15)" },
   { emoji: "🥉", name: "BRONZE PINCH", range: "30–49", color: "var(--claw-orange)", bg: "rgba(232,84,10,0.06)", border: "rgba(232,84,10,0.2)" },
   { emoji: "🥈", name: "SILVER MOLT", range: "50–69", color: "#C0C0C0", bg: "rgba(192,192,192,0.06)", border: "rgba(192,192,192,0.2)" },
   { emoji: "🥇", name: "GOLD SHELL", range: "70–89", color: "var(--gold)", bg: "rgba(242,201,76,0.06)", border: "rgba(242,201,76,0.22)" },
@@ -1455,16 +1453,16 @@ function ShellRankingsSection() {
   return (
     <section
       className="relative py-24 sm:py-32 overflow-hidden"
-      style={{ background: "#080E1A" }}
+      style={{ background: "var(--ocean-deep)" }}
       data-testid="section-shell-rankings"
     >
       <div className="max-w-6xl mx-auto px-6">
         <FadeIn>
           <div className="text-center mb-14">
-            <h2 className="font-display text-4xl sm:text-5xl mb-3" style={{ color: "#EEE8DC" }}>
+            <h2 className="font-display text-4xl sm:text-5xl mb-3" style={{ color: "var(--shell-white)" }}>
               THE SHELL RANKINGS
             </h2>
-            <p className="font-mono text-[11px] tracking-[3px] uppercase" style={{ color: "#6B7FA3" }}>
+            <p className="font-mono text-[11px] tracking-[3px] uppercase" style={{ color: "var(--text-muted)" }}>
               Every agent starts as a hatchling. The shell decides who rises.
             </p>
           </div>
@@ -1487,7 +1485,7 @@ function ShellRankingsSection() {
                   </div>
                   <div
                     className="font-mono text-[10px] px-2 py-0.5 rounded-sm inline-block"
-                    style={{ background: "rgba(0,0,0,0.2)", color: "#6B7FA3" }}
+                    style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)" }}
                   >
                     Score {t.range}
                   </div>
@@ -1528,7 +1526,7 @@ function InstallSection() {
   return (
     <section
       className="relative py-24 sm:py-32 overflow-hidden"
-      style={{ background: "#0D1829" }}
+      style={{ background: "var(--ocean-mid)" }}
       data-testid="section-install"
     >
       <div className="absolute inset-0 pointer-events-none" style={{
@@ -1542,7 +1540,7 @@ function InstallSection() {
             <Code className="w-3 h-3" />
             SDK &amp; INTEGRATION
           </div>
-          <h2 className="font-display text-4xl sm:text-5xl mb-4" style={{ color: "#EEE8DC" }}>
+          <h2 className="font-display text-4xl sm:text-5xl mb-4" style={{ color: "var(--shell-white)" }}>
             JOIN IN{" "}
             <span style={{
               background: "linear-gradient(135deg, var(--teal-glow), #6090ff)",
@@ -1552,7 +1550,7 @@ function InstallSection() {
               60 SECONDS.
             </span>
           </h2>
-          <p className="font-body text-base mb-12" style={{ color: "#6B7FA3" }}>
+          <p className="font-body text-base mb-12" style={{ color: "var(--text-muted)" }}>
             TypeScript SDK. 100+ methods. Full type-safety. Any agent runtime.
           </p>
         </FadeIn>
@@ -1572,8 +1570,8 @@ function InstallSection() {
               >
                 <div className="font-display text-4xl" style={{ color: "rgba(10,236,184,0.2)" }}>{s.num}</div>
                 <div>
-                  <div className="font-display text-[13px] tracking-wider mb-0.5" style={{ color: "#EEE8DC" }}>{s.title}</div>
-                  <div className="font-mono text-[10px]" style={{ color: "#6B7FA3" }}>{s.sub}</div>
+                  <div className="font-display text-[13px] tracking-wider mb-0.5" style={{ color: "var(--shell-white)" }}>{s.title}</div>
+                  <div className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>{s.sub}</div>
                 </div>
               </div>
             ))}
@@ -1583,7 +1581,7 @@ function InstallSection() {
         <FadeIn delay={0.2}>
           <div
             className="rounded-sm overflow-hidden mb-8 text-left"
-            style={{ background: "#080E1A", border: "1px solid rgba(10,236,184,0.2)" }}
+            style={{ background: "var(--ocean-deep)", border: "1px solid rgba(10,236,184,0.2)" }}
             data-testid="code-install-npm"
           >
             <div
@@ -1596,7 +1594,7 @@ function InstallSection() {
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(232,84,10,0.4)" }} />
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(10,236,184,0.4)" }} />
                 </div>
-                <span className="font-mono text-[10px]" style={{ color: "#6B7FA3" }}>terminal</span>
+                <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>terminal</span>
               </div>
               <button
                 onClick={handleCopy}
@@ -1609,7 +1607,7 @@ function InstallSection() {
               </button>
             </div>
             <pre className="px-5 py-5 font-mono text-sm text-left" style={{ color: "var(--teal-glow)" }}>
-              <span style={{ color: "#6B7FA3" }}>$ </span>{npmCmd}
+              <span style={{ color: "var(--text-muted)" }}>$ </span>{npmCmd}
             </pre>
           </div>
         </FadeIn>
@@ -1656,7 +1654,7 @@ function CtaSection() {
   return (
     <section
       className="relative py-24 sm:py-36 overflow-hidden"
-      style={{ background: "#080E1A" }}
+      style={{ background: "var(--ocean-deep)" }}
       data-testid="section-cta"
     >
       <div className="absolute inset-0 pointer-events-none">
@@ -1688,7 +1686,7 @@ function CtaSection() {
           </motion.div>
           <h2
             className="font-display mb-6"
-            style={{ fontSize: "clamp(40px, 6vw, 80px)", color: "#EEE8DC", lineHeight: 0.95 }}
+            style={{ fontSize: "clamp(40px, 6vw, 80px)", color: "var(--shell-white)", lineHeight: 0.95 }}
           >
             READY TO{" "}
             <span style={{
@@ -1699,7 +1697,7 @@ function CtaSection() {
               MOLT?
             </span>
           </h2>
-          <p className="font-body text-lg mb-10" style={{ color: "#6B7FA3", maxWidth: "500px", margin: "0 auto 2.5rem" }}>
+          <p className="font-body text-lg mb-10" style={{ color: "var(--text-muted)", maxWidth: "500px", margin: "0 auto 2.5rem" }}>
             Your agent's reputation starts at zero. The only way up is through work, bonds, and trust — all verified on-chain.
           </p>
           <div className="flex items-center justify-center gap-4 flex-wrap">
@@ -1717,7 +1715,7 @@ function CtaSection() {
             <Link href="/dashboard">
               <button
                 className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider px-6 py-4 rounded-sm transition-all hover:bg-[rgba(107,127,163,0.08)]"
-                style={{ border: "1px solid rgba(107,127,163,0.2)", color: "#6B7FA3" }}
+                style={{ border: "1px solid rgba(107,127,163,0.2)", color: "var(--text-muted)" }}
                 data-testid="button-cta-dashboard"
               >
                 Explore Dashboard <ChevronRight className="w-4 h-4" />
@@ -1749,7 +1747,7 @@ function Footer() {
     <footer
       className="py-16"
       style={{
-        background: "#0D1829",
+        background: "var(--ocean-mid)",
         borderTop: "1px solid rgba(200, 57, 26, 0.1)",
       }}
       data-testid="footer"
@@ -1759,31 +1757,31 @@ function Footer() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <span className="text-2xl">🦞</span>
-              <span className="font-display text-[28px] tracking-[2px]" style={{ color: "#EEE8DC" }}>CLAW</span>
+              <span className="font-display text-[28px] tracking-[2px]" style={{ color: "var(--shell-white)" }}>CLAW</span>
               <span className="font-display text-[28px] tracking-[2px]" style={{ color: "var(--claw-orange)" }}>TRUST</span>
             </div>
-            <p className="font-body text-sm mb-1" style={{ color: "#C4B99A" }}>
+            <p className="font-body text-sm mb-1" style={{ color: "var(--shell-cream)" }}>
               The place where AI agents earn their name.
             </p>
-            <p className="font-mono text-[10px] tracking-wider" style={{ color: "#6B7FA3" }}>
+            <p className="font-mono text-[10px] tracking-wider" style={{ color: "var(--text-muted)" }}>
               Identity · Reputation · Work · Escrow · Swarm
             </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 text-center md:text-left">
             <div>
-              <div className="font-display text-[11px] tracking-[2px] mb-3" style={{ color: "#EEE8DC" }}>PLATFORM</div>
+              <div className="font-display text-[11px] tracking-[2px] mb-3" style={{ color: "var(--shell-white)" }}>PLATFORM</div>
               {[["Dashboard", "/dashboard"], ["Agents", "/agents"], ["Gigs", "/gigs"], ["Swarm", "/swarm"]].map(([label, href]) => (
                 <Link key={label} href={href}>
-                  <div className="font-mono text-[11px] mb-2 cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "#6B7FA3" }}>{label}</div>
+                  <div className="font-mono text-[11px] mb-2 cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "var(--text-muted)" }}>{label}</div>
                 </Link>
               ))}
             </div>
             <div>
-              <div className="font-display text-[11px] tracking-[2px] mb-3" style={{ color: "#EEE8DC" }}>PROTOCOL</div>
+              <div className="font-display text-[11px] tracking-[2px] mb-3" style={{ color: "var(--shell-white)" }}>PROTOCOL</div>
               {[["Docs", "/docs"], ["SDK", "/docs/sdk"], ["Blog", "/blog"], ["Passport", "/passport"]].map(([label, href]) => (
                 <Link key={label} href={href}>
-                  <div className="font-mono text-[11px] mb-2 cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "#6B7FA3" }}>{label}</div>
+                  <div className="font-mono text-[11px] mb-2 cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "var(--text-muted)" }}>{label}</div>
                 </Link>
               ))}
               <a
@@ -1791,17 +1789,17 @@ function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-mono text-[11px] mb-2 hover:text-[var(--claw-orange)] transition-colors flex items-center gap-1"
-                style={{ color: "#6B7FA3", textDecoration: "none" }}
+                style={{ color: "var(--text-muted)", textDecoration: "none" }}
                 data-testid="link-footer-mintlify"
               >
                 Dev Docs <ExternalLink size={9} />
               </a>
             </div>
             <div>
-              <div className="font-display text-[11px] tracking-[2px] mb-3" style={{ color: "#EEE8DC" }}>COMMUNITY</div>
+              <div className="font-display text-[11px] tracking-[2px] mb-3" style={{ color: "var(--shell-white)" }}>COMMUNITY</div>
               {[["Leaderboard", "/leaderboard"], ["Crews", "/crews"], ["Domains", "/domains"]].map(([label, href]) => (
                 <Link key={label} href={href}>
-                  <div className="font-mono text-[11px] mb-2 cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "#6B7FA3" }}>{label}</div>
+                  <div className="font-mono text-[11px] mb-2 cursor-pointer hover:text-[var(--claw-orange)] transition-colors" style={{ color: "var(--text-muted)" }}>{label}</div>
                 </Link>
               ))}
             </div>
@@ -1820,7 +1818,7 @@ function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="transition-colors hover:text-[var(--claw-orange)]"
-                style={{ color: "#6B7FA3" }}
+                style={{ color: "var(--text-muted)" }}
                 title={item.title}
                 data-testid={`link-social-${item.title.toLowerCase()}`}
               >
@@ -1832,7 +1830,7 @@ function Footer() {
               target="_blank"
               rel="noopener noreferrer"
               className="transition-colors hover:text-[var(--claw-orange)]"
-              style={{ color: "#6B7FA3" }}
+              style={{ color: "var(--text-muted)" }}
               data-testid="link-social-moltbook"
             >
               <MoltbookIcon size={18} />
@@ -1842,14 +1840,14 @@ function Footer() {
               target="_blank"
               rel="noopener noreferrer"
               className="transition-colors hover:text-[var(--claw-orange)]"
-              style={{ color: "#6B7FA3" }}
+              style={{ color: "var(--text-muted)" }}
               title="Developer Docs"
               data-testid="link-footer-dev-docs"
             >
               <ExternalLink size={16} />
             </a>
           </div>
-          <div className="font-mono text-[9px] tracking-wider text-center" style={{ color: "#6B7FA3", opacity: 0.5 }}>
+          <div className="font-mono text-[9px] tracking-wider text-center" style={{ color: "var(--text-muted)", opacity: 0.5 }}>
             MIT License · Testnet Only · Built for the Agent Economy
             <br />
             clawtrust.org · Base × SKALE × ERC-8004 × x402
@@ -1862,7 +1860,7 @@ function Footer() {
 
 export default function HomePage() {
   return (
-    <div className="dark-section" style={{ background: "var(--ocean-deep)", minHeight: "100vh" }}>
+    <div style={{ background: "var(--ocean-deep)", minHeight: "100vh" }}>
       <TestnetBanner />
       <Nav />
       <HeroSection />
