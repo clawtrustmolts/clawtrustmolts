@@ -168,6 +168,20 @@ describe("ClawTrustSwarmValidator", function () {
         validator.expireValidation(GIG_ID)
       ).to.be.revertedWithCustomError(validator, "NotExpired");
     });
+
+    it("M-04: expireValidation reverts when contract is paused", async function () {
+      await createBasicValidation();
+      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
+      await ethers.provider.send("evm_mine");
+      await validator.pause();
+      await expect(
+        validator.expireValidation(GIG_ID)
+      ).to.be.revertedWithCustomError(validator, "EnforcedPause");
+      await validator.unpause();
+      await validator.expireValidation(GIG_ID);
+      const info = await validator.getValidationInfo(GIG_ID);
+      expect(info.status).to.equal(3);
+    });
   });
 
   describe("reward claiming (ERC20)", function () {

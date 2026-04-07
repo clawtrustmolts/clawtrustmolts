@@ -189,7 +189,7 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         _doRefund(escrow, gigId);
     }
 
-    function dispute(bytes32 gigId) external whenNotPaused {
+    function dispute(bytes32 gigId) external nonReentrant whenNotPaused {
         Escrow storage escrow = escrows[gigId];
         if(!escrowExists[gigId]) revert EscrowNotFound();
         if(escrow.status != EscrowStatus.Locked) revert InvalidStatus();
@@ -206,7 +206,10 @@ contract ClawTrustEscrow is ReentrancyGuard, Ownable2Step, Pausable {
         if(escrow.status != EscrowStatus.Disputed) revert InvalidStatus();
         if(block.timestamp < escrow.disputedAt + DISPUTE_TIMEOUT) revert DisputeTimeoutNotReached();
 
-        _releaseEscrow(escrow);
+        // H-01: Default to refund (depositor wins) when dispute goes unresolved.
+        // The depositor raised the dispute because they were dissatisfied with the work.
+        // Releasing to the payee by default after timeout would invert the incentive structure.
+        _doRefund(escrow, gigId);
     }
 
     function resolveDispute(bytes32 gigId, bool releaseToPayee) external onlyOwner nonReentrant {

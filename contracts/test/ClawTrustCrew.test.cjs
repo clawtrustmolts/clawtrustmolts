@@ -245,4 +245,46 @@ describe("ClawTrustCrew", function () {
       expect(members.length).to.equal(3);
     });
   });
+
+  describe("pause (M-05)", function () {
+    it("owner can pause and unpause", async function () {
+      await crew.pause();
+      expect(await crew.paused()).to.equal(true);
+      await crew.unpause();
+      expect(await crew.paused()).to.equal(false);
+    });
+
+    it("non-owner cannot pause", async function () {
+      await expect(
+        crew.connect(lead).pause()
+      ).to.be.revertedWithCustomError(crew, "OwnableUnauthorizedAccount");
+    });
+
+    it("M-05: formCrew reverts when paused", async function () {
+      await crew.pause();
+      await expect(
+        crew.connect(lead).formCrew("Alpha", [lead.address, m1.address], [0, 2])
+      ).to.be.revertedWithCustomError(crew, "EnforcedPause");
+    });
+
+    it("M-05: formCrewFor reverts when paused", async function () {
+      await crew.authorizeCaller(owner.address);
+      await crew.pause();
+      await expect(
+        crew.connect(owner).formCrewFor(lead.address, "Alpha Crew", 2)
+      ).to.be.revertedWithCustomError(crew, "EnforcedPause");
+    });
+
+    it("M-05: formCrewFor succeeds after unpause", async function () {
+      await crew.authorizeCaller(owner.address);
+      await crew.pause();
+      await crew.unpause();
+      const tx = await crew.connect(owner).formCrewFor(lead.address, "Alpha Crew", 2);
+      const receipt = await tx.wait();
+      const event = receipt.logs.find(l => {
+        try { return crew.interface.parseLog(l)?.name === "CrewFormed"; } catch { return false; }
+      });
+      expect(event).to.not.be.undefined;
+    });
+  });
 });

@@ -205,6 +205,31 @@ describe("ClawTrustBond", function () {
       expect(b.totalDeposited).to.equal(afterFirstSlash);
       expect(b.locked).to.equal(0);
     });
+
+    it("H-02: should emit BondUnlockedCooldownActive event when slash is skipped during cooldown", async function () {
+      await bond.connect(agent).deposit(DEPOSIT_AMOUNT);
+      await bond.authorizeCaller(owner.address);
+      await bond.lockBondForGig(GIG_ID, agent.address, LOCK_AMOUNT);
+      // First rejection — triggers a real slash (updates lastSlashTimestamp)
+      await bond.connect(voter1).swarmVote(GIG_ID, false);
+      await bond.connect(voter2).swarmVote(GIG_ID, false);
+      await bond.connect(voter3).swarmVote(GIG_ID, false);
+
+      // Second rejection during cooldown window — should emit BondUnlockedCooldownActive
+      await bond.lockBondForGig(GIG_ID_2, agent.address, LOCK_AMOUNT);
+      // The third vote finalizes with rejections >= SWARM_THRESHOLD during cooldown
+      await bond.connect(voter1).swarmVote(GIG_ID_2, false);
+      await bond.connect(voter2).swarmVote(GIG_ID_2, false);
+      const tx = await bond.connect(voter3).swarmVote(GIG_ID_2, false);
+      const receipt = await tx.wait();
+      const events = receipt.logs.filter(l => {
+        try { return bond.interface.parseLog(l)?.name === "BondUnlockedCooldownActive"; } catch { return false; }
+      });
+      expect(events.length).to.equal(1, "Expected BondUnlockedCooldownActive event");
+      const parsed = bond.interface.parseLog(events[0]);
+      expect(parsed.args.agent).to.equal(agent.address);
+      expect(parsed.args.amount).to.equal(LOCK_AMOUNT);
+    });
   });
 
   describe("adminFinalize", function () {

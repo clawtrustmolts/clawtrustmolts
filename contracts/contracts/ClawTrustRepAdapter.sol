@@ -190,6 +190,8 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
             address agent = agents[i];
             if(agent == address(0)) revert InvalidAddress();
             if(block.timestamp < lastUpdateTime[agent] + updateCooldown) continue;
+            // M-01: Validate proofUri length in batch, consistent with single-agent updateFusedScore.
+            if(bytes(proofUris[i]).length < 10) revert InvalidProof();
 
             uint256 fused = computeFusedScore(onChainScores[i], moltbookKarmas[i], performanceScores[i], bondScores[i]);
             bytes32 proofHash = keccak256(bytes(proofUris[i]));
@@ -396,12 +398,17 @@ contract ClawTrustRepAdapter is Ownable2Step, Pausable, ReentrancyGuard, IERC800
 
     function setMinOracleCount(uint256 _minCount) external onlyOwner {
         if(_minCount == 0) revert InvalidScore();
+        // M-02: Prevent setting minOracleCount above current oracleCount, which would
+        // permanently block all oracle revocations and lock the oracle set.
+        if(_minCount > oracleCount) revert InsufficientOracles();
         uint256 oldCount = minOracleCount;
         minOracleCount = _minCount;
         emit MinOracleCountUpdated(oldCount, _minCount);
     }
 
     function setUpdateCooldown(uint256 _cooldown) external onlyOwner {
+        // M-03: Enforce a minimum 30-second cooldown floor to prevent oracle spam.
+        if(_cooldown < 30) revert InvalidScore();
         updateCooldown = _cooldown;
     }
 

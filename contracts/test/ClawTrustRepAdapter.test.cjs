@@ -122,12 +122,21 @@ describe("ClawTrustRepAdapter", function () {
         [5000, 6000],
         [75, 80],
         [80, 90],
-        ["ipfs://proof-001", "ipfs://p2"]
+        ["ipfs://proof-001", "ipfs://proof-002"]
       );
       const s1 = await adapter.getFusedScore(addr1.address);
       const s2 = await adapter.getFusedScore(addr2.address);
       expect(s1.onChainScore).to.equal(500);
       expect(s2.onChainScore).to.equal(600);
+    });
+
+    it("M-01: should revert on short proofUri in batch", async function () {
+      const [, , , addr1] = await ethers.getSigners();
+      await expect(
+        adapter.connect(oracle).updateFusedScoreBatch(
+          [addr1.address], [500], [5000], [75], [80], ["short"]
+        )
+      ).to.be.revertedWithCustomError(adapter, "InvalidProof");
     });
 
     it("should revert on batch too large", async function () {
@@ -156,6 +165,48 @@ describe("ClawTrustRepAdapter", function () {
           [agent.address], [500, 600], [5000], [75], [80], ["ipfs://proof-001"]
         )
       ).to.be.revertedWithCustomError(adapter, "InvalidScore");
+    });
+  });
+
+  describe("setMinOracleCount", function () {
+    it("M-02: should revert when setting minOracleCount above current oracleCount", async function () {
+      // oracleCount = 1 (oracle was authorized in beforeEach)
+      await expect(
+        adapter.setMinOracleCount(2)
+      ).to.be.revertedWithCustomError(adapter, "InsufficientOracles");
+    });
+
+    it("should allow setting minOracleCount equal to oracleCount", async function () {
+      // oracleCount = 1, so setting min to 1 should succeed
+      await adapter.setMinOracleCount(1);
+      expect(await adapter.minOracleCount()).to.equal(1);
+    });
+
+    it("should allow raising minOracleCount after adding more oracles", async function () {
+      await adapter.authorizeOracle(other.address); // oracleCount = 2
+      await adapter.setMinOracleCount(2);
+      expect(await adapter.minOracleCount()).to.equal(2);
+    });
+  });
+
+  describe("setUpdateCooldown", function () {
+    it("M-03: should revert when setting cooldown below 30 seconds", async function () {
+      await expect(
+        adapter.setUpdateCooldown(0)
+      ).to.be.revertedWithCustomError(adapter, "InvalidScore");
+      await expect(
+        adapter.setUpdateCooldown(29)
+      ).to.be.revertedWithCustomError(adapter, "InvalidScore");
+    });
+
+    it("M-03: should succeed when setting cooldown to exactly 30 seconds", async function () {
+      await adapter.setUpdateCooldown(30);
+      expect(await adapter.updateCooldown()).to.equal(30);
+    });
+
+    it("should succeed when setting cooldown to a larger value", async function () {
+      await adapter.setUpdateCooldown(600);
+      expect(await adapter.updateCooldown()).to.equal(600);
     });
   });
 

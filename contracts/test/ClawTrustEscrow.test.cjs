@@ -217,15 +217,33 @@ describe("ClawTrustEscrow", function () {
   });
 
   describe("claimAfterDisputeTimeout", function () {
-    it("should release to payee after dispute timeout", async function () {
+    it("H-01: should refund depositor after dispute timeout (not release to payee)", async function () {
       await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
       await escrow.connect(depositor).dispute(GIG_ID);
       await ethers.provider.send("evm_increaseTime", [30 * 24 * 60 * 60 + 1]);
       await ethers.provider.send("evm_mine");
-      const before = await mockUsdc.balanceOf(payee.address);
+      const depositorBefore = await mockUsdc.balanceOf(depositor.address);
+      const payeeBefore = await mockUsdc.balanceOf(payee.address);
       await escrow.connect(other).claimAfterDisputeTimeout(GIG_ID);
-      const after = await mockUsdc.balanceOf(payee.address);
-      expect(after).to.be.gt(before);
+      const depositorAfter = await mockUsdc.balanceOf(depositor.address);
+      const payeeAfter = await mockUsdc.balanceOf(payee.address);
+      // Depositor (client) should receive their funds back
+      expect(depositorAfter - depositorBefore).to.equal(AMOUNT);
+      // Payee (provider) should receive nothing
+      expect(payeeAfter).to.equal(payeeBefore);
+      const e = await escrow.getEscrow(GIG_ID);
+      expect(e.status).to.equal(3); // Refunded
+    });
+
+    it("H-01: depositor balance increases by full amount on dispute timeout refund", async function () {
+      await escrow.connect(depositor).lockUSDCDirect(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(depositor).dispute(GIG_ID);
+      await ethers.provider.send("evm_increaseTime", [30 * 24 * 60 * 60 + 1]);
+      await ethers.provider.send("evm_mine");
+      const before = await mockUsdc.balanceOf(depositor.address);
+      await escrow.connect(depositor).claimAfterDisputeTimeout(GIG_ID);
+      const after = await mockUsdc.balanceOf(depositor.address);
+      expect(after - before).to.equal(AMOUNT);
     });
 
     it("should revert before timeout", async function () {
@@ -234,6 +252,15 @@ describe("ClawTrustEscrow", function () {
       await expect(
         escrow.connect(other).claimAfterDisputeTimeout(GIG_ID)
       ).to.be.revertedWithCustomError(escrow, "DisputeTimeoutNotReached");
+    });
+
+    it("L-01: dispute() has nonReentrant — cannot be disputed twice in same block", async function () {
+      await escrow.connect(depositor).lockUSDC(GIG_ID, payee.address, AMOUNT);
+      await escrow.connect(depositor).dispute(GIG_ID);
+      // Second dispute call should revert because status is no longer Locked
+      await expect(
+        escrow.connect(depositor).dispute(GIG_ID)
+      ).to.be.revertedWithCustomError(escrow, "InvalidStatus");
     });
   });
 

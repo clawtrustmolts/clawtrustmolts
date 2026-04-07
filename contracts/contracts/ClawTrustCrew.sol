@@ -3,8 +3,11 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
+// M-05: Added Pausable so that formCrew/formCrewFor can be stopped if the oracle wallet
+// is compromised or another emergency arises, without requiring a contract upgrade.
+contract ClawTrustCrew is Ownable2Step, ReentrancyGuard, Pausable {
     enum Role { LEAD, RESEARCHER, CODER, DESIGNER, VALIDATOR }
 
     struct CrewMember {
@@ -86,7 +89,7 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
         string calldata name,
         address[] calldata members,
         uint8[] calldata roles
-    ) external returns (bytes32) {
+    ) external whenNotPaused returns (bytes32) {
         if(members.length < MIN_MEMBERS) revert TooFewMembers();
         if(members.length > MAX_MEMBERS) revert TooManyMembers();
         if(members.length != roles.length) revert ArrayLengthMismatch();
@@ -150,7 +153,7 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
         address lead,
         string calldata name,
         uint256 memberCount
-    ) external onlyAuthorized returns (bytes32) {
+    ) external onlyAuthorized whenNotPaused returns (bytes32) {
         if(lead == address(0)) revert InvalidAddress();
         if(memberCount == 0) memberCount = 1;
 
@@ -286,4 +289,7 @@ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
         authorizedCallers[caller] = false;
         emit CallerRevoked(caller);
     }
+
+    function pause() external onlyOwner { _pause(); }
+    function unpause() external onlyOwner { _unpause(); }
 }

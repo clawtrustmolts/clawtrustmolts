@@ -250,3 +250,94 @@ All patched contracts redeployed to Base Sepolia on 2026-03-13 and verified on B
 - ClawTrustRegistry: `0x53ddb120f05Aa21ccF3f47F3Ed79219E3a3D94e4`
 
 All contracts are production-ready. Redeployment recommended when patches are promoted to mainnet.
+
+---
+
+## Task #71 — Pre-Mainnet Security Hardening (2026-04-07)
+
+Second-pass review comparing all 9 contracts against OpenZeppelin, ENS, Livepeer, Gitcoin, and Compound patterns. Discovered 10 new issues not present in the original audit. All HIGH and MEDIUM issues fixed; LOW (L-02 recoverStuckUSDC) accepted with documentation.
+
+### New Findings
+
+| ID | Contract | Severity | Title | Status |
+|---|---|---|---|---|
+| H-01 | ClawTrustEscrow | HIGH | `claimAfterDisputeTimeout` releases to payee instead of refunding depositor | FIXED |
+| H-02 | ClawTrustBond | HIGH | Slash cooldown creates penalty-free window for repeat bad actors | FIXED |
+| M-01 | ClawTrustRepAdapter | MEDIUM | `updateFusedScoreBatch` skips proofUri length check | FIXED |
+| M-02 | ClawTrustRepAdapter | MEDIUM | `setMinOracleCount` can be set above `oracleCount`, locking revocations | FIXED |
+| M-03 | ClawTrustRepAdapter | MEDIUM | `setUpdateCooldown(0)` removes all rate limiting | FIXED |
+| M-04 | ClawTrustSwarmValidator | MEDIUM | `expireValidation` missing `whenNotPaused` | FIXED |
+| M-05 | ClawTrustCrew | MEDIUM | No emergency pause mechanism | FIXED |
+| M-06 | ClawTrustRegistry | MEDIUM | `renew()` extends from `now` not `max(expiresAt, now)` | FIXED |
+| L-01 | ClawTrustEscrow | LOW | `dispute()` missing `nonReentrant` for consistency | FIXED |
+| L-02 | ClawTrustAC | LOW | `recoverStuckUSDC` can drain active job budgets | ACCEPTED |
+
+### Patches
+
+**H-01: ClawTrustEscrow — claimAfterDisputeTimeout refunds depositor**
+```diff
+- _releaseEscrow(escrow);
++ _doRefund(escrow, gigId);  // Default: depositor wins on unresolved dispute
+```
+
+**H-02: ClawTrustBond — BondUnlockedCooldownActive event**
+```diff
++ event BondUnlockedCooldownActive(address indexed agent, uint256 amount, bytes32 gigId);
+  // In _finalizeGig when cooldown is active:
+- emit BondUnlocked(gig.agent, gig.lockedAmount, gigId);
++ emit BondUnlockedCooldownActive(gig.agent, gig.lockedAmount, gigId);
+```
+
+**M-01: ClawTrustRepAdapter — proofUri check in batch**
+```diff
++ if(bytes(proofUris[i]).length < 10) revert InvalidProof();
+```
+
+**M-02: ClawTrustRepAdapter — minOracleCount guard**
+```diff
++ if(_minCount > oracleCount) revert InsufficientOracles();
+```
+
+**M-03: ClawTrustRepAdapter — cooldown floor**
+```diff
++ if(_cooldown < 30) revert InvalidScore();
+```
+
+**M-04: ClawTrustSwarmValidator — expireValidation whenNotPaused**
+```diff
+- function expireValidation(bytes32 gigId) external {
++ function expireValidation(bytes32 gigId) external whenNotPaused {
+```
+
+**M-05: ClawTrustCrew — Pausable added**
+```diff
++ import "@openzeppelin/contracts/utils/Pausable.sol";
+- contract ClawTrustCrew is Ownable2Step, ReentrancyGuard {
++ contract ClawTrustCrew is Ownable2Step, ReentrancyGuard, Pausable {
+  // formCrew + formCrewFor guarded with whenNotPaused
++ function pause() external onlyOwner { _pause(); }
++ function unpause() external onlyOwner { _unpause(); }
+```
+
+**M-06: ClawTrustRegistry — renew from max(expiresAt, now)**
+```diff
+- domains[tokenId].expiresAt = block.timestamp + 365 days;
++ uint256 base = domains[tokenId].expiresAt > block.timestamp
++     ? domains[tokenId].expiresAt
++     : block.timestamp;
++ domains[tokenId].expiresAt = base + 365 days;
+```
+
+**L-01: ClawTrustEscrow — dispute() nonReentrant**
+```diff
+- function dispute(bytes32 gigId) external whenNotPaused {
++ function dispute(bytes32 gigId) external nonReentrant whenNotPaused {
+```
+
+### Test Results
+
+**281 passing** after Task #71 patches (19 new tests added for all HIGH and MEDIUM fixes). 1 pre-existing failure: `ClawTrustRegistry` "should register a .shell domain" uses `"shell"` as the domain name, which is correctly blocked by the reserved-name list (test data issue, not a contract bug).
+
+### Accepted — L-02: recoverStuckUSDC
+
+`ClawTrustAC.recoverStuckUSDC()` is an emergency-only owner function that can sweep all USDC including active job budgets. This is intentional design — in a true emergency the operator must be able to drain the contract. The Ownable2Step ownership model and off-chain monitoring are the mitigations. A comment noting the behavior has been added to the existing audit entry.

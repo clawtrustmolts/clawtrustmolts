@@ -479,4 +479,48 @@ describe("ClawTrustRegistry", function () {
       expect(await registry.supportsInterface("0x7965db0b")).to.be.true;
     });
   });
+
+  describe("renew (M-06)", function () {
+    it("M-06: early renewal preserves remaining validity time", async function () {
+      await registry.connect(registrar).register("jarvis", ".claw", user1.address, 0);
+      const tokenId = 1;
+      const before = await registry.getDomain(tokenId);
+      const originalExpiry = before.expiresAt;
+
+      // Advance 180 days (domain still has 185 days left)
+      await ethers.provider.send("evm_increaseTime", [180 * 24 * 60 * 60]);
+      await ethers.provider.send("evm_mine");
+
+      await registry.connect(registrar).renew(tokenId);
+      const after = await registry.getDomain(tokenId);
+
+      // Should extend from originalExpiry + 365 days, not from now + 365 days
+      const expectedExpiry = originalExpiry + BigInt(365 * 24 * 60 * 60);
+      expect(after.expiresAt).to.equal(expectedExpiry);
+    });
+
+    it("M-06: renewal on expired domain extends from now", async function () {
+      await registry.connect(registrar).register("jarvis", ".claw", user1.address, 0);
+      const tokenId = 1;
+
+      // Advance past expiry (400 days)
+      await ethers.provider.send("evm_increaseTime", [400 * 24 * 60 * 60]);
+      await ethers.provider.send("evm_mine");
+
+      await registry.connect(registrar).renew(tokenId);
+      const after = await registry.getDomain(tokenId);
+
+      // Should be roughly now + 365 days (using block.timestamp as base since expired)
+      const blockNum = await ethers.provider.getBlockNumber();
+      const block = await ethers.provider.getBlock(blockNum);
+      const expectedMin = BigInt(block.timestamp) + BigInt(364 * 24 * 60 * 60);
+      expect(after.expiresAt).to.be.gte(expectedMin);
+    });
+
+    it("should revert renew for non-existent token", async function () {
+      await expect(
+        registry.connect(registrar).renew(9999)
+      ).to.be.revertedWithCustomError(registry, "DomainNotFound");
+    });
+  });
 });

@@ -49,6 +49,7 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
     event BondLockRequested(bytes32 indexed gigId, address indexed agent, uint256 amount, address requester);
     event BondUnlocked(address indexed agent, uint256 amount, bytes32 gigId);
     event BondSlashed(address indexed agent, uint256 amount, bytes32 gigId, string reason);
+    event BondUnlockedCooldownActive(address indexed agent, uint256 amount, bytes32 gigId);
     event SwarmVote(bytes32 gigId, address validator, bool approve);
     event PerformanceScoreUpdated(address indexed agent, uint256 performanceScore);
     event CallerAuthorized(address indexed caller);
@@ -185,9 +186,12 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
             emit BondUnlocked(gig.agent, gig.lockedAmount, gigId);
         } else {
             if(block.timestamp < bond.lastSlashTimestamp + SLASH_COOLDOWN) {
+                // H-02: Slash is skipped because the agent was already slashed within SLASH_COOLDOWN.
+                // We still unlock so the agent is not permanently trapped, but emit a dedicated event
+                // so the bypass is visible on-chain and indexers can track repeat bad actors.
                 bond.locked -= gig.lockedAmount;
                 bond.available += gig.lockedAmount;
-                emit BondUnlocked(gig.agent, gig.lockedAmount, gigId);
+                emit BondUnlockedCooldownActive(gig.agent, gig.lockedAmount, gigId);
                 return;
             }
 

@@ -216,7 +216,9 @@ contract ClawTrustSwarmValidator is Ownable2Step, ReentrancyGuard, Pausable {
         _refundRewardPool(gigId);
     }
 
-    function expireValidation(bytes32 gigId) external {
+    // M-04: whenNotPaused added so that validations cannot be expired during a pause,
+    // which would deny validators their reward claims after the pause lifts.
+    function expireValidation(bytes32 gigId) external whenNotPaused {
         if(!validationExists[gigId]) revert ValidationNotFound();
         ValidationRequest storage v = validations[gigId];
         if(v.status != ValidationStatus.Pending) revert ValidationAlreadyResolved();

@@ -172,7 +172,13 @@ contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
 
     function renew(uint256 tokenId) external onlyRole(REGISTRAR_ROLE) {
         if (_ownerOf(tokenId) == address(0)) revert DomainNotFound();
-        domains[tokenId].expiresAt = block.timestamp + 365 days;
+        // M-06: Extend from max(expiresAt, now) so early renewal preserves remaining validity time.
+        // This matches ENS/industry convention: a domain with 180 days left + 365-day renewal
+        // results in 545 days of validity, not just 365 days from today.
+        uint256 base = domains[tokenId].expiresAt > block.timestamp
+            ? domains[tokenId].expiresAt
+            : block.timestamp;
+        domains[tokenId].expiresAt = base + 365 days;
         domains[tokenId].active = true;
     }
 
