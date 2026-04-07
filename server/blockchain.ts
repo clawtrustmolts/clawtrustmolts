@@ -284,7 +284,7 @@ async function withSkaleNonceLock(fn: (nonce: number) => Promise<any>): Promise<
     const nonce = await _skaleNonceMgr.acquire(() =>
       skaleSwarmPublicClient.getTransactionCount({
         address: skaleWalletClient!.account!.address,
-        blockTag: "pending",
+        blockTag: "latest",
       })
     );
     try {
@@ -327,7 +327,10 @@ async function withNonceLock(fn: (nonce: number) => Promise<any>): Promise<any> 
     const nonce = await _baseNonceMgr.acquire(() =>
       publicClient.getTransactionCount({
         address: walletClient!.account!.address,
-        blockTag: "pending",
+        // Use "latest" — Base Sepolia's public RPC does not reliably support
+        // eth_getTransactionCount with "pending" tag, which causes stale nonces.
+        // The local NonceMgr increments from the confirmed baseline for same-run txs.
+        blockTag: "latest",
       })
     );
     try {
@@ -480,11 +483,17 @@ export async function updateReputationOnChain(opts: {
         proofUri,
       ], { nonce })
     );
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    // waitForTransactionReceipt is OUTSIDE the nonce lock — if it times out,
+    // the tx was already broadcast so we treat it as submitted and reset the
+    // local nonce so the next call fetches fresh from chain.
+    await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 90_000 });
     console.log(`[Reputation] On-chain updated for ${opts.agentWallet} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
     const errMsg = err.message || "";
+    // Always reset the nonce manager on any error — the tx may have been
+    // broadcast with the current nonce, so we must re-fetch from chain.
+    _baseNonceMgr.onError(err);
     if (errMsg.includes("UpdateTooSoon")) {
       console.log(`[Reputation] Skipped ${opts.agentWallet} — UpdateTooSoon (contract cooldown)`);
     } else {
@@ -923,6 +932,22 @@ export async function queueBlockchainAction(action: {
   payload: Record<string, any>;
 }): Promise<number | null> {
   try {
+    // Deduplication: don't enqueue a second reputation update for the same agent
+    // when one is already pending — this is the main driver of nonce storms.
+    if (
+      action.agentId &&
+      (action.type === "UPDATE_REPUTATION" || action.type === "SKALE_REP_SYNC")
+    ) {
+      const alreadyQueued = await storage.hasPendingBlockchainActionForAgent(
+        action.type,
+        action.agentId,
+      );
+      if (alreadyQueued) {
+        console.log(`[BlockchainQueue] Skipping duplicate ${action.type} for agent ${action.agentId} — already pending`);
+        return null;
+      }
+    }
+
     const row = await storage.queueBlockchainAction({
       type: action.type,
       agentId: action.agentId || null,
@@ -947,14 +972,32 @@ export async function markBlockchainActionComplete(actionId: number): Promise<vo
   }
 }
 
+// Minimum time between retry attempts for the same action (2 minutes).
+// Prevents hammering a failing tx on every 5-minute queue cycle.
+const QUEUE_RETRY_BACKOFF_MS = 2 * 60 * 1000;
+
 export async function processBlockchainQueue(): Promise<void> {
   try {
+    // Always start with a fresh nonce from the chain so we don't carry stale
+    // state from a previous queue run or a concurrent hourly score sync.
+    _baseNonceMgr.reset();
+    _skaleNonceMgr.reset();
+
     const pending = await storage.getPendingBlockchainActions(10);
     if (pending.length === 0) return;
 
     console.log(`[BlockchainQueue] Processing ${pending.length} pending actions`);
 
     for (const action of pending) {
+      // Backoff: skip actions that were attempted very recently to avoid
+      // resubmitting a tx that is still pending/confirming in the mempool.
+      if (action.lastAttempt) {
+        const msSinceLast = Date.now() - new Date(action.lastAttempt).getTime();
+        if (msSinceLast < QUEUE_RETRY_BACKOFF_MS) {
+          continue;
+        }
+      }
+
       try {
         let success = false;
         const payload = typeof action.payload === "string"

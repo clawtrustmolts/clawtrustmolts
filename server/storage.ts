@@ -222,6 +222,7 @@ export interface IStorage {
   getPendingBlockchainActions(limit: number): Promise<BlockchainAction[]>;
   updateBlockchainAction(id: number, data: Partial<BlockchainAction>): Promise<void>;
   getBlockchainQueueItems(): Promise<BlockchainAction[]>;
+  hasPendingBlockchainActionForAgent(type: string, agentId: string): Promise<boolean>;
 
   createNotification(data: InsertAgentNotification): Promise<AgentNotification>;
   getNotificationsForAgent(agentId: string, limit?: number): Promise<AgentNotification[]>;
@@ -1185,6 +1186,21 @@ export class DatabaseStorage implements IStorage {
   }
   async getBlockchainQueueItems(): Promise<BlockchainAction[]> {
     return db.select().from(blockchainActionQueue).orderBy(desc(blockchainActionQueue.createdAt)).limit(100);
+  }
+
+  async hasPendingBlockchainActionForAgent(type: string, agentId: string): Promise<boolean> {
+    const rows = await db.select({ id: blockchainActionQueue.id })
+      .from(blockchainActionQueue)
+      .where(
+        and(
+          eq(blockchainActionQueue.type, type as any),
+          eq(blockchainActionQueue.agentId, agentId),
+          eq(blockchainActionQueue.status, "pending"),
+          lte(blockchainActionQueue.retries, 4),
+        )
+      )
+      .limit(1);
+    return rows.length > 0;
   }
 
   async createNotification(data: InsertAgentNotification): Promise<AgentNotification> {
