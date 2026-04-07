@@ -1,0 +1,893 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Code coverage report for contracts/ClawTrustBond.sol</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../prettify.css" />
+    <link rel="stylesheet" href="../base.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+<body>
+<div class='wrapper'>
+  <div class='pad1'>
+    <h1>
+      <a href="../index.html">all files</a> / <a href="index.html">contracts/</a> ClawTrustBond.sol
+    </h1>
+    <div class='clearfix'>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">87.14% </span>
+        <span class="quiet">Statements</span>
+        <span class='fraction'>61/70</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">62.5% </span>
+        <span class="quiet">Branches</span>
+        <span class='fraction'>60/96</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">83.33% </span>
+        <span class="quiet">Functions</span>
+        <span class='fraction'>15/18</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">86.87% </span>
+        <span class="quiet">Lines</span>
+        <span class='fraction'>86/99</span>
+      </div>
+    </div>
+  </div>
+  <div class='status-line high'></div>
+<pre><table class="coverage">
+<tr><td class="line-count quiet">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+101
+102
+103
+104
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+121
+122
+123
+124
+125
+126
+127
+128
+129
+130
+131
+132
+133
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175
+176
+177
+178
+179
+180
+181
+182
+183
+184
+185
+186
+187
+188
+189
+190
+191
+192
+193
+194
+195
+196
+197
+198
+199
+200
+201
+202
+203
+204
+205
+206
+207
+208
+209
+210
+211
+212
+213
+214
+215
+216
+217
+218
+219
+220
+221
+222
+223
+224
+225
+226
+227
+228
+229
+230
+231
+232
+233
+234
+235
+236
+237
+238
+239
+240
+241
+242
+243
+244
+245
+246
+247
+248
+249
+250
+251
+252
+253
+254
+255
+256
+257
+258
+259
+260
+261
+262
+263
+264
+265
+266
+267
+268
+269
+270
+271
+272
+273
+274
+275
+276
+277</td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">158×</span>
+<span class="cline-any cline-yes">157×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27×</span>
+<span class="cline-any cline-yes">27×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">23×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22×</span>
+<span class="cline-any cline-yes">22×</span>
+<span class="cline-any cline-yes">22×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">137×</span>
+<span class="cline-any cline-yes">137×</span>
+<span class="cline-any cline-yes">137×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">20×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">20×</span>
+<span class="cline-any cline-yes">19×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">19×</span>
+<span class="cline-any cline-yes">19×</span>
+<span class="cline-any cline-yes">19×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">28×</span>
+<span class="cline-any cline-yes">28×</span>
+<span class="cline-any cline-yes">28×</span>
+<span class="cline-any cline-yes">27×</span>
+<span class="cline-any cline-yes">26×</span>
+<span class="cline-any cline-yes">25×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">23×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">23×</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">23×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">23×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">17×</span>
+<span class="cline-any cline-yes">17×</span>
+<span class="cline-any cline-yes">17×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+&nbsp;
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "./interfaces/IClawTrustContracts.sol";
+&nbsp;
+contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable, IClawTrustBond {
+    using SafeERC20 for IERC20;
+&nbsp;
+    IERC20 public immutable usdcToken;
+&nbsp;
+    struct Bond {
+        uint256 totalDeposited;
+        uint256 available;
+        uint256 locked;
+        uint256 lastSlashTimestamp;
+        uint256 performanceScore;
+    }
+&nbsp;
+    struct Gig {
+        bytes32 gigId;
+        address agent;
+        uint256 lockedAmount;
+        uint256 approvals;
+        uint256 rejections;
+        bool finalized;
+        mapping(address =&gt; bool) hasVoted;
+    }
+&nbsp;
+    mapping(address =&gt; Bond) public bonds;
+    mapping(bytes32 =&gt; Gig) internal gigs;
+    mapping(bytes32 =&gt; bool) public gigExists;
+    mapping(address =&gt; bool) public authorizedCallers;
+&nbsp;
+    uint256 public constant MIN_DEPOSIT = 10e6;
+    uint256 public constant SLASH_COOLDOWN = 7 days;
+    uint256 public constant MAX_SLASH_BPS = 2000;
+    uint256 public constant SWARM_THRESHOLD = 3;
+    uint256 public constant MIN_FUSED_SCORE = 50;
+&nbsp;
+    address public treasury;
+&nbsp;
+    event BondDeposited(address indexed agent, uint256 amount);
+    event BondWithdrawn(address indexed agent, uint256 amount);
+    event BondLocked(address indexed agent, uint256 amount, bytes32 gigId);
+    event BondLockRequested(bytes32 indexed gigId, address indexed agent, uint256 amount, address requester);
+    event BondUnlocked(address indexed agent, uint256 amount, bytes32 gigId);
+    event BondSlashed(address indexed agent, uint256 amount, bytes32 gigId, string reason);
+    event BondUnlockedCooldownActive(address indexed agent, uint256 amount, bytes32 gigId);
+    event SwarmVote(bytes32 gigId, address indexed validator, bool approve);
+    event PerformanceScoreUpdated(address indexed agent, uint256 performanceScore);
+    event CallerAuthorized(address indexed caller);
+    event CallerRevoked(address indexed caller);
+    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
+&nbsp;
+    error BelowMinDeposit();
+    error InsufficientBond();
+    error GigAlreadyExists();
+    error GigNotFound();
+    error GigAlreadyFinalized();
+    error AlreadyVoted();
+    error ScoreTooLow();
+    error SlashCooldownActive();
+    error ScoreOutOfRange();
+    error NotAuthorizedCaller();
+    error SelfDealingNotAllowed();
+    error InvalidAddress();
+    error ZeroAmount();
+&nbsp;
+    modifier onlyAuthorized() {
+        if(!authorizedCallers[msg.sender] &amp;&amp; msg.sender != owner()) revert NotAuthorizedCaller();
+        _;
+    }
+&nbsp;
+    constructor(address _usdcToken) Ownable(msg.sender) {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(_usdcToken == address(0)) revert InvalidAddress();
+        usdcToken = IERC20(_usdcToken);
+    }
+&nbsp;
+    // slither-disable-next-line reentrancy-benign
+    // Protected by `nonReentrant`. safeTransferFrom is on the trusted USDC token.
+    // State is written after the external call, but nonReentrant prevents any re-entry.
+    function deposit(uint256 amount) external <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant whenNotPaused {
+        if(amount &lt; MIN_DEPOSIT) revert BelowMinDeposit();
+&nbsp;
+        usdcToken.safeTransferFrom(msg.sender, address(this), amount);
+&nbsp;
+        Bond storage bond = bonds[msg.sender];
+        bond.totalDeposited += amount;
+        bond.available += amount;
+&nbsp;
+        emit BondDeposited(msg.sender, amount);
+    }
+&nbsp;
+<span class="fstat-no" title="function not covered" >    function depositFor(address agent, uint256 amount) external onlyAuthorized nonReentrant whenNotPaused {</span>
+<span class="cstat-no" title="statement not covered" >        if(agent == address(0)) revert InvalidAddress();</span>
+<span class="cstat-no" title="statement not covered" >        if(amount &lt; MIN_DEPOSIT) revert BelowMinDeposit();</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >        usdcToken.safeTransferFrom(msg.sender, address(this), amount)</span>;
+&nbsp;
+<span class="cstat-no" title="statement not covered" >        Bond storage bond = bonds[agent];</span>
+        bond.totalDeposited += amount;
+        bond.available += amount;
+&nbsp;
+<span class="cstat-no" title="statement not covered" >        emit BondDeposited(agent, amount);</span>
+    }
+&nbsp;
+    function withdraw(uint256 amount) external <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant {
+        if(amount == 0) revert ZeroAmount();
+        Bond storage bond = bonds[msg.sender];
+        if(amount &gt; bond.available) revert InsufficientBond();
+&nbsp;
+        bond.totalDeposited -= amount;
+        bond.available -= amount;
+&nbsp;
+        usdcToken.safeTransfer(msg.sender, amount);
+&nbsp;
+        emit BondWithdrawn(msg.sender, amount);
+    }
+&nbsp;
+    function updatePerformanceScore(address agent, uint256 score) external <span class="missing-if-branch" title="else path not taken" >E</span>onlyAuthorized {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(score &gt; 100) revert ScoreOutOfRange();
+        bonds[agent].performanceScore = score;
+        emit PerformanceScoreUpdated(agent, score);
+    }
+&nbsp;
+    function lockBondForGig(bytes32 gigId, address agent, uint256 amount) external onlyAuthorized <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant <span class="missing-if-branch" title="else path not taken" >E</span>whenNotPaused {
+        emit BondLockRequested(gigId, agent, amount, msg.sender);
+&nbsp;
+        if(gigExists[gigId]) revert GigAlreadyExists();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(amount == 0) revert ZeroAmount();
+&nbsp;
+        Bond storage bond = bonds[agent];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(amount &gt; bond.available) revert InsufficientBond();
+        if(bond.performanceScore &lt; MIN_FUSED_SCORE &amp;&amp; bond.totalDeposited &gt; 0) revert ScoreTooLow();
+&nbsp;
+        bond.available -= amount;
+        bond.locked += amount;
+&nbsp;
+        Gig storage gig = gigs[gigId];
+        gig.gigId = gigId;
+        gig.agent = agent;
+        gig.lockedAmount = amount;
+        gigExists[gigId] = true;
+&nbsp;
+        emit BondLocked(agent, amount, gigId);
+    }
+&nbsp;
+    function swarmVote(bytes32 gigId, bool approve) external <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant whenNotPaused {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(!gigExists[gigId]) revert GigNotFound();
+        Gig storage gig = gigs[gigId];
+        if(gig.finalized) revert GigAlreadyFinalized();
+        if(gig.hasVoted[msg.sender]) revert AlreadyVoted();
+        if(msg.sender == gig.agent) revert SelfDealingNotAllowed();
+        if(bonds[msg.sender].performanceScore &lt; MIN_FUSED_SCORE) revert ScoreTooLow();
+&nbsp;
+        gig.hasVoted[msg.sender] = true;
+&nbsp;
+        if (approve) {
+            gig.approvals += 1;
+        } else {
+            gig.rejections += 1;
+        }
+&nbsp;
+        emit SwarmVote(gigId, msg.sender, approve);
+&nbsp;
+        if (gig.approvals &gt;= SWARM_THRESHOLD) {
+            _finalizeGig(gigId, true);
+        } else if (gig.rejections &gt;= SWARM_THRESHOLD) {
+            _finalizeGig(gigId, false);
+        }
+    }
+&nbsp;
+    function _finalizeGig(bytes32 gigId, bool success) internal {
+        Gig storage gig = gigs[gigId];
+        Bond storage bond = bonds[gig.agent];
+&nbsp;
+        gig.finalized = true;
+&nbsp;
+        if (success) {
+            bond.locked -= gig.lockedAmount;
+            bond.available += gig.lockedAmount;
+            emit BondUnlocked(gig.agent, gig.lockedAmount, gigId);
+        } else {
+            if(block.timestamp &lt; bond.lastSlashTimestamp + SLASH_COOLDOWN) {
+                // H-02: Slash is skipped because the agent was already slashed within SLASH_COOLDOWN.
+                // We still unlock so the agent is not permanently trapped, but emit a dedicated event
+                // so the bypass is visible on-chain and indexers can track repeat bad actors.
+                bond.locked -= gig.lockedAmount;
+                bond.available += gig.lockedAmount;
+                emit BondUnlockedCooldownActive(gig.agent, gig.lockedAmount, gigId);
+                return;
+            }
+&nbsp;
+            uint256 slashAmount = (gig.lockedAmount * MAX_SLASH_BPS) / 10000;
+            uint256 remaining = gig.lockedAmount - slashAmount;
+&nbsp;
+            bond.locked -= gig.lockedAmount;
+            bond.totalDeposited -= slashAmount;
+            bond.available += remaining;
+            bond.lastSlashTimestamp = block.timestamp;
+&nbsp;
+            usdcToken.safeTransfer(treasury != address(0) ? treasury : owner(), slashAmount);
+&nbsp;
+            emit BondSlashed(gig.agent, slashAmount, gigId, "Swarm-rejected");
+            <span class="missing-if-branch" title="else path not taken" >E</span>if(remaining &gt; 0) {
+                emit BondUnlocked(gig.agent, remaining, gigId);
+            }
+        }
+    }
+&nbsp;
+    function adminFinalize(bytes32 gigId, bool success) external onlyOwner <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(!gigExists[gigId]) revert GigNotFound();
+        Gig storage gig = gigs[gigId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(gig.finalized) revert GigAlreadyFinalized();
+        _finalizeGig(gigId, success);
+    }
+&nbsp;
+<span class="fstat-no" title="function not covered" >    function setTreasury(address _treasury) external onlyOwner {</span>
+<span class="cstat-no" title="statement not covered" >        if(_treasury == address(0)) revert InvalidAddress();</span>
+<span class="cstat-no" title="statement not covered" >        address old = treasury;</span>
+        treasury = _treasury;
+<span class="cstat-no" title="statement not covered" >        emit TreasuryUpdated(old, _treasury);</span>
+    }
+&nbsp;
+    function authorizeCaller(address caller) external <span class="missing-if-branch" title="else path not taken" >E</span>onlyOwner {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(caller == address(0)) revert InvalidAddress();
+        authorizedCallers[caller] = true;
+        emit CallerAuthorized(caller);
+    }
+&nbsp;
+<span class="fstat-no" title="function not covered" >    function revokeCaller(address caller) external onlyOwner {</span>
+        authorizedCallers[caller] = false;
+<span class="cstat-no" title="statement not covered" >        emit CallerRevoked(caller);</span>
+    }
+&nbsp;
+    function pause() external onlyOwner {
+        _pause();
+    }
+&nbsp;
+    function unpause() external <span class="missing-if-branch" title="else path not taken" >E</span>onlyOwner {
+        _unpause();
+    }
+&nbsp;
+    function getBond(address agent) external view returns (
+        uint256 totalDeposited,
+        uint256 available,
+        uint256 locked,
+        uint256 lastSlashTimestamp,
+        uint256 performanceScore
+    ) {
+        Bond storage bond = bonds[agent];
+        return (bond.totalDeposited, bond.available, bond.locked, bond.lastSlashTimestamp, bond.performanceScore);
+    }
+&nbsp;
+    function getGigInfo(bytes32 gigId) external view returns (
+        address agent,
+        uint256 lockedAmount,
+        uint256 approvals,
+        uint256 rejections,
+        bool finalized
+    ) {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(!gigExists[gigId]) revert GigNotFound();
+        Gig storage gig = gigs[gigId];
+        return (gig.agent, gig.lockedAmount, gig.approvals, gig.rejections, gig.finalized);
+    }
+&nbsp;
+    function hasVoted(bytes32 gigId, address voter) external view returns (bool) {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if(!gigExists[gigId]) revert GigNotFound();
+        return gigs[gigId].hasVoted[voter];
+    }
+}
+&nbsp;</pre></td></tr>
+</table></pre>
+<div class='push'></div><!-- for sticky footer -->
+</div><!-- /wrapper -->
+<div class='footer quiet pad2 space-top1 center small'>
+  Code coverage
+  generated by <a href="http://istanbul-js.org/" target="_blank">istanbul</a> at Tue Apr 07 2026 08:28:07 GMT+0000 (Coordinated Universal Time)
+</div>
+</div>
+<script src="../prettify.js"></script>
+<script>
+window.onload = function () {
+        if (typeof prettyPrint === 'function') {
+            prettyPrint();
+        }
+};
+</script>
+<script src="../sorter.js"></script>
+</body>
+</html>

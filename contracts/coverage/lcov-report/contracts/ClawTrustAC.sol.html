@@ -1,0 +1,1385 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Code coverage report for contracts/ClawTrustAC.sol</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../prettify.css" />
+    <link rel="stylesheet" href="../base.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+<body>
+<div class='wrapper'>
+  <div class='pad1'>
+    <h1>
+      <a href="../index.html">all files</a> / <a href="index.html">contracts/</a> ClawTrustAC.sol
+    </h1>
+    <div class='clearfix'>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Statements</span>
+        <span class='fraction'>87/87</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">60.67% </span>
+        <span class="quiet">Branches</span>
+        <span class='fraction'>91/150</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Functions</span>
+        <span class='fraction'>22/22</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">98.32% </span>
+        <span class="quiet">Lines</span>
+        <span class='fraction'>117/119</span>
+      </div>
+    </div>
+  </div>
+  <div class='status-line high'></div>
+<pre><table class="coverage">
+<tr><td class="line-count quiet">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+101
+102
+103
+104
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+121
+122
+123
+124
+125
+126
+127
+128
+129
+130
+131
+132
+133
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175
+176
+177
+178
+179
+180
+181
+182
+183
+184
+185
+186
+187
+188
+189
+190
+191
+192
+193
+194
+195
+196
+197
+198
+199
+200
+201
+202
+203
+204
+205
+206
+207
+208
+209
+210
+211
+212
+213
+214
+215
+216
+217
+218
+219
+220
+221
+222
+223
+224
+225
+226
+227
+228
+229
+230
+231
+232
+233
+234
+235
+236
+237
+238
+239
+240
+241
+242
+243
+244
+245
+246
+247
+248
+249
+250
+251
+252
+253
+254
+255
+256
+257
+258
+259
+260
+261
+262
+263
+264
+265
+266
+267
+268
+269
+270
+271
+272
+273
+274
+275
+276
+277
+278
+279
+280
+281
+282
+283
+284
+285
+286
+287
+288
+289
+290
+291
+292
+293
+294
+295
+296
+297
+298
+299
+300
+301
+302
+303
+304
+305
+306
+307
+308
+309
+310
+311
+312
+313
+314
+315
+316
+317
+318
+319
+320
+321
+322
+323
+324
+325
+326
+327
+328
+329
+330
+331
+332
+333
+334
+335
+336
+337
+338
+339
+340
+341
+342
+343
+344
+345
+346
+347
+348
+349
+350
+351
+352
+353
+354
+355
+356
+357
+358
+359
+360
+361
+362
+363
+364
+365
+366
+367
+368
+369
+370
+371
+372
+373
+374
+375
+376
+377
+378
+379
+380
+381
+382
+383
+384
+385
+386
+387
+388
+389
+390
+391
+392
+393
+394
+395
+396
+397
+398
+399
+400
+401
+402
+403
+404
+405
+406
+407
+408
+409
+410
+411
+412
+413
+414
+415
+416
+417
+418
+419
+420
+421
+422
+423
+424
+425
+426
+427
+428
+429
+430
+431
+432
+433
+434
+435
+436
+437
+438
+439
+440
+441</td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45×</span>
+<span class="cline-any cline-yes">45×</span>
+<span class="cline-any cline-yes">45×</span>
+<span class="cline-any cline-yes">45×</span>
+<span class="cline-any cline-yes">45×</span>
+<span class="cline-any cline-yes">45×</span>
+<span class="cline-any cline-yes">45×</span>
+<span class="cline-any cline-yes">45×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">26×</span>
+<span class="cline-any cline-yes">25×</span>
+<span class="cline-any cline-yes">24×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">24×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">24×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">24×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">24×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">24×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">24×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">19×</span>
+<span class="cline-any cline-yes">19×</span>
+<span class="cline-any cline-yes">19×</span>
+<span class="cline-any cline-yes">19×</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13×</span>
+<span class="cline-any cline-yes">13×</span>
+<span class="cline-any cline-yes">13×</span>
+<span class="cline-any cline-yes">13×</span>
+<span class="cline-any cline-yes">13×</span>
+<span class="cline-any cline-yes">13×</span>
+<span class="cline-any cline-yes">12×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">11×</span>
+<span class="cline-any cline-yes">11×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">11×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9×</span>
+<span class="cline-any cline-yes">9×</span>
+<span class="cline-any cline-yes">9×</span>
+<span class="cline-any cline-yes">9×</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-yes">8×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+&nbsp;
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "./interfaces/IERC8183.sol";
+import "./interfaces/IClawTrustContracts.sol";
+&nbsp;
+/**
+ * @title ClawTrustAC
+ * @author ClawTrust
+ * @notice ERC-8183 Agentic Commerce adapter for ClawTrust.
+ *
+ * This contract exposes a standard ERC-8183 interface for external protocols
+ * and AI agent frameworks. It wraps ClawTrust's identity and reputation layer
+ * without modifying any existing production contracts.
+ *
+ * CRITICAL: All existing production contracts are READ-ONLY from this adapter.
+ * Custody of USDC for ERC-8183 jobs is held by this contract directly.
+ *
+ * Production Contracts (Base Sepolia — DO NOT REDEPLOY):
+ *   ClawCardNFT:            0xf24e41980ed48576Eb379D2116C1AaD075B342C4
+ *   ClawTrustRepAdapter:    0xecc00bbE268Fa4D0330180e0fB445f64d824d818
+ *   ClawTrustBond:          0x23a1E1e958C932639906d0650A13283f6E60132c
+ *   USDC (Base Sepolia):    0x036CbD53842c5426634e7929541eC2318f3dCF7e
+ */
+contract ClawTrustAC is IERC8183, Ownable2Step, ReentrancyGuard, Pausable {
+    using SafeERC20 for IERC20;
+&nbsp;
+    // ═══════════════════════════════════════════════════════════
+    // PRODUCTION CONTRACT REFERENCES (READ-ONLY)
+    // ═══════════════════════════════════════════════════════════
+&nbsp;
+    IClawCardNFT public immutable clawCard;
+    IClawTrustRepAdapter public immutable repAdapter;
+    IClawTrustBond public immutable bond;
+    IERC20 public immutable usdc;
+&nbsp;
+    // ═══════════════════════════════════════════════════════════
+    // CONSTANTS
+    // ═══════════════════════════════════════════════════════════
+&nbsp;
+    uint256 public constant PLATFORM_FEE_BPS = 250;
+    uint256 public constant BPS_DENOMINATOR = 10_000;
+    uint256 public constant MIN_BUDGET = 1e4;
+    uint256 public constant MIN_DURATION = 1 hours;
+    uint256 public constant MAX_DURATION = 90 days;
+    uint256 public constant DISPUTE_WINDOW = 48 hours;
+&nbsp;
+    // ═══════════════════════════════════════════════════════════
+    // STATE
+    // ═══════════════════════════════════════════════════════════
+&nbsp;
+    struct Job {
+        address client;
+        address provider;
+        address evaluator;
+        uint256 budget;
+        uint256 expiredAt;
+        JobStatus status;
+        string description;
+        bytes32 deliverableHash;
+        bytes32 outcomeReason;
+        uint256 createdAt;
+    }
+&nbsp;
+    mapping(bytes32 =&gt; Job) public jobs;
+    mapping(bytes32 =&gt; uint256) public submittedAt;
+    uint256 private _jobCounter;
+&nbsp;
+    address public treasury;
+    address public evaluator;
+    uint256 public immutable evaluatorThreshold;
+&nbsp;
+    uint256 public totalJobsCreated;
+    uint256 public totalJobsCompleted;
+    uint256 public totalVolumeUSDC;
+&nbsp;
+    // ═══════════════════════════════════════════════════════════
+    // ERRORS
+    // ═══════════════════════════════════════════════════════════
+&nbsp;
+    error JobNotFound();
+    error InvalidStatus();
+    error Unauthorized();
+    error InvalidAmount();
+    error InvalidAddress();
+    error InvalidDuration();
+    error JobNotExpired();
+    error JobAlreadyExpired();
+    error ProviderNotRegistered();
+    error SelfDealingNotAllowed();
+&nbsp;
+    // ═══════════════════════════════════════════════════════════
+    // ADDITIONAL EVENTS
+    // ═══════════════════════════════════════════════════════════
+&nbsp;
+    event EvaluatorUpdated(address indexed oldEvaluator, address indexed newEvaluator);
+    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
+    event FeesCollected(bytes32 indexed jobId, uint256 amount);
+&nbsp;
+    // ═══════════════════════════════════════════════════════════
+    // CONSTRUCTOR
+    // ═══════════════════════════════════════════════════════════
+&nbsp;
+    constructor(
+        address _clawCard,
+        address _repAdapter,
+        address _bond,
+        address _usdc,
+        address _treasury,
+        address _evaluator
+    ) Ownable(msg.sender) {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (_clawCard == address(0) || _repAdapter == address(0) || _bond == address(0) ||
+            _usdc == address(0) || _treasury == address(0) || _evaluator == address(0))
+            revert InvalidAddress();
+&nbsp;
+        clawCard = IClawCardNFT(_clawCard);
+        repAdapter = IClawTrustRepAdapter(_repAdapter);
+        bond = IClawTrustBond(_bond);
+        usdc = IERC20(_usdc);
+        treasury = _treasury;
+        evaluator = _evaluator;
+        uint256 evaluatorCount = (_evaluator == msg.sender) ? <span class="missing-if-branch" title="if path not taken" >I</span>1 : 2;
+        evaluatorThreshold = (evaluatorCount &gt;= 2) ? 2 : <span class="missing-if-branch" title="else path not taken" >E</span>1;
+    }
+&nbsp;
+    // ═══════════════════════════════════════════════════════════
+    // ERC-8183 INTERFACE IMPLEMENTATION
+    // ═══════════════════════════════════════════════════════════
+&nbsp;
+    /**
+     * @notice Create a new job. Anyone can post a job.
+     * @param description Human-readable description of the work
+     * @param budget USDC amount (6 decimals) to be paid on completion
+     * @param durationSeconds How long providers have to complete the work
+     * @return jobId The bytes32 job identifier
+     */
+    function createJob(
+        string calldata description,
+        uint256 budget,
+        uint256 durationSeconds
+    ) external override whenNotPaused returns (bytes32 jobId) {
+        if (budget &lt; MIN_BUDGET) revert InvalidAmount();
+        if (durationSeconds &lt; MIN_DURATION || <span class="branch-1 cbranch-no" title="branch not covered" >durationSeconds &gt; MAX_DURATION</span>) revert InvalidDuration();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (bytes(description).length &gt; 1000) revert InvalidAmount();
+&nbsp;
+        _jobCounter++;
+        // abi.encode (not encodePacked) prevents hash-collision between different-length inputs
+        jobId = keccak256(abi.encode(msg.sender, _jobCounter, block.timestamp));
+&nbsp;
+        uint256 expiry = block.timestamp + durationSeconds;
+&nbsp;
+        jobs[jobId] = Job({
+            client: msg.sender,
+            provider: address(0),
+            evaluator: evaluator,
+            budget: budget,
+            expiredAt: expiry,
+            status: JobStatus.Open,
+            description: description,
+            deliverableHash: bytes32(0),
+            outcomeReason: bytes32(0),
+            createdAt: block.timestamp
+        });
+&nbsp;
+        totalJobsCreated++;
+&nbsp;
+        emit JobCreated(jobId, msg.sender, budget, expiry);
+    }
+&nbsp;
+    /**
+     * @notice Fund a job by transferring USDC into this contract.
+     * @dev Client must approve this contract for `budget` USDC before calling.
+     * @param jobId The job to fund
+     */
+    // slither-disable-next-line reentrancy-no-eth
+    // Protected by `nonReentrant`. safeTransferFrom is on the trusted USDC token.
+    // State update (job.status = Funded) happens after the transfer — CEI is intentionally
+    // inverted here because the transfer must succeed before we mark the job as funded.
+    function fund(bytes32 jobId) external override <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant <span class="missing-if-branch" title="else path not taken" >E</span>whenNotPaused {
+        Job storage job = jobs[jobId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.client == address(0)) revert JobNotFound();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.status != JobStatus.Open) revert InvalidStatus();
+        if (msg.sender != job.client) revert Unauthorized();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (block.timestamp &gt;= job.expiredAt) revert JobAlreadyExpired();
+&nbsp;
+        usdc.safeTransferFrom(msg.sender, address(this), job.budget);
+        job.status = JobStatus.Funded;
+&nbsp;
+        emit JobFunded(jobId, msg.sender, job.budget);
+    }
+&nbsp;
+    /**
+     * @notice Assign a provider to a funded job. Only the client can assign.
+     * @dev Provider must hold a ClawCard NFT (ERC-8004 registered agent).
+     * @param jobId The job to assign
+     * @param provider The agent wallet address to assign
+     */
+    function assignProvider(bytes32 jobId, address provider) external override <span class="missing-if-branch" title="else path not taken" >E</span>whenNotPaused {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (provider == address(0)) revert InvalidAddress();
+        Job storage job = jobs[jobId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.client == address(0)) revert JobNotFound();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.status != JobStatus.Funded) revert InvalidStatus();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (msg.sender != job.client) revert Unauthorized();
+        if (provider == job.client) revert SelfDealingNotAllowed();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (block.timestamp &gt;= job.expiredAt) revert JobAlreadyExpired();
+&nbsp;
+        if (!clawCard.isRegistered(provider)) revert ProviderNotRegistered();
+&nbsp;
+        job.provider = provider;
+        job.status = JobStatus.Assigned;
+&nbsp;
+        emit JobProviderAssigned(jobId, provider);
+    }
+&nbsp;
+    /**
+     * @notice Provider submits completed work. Triggers the evaluation phase.
+     * @param jobId The job being submitted
+     * @param deliverableHash Hash of the deliverable (IPFS CID, proof URL hash, etc.)
+     */
+    function submit(bytes32 jobId, bytes32 deliverableHash) external override <span class="missing-if-branch" title="else path not taken" >E</span>whenNotPaused {
+        Job storage job = jobs[jobId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.client == address(0)) revert JobNotFound();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.status != JobStatus.Assigned) revert InvalidStatus();
+        if (msg.sender != job.provider) revert Unauthorized();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (block.timestamp &gt;= job.expiredAt) revert JobAlreadyExpired();
+&nbsp;
+        job.deliverableHash = deliverableHash;
+        job.status = JobStatus.Submitted;
+        submittedAt[jobId] = block.timestamp;
+&nbsp;
+        emit JobSubmitted(jobId, msg.sender, deliverableHash);
+    }
+&nbsp;
+    /**
+     * @notice Mark a submitted job as completed. Releases USDC to provider.
+     * @dev Only the evaluator (oracle) can call this. Platform fee deducted.
+     * @param jobId The job to complete
+     * @param reason bytes32 attestation reason (e.g. keccak of "SWARM_APPROVED")
+     */
+    function complete(bytes32 jobId, bytes32 reason) external override <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant <span class="missing-if-branch" title="else path not taken" >E</span>whenNotPaused {
+        if (msg.sender != evaluator &amp;&amp; msg.sender != owner()) revert Unauthorized();
+&nbsp;
+        Job storage job = jobs[jobId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.client == address(0)) revert JobNotFound();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.status != JobStatus.Submitted) revert InvalidStatus();
+&nbsp;
+        _executeCompletion(jobId, reason, job);
+    }
+&nbsp;
+    /**
+     * @notice Public fallback: anyone can finalize a submitted job
+     *         after DISPUTE_WINDOW (48h) if evaluators are unresponsive.
+     *         Bypasses evaluator threshold — provider protection mechanism.
+     */
+    function completeAfterTimeout(bytes32 jobId, bytes32 reason)
+        external <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant <span class="missing-if-branch" title="else path not taken" >E</span>whenNotPaused {
+        Job storage job = jobs[jobId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.client == address(0)) revert JobNotFound();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.status != JobStatus.Submitted) revert InvalidStatus();
+        if (block.timestamp &lt; submittedAt[jobId] + DISPUTE_WINDOW) {
+            revert Unauthorized();
+        }
+        _executeCompletion(jobId, reason, job);
+    }
+&nbsp;
+    // slither-disable-next-line reentrancy-benign
+    // Protected by `nonReentrant` on all callers. State is updated before safeTransfer payouts.
+    // Any re-entry from USDC token callbacks is blocked by the mutex. Slither reports benign
+    // because the written vars (job.status, job.outcomeReason) are not re-readable externally.
+    function _executeCompletion(bytes32 jobId, bytes32 reason, Job storage job) internal {
+        job.status = JobStatus.Completed;
+        job.outcomeReason = reason;
+&nbsp;
+        uint256 fee = (job.budget * PLATFORM_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 payout = job.budget - fee;
+&nbsp;
+        <span class="missing-if-branch" title="else path not taken" >E</span>if (fee &gt; 0) {
+            usdc.safeTransfer(treasury, fee);
+            emit FeesCollected(jobId, fee);
+        }
+        usdc.safeTransfer(job.provider, payout);
+&nbsp;
+        totalJobsCompleted++;
+        totalVolumeUSDC += job.budget;
+&nbsp;
+        emit JobCompleted(jobId, job.provider, reason);
+    }
+&nbsp;
+    /**
+     * @notice Mark a submitted job as rejected. Refunds USDC to client.
+     * @dev Only the evaluator (oracle) can call this.
+     * @param jobId The job to reject
+     * @param reason bytes32 attestation reason (e.g. keccak of "SWARM_REJECTED")
+     */
+    function reject(bytes32 jobId, bytes32 reason) external override <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant <span class="missing-if-branch" title="else path not taken" >E</span>whenNotPaused {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (msg.sender != evaluator &amp;&amp; msg.sender != owner()) revert Unauthorized();
+&nbsp;
+        Job storage job = jobs[jobId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.client == address(0)) revert JobNotFound();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.status != JobStatus.Submitted) revert InvalidStatus();
+&nbsp;
+        job.status = JobStatus.Rejected;
+        job.outcomeReason = reason;
+&nbsp;
+        usdc.safeTransfer(job.client, job.budget);
+&nbsp;
+        emit JobRejected(jobId, job.client, reason);
+    }
+&nbsp;
+    /**
+     * @notice Cancel a job. Client can cancel if Open or Funded (before submission).
+     *         Refunds USDC to client if already funded.
+     * @param jobId The job to cancel
+     */
+    function cancel(bytes32 jobId) external override <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant <span class="missing-if-branch" title="else path not taken" >E</span>whenNotPaused {
+        Job storage job = jobs[jobId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.client == address(0)) revert JobNotFound();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (msg.sender != job.client &amp;&amp; msg.sender != owner()) revert Unauthorized();
+        if (job.status != JobStatus.Open &amp;&amp; job.status != JobStatus.Funded) revert InvalidStatus();
+&nbsp;
+        bool wasFunded = (job.status == JobStatus.Funded);
+        job.status = JobStatus.Cancelled;
+&nbsp;
+        if (wasFunded) {
+            usdc.safeTransfer(job.client, job.budget);
+        }
+&nbsp;
+        emit JobCancelled(jobId, job.client);
+    }
+&nbsp;
+    /**
+     * @notice Expire a job that has passed its deadline. Refunds USDC to client.
+     * @dev Anyone can call this to clean up expired funded jobs.
+     * @param jobId The job to expire
+     */
+    function expireJob(bytes32 jobId) external override <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant {
+        Job storage job = jobs[jobId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.client == address(0)) revert JobNotFound();
+        if (block.timestamp &lt; job.expiredAt) revert JobNotExpired();
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (job.status != JobStatus.Open &amp;&amp; job.status != JobStatus.Funded &amp;&amp; job.status != JobStatus.Assigned &amp;&amp; job.status != JobStatus.Submitted)
+            revert InvalidStatus();
+&nbsp;
+        bool hadFunds = job.status == JobStatus.Funded || job.status == JobStatus.Assigned || job.status == JobStatus.Submitted;
+        job.status = JobStatus.Expired;
+&nbsp;
+        <span class="missing-if-branch" title="else path not taken" >E</span>if (hadFunds) {
+            usdc.safeTransfer(job.client, job.budget);
+        }
+&nbsp;
+        emit JobExpired(jobId);
+    }
+&nbsp;
+    /**
+     * @notice Get the current status of a job.
+     * @param jobId The job to query
+     * @return Current JobStatus enum value
+     */
+    function getJobStatus(bytes32 jobId) external view override returns (JobStatus) {
+        Job storage job = jobs[jobId];
+        if (job.client == address(0)) revert JobNotFound();
+        return job.status;
+    }
+&nbsp;
+    // ═══════════════════════════════════════════════════════════
+    // READ FUNCTIONS
+    // ═══════════════════════════════════════════════════════════
+&nbsp;
+    /**
+     * @notice Get full job details.
+     */
+    function getJob(bytes32 jobId) external view returns (Job memory) {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (jobs[jobId].client == address(0)) revert JobNotFound();
+        return jobs[jobId];
+    }
+&nbsp;
+    /**
+     * @notice Get the total number of jobs ever created.
+     */
+    function jobCount() external view returns (uint256) {
+        return _jobCounter;
+    }
+&nbsp;
+    /**
+     * @notice Check ERC-8004 registration status of a provider wallet.
+     */
+    function isRegisteredAgent(address wallet) external view returns (bool) {
+        return clawCard.isRegistered(wallet);
+    }
+&nbsp;
+    /**
+     * @notice Get stats for the ERC-8183 adapter.
+     */
+    function getStats() external view returns (
+        uint256 created,
+        uint256 completed,
+        uint256 volumeUSDC,
+        uint256 completionRate
+    ) {
+        created = totalJobsCreated;
+        completed = totalJobsCompleted;
+        volumeUSDC = totalVolumeUSDC;
+        completionRate = created &gt; 0 ? (completed * 100) / created : 0;
+    }
+&nbsp;
+    // ═══════════════════════════════════════════════════════════
+    // ADMIN FUNCTIONS
+    // ═══════════════════════════════════════════════════════════
+&nbsp;
+    function setEvaluator(address _evaluator) external onlyOwner {
+        if (_evaluator == address(0)) revert InvalidAddress();
+        emit EvaluatorUpdated(evaluator, _evaluator);
+        evaluator = _evaluator;
+    }
+&nbsp;
+    function setTreasury(address _treasury) external <span class="missing-if-branch" title="else path not taken" >E</span>onlyOwner {
+        if (_treasury == address(0)) revert InvalidAddress();
+        emit TreasuryUpdated(treasury, _treasury);
+        treasury = _treasury;
+    }
+&nbsp;
+    function pause() external <span class="missing-if-branch" title="else path not taken" >E</span>onlyOwner { _pause(); }
+    function unpause() external <span class="missing-if-branch" title="else path not taken" >E</span>onlyOwner { _unpause(); }
+&nbsp;
+    function emergencyWithdraw(address token, address to, uint256 amount) external <span class="missing-if-branch" title="else path not taken" >E</span>onlyOwner <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant {
+        if (to == address(0)) revert InvalidAddress();
+        if (token == address(usdc)) revert Unauthorized();
+        IERC20(token).safeTransfer(to, amount);
+    }
+&nbsp;
+    function recoverStuckUSDC(address to) external onlyOwner <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant {
+        if (to == address(0)) revert InvalidAddress();
+        uint256 balance = usdc.balanceOf(address(this));
+        usdc.safeTransfer(to, balance);
+    }
+}
+&nbsp;</pre></td></tr>
+</table></pre>
+<div class='push'></div><!-- for sticky footer -->
+</div><!-- /wrapper -->
+<div class='footer quiet pad2 space-top1 center small'>
+  Code coverage
+  generated by <a href="http://istanbul-js.org/" target="_blank">istanbul</a> at Tue Apr 07 2026 08:28:07 GMT+0000 (Coordinated Universal Time)
+</div>
+</div>
+<script src="../prettify.js"></script>
+<script>
+window.onload = function () {
+        if (typeof prettyPrint === 'function') {
+            prettyPrint();
+        }
+};
+</script>
+<script src="../sorter.js"></script>
+</body>
+</html>

@@ -6,8 +6,9 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
+import "./interfaces/IClawTrustContracts.sol";
 
-contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
+contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable, IClawTrustBond {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable usdcToken;
@@ -50,7 +51,7 @@ contract ClawTrustBond is Ownable2Step, ReentrancyGuard, Pausable {
     event BondUnlocked(address indexed agent, uint256 amount, bytes32 gigId);
     event BondSlashed(address indexed agent, uint256 amount, bytes32 gigId, string reason);
     event BondUnlockedCooldownActive(address indexed agent, uint256 amount, bytes32 gigId);
-    event SwarmVote(bytes32 gigId, address validator, bool approve);
+    event SwarmVote(bytes32 gigId, address indexed validator, bool approve);
     event PerformanceScoreUpdated(address indexed agent, uint256 performanceScore);
     event CallerAuthorized(address indexed caller);
     event CallerRevoked(address indexed caller);

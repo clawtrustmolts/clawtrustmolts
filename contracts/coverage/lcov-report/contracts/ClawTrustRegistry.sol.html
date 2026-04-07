@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Code coverage report for contracts/ClawTrustRegistry.sol</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../prettify.css" />
+    <link rel="stylesheet" href="../base.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+<body>
+<div class='wrapper'>
+  <div class='pad1'>
+    <h1>
+      <a href="../index.html">all files</a> / <a href="index.html">contracts/</a> ClawTrustRegistry.sol
+    </h1>
+    <div class='clearfix'>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Statements</span>
+        <span class='fraction'>65/65</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">88.24% </span>
+        <span class="quiet">Branches</span>
+        <span class='fraction'>60/68</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Functions</span>
+        <span class='fraction'>15/15</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Lines</span>
+        <span class='fraction'>70/70</span>
+      </div>
+    </div>
+  </div>
+  <div class='status-line high'></div>
+<pre><table class="coverage">
+<tr><td class="line-count quiet">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+101
+102
+103
+104
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+121
+122
+123
+124
+125
+126
+127
+128
+129
+130
+131
+132
+133
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175
+176
+177
+178
+179
+180
+181
+182
+183
+184
+185
+186
+187
+188
+189
+190
+191
+192
+193
+194
+195
+196
+197
+198
+199
+200
+201
+202
+203
+204
+205
+206
+207
+208
+209
+210
+211
+212
+213
+214
+215
+216
+217
+218
+219
+220
+221
+222
+223
+224
+225
+226
+227
+228
+229
+230
+231
+232
+233
+234
+235
+236
+237
+238
+239
+240
+241
+242
+243
+244
+245
+246
+247
+248
+249
+250
+251
+252
+253
+254
+255
+256
+257
+258
+259
+260
+261
+262
+263
+264
+265
+266
+267
+268
+269
+270
+271
+272
+273
+274
+275</td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">69×</span>
+<span class="cline-any cline-yes">69×</span>
+<span class="cline-any cline-yes">69×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">61×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">61×</span>
+<span class="cline-any cline-yes">58×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">42×</span>
+<span class="cline-any cline-yes">42×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">41×</span>
+<span class="cline-any cline-yes">41×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">41×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">41×</span>
+<span class="cline-any cline-yes">41×</span>
+<span class="cline-any cline-yes">41×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">41×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">41×</span>
+<span class="cline-any cline-yes">41×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15×</span>
+<span class="cline-any cline-yes">15×</span>
+<span class="cline-any cline-yes">14×</span>
+<span class="cline-any cline-yes">14×</span>
+<span class="cline-any cline-yes">14×</span>
+<span class="cline-any cline-yes">13×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9×</span>
+<span class="cline-any cline-yes">9×</span>
+<span class="cline-any cline-yes">6×</span>
+<span class="cline-any cline-yes">6×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">21×</span>
+<span class="cline-any cline-yes">19×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-yes">4×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">61×</span>
+<span class="cline-any cline-yes">61×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">61×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">58×</span>
+<span class="cline-any cline-yes">58×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">56×</span>
+<span class="cline-any cline-yes">349×</span>
+<span class="cline-any cline-yes">349×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">349×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">52×</span>
+<span class="cline-any cline-yes">52×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">66×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">43×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">43×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">43×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+&nbsp;
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
+&nbsp;
+/**
+ * @title ClawTrustRegistry
+ * @notice Multi-TLD agent domain system for ClawTrust.
+ *         Supports .claw, .shell, .pinch, .agent TLDs as ERC-721 NFTs.
+ *         (.molt is handled separately by ClawCardNFT)
+ *
+ *         Access model:
+ *         - .claw  — reputation-gated (Gold Shell+) OR 50 USDC/yr
+ *         - .shell — reputation-gated (Silver Molt+) OR 100 USDC/yr
+ *         - .pinch — reputation-gated (Bronze Pinch+) OR 25 USDC/yr
+ *         - .agent — open to all agents; length-based pricing (5–60 USDC/yr)
+ *                    Available on both Base Sepolia and SKALE Base Sepolia.
+ *                    Transferable ERC-721 NFT.
+ *
+ *         Only REGISTRAR_ROLE (backend oracle) can call register().
+ *         The backend enforces reputation/payment checks before calling.
+ */
+contract ClawTrustRegistry is ERC721, AccessControl, Pausable, ReentrancyGuard {
+    using Strings for uint256;
+&nbsp;
+    bytes32 public constant REGISTRAR_ROLE = keccak256("REGISTRAR_ROLE");
+    bytes32 public constant PAUSER_ROLE    = keccak256("PAUSER_ROLE");
+&nbsp;
+    uint256 private _nextTokenId = 1;
+    uint256 public constant MAX_SUPPLY = 10_000_000;
+&nbsp;
+    string public constant TLD_CLAW  = ".claw";
+    string public constant TLD_SHELL = ".shell";
+    string public constant TLD_PINCH = ".pinch";
+    string public constant TLD_AGENT = ".agent";
+&nbsp;
+    struct DomainRecord {
+        string  name;           // e.g. "jarvis"
+        string  tld;            // e.g. ".claw"
+        address owner;
+        uint256 registeredAt;
+        uint256 expiresAt;      // registeredAt + 365 days
+        uint256 pricePaid;      // USDC amount (in wei, 6 decimals); 0 = reputation-gated free
+        bool    active;
+    }
+&nbsp;
+    mapping(uint256 =&gt; DomainRecord)   public domains;
+    mapping(bytes32  =&gt; uint256)       public domainToTokenId;  // keccak256(name+tld) → tokenId
+    mapping(bytes32  =&gt; bool)          public domainTaken;
+    mapping(address  =&gt; uint256[])     public ownerTokenIds;
+&nbsp;
+    event DomainRegistered(
+        uint256 indexed tokenId,
+        string  name,
+        string  tld,
+        string  fullDomain,
+        address indexed owner,
+        uint256 pricePaid,
+        uint256 expiresAt
+    );
+    event DomainExpiredNotice(uint256 indexed tokenId, string fullDomain);
+&nbsp;
+    error InvalidTLD();
+    error InvalidName();
+    error DomainAlreadyTaken();
+    error DomainNotFound();
+    error ReservedName();
+    error MaxSupplyReached();
+    error DomainExpired();
+&nbsp;
+    bytes32 private constant _RESERVED_ADMIN   = keccak256("admin");
+    bytes32 private constant _RESERVED_API     = keccak256("api");
+    bytes32 private constant _RESERVED_APP     = keccak256("app");
+    bytes32 private constant _RESERVED_TRUST   = keccak256("trust");
+    bytes32 private constant _RESERVED_CLAW    = keccak256("claw");
+    bytes32 private constant _RESERVED_MOLT    = keccak256("molt");
+    bytes32 private constant _RESERVED_SHELL   = keccak256("shell");
+    bytes32 private constant _RESERVED_PINCH   = keccak256("pinch");
+    bytes32 private constant _RESERVED_ROOT    = keccak256("root");
+    bytes32 private constant _RESERVED_CLAWTRUST = keccak256("clawtrust");
+    bytes32 private constant _RESERVED_AGENT  = keccak256("agent");
+&nbsp;
+    constructor() ERC721("ClawTrust Name Service", "CLNS") {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(REGISTRAR_ROLE,     msg.sender);
+        _grantRole(PAUSER_ROLE,        msg.sender);
+    }
+&nbsp;
+    function register(
+        string calldata domainName,
+        string calldata tld,
+        address         owner,
+        uint256         pricePaid
+    ) external whenNotPaused <span class="missing-if-branch" title="else path not taken" >E</span>nonReentrant onlyRole(REGISTRAR_ROLE) returns (uint256 tokenId) {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (_nextTokenId &gt; MAX_SUPPLY) revert MaxSupplyReached();
+&nbsp;
+        _validateTLD(tld);
+        _validateName(domainName);
+&nbsp;
+        bytes32 domainKey = _domainKey(domainName, tld);
+        if (domainTaken[domainKey]) revert DomainAlreadyTaken();
+&nbsp;
+        tokenId = _nextTokenId++;
+        uint256 expiresAt = block.timestamp + 365 days;
+&nbsp;
+        domains[tokenId] = DomainRecord({
+            name:         domainName,
+            tld:          tld,
+            owner:        owner,
+            registeredAt: block.timestamp,
+            expiresAt:    expiresAt,
+            pricePaid:    pricePaid,
+            active:       true
+        });
+&nbsp;
+        domainToTokenId[domainKey] = tokenId;
+        domainTaken[domainKey]     = true;
+        ownerTokenIds[owner].push(tokenId);
+&nbsp;
+        _safeMint(owner, tokenId);
+&nbsp;
+        // slither-disable-next-line encode-packed-collision -- display-only string for event; collision safety enforced by _domainKey (abi.encode)
+        string memory full = string(abi.encodePacked(domainName, tld));
+        emit DomainRegistered(tokenId, domainName, tld, full, owner, pricePaid, expiresAt);
+    }
+&nbsp;
+    function resolve(string calldata domainName, string calldata tld) external view returns (address owner) {
+        bytes32 key = _domainKey(domainName, tld);
+        if (!domainTaken[key]) revert DomainNotFound();
+        uint256 tokenId = domainToTokenId[key];
+        DomainRecord storage d = domains[tokenId];
+        if (block.timestamp &gt; d.expiresAt) return address(0);
+        return d.owner;
+    }
+&nbsp;
+    function isAvailable(string calldata domainName, string calldata tld) external view returns (bool) {
+        bytes32 key = _domainKey(domainName, tld);
+        if (!domainTaken[key]) return true;
+        uint256 tokenId = domainToTokenId[key];
+        return block.timestamp &gt; domains[tokenId].expiresAt;
+    }
+&nbsp;
+    function getDomain(uint256 tokenId) external view returns (DomainRecord memory) {
+        if (_ownerOf(tokenId) == address(0)) revert DomainNotFound();
+        return domains[tokenId];
+    }
+&nbsp;
+    function getOwnerTokenIds(address owner) external view returns (uint256[] memory) {
+        uint256[] storage allIds = ownerTokenIds[owner];
+        uint256 count = 0;
+        for (uint256 i = 0; i &lt; allIds.length; i++) {
+            uint256 tokenId = allIds[i];
+            <span class="missing-if-branch" title="else path not taken" >E</span>if (_ownerOf(tokenId) == owner &amp;&amp; block.timestamp &lt;= domains[tokenId].expiresAt) {
+                count++;
+            }
+        }
+        uint256[] memory result = new uint256[](count);
+        uint256 idx = 0;
+        for (uint256 i = 0; i &lt; allIds.length; i++) {
+            uint256 tokenId = allIds[i];
+            <span class="missing-if-branch" title="else path not taken" >E</span>if (_ownerOf(tokenId) == owner &amp;&amp; block.timestamp &lt;= domains[tokenId].expiresAt) {
+                result[idx++] = tokenId;
+            }
+        }
+        return result;
+    }
+&nbsp;
+    function renew(uint256 tokenId) external <span class="missing-if-branch" title="else path not taken" >E</span>onlyRole(REGISTRAR_ROLE) {
+        if (_ownerOf(tokenId) == address(0)) revert DomainNotFound();
+        // M-06: Extend from max(expiresAt, now) so early renewal preserves remaining validity time.
+        // This matches ENS/industry convention: a domain with 180 days left + 365-day renewal
+        // results in 545 days of validity, not just 365 days from today.
+        uint256 base = domains[tokenId].expiresAt &gt; block.timestamp
+            ? domains[tokenId].expiresAt
+            : block.timestamp;
+        domains[tokenId].expiresAt = base + 365 days;
+        domains[tokenId].active = true;
+    }
+&nbsp;
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        if (_ownerOf(tokenId) == address(0)) revert DomainNotFound();
+        DomainRecord storage d = domains[tokenId];
+        string memory full = string(abi.encodePacked(d.name, d.tld));
+        string memory json = string(abi.encodePacked(
+            '{"name":"', full,
+            '","description":"ClawTrust Name Service domain: ', full,
+            '","attributes":[',
+            '{"trait_type":"TLD","value":"', d.tld, '"},',
+            '{"trait_type":"Name","value":"', d.name, '"},',
+            '{"trait_type":"Registered","value":', d.registeredAt.toString(), '},',
+            '{"trait_type":"Expires","value":', d.expiresAt.toString(), '},',
+            '{"trait_type":"Price Paid (USDC micro)","value":', d.pricePaid.toString(),
+            '}]}'
+        ));
+        return string(abi.encodePacked(
+            "data:application/json;base64,",
+            Base64.encode(bytes(json))
+        ));
+    }
+&nbsp;
+    function pause()   external onlyRole(PAUSER_ROLE) { _pause(); }
+    function unpause() external <span class="missing-if-branch" title="else path not taken" >E</span>onlyRole(PAUSER_ROLE) { _unpause(); }
+&nbsp;
+    function supportsInterface(bytes4 interfaceId)
+        public view override(ERC721, AccessControl) returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+&nbsp;
+    function _validateTLD(string calldata tld) internal pure {
+        bytes memory b = bytes(tld);
+        bool ok = (
+            keccak256(b) == keccak256(bytes(TLD_CLAW))  ||
+            keccak256(b) == keccak256(bytes(TLD_SHELL)) ||
+            keccak256(b) == keccak256(bytes(TLD_PINCH)) ||
+            keccak256(b) == keccak256(bytes(TLD_AGENT))
+        );
+        if (!ok) revert InvalidTLD();
+    }
+&nbsp;
+    function _validateName(string calldata domainName) internal pure {
+        bytes memory b = bytes(domainName);
+        if (b.length &lt; 3 || b.length &gt; 32) revert InvalidName();
+&nbsp;
+        for (uint256 i = 0; i &lt; b.length; i++) {
+            bytes1 c = b[i];
+            bool valid = (c &gt;= 0x61 &amp;&amp; c &lt;= 0x7A) || // a-z
+                         (c &gt;= 0x30 &amp;&amp; c &lt;= 0x39) || // 0-9
+                         (c == 0x2D &amp;&amp; i &gt; 0 &amp;&amp; i &lt; b.length - 1); // hyphen (not at start/end)
+            if (!valid) revert InvalidName();
+        }
+&nbsp;
+        bytes32 nameHash = keccak256(b);
+        if (
+            nameHash == _RESERVED_ADMIN     ||
+            nameHash == _RESERVED_API       ||
+            nameHash == _RESERVED_APP       ||
+            nameHash == _RESERVED_TRUST     ||
+            nameHash == _RESERVED_CLAW      ||
+            nameHash == _RESERVED_MOLT      ||
+            nameHash == _RESERVED_SHELL     ||
+            nameHash == _RESERVED_PINCH     ||
+            nameHash == _RESERVED_ROOT      ||
+            nameHash == _RESERVED_CLAWTRUST ||
+<span class="branch-1 cbranch-no" title="branch not covered" >            nameHash == _RESERVED_AGENT</span>
+        ) revert ReservedName();
+    }
+&nbsp;
+    function _domainKey(string calldata domainName, string calldata tld) internal pure returns (bytes32) {
+        return keccak256(abi.encode(domainName, tld));
+    }
+&nbsp;
+    // [I] Transfer-owner sync hook: keeps domains[].owner in sync with
+    //     ERC-721 ownership on every transfer (mint, transfer, burn).
+    //     Intentionally does NOT clean up ownerTokenIds[from] — that array
+    //     is append-only; stale entries are filtered at read time.
+    function _update(address to, uint256 tokenId, address auth)
+        internal override returns (address)
+    {
+        address from = _ownerOf(tokenId);
+        // Non-mint, non-burn transfer: reject if domain is expired
+        if (from != address(0) &amp;&amp; to != address(0)) {
+            <span class="missing-if-branch" title="if path not taken" >I</span>if (block.timestamp &gt; domains[tokenId].expiresAt) revert DomainExpired();
+            domains[tokenId].owner = to;
+            ownerTokenIds[to].push(tokenId);
+        }
+        return super._update(to, tokenId, auth);
+    }
+}
+&nbsp;</pre></td></tr>
+</table></pre>
+<div class='push'></div><!-- for sticky footer -->
+</div><!-- /wrapper -->
+<div class='footer quiet pad2 space-top1 center small'>
+  Code coverage
+  generated by <a href="http://istanbul-js.org/" target="_blank">istanbul</a> at Tue Apr 07 2026 08:28:07 GMT+0000 (Coordinated Universal Time)
+</div>
+</div>
+<script src="../prettify.js"></script>
+<script>
+window.onload = function () {
+        if (typeof prettyPrint === 'function') {
+            prettyPrint();
+        }
+};
+</script>
+<script src="../sorter.js"></script>
+</body>
+</html>

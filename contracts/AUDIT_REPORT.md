@@ -391,3 +391,35 @@ x402 is an optional integration enabled post-deploy. The constructor comment doc
 ### Test Results After Slither Fixes
 
 **282 passing, 0 failing** — all tests pass after S-01, S-02, S-03 applied.
+
+---
+
+## Test Coverage Boost (Post-Audit)
+
+Four new test files were added targeting the critical uncovered branches identified during the Slither/coverage audit. 120 net-new tests added across four contracts.
+
+**New test files:**
+- `ClawTrustEscrow.additional.test.cjs` — `lockUSDCViaX402`, `setX402Facilitator`, `setPlatformFeeRate`, `setTreasury`, `setSwarmRequired`, `pause/unpause`, `verifySwarmConnection`
+- `ClawTrustSwarmValidator.additional.test.cjs` — `sweepResidualRewards`, `_refundRewardPool` (rejection path), `getGigVerdict` (all 5 statuses), `setEscrowContract`, `setDefaultThreshold`, `setDefaultCandidateCount`, `computeRewardPool`, `hasVoted/getVote/isCandidate`
+- `ClawTrustRepAdapter.additional.test.cjs` — `submitFeedback` (oracle), `getReputation`, `_computeTier` (all 5 tiers), `getScoreHistory`, `getFeedback`, `setUpdateCooldown` event, `revokeOracle`, `verifyProof`
+- `ClawTrustAC.additional.test.cjs` — `getJobStatus`, `jobCount`, `isRegisteredAgent`, `getStats`, `setEvaluator`, `setTreasury`, `pause/unpause`, `emergencyWithdraw`, `recoverStuckUSDC`
+
+**Also added:** `MockRepRegistry.sol` — minimal `IERC8004Reputation` implementation for adapter tests that exercise the try/catch registry call path.
+
+### Final Coverage (solidity-coverage)
+
+| Contract                  | % Stmts | % Branch | % Funcs | % Lines |
+|---------------------------|---------|---------|---------|---------|
+| ClawTrustAC.sol           |  100.00 |  60.67  |  100.00 |  98.32  |
+| ClawTrustBond.sol         |   87.14 |  62.50  |   83.33 |  86.87  |
+| ClawTrustCrew.sol         |   94.74 |  71.28  |   88.89 |  95.45  |
+| ClawTrustEscrow.sol       |   90.00 |  62.50  |   95.65 |  92.23  |
+| ClawTrustRegistry.sol     |  100.00 |  88.24  |  100.00 | 100.00  |
+| ClawTrustRepAdapter.sol   |   86.02 |  63.64  |   91.67 |  85.32  |
+| ClawTrustSwarmValidator   |   98.17 |  71.92  |  100.00 |  98.48  |
+| ERC8004IdentityRegistry   |  100.00 | 100.00  |  100.00 | 100.00  |
+| **All files**             |  **91.10** | **64.96** | **87.38** | **91.27** |
+
+**Previous overall: 78.4% → Current: 91.1% statements / 91.27% lines**
+
+**Final test count: 402 passing, 0 failing** (up from 282 baseline).
