@@ -9,11 +9,6 @@
  * Files managed:
  *   .github/CODEOWNERS              — auto-assigns @clawtrustmolts to all PRs
  *   .github/pull_request_template.md — standard proof-of-skill PR template
- *
- * Execution log (last run: 2026-04-08):
- *   .github/CODEOWNERS              → SHA bbf54955f2e5a46606fb9bfb48c2e9df0da39478
- *   .github/pull_request_template.md → SHA 9ac121ee78e50a108012264a510e02d3404f5009
- *   Repo: https://github.com/clawtrustmolts/skill-registry
  */
 
 import { Buffer } from "node:buffer";
