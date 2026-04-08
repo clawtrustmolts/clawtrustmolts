@@ -8785,24 +8785,43 @@ export async function registerRoutes(
     }
   });
 
-  // GET /api/gigs/:id/subtasks — List subtasks for a gig
+  // GET /api/gigs/:id/subtasks — List subtasks for a gig (role-filtered)
   app.get("/api/gigs/:id/subtasks", async (req, res) => {
     try {
       const gigId = req.params.id;
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
+      const requesterId = await resolveAgentFromRequest(req);
+      let requesterRole: string | null = null;
+      if (requesterId && gig.crewId) {
+        const members = await storage.getCrewMembers(gig.crewId);
+        const m = members.find(m => m.agentId === requesterId);
+        requesterRole = m?.role ?? null;
+      }
+      const isLead = requesterRole === "LEAD";
+      const isMember = !!requesterRole;
+
       const subtasks = await storage.getCrewSubtasks(gigId);
       const settings = await storage.getCrewGigSettings(gigId);
 
-      // Enrich with assignee info
-      const enriched = await Promise.all(subtasks.map(async (st) => {
-        if (!st.assigneeId) return { ...st, assignee: null };
-        const agent = await storage.getAgent(st.assigneeId);
-        return {
+      // Role-based visibility: lead sees all; member sees only assigned; non-member sees open tasks only (no submission details)
+      const visible = subtasks.filter(st => {
+        if (isLead) return true;
+        if (isMember) return st.assigneeId === requesterId;
+        return st.status === "open";
+      });
+
+      // Enrich with assignee info; strip submission details for non-members
+      const enriched = await Promise.all(visible.map(async (st) => {
+        const assignee = st.assigneeId ? await storage.getAgent(st.assigneeId) : null;
+        const base = {
           ...st,
-          assignee: agent ? { id: agent.id, handle: agent.handle, avatar: agent.avatar, fusedScore: agent.fusedScore } : null,
+          submissionText: (isLead || (isMember && st.assigneeId === requesterId)) ? st.submissionText : null,
+          leadFeedback: (isLead || (isMember && st.assigneeId === requesterId)) ? st.leadFeedback : null,
+          assignee: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
         };
+        return base;
       }));
 
       res.json({ subtasks: enriched, settings: settings || null });
@@ -8864,17 +8883,86 @@ export async function registerRoutes(
       // Auto-delivery check: if lead approved, check if all subtasks are approved
       if (isLead && status === "approved") {
         const allSubtasks = await storage.getCrewSubtasks(gigId);
+        // treat the just-approved subtask as approved regardless of DB propagation lag
         const allApproved = allSubtasks.every(s => s.id === subtaskId ? true : s.status === "approved");
-        if (allApproved && allSubtasks.length > 0) {
-          // Trigger auto-delivery if gig is still in active state
-          if (gig.status === "assigned" || gig.status === "in_progress") {
-            await storage.updateGigStatus(gigId, "pending_validation");
-            // Mark crew as agencyVerified if not already
-            const crew = await storage.getCrew(gig.crewId);
-            if (crew && !crew.agencyVerified) {
-              await storage.updateCrew(gig.crewId, { agencyVerified: true });
-            }
+        if (allApproved && allSubtasks.length > 0 && (gig.status === "assigned" || gig.status === "in_progress")) {
+          // 1. Aggregate approved submission texts into gig.deliverableNote
+          const approvedSubtasks = allSubtasks.map(s => s.id === subtaskId ? { ...s, status: "approved" as const } : s);
+          const deliverableLines = approvedSubtasks
+            .filter(s => s.submissionText)
+            .map(s => `[${s.title}] ${s.submissionText}`)
+            .join("\n---\n");
+          await storage.updateGig(gigId, {
+            deliverableNote: deliverableLines || "Agency multi-agent delivery: all subtasks approved.",
+          });
+
+          // 2. Advance gig to pending_validation
+          await storage.updateGigStatus(gigId, "pending_validation");
+
+          // 3. Mark crew as agencyVerified
+          const crew = await storage.getCrew(gig.crewId);
+          if (crew && !crew.agencyVerified) {
+            await storage.updateCrew(gig.crewId, { agencyVerified: true });
           }
+
+          // 4. Trigger swarm validation if none exists yet
+          (async () => {
+            try {
+              const existingValidation = await storage.getValidationByGig(gigId);
+              if (!existingValidation) {
+                const crewMembers = await storage.getCrewMembers(gig.crewId!);
+                const threshold = Math.max(1, Math.ceil(crewMembers.length / 2));
+                // Pick top agents by fusedScore as validators (exclude crew members to avoid self-validation)
+                const memberAgentIds = new Set(crewMembers.map(m => m.agentId));
+                const allTopAgents = (await storage.getAgents()).filter(a => !memberAgentIds.has(a.id)).sort((a, b) => b.fusedScore - a.fusedScore).slice(0, threshold);
+                if (allTopAgents.length > 0) {
+                  await storage.createValidation({
+                    gigId,
+                    status: "pending",
+                    threshold,
+                    selectedValidators: allTopAgents.map(a => a.id),
+                    totalRewardPool: 0,
+                    rewardPerValidator: 0,
+                  });
+                }
+              }
+            } catch (e: any) {
+              console.error("[Agency] Auto-validation trigger error:", e.message?.slice(0, 200));
+            }
+          })();
+
+          // 5. Contribution-weighted reputation split based on approved usdcShare
+          (async () => {
+            try {
+              const crewMembers = await storage.getCrewMembers(gig.crewId!);
+              const approvedList = allSubtasks.map(s => s.id === subtaskId ? { ...s, status: "approved" as const } : s).filter(s => s.status === "approved");
+              const totalUsdcAllocated = approvedList.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
+              if (totalUsdcAllocated > 0) {
+                const LEAD_COORDINATION_FEE = 0.10; // 10% coordination fee to lead
+                for (const member of crewMembers) {
+                  const memberTasks = approvedList.filter(s => s.assigneeId === member.agentId);
+                  const memberShare = memberTasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
+                  const memberIsLead = member.role === "LEAD";
+                  const rawWeight = memberShare / totalUsdcAllocated;
+                  const weightedShare = memberIsLead
+                    ? rawWeight + LEAD_COORDINATION_FEE
+                    : rawWeight * (1 - LEAD_COORDINATION_FEE);
+                  if (weightedShare > 0) {
+                    const repBonus = Math.max(1, Math.round(weightedShare * 10)); // up to 10 rep points per gig
+                    await storage.createReputationEvent({
+                      agentId: member.agentId,
+                      eventType: "agency_delivery",
+                      scoreChange: repBonus,
+                      source: "swarm",
+                      details: JSON.stringify({ gigId, gigTitle: gig.title, usdcShare: memberShare, weightedShare: +weightedShare.toFixed(3) }),
+                    }).catch(() => {});
+                  }
+                }
+              }
+            } catch (e: any) {
+              console.error("[Agency] Weighted rep split error:", e.message?.slice(0, 200));
+            }
+          })();
         }
       }
 
@@ -8957,28 +9045,51 @@ export async function registerRoutes(
 
       const members = await storage.getCrewMembers(crewId);
       const gigs = await storage.getCrewGigs(crewId);
-      const activeGigs = gigs.filter(g => ["assigned", "in_progress"].includes(g.status));
+      const activeGigs = gigs.filter(g => ["assigned", "in_progress", "pending_validation"].includes(g.status));
+      const allGigs = gigs;
 
-      // Gather all subtasks for active gigs
+      // Gather subtasks for all gigs (not just active) to compute lifetime stats
       const subtasksByGig = await Promise.all(
-        activeGigs.map(async g => ({ gigId: g.id, subtasks: await storage.getCrewSubtasks(g.id, crewId) }))
+        allGigs.map(async g => ({ gigId: g.id, subtasks: await storage.getCrewSubtasks(g.id, crewId) }))
       );
 
       const allSubtasks = subtasksByGig.flatMap(s => s.subtasks);
+      const activeSubtasks = subtasksByGig
+        .filter(s => activeGigs.some(g => g.id === s.gigId))
+        .flatMap(s => s.subtasks);
+
       const subtaskStats = {
         total: allSubtasks.length,
-        open: allSubtasks.filter(s => s.status === "open").length,
-        inProgress: allSubtasks.filter(s => s.status === "in_progress" || s.status === "claimed").length,
-        submitted: allSubtasks.filter(s => s.status === "submitted").length,
-        approved: allSubtasks.filter(s => s.status === "approved").length,
-        revision: allSubtasks.filter(s => s.status === "revision").length,
+        open: activeSubtasks.filter(s => s.status === "open").length,
+        inProgress: activeSubtasks.filter(s => s.status === "in_progress" || s.status === "claimed").length,
+        submitted: activeSubtasks.filter(s => s.status === "submitted").length,
+        approved: activeSubtasks.filter(s => s.status === "approved").length,
+        revision: activeSubtasks.filter(s => s.status === "revision").length,
       };
+
+      // Lifetime aggregates
+      const totalSubtasksCompleted = allSubtasks.filter(s => s.status === "approved").length;
+      const totalUsdcDistributed = allSubtasks
+        .filter(s => s.status === "approved")
+        .reduce((sum, s) => sum + (s.usdcShare || 0), 0);
+
+      // avgParallelism: avg number of in_progress+claimed subtasks per active gig
+      const avgParallelism = activeGigs.length > 0
+        ? +(activeSubtasks.filter(s => s.status === "in_progress" || s.status === "claimed").length / activeGigs.length).toFixed(2)
+        : 0;
+
+      // onTimeRate: approved subtasks that never went to "revision" state (proxy: no leadFeedback)
+      const approvedSubtasks = allSubtasks.filter(s => s.status === "approved");
+      const approvedWithoutRevision = approvedSubtasks.filter(s => !s.leadFeedback);
+      const onTimeRate = approvedSubtasks.length > 0
+        ? +(approvedWithoutRevision.length / approvedSubtasks.length).toFixed(3)
+        : 1;
 
       // Per-member contribution
       const memberContributions = members.map(m => {
         const memberSubtasks = allSubtasks.filter(s => s.assigneeId === m.agentId);
         const approvedCount = memberSubtasks.filter(s => s.status === "approved").length;
-        const totalShare = memberSubtasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
+        const totalShare = memberSubtasks.filter(s => s.status === "approved").reduce((sum, s) => sum + (s.usdcShare || 0), 0);
         return {
           agentId: m.agentId,
           role: m.role,
@@ -8995,6 +9106,12 @@ export async function registerRoutes(
         memberCount: members.length,
         subtaskStats,
         memberContributions,
+        // Required spec fields
+        totalSubtasksCompleted,
+        totalUsdcDistributed: +totalUsdcDistributed.toFixed(2),
+        avgParallelism,
+        onTimeRate,
+        // Crew-level
         gigsCompleted: crew.gigsCompleted,
         totalEarned: crew.totalEarned,
         fusedScore: crew.fusedScore,
@@ -9007,18 +9124,31 @@ export async function registerRoutes(
     }
   });
 
-  // GET /api/agents/:id/subtasks — Agent's assigned subtasks
-  app.get("/api/agents/:id/subtasks", async (req, res) => {
+  // GET /api/agents/:id/subtasks — Agent's assigned subtasks (profile view; public but redacted for non-self)
+  app.get("/api/agents/:id/subtasks", apiLimiter, async (req, res) => {
     try {
       const agentId = req.params.id;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      // Determine if requester is viewing their own profile
+      const requesterId = await resolveAgentFromRequest(req);
+      const isSelf = requesterId === agentId;
+
       const subtasks = await storage.getSubtasksForAssignee(agentId);
 
       const enriched = await Promise.all(subtasks.map(async st => {
         const gig = await storage.getGig(st.gigId);
-        return { ...st, gig: gig ? { id: gig.id, title: gig.title, status: gig.status, budget: gig.budget, currency: gig.currency } : null };
+        return {
+          ...st,
+          // Redact submission text and lead feedback for non-self viewers
+          submissionText: isSelf ? st.submissionText : null,
+          leadFeedback: isSelf ? st.leadFeedback : null,
+          gig: gig ? { id: gig.id, title: gig.title, status: gig.status, budget: gig.budget, currency: gig.currency } : null,
+        };
       }));
 
-      res.json(enriched);
+      res.json({ subtasks: enriched });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -32,6 +32,9 @@ import {
   Flag,
   Send,
   Gavel,
+  Layers,
+  CheckCircle2,
+  RotateCcw,
 } from "lucide-react";
 import type { Gig, Agent, EscrowTransaction } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1149,6 +1152,21 @@ export default function GigDetailPage() {
             )}
           </div>
 
+          {/* CREW WORK LOG */}
+          {gig.crewGig && (
+            <div
+              className="rounded-sm p-5"
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(59,130,246,0.18)" }}
+              data-testid="card-crew-work-log"
+            >
+              <h3 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+                <Layers className="w-4 h-4" style={{ color: "#3b82f6" }} />
+                WORK LOG
+              </h3>
+              <GigWorkLog gigId={gig.id} wallet={localStorage.getItem("walletAddress")} />
+            </div>
+          )}
+
           {/* CREW APPLICANTS */}
           {((crewApplicants && crewApplicants.length > 0) || gig.crewGig) && (
             <div
@@ -1217,6 +1235,93 @@ export default function GigDetailPage() {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Work Log: crew gig subtask activity timeline ───────────────────────────
+
+function GigWorkLog({ gigId, wallet }: { gigId: string; wallet: string | null }) {
+  const subtaskStatusColors: Record<string, string> = {
+    open: "var(--text-muted)",
+    claimed: "#a78bfa",
+    in_progress: "#3b82f6",
+    submitted: "var(--claw-amber)",
+    approved: "#22c55e",
+    revision: "var(--claw-red)",
+  };
+
+  const { data, isLoading } = useQuery<{ subtasks: any[]; settings: any }>({
+    queryKey: ["/api/gigs", gigId, "subtasks"],
+    queryFn: () =>
+      apiRequest("GET", `/api/gigs/${gigId}/subtasks`, undefined,
+        wallet ? { "x-wallet-address": wallet } : undefined
+      ).then(r => r.json()),
+    enabled: !!gigId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[0,1].map(i => <div key={i} className="h-12 rounded-sm animate-pulse" style={{ background: "var(--ocean-mid)" }} />)}
+      </div>
+    );
+  }
+
+  const subtasks = data?.subtasks || [];
+  if (subtasks.length === 0) {
+    return <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>No subtasks yet. The crew lead will add work items here.</p>;
+  }
+
+  const approved = subtasks.filter(s => s.status === "approved").length;
+  const totalUSDC = subtasks.filter(s => s.status === "approved").reduce((sum: number, s: any) => sum + (s.usdcShare || 0), 0);
+
+  return (
+    <div className="space-y-3" data-testid="section-work-log">
+      <div className="flex items-center gap-3 text-[10px] font-mono flex-wrap" style={{ color: "var(--text-muted)" }}>
+        <span>{subtasks.length} subtask{subtasks.length !== 1 ? "s" : ""}</span>
+        <span style={{ color: "#22c55e" }}>✓ {approved} approved</span>
+        {totalUSDC > 0 && <span style={{ color: "var(--teal-glow)" }}>${totalUSDC} USDC allocated</span>}
+      </div>
+      <div className="space-y-2">
+        {subtasks.map((st: any) => {
+          const col = subtaskStatusColors[st.status] || "var(--text-muted)";
+          const StatusIcon = st.status === "approved" ? CheckCircle2 : st.status === "revision" ? RotateCcw : Layers;
+          return (
+            <div key={st.id}
+              className="flex items-start gap-3 px-3 py-2.5 rounded-sm"
+              style={{ background: "var(--ocean-mid)", border: `1px solid ${col}20` }}
+              data-testid={`worklog-subtask-${st.id}`}>
+              <StatusIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: col }} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-[11px] font-semibold" style={{ color: "var(--shell-white)" }}>{st.title}</p>
+                  {st.requiredSkill && (
+                    <span className="text-[9px] font-mono" style={{ color: "var(--teal-dim)" }}>#{st.requiredSkill}</span>
+                  )}
+                  {st.usdcShare > 0 && (
+                    <span className="text-[9px] font-mono" style={{ color: "var(--teal-glow)" }}>${st.usdcShare}</span>
+                  )}
+                </div>
+                {st.assignee && (
+                  <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    @{st.assignee.handle}
+                  </p>
+                )}
+                {st.submissionText && st.status === "approved" && (
+                  <p className="text-[10px] mt-1 leading-relaxed" style={{ color: "var(--shell-cream)" }}>
+                    {st.submissionText}
+                  </p>
+                )}
+              </div>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm flex-shrink-0 uppercase"
+                style={{ color: col, background: `${col}12`, border: `1px solid ${col}25` }}>
+                {st.status.replace(/_/g, " ")}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
