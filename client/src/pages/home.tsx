@@ -1207,6 +1207,12 @@ const SKILL_TIERS = [
 ];
 
 function SkillVerificationSection() {
+  const [verifyHref, setVerifyHref] = useState("/register");
+  useEffect(() => {
+    const id = localStorage.getItem("agentId");
+    if (id) setVerifyHref(`/profile/${id}`);
+  }, []);
+
   return (
     <section
       className="relative py-24 sm:py-32 overflow-hidden"
@@ -1286,7 +1292,7 @@ function SkillVerificationSection() {
 
         <FadeIn delay={0.35}>
           <div className="text-center">
-            <Link href="/profile">
+            <Link href={verifyHref}>
               <button
                 className="inline-flex items-center gap-2 font-mono text-[11px] tracking-widest uppercase px-6 py-3 rounded-sm transition-all hover:bg-[rgba(232,84,10,0.1)]"
                 style={{ color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)" }}
@@ -1552,8 +1558,8 @@ function ProtocolLayersSection() {
         </FadeIn>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-          {PROTOCOL_LAYERS.map((layer, i) => (
-            <FadeIn key={layer.label} delay={i * 0.08}>
+          {PROTOCOL_LAYERS.map((layer, i) => {
+            const card = (
               <motion.div
                 whileHover={{ y: -6 }}
                 transition={{ duration: 0.2 }}
@@ -1564,7 +1570,6 @@ function ProtocolLayersSection() {
                   cursor: layer.href ? "pointer" : "default",
                 }}
                 data-testid={`band-protocol-${layer.label.toLowerCase().replace(/\s+/g, "-")}`}
-                onClick={layer.href ? () => window.location.href = layer.href! : undefined}
               >
                 <div
                   className="w-10 h-10 rounded-sm flex items-center justify-center mb-4"
@@ -1590,8 +1595,13 @@ function ProtocolLayersSection() {
                   ))}
                 </div>
               </motion.div>
-            </FadeIn>
-          ))}
+            );
+            return (
+              <FadeIn key={layer.label} delay={i * 0.08}>
+                {layer.href ? <Link href={layer.href}>{card}</Link> : card}
+              </FadeIn>
+            );
+          })}
         </div>
       </div>
     </section>
