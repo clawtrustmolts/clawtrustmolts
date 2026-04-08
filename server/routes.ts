@@ -6877,6 +6877,142 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/webhooks/github/skills — receives GitHub pull_request webhook from clawtrustmolts/skill-registry
+  // When a PR is merged into main, upgrades matching agent skills to T2 automatically.
+  app.post("/api/webhooks/github/skills", async (req, res) => {
+    try {
+      const webhookSecret = process.env.GITHUB_SKILL_REGISTRY_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        console.warn("[SkillRegistry] GITHUB_SKILL_REGISTRY_WEBHOOK_SECRET not configured — rejecting request");
+        return res.status(500).json({ message: "Webhook secret not configured" });
+      }
+
+      // Validate X-Hub-Signature-256 HMAC
+      const sigHeader = req.headers["x-hub-signature-256"] as string | undefined;
+      if (!sigHeader) {
+        console.warn("[SkillRegistry] Missing X-Hub-Signature-256 header");
+        return res.status(401).json({ message: "Missing signature header" });
+      }
+      // Use the raw buffer captured by Express's JSON verify callback for accurate HMAC
+      const rawBody: Buffer | string = (req as any).rawBody ?? JSON.stringify(req.body);
+      const expectedSig = "sha256=" + crypto.createHmac("sha256", webhookSecret).update(rawBody).digest("hex");
+      const sigBuf = Buffer.from(sigHeader);
+      const expBuf = Buffer.from(expectedSig);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        console.warn("[SkillRegistry] Signature mismatch — possible spoofing attempt");
+        return res.status(401).json({ message: "Invalid signature" });
+      }
+
+      // Only handle pull_request events
+      const ghEvent = req.headers["x-github-event"] as string | undefined;
+      if (ghEvent !== "pull_request") {
+        return res.status(200).json({ message: `Ignored event: ${ghEvent}` });
+      }
+
+      const payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+
+      // Only process merged PRs into main
+      if (payload.action !== "closed" || !payload.pull_request?.merged || payload.pull_request?.base?.ref !== "main") {
+        return res.status(200).json({ message: "Not a merged main-branch PR — skipped" });
+      }
+
+      const prNumber = payload.pull_request.number as number;
+      const prUrl = payload.pull_request.html_url as string;
+      const mergedAt = payload.pull_request.merged_at as string;
+
+      // Fetch changed files from GitHub API
+      const ghToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+      const filesResp = await fetch(
+        `https://api.github.com/repos/clawtrustmolts/skill-registry/pulls/${prNumber}/files?per_page=100`,
+        {
+          headers: {
+            Authorization: ghToken ? `Bearer ${ghToken}` : "",
+            "User-Agent": "ClawTrust-Skill-Registry/1.0",
+            Accept: "application/vnd.github+json",
+          },
+        }
+      );
+      if (!filesResp.ok) {
+        console.error(`[SkillRegistry] Failed to fetch PR files: ${filesResp.status}`);
+        return res.status(500).json({ message: "Failed to fetch PR files from GitHub" });
+      }
+      const files = await filesResp.json() as Array<{ filename: string }>;
+
+      // Parse skills/{skill}/{handle}/... paths
+      const results: Array<{ skill: string; handle: string; status: string }> = [];
+      const seen = new Set<string>();
+
+      for (const file of files) {
+        const match = file.filename.match(/^skills\/([^/]+)\/([^/]+)\//);
+        if (!match) continue;
+        const skillName = match[1].toLowerCase();
+        const agentHandle = match[2].toLowerCase();
+        const key = `${skillName}:${agentHandle}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        // Find the agent by handle
+        const agent = await storage.getAgentByHandle(agentHandle);
+        if (!agent) {
+          console.log(`[SkillRegistry] Agent handle '${agentHandle}' not found — skipping`);
+          results.push({ skill: skillName, handle: agentHandle, status: "agent_not_found" });
+          continue;
+        }
+
+        // Skip if skill not declared on profile
+        if (!agent.skills.map((s: string) => s.toLowerCase()).includes(skillName)) {
+          console.log(`[SkillRegistry] Skill '${skillName}' not declared for agent ${agentHandle} — skipping`);
+          results.push({ skill: skillName, handle: agentHandle, status: "skill_not_declared" });
+          continue;
+        }
+
+        // Get existing skill verification
+        const existing = await storage.getSkillVerification(agent.id, skillName);
+        const currentTier = existing?.tier ?? 0;
+
+        // Only upgrade if currently below T2; never downgrade T3+
+        if (currentTier >= 2) {
+          console.log(`[SkillRegistry] Agent ${agentHandle} already at T${currentTier} for '${skillName}' — adding proof record`);
+        }
+
+        const existingProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+        const updatedProofs = {
+          ...existingProofs,
+          "2": {
+            ...(existingProofs["2"] ?? {}),
+            method: "registry_pr",
+            prNumber,
+            prUrl,
+            mergedAt,
+            verifiedAt: new Date().toISOString(),
+          },
+        };
+
+        await storage.upsertSkillVerification(agent.id, skillName, {
+          tier: Math.max(currentTier, 2) as 0 | 1 | 2 | 3 | 4,
+          status: "verified",
+          tierProofs: updatedProofs,
+          verifiedAt: existing?.verifiedAt ?? new Date(),
+        });
+
+        // Add to verifiedSkills array if not already there
+        if (!agent.verifiedSkills.map((s: string) => s.toLowerCase()).includes(skillName)) {
+          await storage.updateAgent(agent.id, {
+            verifiedSkills: [...agent.verifiedSkills, skillName],
+          });
+        }
+
+        console.log(`[SkillRegistry] ✓ Agent ${agentHandle} upgraded to T${Math.max(currentTier, 2)} for '${skillName}' via PR #${prNumber}`);
+        results.push({ skill: skillName, handle: agentHandle, status: "upgraded" });
+      }
+
+      return res.json({ processed: results.length, results });
+    } catch (err: any) {
+      console.error("[SkillRegistry] Webhook error:", err.message?.slice(0, 200));
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/telegram/webhook", async (req, res) => {
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
 

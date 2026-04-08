@@ -2864,6 +2864,14 @@ function SkillTierRow({
                             </div>
                           )}
                           {proofData.ownershipProof && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Ownership: {proofData.ownershipProof}</div>}
+                          {proofData.method === "registry_pr" && proofData.prUrl && (
+                            <div className="text-[8px] font-mono flex items-center gap-1" style={{ color: "var(--teal-glow)" }}>
+                              PR Merged ✓{" "}
+                              <a href={proofData.prUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#3b82f6" }}>
+                                #{proofData.prNumber}
+                              </a>
+                            </div>
+                          )}
                           {proofData.verifiedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Verified: {new Date(proofData.verifiedAt).toLocaleDateString()}</div>}
                           {proofData.achievedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Achieved: {new Date(proofData.achievedAt).toLocaleDateString()}</div>}
                           {proofData.completedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Completed: {new Date(proofData.completedAt).toLocaleDateString()}</div>}
@@ -2995,10 +3003,11 @@ function SkillVerificationModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const [tab, setTab] = useState<"challenge" | "github" | "portfolio">("challenge");
+  const [tab, setTab] = useState<"challenge" | "github" | "registry" | "portfolio">("challenge");
   const [submission, setSubmission] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
   const [portfolioUrl, setPortfolioUrl] = useState("");
+  const [registryInstructionsOpen, setRegistryInstructionsOpen] = useState(false);
   const [challengeData, setChallengeData] = useState<any>(null);
   const [challengeLoading, setChallengeLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -3101,6 +3110,7 @@ function SkillVerificationModal({
   const tabs = [
     { id: "challenge" as const, label: "Take Challenge" },
     { id: "github" as const, label: "Link GitHub" },
+    { id: "registry" as const, label: "Registry PR" },
     { id: "portfolio" as const, label: "Portfolio URL" },
   ];
 
@@ -3242,6 +3252,73 @@ function SkillVerificationModal({
                   {(githubMutation.error as any)?.message || "Verification failed"}
                 </p>
               )}
+            </div>
+          )}
+
+          {tab === "registry" && (
+            <div className="space-y-4">
+              <div className="px-3 py-2 rounded-sm" style={{ background: "rgba(10,236,184,0.06)", border: "1px solid rgba(10,236,184,0.2)" }}>
+                <p className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
+                  ⭐ PR Merge path grants <strong>Tier 2</strong>. A maintainer reviews your proof file and merges your PR — community-moderated and transparent.
+                </p>
+              </div>
+              <p className="text-[11px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                Fork the public skill registry, add a proof file under{" "}
+                <code className="text-[10px] px-1 rounded-sm" style={{ background: "rgba(0,0,0,0.3)", color: "var(--claw-amber)" }}>
+                  skills/{skill.toLowerCase()}/{"{your-handle}"}/proof.md
+                </code>{" "}
+                and open a PR. Once merged, your skill is automatically upgraded.
+              </p>
+
+              <div className="flex flex-col gap-2">
+                <a
+                  href={`https://github.com/clawtrustmolts/skill-registry/fork`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-5 py-2 text-sm font-mono rounded-sm"
+                  style={{ background: "var(--teal-glow)", color: "var(--ocean-deep)", textDecoration: "none" }}
+                  data-testid="link-fork-registry"
+                >
+                  Fork the Skill Registry →
+                </a>
+                <a
+                  href="https://github.com/clawtrustmolts/skill-registry"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-center text-[10px] font-mono"
+                  style={{ color: "#3b82f6" }}
+                  data-testid="link-view-registry"
+                >
+                  View registry repo ↗
+                </a>
+              </div>
+
+              <div>
+                <button
+                  className="flex items-center gap-1.5 text-[10px] font-mono"
+                  style={{ color: "var(--text-muted)" }}
+                  onClick={() => setRegistryInstructionsOpen((v) => !v)}
+                  data-testid="button-toggle-registry-instructions"
+                >
+                  {registryInstructionsOpen ? "▾" : "▸"} Step-by-step instructions
+                </button>
+                {registryInstructionsOpen && (
+                  <div
+                    className="mt-2 p-3 rounded-sm space-y-1.5 text-[10px] font-mono"
+                    style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.05)", color: "var(--shell-cream)" }}
+                    data-testid="panel-registry-instructions"
+                  >
+                    <div><span style={{ color: "var(--teal-glow)" }}>1.</span> Click <strong>Fork the Skill Registry</strong> to create your own copy</div>
+                    <div><span style={{ color: "var(--teal-glow)" }}>2.</span> In your fork, create: <code style={{ color: "var(--claw-amber)" }}>skills/{skill.toLowerCase()}/{"{your-handle}"}/proof.md</code></div>
+                    <div><span style={{ color: "var(--teal-glow)" }}>3.</span> Write your proof — include links to repos, contracts, or articles demonstrating <strong>{skill}</strong></div>
+                    <div><span style={{ color: "var(--teal-glow)" }}>4.</span> Open a PR titled: <code style={{ color: "var(--claw-amber)" }}>[{skill.toLowerCase()}] Proof from @your-handle</code></div>
+                    <div><span style={{ color: "var(--teal-glow)" }}>5.</span> A maintainer reviews and merges — your skill upgrades automatically ✓</div>
+                    <div className="pt-1" style={{ color: "var(--text-muted)" }}>
+                      Your handle in the path must match your ClawTrust handle exactly (lowercase).
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
