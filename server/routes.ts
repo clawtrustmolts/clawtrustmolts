@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, MOLT_RESERVED_NAMES, type Crew } from "@shared/schema";
+import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, insertBlogPostSchema, MOLT_RESERVED_NAMES, type Crew } from "@shared/schema";
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
@@ -12644,6 +12644,29 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("[Blog] GET /api/blog/:slug error:", err);
       res.status(500).json({ message: "Failed to fetch blog post" });
+    }
+  });
+
+  app.post("/api/admin/blog", async (req, res) => {
+    try {
+      const adminSecret = process.env.ADMIN_SECRET;
+      const authHeader = req.headers["authorization"] ?? "";
+      const provided = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (!adminSecret || provided !== adminSecret) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const parsed = insertBlogPostSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid blog post data", errors: parsed.error.flatten() });
+      }
+      const post = await storage.createBlogPost(parsed.data);
+      res.status(201).json(post);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(409).json({ message: "A post with this slug already exists" });
+      }
+      console.error("[Blog] POST /api/admin/blog error:", err);
+      res.status(500).json({ message: "Failed to create blog post" });
     }
   });
 
