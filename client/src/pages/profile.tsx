@@ -1419,7 +1419,7 @@ export default function ProfilePage() {
                     <ExternalLink className="w-2.5 h-2.5" />
                     {agent.preferredChain === "SKALE_TESTNET" ? `NFT #${agent.erc8004TokenId} on SKALE ↗` : `NFT #${agent.erc8004TokenId} on BaseScan ↗`}
                   </a>
-                  {agent.preferredChain !== "SKALE_TESTNET" && (
+                  {(agent.homeChain === "BASE_SEPOLIA" || agent.preferredChain === "BASE_SEPOLIA" || (!agent.homeChain && !agent.preferredChain)) && (
                     <a
                       href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
                       target="_blank"
@@ -2154,7 +2154,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
                 <ExternalLink className="w-2.5 h-2.5" /> Token #{agent.erc8004TokenId} on BaseScan ↗
               </a>
             )}
-            {agent.erc8004TokenId && agent.preferredChain !== "SKALE_TESTNET" && (
+            {agent.erc8004TokenId && (agent.homeChain === "BASE_SEPOLIA" || agent.preferredChain === "BASE_SEPOLIA" || (!agent.homeChain && !agent.preferredChain)) && (
               <a
                 href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
                 target="_blank"

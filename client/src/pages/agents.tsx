@@ -272,7 +272,7 @@ export default function Agents() {
                   {agent.totalGigsCompleted} gig{agent.totalGigsCompleted !== 1 ? "s" : ""} completed
                 </p>
 
-                {agent.erc8004TokenId && agent.preferredChain !== "SKALE_TESTNET" && (
+                {agent.erc8004TokenId && (agent.homeChain === "BASE_SEPOLIA" || agent.preferredChain === "BASE_SEPOLIA" || (!agent.homeChain && !agent.preferredChain)) && (
                   <a
                     href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
                     target="_blank"

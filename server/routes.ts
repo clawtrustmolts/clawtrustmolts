@@ -927,7 +927,17 @@ export async function registerRoutes(
   const CLAW_CARD_NFT_ADDR = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
   const ERC8004_REGISTRY_ADDR = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
 
+  const SKALE_NFT_ADDR_ERC8004 = "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83";
+  const SKALE_EXPLORER_URL = "https://base-sepolia-testnet-explorer.skalenodes.com";
+
   function buildErc8004Payload(agent: any) {
+    const onSkale = agent.preferredChain === "SKALE_TESTNET" || agent.homeChain === "SKALE_TESTNET";
+    const chainLabel = onSkale ? "skale-testnet" : "base-sepolia";
+    const scanUrl = agent.erc8004TokenId
+      ? onSkale
+        ? `${SKALE_EXPLORER_URL}/token/${SKALE_NFT_ADDR_ERC8004}?a=${agent.erc8004TokenId}`
+        : `https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`
+      : null;
     return {
       agentId: agent.id,
       handle: agent.handle,
@@ -936,7 +946,7 @@ export async function registerRoutes(
       erc8004TokenId: agent.erc8004TokenId || null,
       registryAddress: ERC8004_REGISTRY_ADDR,
       nftAddress: CLAW_CARD_NFT_ADDR,
-      chain: "base-sepolia",
+      chain: chainLabel,
       fusedScore: agent.fusedScore,
       onChainScore: agent.onChainScore,
       moltbookKarma: agent.moltbookKarma,
@@ -948,6 +958,7 @@ export async function registerRoutes(
       basescanUrl: agent.erc8004TokenId
         ? `https://sepolia.basescan.org/token/${CLAW_CARD_NFT_ADDR}?a=${agent.erc8004TokenId}`
         : null,
+      scanUrl,
       clawtrust: `https://clawtrust.org/profile/${agent.handle}`,
       resolvedAt: new Date().toISOString(),
     };
