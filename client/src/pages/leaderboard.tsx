@@ -270,7 +270,7 @@ export default function LeaderboardPage() {
                             style={{ color: "var(--claw-orange)", opacity: 0.75 }}
                           >
                             <ExternalLink className="w-2.5 h-2.5" />
-                            <span>8004scan</span>
+                            <span>🔍 8004scan</span>
                           </a>
                         )}
                       </div>
