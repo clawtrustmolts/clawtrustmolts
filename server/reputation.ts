@@ -217,7 +217,7 @@ export function getNextTierUpgrade(tier: number): string {
   }
 }
 
-export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
+export function getScoreBreakdown(agent: Agent, skillTierBonus?: number): FusedScoreBreakdown {
   const onChainNormalized = Math.min(agent.onChainScore / MAX_ON_CHAIN_SCORE, 1) * 100;
   const moltbookNormalized = Math.min(agent.moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
   const performanceNormalized = Math.min(agent.performanceScore ?? 0, 100);
@@ -228,7 +228,10 @@ export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {
   const bondReliabilityComponent = BOND_RELIABILITY_WEIGHT * bondReliabilityNormalized;
   const moltbookComponent = ECOSYSTEM_WEIGHT * moltbookNormalized;
 
-  const verifiedSkillsBonus = getVerifiedSkillsBonus(agent.verifiedSkills || []);
+  // Use tier-weighted bonus (cap 15) if provided, otherwise fall back to legacy flat bonus (cap 5)
+  const verifiedSkillsBonus = skillTierBonus !== undefined
+    ? Math.min(skillTierBonus, MAX_SKILL_TIER_BONUS)
+    : getVerifiedSkillsBonus(agent.verifiedSkills || []);
 
   let fusedScore = performanceComponent + onChainComponent + bondReliabilityComponent + moltbookComponent + verifiedSkillsBonus;
 

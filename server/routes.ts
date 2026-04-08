@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address, getAddress as toChecksumAddress, verifyMessage } from "viem";
-import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL, computeSkillTierBonus, getTierLabel, getTierBadge, getNextTierUpgrade, MAX_VERIFIED_SKILLS_BONUS, getVerifiedSkillsBonus } from "./reputation";
+import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL, computeSkillTierBonus, getTierLabel, getTierBadge, getNextTierUpgrade, MAX_VERIFIED_SKILLS_BONUS } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
   buildIdentityMetadata,
@@ -544,6 +544,19 @@ async function adminAuthMiddleware(req: Request, res: Response, next: NextFuncti
 
   (req as any).adminWallet = adminWallet;
   next();
+}
+
+async function syncAgentSkillBonusAndVerifiedSkills(agentId: string): Promise<void> {
+  const allVerifications = await storage.getSkillVerifications(agentId);
+  const verifiedFromTiers = allVerifications.filter(v => (v.tier ?? 0) >= 1).map(v => v.skillName);
+  const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
+  const agent = await storage.getAgent(agentId);
+  if (!agent) return;
+  const newFusedScore = Math.max(0, Math.round(getScoreBreakdown(agent, tierBonus).fusedScore * 10) / 10);
+  await storage.updateAgent(agentId, {
+    fusedScore: newFusedScore,
+    verifiedSkills: verifiedFromTiers,
+  });
 }
 
 export async function registerRoutes(
@@ -2529,29 +2542,19 @@ export async function registerRoutes(
       if (gig.assigneeId && gig.skillsRequired && gig.skillsRequired.length > 0) {
         (async () => {
           try {
+            const escrowAmt = escrow?.amount;
             for (const skillName of gig.skillsRequired) {
               const existing = await storage.getSkillVerification(gig.assigneeId!, skillName.toLowerCase());
               if ((existing?.tier ?? 0) < 3) {
                 const newTier = Math.max(existing?.tier ?? 0, 3);
                 const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
-                tierProofs["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, completedAt: new Date().toISOString() };
+                tierProofs["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: escrowAmt ?? gig.budget, completedAt: new Date().toISOString() };
                 await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
-                  tier: newTier,
-                  tierProofs,
-                  status: "verified",
-                  verifiedAt: existing?.verifiedAt ?? new Date(),
+                  tier: newTier, tierProofs, status: "verified", verifiedAt: existing?.verifiedAt ?? new Date(),
                 });
               }
             }
-            const allVerifications = await storage.getSkillVerifications(gig.assigneeId!);
-            const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
-            const agentForUpdate = await storage.getAgent(gig.assigneeId!);
-            if (agentForUpdate) {
-              const baseScore = getScoreBreakdown(agentForUpdate).fusedScore;
-              const oldBonus = getVerifiedSkillsBonus(agentForUpdate.verifiedSkills || []);
-              const newFusedScore = Math.max(0, Math.round((baseScore - oldBonus + tierBonus) * 10) / 10);
-              await storage.updateAgent(gig.assigneeId!, { fusedScore: newFusedScore });
-            }
+            await syncAgentSkillBonusAndVerifiedSkills(gig.assigneeId!);
           } catch (e: any) {
             console.error("[SkillTier] Gig-proven upgrade error (escrow release):", e.message?.slice(0, 200));
           }
@@ -2982,19 +2985,13 @@ export async function registerRoutes(
                   const existing2 = await storage.getSkillVerification(gig.assigneeId!, skillName.toLowerCase());
                   if ((existing2?.tier ?? 0) < 3) {
                     const tp2 = (existing2?.tierProofs as Record<string, any>) ?? {};
-                    tp2["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, completedAt: new Date().toISOString() };
+                    tp2["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: gig.budget, completedAt: new Date().toISOString() };
                     await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
                       tier: Math.max(existing2?.tier ?? 0, 3), tierProofs: tp2, status: "verified", verifiedAt: existing2?.verifiedAt ?? new Date(),
                     });
                   }
                 }
-                const allVer2 = await storage.getSkillVerifications(gig.assigneeId!);
-                const bonus2 = computeSkillTierBonus(allVer2.map(v => v.tier ?? 0));
-                const ag2 = await storage.getAgent(gig.assigneeId!);
-                if (ag2) {
-                  const bs2 = getScoreBreakdown(ag2).fusedScore;
-                  await storage.updateAgent(gig.assigneeId!, { fusedScore: Math.max(0, Math.round((bs2 - getVerifiedSkillsBonus(ag2.verifiedSkills || []) + bonus2) * 10) / 10) });
-                }
+                await syncAgentSkillBonusAndVerifiedSkills(gig.assigneeId!);
               } catch (e: any) {
                 console.error("[SkillTier] Gig-proven upgrade error (swarm auto-approve):", e.message?.slice(0, 200));
               }
@@ -3217,19 +3214,13 @@ export async function registerRoutes(
                   const existing3 = await storage.getSkillVerification(gig2.assigneeId!, skillName.toLowerCase());
                   if ((existing3?.tier ?? 0) < 3) {
                     const tp3 = (existing3?.tierProofs as Record<string, any>) ?? {};
-                    tp3["3"] = { method: "gig_proven", gigId: gig2.id, gigTitle: gig2.title, completedAt: new Date().toISOString() };
+                    tp3["3"] = { method: "gig_proven", gigId: gig2.id, gigTitle: gig2.title, usdcEarned: gig2.budget, completedAt: new Date().toISOString() };
                     await storage.upsertSkillVerification(gig2.assigneeId!, skillName.toLowerCase(), {
                       tier: Math.max(existing3?.tier ?? 0, 3), tierProofs: tp3, status: "verified", verifiedAt: existing3?.verifiedAt ?? new Date(),
                     });
                   }
                 }
-                const allVer3 = await storage.getSkillVerifications(gig2.assigneeId!);
-                const bonus3 = computeSkillTierBonus(allVer3.map(v => v.tier ?? 0));
-                const ag3 = await storage.getAgent(gig2.assigneeId!);
-                if (ag3) {
-                  const bs3 = getScoreBreakdown(ag3).fusedScore;
-                  await storage.updateAgent(gig2.assigneeId!, { fusedScore: Math.max(0, Math.round((bs3 - getVerifiedSkillsBonus(ag3.verifiedSkills || []) + bonus3) * 10) / 10) });
-                }
+                await syncAgentSkillBonusAndVerifiedSkills(gig2.assigneeId!);
               } catch (e: any) {
                 console.error("[SkillTier] Gig-proven upgrade error (swarm vote resolution):", e.message?.slice(0, 200));
               }
@@ -9546,22 +9537,7 @@ export async function registerRoutes(
           tierProofs,
         });
 
-        const currentVerified = agent.verifiedSkills || [];
-        const newVerifiedSkills = currentVerified.map((s: string) => s.toLowerCase()).includes(skill)
-          ? currentVerified
-          : [...currentVerified, skill];
-
-        const allVerifications = await storage.getSkillVerifications(agentId);
-        const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
-        const updatedAgent: typeof agent = { ...agent, verifiedSkills: newVerifiedSkills };
-        const baseScore = getScoreBreakdown(updatedAgent).fusedScore;
-        const oldBonus = (newVerifiedSkills.length <= MAX_VERIFIED_SKILLS_BONUS ? newVerifiedSkills.length : MAX_VERIFIED_SKILLS_BONUS);
-        const newFusedScore = Math.round((baseScore - oldBonus + tierBonus) * 10) / 10;
-
-        await storage.updateAgent(agentId, {
-          verifiedSkills: newVerifiedSkills,
-          fusedScore: Math.max(0, newFusedScore),
-        });
+        await syncAgentSkillBonusAndVerifiedSkills(agentId);
       }
 
       const finalAgent = await storage.getAgent(agentId);
@@ -9669,9 +9645,35 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Authenticated wallet does not own this agent" });
       }
 
-      const { githubHandle } = req.body;
+      const { githubHandle, walletSignature } = req.body;
       if (!githubHandle || typeof githubHandle !== "string" || !/^[a-zA-Z0-9_-]{1,39}$/.test(githubHandle.trim())) {
         return res.status(400).json({ message: "githubHandle required (your GitHub username, not a URL)" });
+      }
+
+      if (!walletSignature || typeof walletSignature !== "string") {
+        return res.status(400).json({
+          message: "walletSignature required — sign the ownership message with your registered wallet",
+          requiredMessage: `I am ${githubHandle.trim()} on GitHub. My ClawTrust wallet is ${walletAddress.toLowerCase()}.`,
+          hint: "Sign this exact message with your wallet (EIP-191 personal_sign) to prove GitHub handle ownership",
+        });
+      }
+
+      const expectedMessage = `I am ${githubHandle.trim()} on GitHub. My ClawTrust wallet is ${walletAddress.toLowerCase()}.`;
+      let signatureValid = false;
+      try {
+        const recoveredAddress = await import("viem").then(({ recoverMessageAddress }) =>
+          recoverMessageAddress({ message: expectedMessage, signature: walletSignature as `0x${string}` })
+        );
+        signatureValid = recoveredAddress.toLowerCase() === walletAddress.toLowerCase();
+      } catch {
+        signatureValid = false;
+      }
+      if (!signatureValid) {
+        return res.status(403).json({
+          message: "Wallet signature verification failed — the signature does not match the required message",
+          requiredMessage: expectedMessage,
+          hint: "Use EIP-191 personal_sign with the exact message to prove you own both the wallet and the GitHub handle",
+        });
       }
 
       const existing = await storage.getSkillVerification(id, skill);
@@ -9698,6 +9700,8 @@ export async function registerRoutes(
         repoCount: result.repoCount,
         topRepo: result.topRepo,
         languages: result.languages,
+        ownershipProof: "wallet_signature_eip191",
+        walletAddress: walletAddress.toLowerCase(),
         verifiedAt: new Date().toISOString(),
       };
       const newTrust = Math.min(100, (existing?.trustScore ?? 0) + 30);
@@ -9712,15 +9716,7 @@ export async function registerRoutes(
         tierProofs,
       });
 
-      const allVerifications = await storage.getSkillVerifications(id);
-      const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
-      const agentNow = await storage.getAgent(id);
-      if (agentNow) {
-        const baseScore = getScoreBreakdown(agentNow).fusedScore;
-        const oldBonus = getVerifiedSkillsBonus(agentNow.verifiedSkills || []);
-        const newFusedScore = Math.max(0, Math.round((baseScore - oldBonus + tierBonus) * 10) / 10);
-        await storage.updateAgent(id, { fusedScore: newFusedScore });
-      }
+      await syncAgentSkillBonusAndVerifiedSkills(id);
 
       res.json({
         message: `GitHub verified for skill '${skill}'. ${result.repoCount} matching repo(s) found.`,
@@ -9807,15 +9803,7 @@ export async function registerRoutes(
             trustScore: Math.min(100, (existing?.trustScore ?? 0) + 20),
           });
 
-          const allVerifications = await storage.getSkillVerifications(targetId);
-          const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
-          const agentNow = await storage.getAgent(targetId);
-          if (agentNow) {
-            const baseScore = getScoreBreakdown(agentNow).fusedScore;
-            const oldBonus = getVerifiedSkillsBonus(agentNow.verifiedSkills || []);
-            const newFusedScore = Math.max(0, Math.round((baseScore - oldBonus + tierBonus) * 10) / 10);
-            await storage.updateAgent(targetId, { fusedScore: newFusedScore });
-          }
+          await syncAgentSkillBonusAndVerifiedSkills(targetId);
           tierUpgraded = true;
         }
       }

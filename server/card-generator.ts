@@ -197,11 +197,18 @@ export function generateCardMetadata(agent: Agent, baseUrl: string, skillVerific
   const rank = getRank(agent.fusedScore);
   const tokenId = agent.erc8004TokenId ? parseInt(agent.erc8004TokenId, 10) : null;
   const tierLabels = ["Declared", "Challenge-Passed", "GitHub-Verified", "Gig-Proven", "Peer-Attested"];
-  const verifiedSkillAttrs = skillVerifications && skillVerifications.length > 0
+  const tierredSkills = skillVerifications
     ? skillVerifications.filter(sv => (sv.tier ?? 0) > 0).map(sv => ({
-        trait_type: "Verified Skill",
-        value: `${sv.skillName} (T${sv.tier ?? 0}: ${tierLabels[sv.tier ?? 0] || "Unknown"})`,
+        name: sv.skillName,
+        tier: sv.tier ?? 0,
+        tierLabel: tierLabels[sv.tier ?? 0] || "Unknown",
       }))
+    : [];
+  const verifiedSkillAttrs = tierredSkills.length > 0
+    ? [
+        { trait_type: "verified_skills", value: tierredSkills.map(s => `${s.name}:T${s.tier}`).join(",") },
+        ...tierredSkills.map(s => ({ trait_type: "Verified Skill", value: `${s.name} (T${s.tier}: ${s.tierLabel})` })),
+      ]
     : [];
   return {
     type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",

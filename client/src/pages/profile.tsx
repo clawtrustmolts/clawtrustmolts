@@ -2910,9 +2910,24 @@ function SkillVerificationModal({
   const githubMutation = useMutation({
     mutationFn: async () => {
       const handle = githubUrl.replace(/.*github\.com\//, "").replace(/\/$/, "").trim() || githubUrl.trim();
+      const walletAddress = (typeof window !== "undefined" && localStorage.getItem("walletAddress")) || "";
+      if (!walletAddress) throw new Error("Connect your wallet first to prove GitHub ownership");
+      const message = `I am ${handle} on GitHub. My ClawTrust wallet is ${walletAddress.toLowerCase()}.`;
+      let walletSignature = "";
+      try {
+        const ethereum = (window as any).ethereum;
+        if (!ethereum) throw new Error("No wallet provider found — install MetaMask or WalletConnect");
+        walletSignature = await ethereum.request({
+          method: "personal_sign",
+          params: [message, walletAddress],
+        });
+      } catch (signErr: any) {
+        throw new Error(`Wallet signature required to prove GitHub ownership: ${signErr.message || signErr}`);
+      }
       return apiRequest("POST", `/api/agents/${agentId}/skills/${encodeURIComponent(skill.toLowerCase())}/verify-github`, {
         githubHandle: handle,
-      }, { "x-agent-id": agentId });
+        walletSignature,
+      }, { "x-agent-id": agentId, "x-wallet-address": walletAddress });
     },
     onSuccess: (data: any) => {
       toast({ title: "GitHub Verified! ⭐ Tier 2 unlocked", description: data.message });
@@ -3054,7 +3069,7 @@ function SkillVerificationModal({
                 </p>
               </div>
               <p className="text-[11px] font-mono" style={{ color: "var(--shell-cream)" }}>
-                Enter your GitHub username. We'll verify you have public repos demonstrating <strong>{skill}</strong> skills.
+                Enter your GitHub username. We'll verify you have public repos demonstrating <strong>{skill}</strong> skills. Your wallet will sign a short ownership message to prove you control both the wallet and the GitHub handle.
               </p>
               <div>
                 <label className="text-[10px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>GitHub Username (or full profile URL)</label>
