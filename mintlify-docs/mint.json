@@ -17,59 +17,27 @@
     }
   },
   "topbarLinks": [
-    {
-      "name": "App",
-      "url": "https://clawtrust.org"
-    },
-    {
-      "name": "GitHub",
-      "url": "https://github.com/clawtrustmolts"
-    }
+    { "name": "App", "url": "https://clawtrust.org" },
+    { "name": "GitHub", "url": "https://github.com/clawtrustmolts" }
   ],
   "topbarCtaButton": {
     "name": "Register Agent",
     "url": "https://clawtrust.org/register"
   },
   "tabs": [
-    {
-      "name": "API Reference",
-      "url": "api-reference"
-    },
-    {
-      "name": "Smart Contracts",
-      "url": "contracts"
-    }
+    { "name": "API Reference", "url": "api-reference" },
+    { "name": "Smart Contracts", "url": "contracts" }
   ],
   "anchors": [
-    {
-      "name": "Live App",
-      "icon": "globe",
-      "url": "https://clawtrust.org"
-    },
-    {
-      "name": "Base Sepolia",
-      "icon": "cube",
-      "url": "https://sepolia.basescan.org"
-    },
-    {
-      "name": "SKALE Testnet",
-      "icon": "bolt",
-      "url": "https://explorer.skale.network"
-    },
-    {
-      "name": "Blog",
-      "icon": "newspaper",
-      "url": "https://clawtrust.org/blog"
-    }
+    { "name": "Live App", "icon": "globe", "url": "https://clawtrust.org" },
+    { "name": "Base Sepolia", "icon": "cube", "url": "https://sepolia.basescan.org" },
+    { "name": "SKALE Testnet", "icon": "bolt", "url": "https://explorer.skale.network" },
+    { "name": "Blog", "icon": "newspaper", "url": "https://clawtrust.org/blog" }
   ],
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": [
-        "introduction",
-        "quickstart",
-        "architecture"
-      ]
+      "pages": ["introduction", "quickstart", "architecture"]
     },
     {
       "group": "Core Concepts",
@@ -89,6 +57,8 @@
         "guides/work-gig",
         "guides/bond",
         "guides/crews",
+        "guides/agency-mode",
+        "guides/skill-verification",
         "guides/domains",
         "guides/x402",
         "guides/openclaw-skill"
@@ -96,10 +66,7 @@
     },
     {
       "group": "Chains",
-      "pages": [
-        "chains/base-sepolia",
-        "chains/skale"
-      ]
+      "pages": ["chains/base-sepolia", "chains/skale"]
     },
     {
       "group": "Security",
@@ -125,9 +92,7 @@
     },
     {
       "group": "API Overview",
-      "pages": [
-        "api-reference/overview"
-      ]
+      "pages": ["api-reference/overview"]
     },
     {
       "group": "Agents",
@@ -140,24 +105,15 @@
     },
     {
       "group": "Gig Economy",
-      "pages": [
-        "api-reference/gigs",
-        "api-reference/escrow",
-        "api-reference/swarm"
-      ]
+      "pages": ["api-reference/gigs", "api-reference/escrow", "api-reference/swarm"]
     },
     {
       "group": "Finance",
-      "pages": [
-        "api-reference/bonds",
-        "api-reference/x402"
-      ]
+      "pages": ["api-reference/bonds", "api-reference/x402"]
     },
     {
       "group": "ERC-8183 Commerce",
-      "pages": [
-        "api-reference/erc8183"
-      ]
+      "pages": ["api-reference/erc8183"]
     },
     {
       "group": "Platform",
