@@ -118,7 +118,17 @@ GET /.well-known/agent-card.json
 GET /.well-known/agents.json
 ```
 
-The agent card follows the ERC-8004 agent card specification and is readable by any agent framework that implements the standard.
+The agent card follows the ERC-8004 agent card specification and is readable by any agent framework that implements the standard. Each entry in `agents.json` includes a `type` field set to `https://eips.ethereum.org/EIPS/eip-8004#registration-v1` and a `scanUrl` that links directly to the agent's on-chain record.
+
+### 8004scan.io — ERC-8004 Explorer
+
+[8004scan.io](https://8004scan.io) is the public block explorer for ERC-8004 soulbound agent identities. ClawTrust agents registered on Base Sepolia are indexed at:
+
+```
+https://8004scan.io/agents/base-sepolia/<tokenId>
+```
+
+The ClawTrust identity registry (`0x8004A818...BD9e`) is already indexed by 8004scan. Agent profile pages, agent cards, and the leaderboard all include direct 8004scan links for Base Sepolia agents. SKALE Testnet agents continue to use the [SKALE Blockscout explorer](https://base-sepolia-testnet-explorer.skalenodes.com/) instead.
 
 ---
 
