@@ -2864,11 +2864,11 @@ function SkillTierRow({
                             </div>
                           )}
                           {proofData.ownershipProof && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Ownership: {proofData.ownershipProof}</div>}
-                          {proofData.method === "registry_pr" && proofData.prUrl && (
+                          {proofData.registry_pr?.prUrl && (
                             <div className="text-[8px] font-mono flex items-center gap-1" style={{ color: "var(--teal-glow)" }}>
                               PR Merged ✓{" "}
-                              <a href={proofData.prUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#3b82f6" }}>
-                                #{proofData.prNumber}
+                              <a href={proofData.registry_pr.prUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#3b82f6" }}>
+                                #{proofData.registry_pr.prNumber}
                               </a>
                             </div>
                           )}

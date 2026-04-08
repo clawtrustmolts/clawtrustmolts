@@ -6911,6 +6911,13 @@ export async function registerRoutes(
 
       const payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
 
+      // Guard 1: Validate repository identity to prevent secret reuse/misrouting
+      const repoFullName = payload.repository?.full_name as string | undefined;
+      if (repoFullName !== "clawtrustmolts/skill-registry") {
+        console.warn(`[SkillRegistry] Rejected payload from unexpected repo: ${repoFullName}`);
+        return res.status(400).json({ message: "Unexpected repository source" });
+      }
+
       // Only process merged PRs into main
       if (payload.action !== "closed" || !payload.pull_request?.merged || payload.pull_request?.base?.ref !== "main") {
         return res.status(200).json({ message: "Not a merged main-branch PR — skipped" });
@@ -6920,23 +6927,30 @@ export async function registerRoutes(
       const prUrl = payload.pull_request.html_url as string;
       const mergedAt = payload.pull_request.merged_at as string;
 
-      // Fetch changed files from GitHub API
+      // Fetch all changed files from GitHub API with pagination
       const ghToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
-      const filesResp = await fetch(
-        `https://api.github.com/repos/clawtrustmolts/skill-registry/pulls/${prNumber}/files?per_page=100`,
-        {
-          headers: {
-            Authorization: ghToken ? `Bearer ${ghToken}` : "",
-            "User-Agent": "ClawTrust-Skill-Registry/1.0",
-            Accept: "application/vnd.github+json",
-          },
+      const ghHeaders = {
+        Authorization: ghToken ? `Bearer ${ghToken}` : "",
+        "User-Agent": "ClawTrust-Skill-Registry/1.0",
+        Accept: "application/vnd.github+json",
+      };
+      let files: Array<{ filename: string }> = [];
+      let page = 1;
+      while (true) {
+        const filesResp = await fetch(
+          `https://api.github.com/repos/clawtrustmolts/skill-registry/pulls/${prNumber}/files?per_page=100&page=${page}`,
+          { headers: ghHeaders }
+        );
+        if (!filesResp.ok) {
+          console.error(`[SkillRegistry] Failed to fetch PR files page ${page}: ${filesResp.status}`);
+          return res.status(500).json({ message: "Failed to fetch PR files from GitHub" });
         }
-      );
-      if (!filesResp.ok) {
-        console.error(`[SkillRegistry] Failed to fetch PR files: ${filesResp.status}`);
-        return res.status(500).json({ message: "Failed to fetch PR files from GitHub" });
+        const batch = await filesResp.json() as Array<{ filename: string }>;
+        if (batch.length === 0) break;
+        files = files.concat(batch);
+        if (batch.length < 100) break;
+        page++;
       }
-      const files = await filesResp.json() as Array<{ filename: string }>;
 
       // Parse skills/{skill}/{handle}/... paths
       const results: Array<{ skill: string; handle: string; status: string }> = [];
@@ -6976,15 +6990,15 @@ export async function registerRoutes(
         }
 
         const existingProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+        // Preserve existing T2 proof data (e.g. from github_api path) and merge registry_pr proof alongside it
+        const existingT2 = existingProofs["2"] ?? {};
         const updatedProofs = {
           ...existingProofs,
           "2": {
-            ...(existingProofs["2"] ?? {}),
-            method: "registry_pr",
-            prNumber,
-            prUrl,
-            mergedAt,
-            verifiedAt: new Date().toISOString(),
+            ...existingT2,
+            // Preserve prior method label if already T2 via another path; registry_pr is additive
+            method: existingT2.method ?? "registry_pr",
+            registry_pr: { prNumber, prUrl, mergedAt, verifiedAt: new Date().toISOString() },
           },
         };
 
