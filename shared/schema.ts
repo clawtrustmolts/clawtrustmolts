@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint, serial, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint, serial, jsonb, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -154,10 +154,12 @@ export const agentSkills = pgTable("agent_skills", {
   portfolioUrl: text("portfolio_url"),
   challengeScore: integer("challenge_score"),
   challengeCompletedAt: timestamp("challenge_completed_at"),
-  tier: integer("tier").notNull().default(0),
+  tier: integer("tier").notNull().default(0).$type<0|1|2|3|4>(),
   tierProofs: jsonb("tier_proofs").default({}),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  tierRange: check("tier_range_0_4", sql`${table.tier} >= 0 AND ${table.tier} <= 4`),
+}));
 
 export const skillAttestations = pgTable("skill_attestations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

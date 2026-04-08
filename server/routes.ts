@@ -2543,12 +2543,13 @@ export async function registerRoutes(
         (async () => {
           try {
             const escrowAmt = escrow?.amount;
+            const swarmValidation = await storage.getValidationByGig(gigId);
             for (const skillName of gig.skillsRequired) {
               const existing = await storage.getSkillVerification(gig.assigneeId!, skillName.toLowerCase());
               if ((existing?.tier ?? 0) < 3) {
                 const newTier = Math.max(existing?.tier ?? 0, 3);
                 const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
-                tierProofs["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: escrowAmt ?? gig.budget, completedAt: new Date().toISOString() };
+                tierProofs["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: escrowAmt ?? gig.budget, swarmVoteId: swarmValidation?.id ?? null, completedAt: new Date().toISOString() };
                 await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
                   tier: newTier, tierProofs, status: "verified", verifiedAt: existing?.verifiedAt ?? new Date(),
                 });
@@ -2985,7 +2986,7 @@ export async function registerRoutes(
                   const existing2 = await storage.getSkillVerification(gig.assigneeId!, skillName.toLowerCase());
                   if ((existing2?.tier ?? 0) < 3) {
                     const tp2 = (existing2?.tierProofs as Record<string, any>) ?? {};
-                    tp2["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: gig.budget, completedAt: new Date().toISOString() };
+                    tp2["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: gig.budget, swarmVoteId: validation.id, completedAt: new Date().toISOString() };
                     await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
                       tier: Math.max(existing2?.tier ?? 0, 3), tierProofs: tp2, status: "verified", verifiedAt: existing2?.verifiedAt ?? new Date(),
                     });
@@ -3108,21 +3109,19 @@ export async function registerRoutes(
 
       const gig = gigForSelfCheck;
       if (gig && gig.skillsRequired && gig.skillsRequired.length > 0) {
-        if (voter) {
-          const voterVerified = (voter.verifiedSkills || []).map((s: string) => s.toLowerCase());
-          const gigSkills = gig.skillsRequired.map((s: string) => s.toLowerCase());
-          const hasRelevantSkill = gigSkills.some((gs: string) => voterVerified.includes(gs));
-          // Skill match is only enforced when the validator has verified skills but none
-          // match the gig. Validators with zero verified skills are general validators
-          // and can vote on any gig — they are deprioritised at selection time, so they
-          // only reach this point when not enough skilled validators exist.
-          if (voterVerified.length > 0 && !hasRelevantSkill) {
-            return res.status(403).json({
-              message: "Your verified skills do not match this gig's requirements. Complete a Skill Proof for a relevant skill to vote on this gig.",
-              requiredSkills: gig.skillsRequired,
-              yourVerifiedSkills: voter.verifiedSkills || [],
-            });
-          }
+        const gigSkills = gig.skillsRequired.map((s: string) => s.toLowerCase());
+        const voterSkillVerifications = await storage.getSkillVerifications(voterId);
+        const voterTier1Skills = voterSkillVerifications
+          .filter(sv => (sv.tier ?? 0) >= 1)
+          .map(sv => sv.skillName.toLowerCase());
+        const hasQualifyingSkill = gigSkills.some(gs => voterTier1Skills.includes(gs));
+        if (!hasQualifyingSkill) {
+          return res.status(403).json({
+            message: "You must have at least Tier 1 (Challenge-Passed) verification in one of the gig's required skills to vote on this validation.",
+            requiredSkills: gig.skillsRequired,
+            yourTier1Skills: voterTier1Skills,
+            hint: "Pass a skill challenge for a relevant skill (e.g. POST /api/skill-challenges/:skill/attempt) to qualify as a validator.",
+          });
         }
       }
 
@@ -3214,7 +3213,7 @@ export async function registerRoutes(
                   const existing3 = await storage.getSkillVerification(gig2.assigneeId!, skillName.toLowerCase());
                   if ((existing3?.tier ?? 0) < 3) {
                     const tp3 = (existing3?.tierProofs as Record<string, any>) ?? {};
-                    tp3["3"] = { method: "gig_proven", gigId: gig2.id, gigTitle: gig2.title, usdcEarned: gig2.budget, completedAt: new Date().toISOString() };
+                    tp3["3"] = { method: "gig_proven", gigId: gig2.id, gigTitle: gig2.title, usdcEarned: gig2.budget, swarmVoteId: validationId, completedAt: new Date().toISOString() };
                     await storage.upsertSkillVerification(gig2.assigneeId!, skillName.toLowerCase(), {
                       tier: Math.max(existing3?.tier ?? 0, 3), tierProofs: tp3, status: "verified", verifiedAt: existing3?.verifiedAt ?? new Date(),
                     });
@@ -9589,44 +9588,109 @@ export async function registerRoutes(
 
   async function verifyGitHubSkill(
     githubHandle: string,
-    skill: string
-  ): Promise<{ ok: boolean; repoCount: number; topRepo: string | null; languages: string[]; error?: string }> {
+    skill: string,
+    agentRegisteredAt?: Date | null
+  ): Promise<{ ok: boolean; repoCount: number; topRepo: string | null; languages: string[]; commitCount?: number; error?: string }> {
     const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
     const headers: Record<string, string> = { "User-Agent": "ClawTrust-Skill-Verifier/1.0", "Accept": "application/vnd.github+json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const MIN_COMMITS = 10;
 
     try {
       const userResp = await fetch(`https://api.github.com/users/${encodeURIComponent(githubHandle)}`, { headers });
       if (!userResp.ok) {
         if (userResp.status === 404) return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub user '${githubHandle}' not found` };
-        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub API error: ${userResp.status}` };
+        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub API error: ${userResp.status} — verification unavailable` };
       }
-      const userData = await userResp.json() as { public_repos: number; login: string };
+      const userData = await userResp.json() as { public_repos: number; login: string; created_at: string };
       if (userData.public_repos === 0) {
         return { ok: false, repoCount: 0, topRepo: null, languages: [], error: "GitHub account has no public repositories" };
       }
 
-      const targetLanguages = GITHUB_SKILL_LANGUAGES[skill.toLowerCase()] ?? [];
-      if (targetLanguages.length === 0) {
-        return { ok: true, repoCount: userData.public_repos, topRepo: null, languages: [], error: undefined };
+      const targetLanguages = GITHUB_SKILL_LANGUAGES[skill.toLowerCase()];
+      if (targetLanguages === undefined) {
+        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `Skill '${skill}' is not in the allowed skill list for GitHub verification` };
       }
 
+      const registrationCutoff = agentRegisteredAt ? new Date(agentRegisteredAt) : null;
+
+      if (targetLanguages.length === 0) {
+        const repoResp = await fetch(
+          `https://api.github.com/users/${encodeURIComponent(githubHandle)}/repos?type=public&sort=pushed&per_page=100`,
+          { headers }
+        );
+        if (!repoResp.ok) {
+          return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub API error fetching repos: ${repoResp.status}` };
+        }
+        const repos = await repoResp.json() as Array<{ name: string; created_at: string; pushed_at: string }>;
+        const preRegRepos = registrationCutoff
+          ? repos.filter(r => new Date(r.created_at) < registrationCutoff!)
+          : repos;
+        if (preRegRepos.length === 0) {
+          return { ok: false, repoCount: 0, topRepo: null, languages: [], error: "No public repositories created before agent registration date" };
+        }
+        let totalCommits = 0;
+        for (const repo of preRegRepos.slice(0, 5)) {
+          try {
+            const statsResp = await fetch(`https://api.github.com/repos/${encodeURIComponent(githubHandle)}/${encodeURIComponent(repo.name)}/contributors?per_page=100&anon=0`, { headers });
+            if (statsResp.ok) {
+              const contributors = await statsResp.json() as Array<{ login: string; contributions: number }>;
+              const mine = contributors.find(c => c.login.toLowerCase() === githubHandle.toLowerCase());
+              totalCommits += mine?.contributions ?? 0;
+            }
+          } catch { /* ignore per-repo errors */ }
+        }
+        if (totalCommits < MIN_COMMITS) {
+          return { ok: false, repoCount: preRegRepos.length, topRepo: null, languages: [], commitCount: totalCommits, error: `Insufficient commit history: found ${totalCommits} commits, need at least ${MIN_COMMITS}` };
+        }
+        return { ok: true, repoCount: preRegRepos.length, topRepo: preRegRepos[0]?.name ?? null, languages: [], commitCount: totalCommits };
+      }
+
+      const langQuery = targetLanguages.map(l => `language:${encodeURIComponent(l)}`).join("+OR+");
       const repoResp = await fetch(
-        `https://api.github.com/search/repositories?q=user:${encodeURIComponent(githubHandle)}&sort=stars&order=desc&per_page=30`,
+        `https://api.github.com/search/repositories?q=${langQuery}+user:${encodeURIComponent(githubHandle)}&sort=stars&order=desc&per_page=30`,
         { headers }
       );
-      if (!repoResp.ok) return { ok: true, repoCount: userData.public_repos, topRepo: null, languages: [], error: undefined };
-      const repoData = await repoResp.json() as { items: Array<{ name: string; language: string | null; stargazers_count: number }> };
-      const matchingRepos = (repoData.items || []).filter(r => r.language && targetLanguages.some(l => l.toLowerCase() === r.language!.toLowerCase()));
-      if (matchingRepos.length === 0) {
+      if (!repoResp.ok) {
+        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub repo search failed: ${repoResp.status} — verification unavailable` };
+      }
+      const repoData = await repoResp.json() as { items: Array<{ name: string; language: string | null; stargazers_count: number; created_at: string }> };
+      const allMatchingRepos = (repoData.items || []).filter(r => r.language && targetLanguages.some(l => l.toLowerCase() === r.language!.toLowerCase()));
+      if (allMatchingRepos.length === 0) {
         return {
           ok: false, repoCount: userData.public_repos, topRepo: null, languages: [],
           error: `No public repositories found using ${targetLanguages.join("/")} for skill '${skill}'`,
         };
       }
+      const matchingRepos = registrationCutoff
+        ? allMatchingRepos.filter(r => new Date(r.created_at) < registrationCutoff!)
+        : allMatchingRepos;
+      if (matchingRepos.length === 0) {
+        return {
+          ok: false, repoCount: allMatchingRepos.length, topRepo: null, languages: [],
+          error: `No qualifying repositories for skill '${skill}' — all repos were created after your agent registration date`,
+        };
+      }
+
+      let totalCommits = 0;
+      for (const repo of matchingRepos.slice(0, 5)) {
+        try {
+          const statsResp = await fetch(`https://api.github.com/repos/${encodeURIComponent(githubHandle)}/${encodeURIComponent(repo.name)}/contributors?per_page=100&anon=0`, { headers });
+          if (statsResp.ok) {
+            const contributors = await statsResp.json() as Array<{ login: string; contributions: number }>;
+            const mine = contributors.find(c => c.login.toLowerCase() === githubHandle.toLowerCase());
+            totalCommits += mine?.contributions ?? 0;
+          }
+        } catch { /* ignore per-repo errors */ }
+      }
+      if (totalCommits < MIN_COMMITS) {
+        return { ok: false, repoCount: matchingRepos.length, topRepo: null, languages: [], commitCount: totalCommits, error: `Insufficient commit history: found ${totalCommits} commits across qualifying repos, need at least ${MIN_COMMITS}` };
+      }
+
       const topRepo = matchingRepos[0]?.name ?? null;
       const uniqueLangs = [...new Set(matchingRepos.map(r => r.language!).filter(Boolean))];
-      return { ok: true, repoCount: matchingRepos.length, topRepo, languages: uniqueLangs };
+      return { ok: true, repoCount: matchingRepos.length, topRepo, languages: uniqueLangs, commitCount: totalCommits };
     } catch (err: any) {
       return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub API unavailable: ${err.message?.slice(0, 100)}` };
     }
@@ -9676,12 +9740,16 @@ export async function registerRoutes(
         });
       }
 
+      if (!agent.skills.map(s => s.toLowerCase()).includes(skill)) {
+        return res.status(400).json({ message: `Skill '${skill}' is not declared on your agent profile. Add it to your skills list first.` });
+      }
+
       const existing = await storage.getSkillVerification(id, skill);
       if ((existing?.tier ?? 0) >= 2) {
         return res.status(400).json({ message: `Skill '${skill}' is already GitHub-verified (Tier 2 or higher)` });
       }
 
-      const result = await verifyGitHubSkill(githubHandle.trim(), skill);
+      const result = await verifyGitHubSkill(githubHandle.trim(), skill, agent.createdAt);
       if (!result.ok) {
         return res.status(422).json({
           message: result.error || "GitHub verification failed",
@@ -9698,6 +9766,7 @@ export async function registerRoutes(
         method: "github_api",
         githubHandle: githubHandle.trim(),
         repoCount: result.repoCount,
+        commitCount: result.commitCount ?? 0,
         topRepo: result.topRepo,
         languages: result.languages,
         ownershipProof: "wallet_signature_eip191",

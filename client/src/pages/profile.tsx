@@ -2781,6 +2781,143 @@ type SkillVerificationInfo = {
   nextUpgrade?: string;
 };
 
+function SkillTierRow({
+  skill, sv, isOwnProfile, currentAgent, agentId,
+  tierColors, tierBadges, onVerify, onAttest, attestingSkill, onAttestDone
+}: {
+  skill: string;
+  sv?: SkillVerificationInfo;
+  isOwnProfile?: boolean;
+  currentAgent: string | null;
+  agentId: string;
+  tierColors: string[];
+  tierBadges: string[];
+  onVerify: (s: string) => void;
+  onAttest: (s: string) => void;
+  attestingSkill: string | null;
+  onAttestDone: () => void;
+}) {
+  const [proofExpanded, setProofExpanded] = useState(false);
+  const tier = sv?.tier ?? 0;
+  const isVerified = sv?.status === "verified";
+  const isPartial = sv?.status === "partial";
+  const tierNames: Record<string, string> = { "1": "Challenge-Passed", "2": "GitHub-Verified", "3": "Gig-Proven", "4": "Peer-Attested" };
+  return (
+    <div
+      className="px-3 py-2 rounded-sm"
+      style={{ background: "rgba(0,0,0,0.12)", border: `1px solid ${tier > 0 ? "rgba(10,236,184,0.1)" : "rgba(255,255,255,0.04)"}` }}
+      data-testid={`skill-verify-row-${skill}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: isVerified ? "rgba(10,236,184,0.15)" : isPartial ? "rgba(232,84,10,0.12)" : "rgba(255,255,255,0.04)" }}
+          >
+            {isVerified ? (
+              <CheckCircle className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+            ) : isPartial ? (
+              <Clock className="w-3 h-3" style={{ color: "var(--claw-amber)" }} />
+            ) : (
+              <HelpCircle className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{skill}</span>
+            {tier > 0 && (
+              <button
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm cursor-pointer"
+                style={{ background: `${tierColors[tier]}22`, color: tierColors[tier], border: `1px solid ${tierColors[tier]}44` }}
+                data-testid={`badge-skill-tier-${skill}`}
+                onClick={() => setProofExpanded(p => !p)}
+                title="Click to view proof evidence"
+              >
+                {tierBadges[tier]} T{tier} {sv?.tierLabel}
+              </button>
+            )}
+            {tier === 0 && (
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                T0 Declared
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isOwnProfile && tier < 2 && (
+            <button
+              className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+              style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+              onClick={() => onVerify(skill)}
+              data-testid={`button-verify-skill-${skill}`}
+            >
+              {tier === 0 ? "Verify" : "Upgrade"}
+            </button>
+          )}
+          {isOwnProfile && tier >= 1 && tier < 2 && (
+            <button
+              className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+              style={{ background: "rgba(59,130,246,0.1)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+              onClick={() => onVerify(skill)}
+              data-testid={`button-github-verify-skill-${skill}`}
+            >
+              GitHub
+            </button>
+          )}
+          {!isOwnProfile && tier >= 2 && currentAgent && (
+            <button
+              className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+              style={{ background: "rgba(167,139,250,0.1)", color: "#a78bfa", border: "1px solid rgba(167,139,250,0.2)" }}
+              onClick={() => onAttest(skill)}
+              data-testid={`button-attest-skill-${skill}`}
+            >
+              Attest
+            </button>
+          )}
+        </div>
+      </div>
+      {attestingSkill === skill && (
+        <AttestSkillRow agentId={agentId} skill={skill} onDone={onAttestDone} />
+      )}
+      {proofExpanded && tier > 0 && sv?.tierProofs && Object.keys(sv.tierProofs).length > 0 && (
+        <div className="mt-2 rounded-sm overflow-hidden" style={{ border: "1px solid rgba(10,236,184,0.15)", background: "rgba(0,0,0,0.25)" }} data-testid={`proof-details-${skill}`}>
+          <div className="px-2 py-1 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(10,236,184,0.1)", background: "rgba(10,236,184,0.04)" }}>
+            <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--teal-glow)" }}>Proof Evidence</span>
+            <button className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }} onClick={() => setProofExpanded(false)}>✕</button>
+          </div>
+          {(Object.entries(sv.tierProofs) as [string, Record<string, any>][]).map(([proofTier, proofData]) => (
+            <div key={proofTier} className="px-2 py-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+              <div className="text-[9px] font-mono mb-1" style={{ color: tierColors[parseInt(proofTier)] || "var(--text-muted)" }}>
+                T{proofTier} {tierNames[proofTier] || "Verified"}
+              </div>
+              <div className="space-y-0.5">
+                {proofData.method && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Method: {proofData.method}</div>}
+                {proofData.githubHandle && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>GitHub: <a href={`https://github.com/${proofData.githubHandle}`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#3b82f6" }}>@{proofData.githubHandle}</a></div>}
+                {proofData.repoCount != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Repos: {proofData.repoCount} qualifying</div>}
+                {proofData.commitCount != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Commits: {proofData.commitCount}</div>}
+                {proofData.topRepo && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Top Repo: {proofData.topRepo}</div>}
+                {proofData.challengeScore != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Challenge Score: {proofData.challengeScore}%</div>}
+                {proofData.gigTitle && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Gig: {proofData.gigTitle}</div>}
+                {proofData.usdcEarned != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>USDC Earned: {proofData.usdcEarned}</div>}
+                {proofData.swarmVoteId && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Swarm Vote ID: {proofData.swarmVoteId}</div>}
+                {proofData.attestors && Array.isArray(proofData.attestors) && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Attestors: {proofData.attestors.length} peer(s)</div>}
+                {proofData.ownershipProof && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Ownership: {proofData.ownershipProof}</div>}
+                {proofData.verifiedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Verified: {new Date(proofData.verifiedAt).toLocaleDateString()}</div>}
+                {proofData.achievedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Achieved: {new Date(proofData.achievedAt).toLocaleDateString()}</div>}
+                {proofData.completedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Completed: {new Date(proofData.completedAt).toLocaleDateString()}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {tier < 4 && sv?.nextUpgrade && (
+        <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+          Next: {sv.nextUpgrade}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AttestSkillRow({ agentId, skill, onDone }: { agentId: string; skill: string; onDone: () => void }) {
   const { toast } = useToast();
   const walletAddress = (() => { try { return localStorage.getItem("walletAddress"); } catch { return null; } })();
@@ -3416,102 +3553,26 @@ function BondRiskTab({
             T0 Declared → T1 Challenge-Passed → T2 GitHub-Verified → T3 Gig-Proven → T4 Peer-Attested (Diamond)
           </p>
           <div className="space-y-2">
-            {agent.skills.map((skill) => {
-              const sv = skillVerifications?.find((v) => v.skill === skill);
-              const tier = sv?.tier ?? 0;
-              const isVerified = sv?.status === "verified";
-              const isPartial = sv?.status === "partial";
+            {(() => {
               const TIER_COLORS = ["var(--text-muted)", "var(--claw-amber)", "#3b82f6", "var(--teal-glow)", "#a78bfa"];
               const TIER_BADGES = ["", "✓", "⭐", "🏆", "💎"];
-              return (
-                <div
+              return agent.skills.map((skill) => (
+                <SkillTierRow
                   key={skill}
-                  className="px-3 py-2 rounded-sm"
-                  style={{ background: "rgba(0,0,0,0.12)", border: `1px solid ${tier > 0 ? "rgba(10,236,184,0.1)" : "rgba(255,255,255,0.04)"}` }}
-                  data-testid={`skill-verify-row-${skill}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                        style={{ background: isVerified ? "rgba(10,236,184,0.15)" : isPartial ? "rgba(232,84,10,0.12)" : "rgba(255,255,255,0.04)" }}
-                      >
-                        {isVerified ? (
-                          <CheckCircle className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
-                        ) : isPartial ? (
-                          <Clock className="w-3 h-3" style={{ color: "var(--claw-amber)" }} />
-                        ) : (
-                          <HelpCircle className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{skill}</span>
-                        {tier > 0 && (
-                          <span
-                            className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
-                            style={{ background: `${TIER_COLORS[tier]}22`, color: TIER_COLORS[tier], border: `1px solid ${TIER_COLORS[tier]}44` }}
-                            data-testid={`badge-skill-tier-${skill}`}
-                          >
-                            {TIER_BADGES[tier]} T{tier} {sv?.tierLabel}
-                          </span>
-                        )}
-                        {tier === 0 && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                            T0 Declared
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {isOwnProfile && tier < 2 && (
-                        <button
-                          className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
-                          style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
-                          onClick={() => setVerifySkill(skill)}
-                          data-testid={`button-verify-skill-${skill}`}
-                        >
-                          {tier === 0 ? "Verify" : "Upgrade"}
-                        </button>
-                      )}
-                      {isOwnProfile && tier >= 1 && tier < 2 && (
-                        <button
-                          className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
-                          style={{ background: "rgba(59,130,246,0.1)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
-                          onClick={() => setVerifySkill(skill)}
-                          data-testid={`button-github-verify-skill-${skill}`}
-                        >
-                          GitHub
-                        </button>
-                      )}
-                      {!isOwnProfile && tier >= 2 && currentAgent && (
-                        <button
-                          className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
-                          style={{ background: "rgba(167,139,250,0.1)", color: "#a78bfa", border: "1px solid rgba(167,139,250,0.2)" }}
-                          onClick={() => {
-                            if (attestingSkill === skill) {
-                              setAttestingSkill(null);
-                            } else {
-                              setAttestingSkill(skill);
-                            }
-                          }}
-                          data-testid={`button-attest-skill-${skill}`}
-                        >
-                          Attest
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {attestingSkill === skill && (
-                    <AttestSkillRow agentId={agent.id} skill={skill} onDone={() => { setAttestingSkill(null); refetchSkillVerifications(); }} />
-                  )}
-                  {tier < 4 && sv?.nextUpgrade && (
-                    <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
-                      Next: {sv.nextUpgrade}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+                  skill={skill}
+                  sv={skillVerifications?.find((v) => v.skill === skill)}
+                  isOwnProfile={isOwnProfile}
+                  currentAgent={currentAgent}
+                  agentId={agent.id}
+                  tierColors={TIER_COLORS}
+                  tierBadges={TIER_BADGES}
+                  onVerify={setVerifySkill}
+                  onAttest={(s) => setAttestingSkill(attestingSkill === s ? null : s)}
+                  attestingSkill={attestingSkill}
+                  onAttestDone={() => { setAttestingSkill(null); refetchSkillVerifications?.(); }}
+                />
+              ));
+            })()}
           </div>
         </SectionCard>
       )}
