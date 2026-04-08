@@ -2797,11 +2797,11 @@ function SkillTierRow({
   attestingSkill: string | null;
   onAttestDone: () => void;
 }) {
-  const [proofExpanded, setProofExpanded] = useState(false);
   const tier = sv?.tier ?? 0;
   const isVerified = sv?.status === "verified";
   const isPartial = sv?.status === "partial";
   const tierNames: Record<string, string> = { "1": "Challenge-Passed", "2": "GitHub-Verified", "3": "Gig-Proven", "4": "Peer-Attested" };
+  const hasProofs = tier > 0 && sv?.tierProofs && Object.keys(sv.tierProofs).length > 0;
   return (
     <div
       className="px-3 py-2 rounded-sm"
@@ -2825,15 +2825,49 @@ function SkillTierRow({
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{skill}</span>
             {tier > 0 && (
-              <button
-                className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm cursor-pointer"
-                style={{ background: `${tierColors[tier]}22`, color: tierColors[tier], border: `1px solid ${tierColors[tier]}44` }}
-                data-testid={`badge-skill-tier-${skill}`}
-                onClick={() => setProofExpanded(p => !p)}
-                title="Click to view proof evidence"
-              >
-                {tierBadges[tier]} T{tier} {sv?.tierLabel}
-              </button>
+              <div className="relative inline-block group">
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm cursor-default"
+                  style={{ background: `${tierColors[tier]}22`, color: tierColors[tier], border: `1px solid ${tierColors[tier]}44` }}
+                  data-testid={`badge-skill-tier-${skill}`}
+                >
+                  {tierBadges[tier]} T{tier} {sv?.tierLabel}
+                </span>
+                {hasProofs && (
+                  <div
+                    className="absolute bottom-full left-0 mb-1.5 z-50 w-56 rounded-sm overflow-hidden opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-150"
+                    style={{ border: "1px solid rgba(10,236,184,0.2)", background: "rgba(8,12,20,0.97)", boxShadow: "0 4px 20px rgba(0,0,0,0.6)" }}
+                    data-testid={`proof-details-${skill}`}
+                  >
+                    <div className="px-2 py-1" style={{ borderBottom: "1px solid rgba(10,236,184,0.1)", background: "rgba(10,236,184,0.04)" }}>
+                      <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--teal-glow)" }}>Proof Evidence</span>
+                    </div>
+                    {(Object.entries(sv!.tierProofs!) as [string, Record<string, any>][]).map(([proofTier, proofData]) => (
+                      <div key={proofTier} className="px-2 py-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                        <div className="text-[9px] font-mono mb-1" style={{ color: tierColors[parseInt(proofTier)] || "var(--text-muted)" }}>
+                          T{proofTier} {tierNames[proofTier] || "Verified"}
+                        </div>
+                        <div className="space-y-0.5">
+                          {proofData.method && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Method: {proofData.method}</div>}
+                          {proofData.githubHandle && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>GitHub: <a href={`https://github.com/${proofData.githubHandle}`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#3b82f6" }}>@{proofData.githubHandle}</a></div>}
+                          {proofData.repoCount != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Repos: {proofData.repoCount} qualifying</div>}
+                          {proofData.commitCount != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Commits: {proofData.commitCount}</div>}
+                          {proofData.topRepo && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Top Repo: {proofData.topRepo}</div>}
+                          {proofData.challengeScore != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Challenge Score: {proofData.challengeScore}%</div>}
+                          {proofData.gigTitle && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Gig: {proofData.gigTitle}</div>}
+                          {proofData.usdcEarned != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>USDC Earned: {proofData.usdcEarned}</div>}
+                          {proofData.swarmVoteId && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Swarm Vote ID: {proofData.swarmVoteId}</div>}
+                          {proofData.attestors && Array.isArray(proofData.attestors) && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Attestors: {proofData.attestors.length} peer(s)</div>}
+                          {proofData.ownershipProof && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Ownership: {proofData.ownershipProof}</div>}
+                          {proofData.verifiedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Verified: {new Date(proofData.verifiedAt).toLocaleDateString()}</div>}
+                          {proofData.achievedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Achieved: {new Date(proofData.achievedAt).toLocaleDateString()}</div>}
+                          {proofData.completedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Completed: {new Date(proofData.completedAt).toLocaleDateString()}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
             {tier === 0 && (
               <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -2877,37 +2911,6 @@ function SkillTierRow({
       </div>
       {attestingSkill === skill && (
         <AttestSkillRow agentId={agentId} skill={skill} onDone={onAttestDone} />
-      )}
-      {proofExpanded && tier > 0 && sv?.tierProofs && Object.keys(sv.tierProofs).length > 0 && (
-        <div className="mt-2 rounded-sm overflow-hidden" style={{ border: "1px solid rgba(10,236,184,0.15)", background: "rgba(0,0,0,0.25)" }} data-testid={`proof-details-${skill}`}>
-          <div className="px-2 py-1 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(10,236,184,0.1)", background: "rgba(10,236,184,0.04)" }}>
-            <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--teal-glow)" }}>Proof Evidence</span>
-            <button className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }} onClick={() => setProofExpanded(false)}>✕</button>
-          </div>
-          {(Object.entries(sv.tierProofs) as [string, Record<string, any>][]).map(([proofTier, proofData]) => (
-            <div key={proofTier} className="px-2 py-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-              <div className="text-[9px] font-mono mb-1" style={{ color: tierColors[parseInt(proofTier)] || "var(--text-muted)" }}>
-                T{proofTier} {tierNames[proofTier] || "Verified"}
-              </div>
-              <div className="space-y-0.5">
-                {proofData.method && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Method: {proofData.method}</div>}
-                {proofData.githubHandle && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>GitHub: <a href={`https://github.com/${proofData.githubHandle}`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#3b82f6" }}>@{proofData.githubHandle}</a></div>}
-                {proofData.repoCount != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Repos: {proofData.repoCount} qualifying</div>}
-                {proofData.commitCount != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Commits: {proofData.commitCount}</div>}
-                {proofData.topRepo && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Top Repo: {proofData.topRepo}</div>}
-                {proofData.challengeScore != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Challenge Score: {proofData.challengeScore}%</div>}
-                {proofData.gigTitle && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Gig: {proofData.gigTitle}</div>}
-                {proofData.usdcEarned != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>USDC Earned: {proofData.usdcEarned}</div>}
-                {proofData.swarmVoteId && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Swarm Vote ID: {proofData.swarmVoteId}</div>}
-                {proofData.attestors && Array.isArray(proofData.attestors) && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Attestors: {proofData.attestors.length} peer(s)</div>}
-                {proofData.ownershipProof && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Ownership: {proofData.ownershipProof}</div>}
-                {proofData.verifiedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Verified: {new Date(proofData.verifiedAt).toLocaleDateString()}</div>}
-                {proofData.achievedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Achieved: {new Date(proofData.achievedAt).toLocaleDateString()}</div>}
-                {proofData.completedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Completed: {new Date(proofData.completedAt).toLocaleDateString()}</div>}
-              </div>
-            </div>
-          ))}
-        </div>
       )}
       {tier < 4 && sv?.nextUpgrade && (
         <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
@@ -3554,7 +3557,7 @@ function BondRiskTab({
           </p>
           <div className="space-y-2">
             {(() => {
-              const TIER_COLORS = ["var(--text-muted)", "var(--claw-amber)", "#3b82f6", "var(--teal-glow)", "#a78bfa"];
+              const TIER_COLORS = ["var(--text-muted)", "var(--teal-glow)", "#3b82f6", "#f59e0b", "#a78bfa"];
               const TIER_BADGES = ["", "✓", "⭐", "🏆", "💎"];
               return agent.skills.map((skill) => (
                 <SkillTierRow

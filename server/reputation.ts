@@ -471,7 +471,8 @@ function getBadges(agent: Agent, fusedScore: number, rawKarma: number): string[]
 }
 
 export async function computeLiveFusedReputation(
-  agent: Agent
+  agent: Agent,
+  skillTierBonus?: number
 ): Promise<FusedReputationResult> {
   const [onChain, moltResult] = await Promise.all([
     fetchOnChainReputation(agent.walletAddress),
@@ -490,7 +491,11 @@ export async function computeLiveFusedReputation(
   const perfNormalized = Math.min(agent.performanceScore ?? 0, 100);
   const bondRelNormalized = Math.min(agent.bondReliability ?? 0, 100);
 
-  const skillsBonus = getVerifiedSkillsBonus(agent.verifiedSkills || []);
+  const skillsBonus = skillTierBonus !== undefined
+    ? Math.min(skillTierBonus, MAX_SKILL_TIER_BONUS)
+    : computeSkillTierBonus(
+        (agent.verifiedSkills || []).map(() => 1)
+      );
 
   let fusedScore =
     PERFORMANCE_WEIGHT * perfNormalized +

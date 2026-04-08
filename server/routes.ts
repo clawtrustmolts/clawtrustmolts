@@ -1561,10 +1561,12 @@ export async function registerRoutes(
 
     const events = await storage.getReputationEvents(req.params.agentId);
     const dbBreakdown = getScoreBreakdown(agent);
+    const agentSkillVerifications = await storage.getSkillVerifications(req.params.agentId);
+    const agentTierBonus = computeSkillTierBonus(agentSkillVerifications.map(v => v.tier ?? 0));
 
     let liveFused;
     try {
-      liveFused = await computeLiveFusedReputation(agent);
+      liveFused = await computeLiveFusedReputation(agent, agentTierBonus);
     } catch (err: any) {
       liveFused = null;
     }
@@ -1697,7 +1699,11 @@ export async function registerRoutes(
 
       const dbBreakdown = getScoreBreakdown(agent);
       let liveFused: any = null;
-      try { liveFused = await computeLiveFusedReputation(agent); } catch {}
+      try {
+        const svs = await storage.getSkillVerifications(agent.id);
+        const tb = computeSkillTierBonus(svs.map(v => v.tier ?? 0));
+        liveFused = await computeLiveFusedReputation(agent, tb);
+      } catch {}
 
       const fusedScore = liveFused?.fusedScore ?? dbBreakdown.fusedScore;
       const tier = liveFused?.tier ?? dbBreakdown.tier;
@@ -1747,7 +1753,11 @@ export async function registerRoutes(
 
       const dbBreakdown = getScoreBreakdown(agent);
       let liveFused: any = null;
-      try { liveFused = await computeLiveFusedReputation(agent); } catch {}
+      try {
+        const svs2 = await storage.getSkillVerifications(agent.id);
+        const tb2 = computeSkillTierBonus(svs2.map(v => v.tier ?? 0));
+        liveFused = await computeLiveFusedReputation(agent, tb2);
+      } catch {}
 
       const fusedScore = liveFused?.fusedScore ?? dbBreakdown.fusedScore;
       const tier = liveFused?.tier ?? dbBreakdown.tier;
@@ -1898,7 +1908,9 @@ export async function registerRoutes(
 
       let newScore = agent.fusedScore;
       try {
-        const liveFused = await computeLiveFusedReputation(agent);
+        const svs3 = await storage.getSkillVerifications(agentId);
+        const tb3 = computeSkillTierBonus(svs3.map(v => v.tier ?? 0));
+        const liveFused = await computeLiveFusedReputation(agent, tb3);
         newScore = liveFused.fusedScore;
         await storage.updateAgent(agentId, { fusedScore: newScore, onChainScore: Math.round(newScore * 10) });
       } catch {
@@ -7870,7 +7882,11 @@ export async function registerRoutes(
       const chain = (req.query.chain as string) || "base-sepolia";
       const dbBreakdown = getScoreBreakdown(agent);
       let liveFused: any = null;
-      try { liveFused = await computeLiveFusedReputation(agent); } catch {}
+      try {
+        const svs4 = await storage.getSkillVerifications(agent.id);
+        const tb4 = computeSkillTierBonus(svs4.map(v => v.tier ?? 0));
+        liveFused = await computeLiveFusedReputation(agent, tb4);
+      } catch {}
 
       const fusedScore = liveFused?.fusedScore ?? dbBreakdown.fusedScore;
       const tier = liveFused?.tier ?? dbBreakdown.tier;
@@ -9749,7 +9765,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Skill '${skill}' is already GitHub-verified (Tier 2 or higher)` });
       }
 
-      const result = await verifyGitHubSkill(githubHandle.trim(), skill, agent.createdAt);
+      const result = await verifyGitHubSkill(githubHandle.trim(), skill, agent.registeredAt);
       if (!result.ok) {
         return res.status(422).json({
           message: result.error || "GitHub verification failed",
