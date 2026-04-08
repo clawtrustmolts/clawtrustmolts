@@ -9236,17 +9236,57 @@ export async function registerRoutes(
     const words = submission.trim().split(/\s+/).filter(Boolean);
     const wordCount = words.length;
     const text = submission.toLowerCase();
+    const submissionTokens = text.split(/[\s\W]+/).filter(t => t.length > 2);
 
-    const foundKeywords = challenge.expectedKeywords.filter((kw) => text.includes(kw.toLowerCase()));
-    const keywordScore = Math.round((foundKeywords.length / Math.max(challenge.expectedKeywords.length, 1)) * 40);
-
-    let wordCountScore = 0;
-    if (wordCount >= challenge.minWordCount && wordCount <= challenge.maxWordCount) {
-      wordCountScore = 30;
-    } else if (wordCount >= Math.round(challenge.minWordCount * 0.75)) {
-      wordCountScore = 15;
+    // Build term-frequency map from submission
+    const tf: Record<string, number> = {};
+    for (const token of submissionTokens) {
+      tf[token] = (tf[token] || 0) + 1;
     }
 
+    // Semantic similarity: for each expected keyword/phrase, compute weighted overlap
+    // Each keyword gets a frequency-weighted score: exact match = 1.0, partial stem = 0.5
+    let semanticTotal = 0;
+    const stopwords = new Set(["the","is","are","was","were","and","or","of","in","to","a","an","that","this","it","with","for","as","on","by","at","from","be","has","have","had","but","not","its"]);
+
+    for (const kw of challenge.expectedKeywords) {
+      const kwTokens = kw.toLowerCase().split(/[\s\W]+/).filter(t => t.length > 2 && !stopwords.has(t));
+      if (kwTokens.length === 0) { semanticTotal += 1; continue; }
+
+      let kwMatchScore = 0;
+      for (const kwt of kwTokens) {
+        const exactFreq = tf[kwt] || 0;
+        // Stem match: allow prefix match for plural/conjugate variants (min 4 chars)
+        const stemMatch = kwt.length >= 4
+          ? Object.entries(tf).filter(([t]) => t.startsWith(kwt.slice(0, Math.ceil(kwt.length * 0.75)))).reduce((s, [, f]) => s + f, 0)
+          : 0;
+        // Log-normalized frequency dampens repetition gaming
+        const freq = Math.max(exactFreq, stemMatch > 0 ? 0.5 : 0);
+        const dampened = freq > 0 ? (1 + Math.log(freq)) : 0;
+        // Relative to submission density: credit up to 1.0 per keyword token
+        const density = submissionTokens.length > 0 ? dampened / Math.log(submissionTokens.length + 2) : 0;
+        kwMatchScore += Math.min(1, density);
+      }
+      semanticTotal += Math.min(1, kwMatchScore / kwTokens.length);
+    }
+
+    // Semantic coverage [0..40]: what fraction of concept space is addressed
+    const semanticCoverage = challenge.expectedKeywords.length > 0
+      ? semanticTotal / challenge.expectedKeywords.length
+      : 0;
+    const semanticScore = Math.round(semanticCoverage * 40);
+
+    // Depth score [0..30]: submission length relative to expected range
+    let depthScore = 0;
+    if (wordCount >= challenge.minWordCount && wordCount <= challenge.maxWordCount) {
+      depthScore = 30;
+    } else if (wordCount >= Math.round(challenge.minWordCount * 0.75)) {
+      depthScore = 15;
+    } else if (wordCount >= Math.round(challenge.minWordCount * 0.5)) {
+      depthScore = 8;
+    }
+
+    // Structure score [0..30]: coherent multi-part responses signal genuine understanding
     const paragraphs = submission.split(/\n\n+/).filter((p) => p.trim().length > 20);
     const hasNumberedPoints = /\d+[\.\)]\s/.test(submission);
     const hasCodeBlocks = /```/.test(submission);
@@ -9257,15 +9297,16 @@ export async function registerRoutes(
     if (hasCodeBlocks || hasHeaders) structureScore += 10;
     structureScore = Math.min(structureScore, 30);
 
-    const score = Math.min(100, keywordScore + wordCountScore + structureScore);
+    const score = Math.min(100, semanticScore + depthScore + structureScore);
     return {
       score,
       details: {
-        keywordScore,
-        wordCountScore,
+        semanticScore,
+        depthScore,
         structureScore,
         wordCount,
-        keywordsFound: foundKeywords.length,
+        semanticCoverage: Math.round(semanticCoverage * 100),
+        keywordsMatched: Math.round(semanticTotal),
         keywordsTotal: challenge.expectedKeywords.length,
       },
     };
@@ -9854,6 +9895,23 @@ export async function registerRoutes(
       if ((attestorSkillRecord?.tier ?? 0) < 2) {
         return res.status(403).json({
           message: `You must have skill '${skill}' at Tier 2 (GitHub-Verified) or higher to attest it`,
+        });
+      }
+
+      // Target must have the skill declared on their profile
+      if (!targetAgent.skills || !targetAgent.skills.map((s: string) => s.toLowerCase()).includes(skill)) {
+        return res.status(400).json({
+          message: `Agent '${targetAgent.handle}' has not declared skill '${skill}' on their profile`,
+        });
+      }
+
+      // Target must have at least Tier 1 (Challenge-Passed) — prevents attestation on unverified claims
+      const targetSkillRecord = await storage.getSkillVerification(targetId, skill);
+      if ((targetSkillRecord?.tier ?? 0) < 1) {
+        return res.status(403).json({
+          message: `Agent '${targetAgent.handle}' must earn Tier 1 (Challenge-Passed) for skill '${skill}' before peer attestations can count`,
+          targetTier: targetSkillRecord?.tier ?? 0,
+          required: 1,
         });
       }
 
