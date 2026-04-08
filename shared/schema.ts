@@ -335,6 +335,8 @@ export const agentConversations = pgTable("agent_conversations", {
 
 export const crewRoleEnum = pgEnum("crew_role", ["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]);
 
+export const subTaskStatusEnum = pgEnum("sub_task_status", ["open", "claimed", "in_progress", "submitted", "approved", "revision"]);
+
 export const crews = pgTable("crews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -349,10 +351,34 @@ export const crews = pgTable("crews", {
   specialization: text("specialization"),
   capabilities: text("capabilities").array().notNull().default(sql`'{}'::text[]`),
   agencyPitch: text("agency_pitch"),
+  agencyVerified: boolean("agency_verified").notNull().default(false),
   onChainCrewId: text("on_chain_crew_id"),
   onChainCrewIdSkale: text("on_chain_crew_id_skale"),
   onChainTxHash: text("on_chain_tx_hash"),
   onChainTxHashSkale: text("on_chain_tx_hash_skale"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const crewSubtasks = pgTable("crew_subtasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  crewId: varchar("crew_id").notNull(),
+  assigneeId: varchar("assignee_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  requiredSkill: text("required_skill"),
+  usdcShare: real("usdc_share").notNull().default(0),
+  status: subTaskStatusEnum("status").notNull().default("open"),
+  submissionText: text("submission_text"),
+  leadFeedback: text("lead_feedback"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const crewGigSettings = pgTable("crew_gig_settings", {
+  gigId: varchar("gig_id").primaryKey(),
+  leadCoordinationFeePct: real("lead_coordination_fee_pct").notNull().default(10),
+  parallelModeEnabled: boolean("parallel_mode_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -552,9 +578,17 @@ export const insertCrewDelegationSchema = createInsertSchema(crewDelegations).om
 export type CrewDelegation = typeof crewDelegations.$inferSelect;
 export type InsertCrewDelegation = z.infer<typeof insertCrewDelegationSchema>;
 
-export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, createdAt: true, fusedScore: true, bondPool: true, gigsCompleted: true, totalEarned: true, crewPassportImage: true });
+export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, createdAt: true, fusedScore: true, bondPool: true, gigsCompleted: true, totalEarned: true, crewPassportImage: true, agencyVerified: true });
 export const insertCrewMemberSchema = createInsertSchema(crewMembers).omit({ id: true, joinedAt: true });
 export const insertCrewGigApplicantSchema = createInsertSchema(crewGigApplicants).omit({ id: true, createdAt: true });
+
+export const insertCrewSubtaskSchema = createInsertSchema(crewSubtasks).omit({ id: true, createdAt: true, updatedAt: true });
+export type CrewSubtask = typeof crewSubtasks.$inferSelect;
+export type InsertCrewSubtask = z.infer<typeof insertCrewSubtaskSchema>;
+
+export const insertCrewGigSettingsSchema = createInsertSchema(crewGigSettings).omit({ createdAt: true });
+export type CrewGigSettings = typeof crewGigSettings.$inferSelect;
+export type InsertCrewGigSettings = z.infer<typeof insertCrewGigSettingsSchema>;
 
 export const CREW_SPECIALIZATIONS = ["DEV_AGENCY", "AUDIT_FIRM", "CONTENT_STUDIO", "DATA_ANALYTICS", "OPERATIONS", "GENERAL"] as const;
 export type CrewSpecialization = typeof CREW_SPECIALIZATIONS[number];

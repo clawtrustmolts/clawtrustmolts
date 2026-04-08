@@ -5,9 +5,11 @@ import {
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, crewDelegations, moltyAnnouncements, x402Payments,
   agentNotifications, skillChallenges, challengeAttempts, blogPosts, skillAttestations,
-  erc8183Jobs, erc8183Applicants,
+  erc8183Jobs, erc8183Applicants, crewSubtasks, crewGigSettings,
   type Erc8183Job, type InsertErc8183Job,
   type Erc8183Applicant, type InsertErc8183Applicant,
+  type CrewSubtask, type InsertCrewSubtask,
+  type CrewGigSettings,
   type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
@@ -264,6 +266,18 @@ export interface IStorage {
   getErc8183ApplicationsByAgent(agentId: string): Promise<(Erc8183Applicant & { job?: Erc8183Job })[]>;
   getValidationsForAgent(agentId: string): Promise<SwarmValidation[]>;
   countErc8183Jobs(filters?: { status?: string; chain?: string }): Promise<number>;
+
+  // Crew Subtasks (Agency Mode)
+  createCrewSubtask(subtask: InsertCrewSubtask): Promise<CrewSubtask>;
+  getCrewSubtasks(gigId: string, crewId?: string): Promise<CrewSubtask[]>;
+  getCrewSubtask(id: string): Promise<CrewSubtask | undefined>;
+  updateCrewSubtask(id: string, data: Partial<CrewSubtask>): Promise<CrewSubtask | undefined>;
+  deleteCrewSubtask(id: string): Promise<void>;
+  getSubtasksForAssignee(assigneeId: string): Promise<CrewSubtask[]>;
+
+  // Crew Gig Settings
+  getCrewGigSettings(gigId: string): Promise<CrewGigSettings | undefined>;
+  upsertCrewGigSettings(gigId: string, data: Partial<Omit<CrewGigSettings, "gigId">>): Promise<CrewGigSettings>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1662,6 +1676,59 @@ Be specific and methodical.`,
     const [result] = await db.select({ value: count() }).from(erc8183Jobs)
       .where(conditions.length > 0 ? and(...conditions) : undefined);
     return result?.value || 0;
+  }
+
+  // ─── Crew Subtasks (Agency Mode) ────────────────────────────────────────────
+
+  async createCrewSubtask(subtask: InsertCrewSubtask): Promise<CrewSubtask> {
+    const [created] = await db.insert(crewSubtasks).values(subtask).returning();
+    return created;
+  }
+
+  async getCrewSubtasks(gigId: string, crewId?: string): Promise<CrewSubtask[]> {
+    const conditions: any[] = [eq(crewSubtasks.gigId, gigId)];
+    if (crewId) conditions.push(eq(crewSubtasks.crewId, crewId));
+    return db.select().from(crewSubtasks)
+      .where(and(...conditions))
+      .orderBy(asc(crewSubtasks.createdAt));
+  }
+
+  async getCrewSubtask(id: string): Promise<CrewSubtask | undefined> {
+    const [row] = await db.select().from(crewSubtasks).where(eq(crewSubtasks.id, id));
+    return row;
+  }
+
+  async updateCrewSubtask(id: string, data: Partial<CrewSubtask>): Promise<CrewSubtask | undefined> {
+    const [updated] = await db.update(crewSubtasks)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(crewSubtasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCrewSubtask(id: string): Promise<void> {
+    await db.delete(crewSubtasks).where(eq(crewSubtasks.id, id));
+  }
+
+  async getSubtasksForAssignee(assigneeId: string): Promise<CrewSubtask[]> {
+    return db.select().from(crewSubtasks)
+      .where(eq(crewSubtasks.assigneeId, assigneeId))
+      .orderBy(desc(crewSubtasks.createdAt));
+  }
+
+  // ─── Crew Gig Settings ───────────────────────────────────────────────────────
+
+  async getCrewGigSettings(gigId: string): Promise<CrewGigSettings | undefined> {
+    const [row] = await db.select().from(crewGigSettings).where(eq(crewGigSettings.gigId, gigId));
+    return row;
+  }
+
+  async upsertCrewGigSettings(gigId: string, data: Partial<Omit<CrewGigSettings, "gigId">>): Promise<CrewGigSettings> {
+    const [row] = await db.insert(crewGigSettings)
+      .values({ gigId, ...data })
+      .onConflictDoUpdate({ target: crewGigSettings.gigId, set: data })
+      .returning();
+    return row;
   }
 }
 

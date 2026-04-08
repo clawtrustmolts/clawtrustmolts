@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState, ChainBadge } from "@/components/ui-shared";
-import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare, CheckCircle2, Star, Building2, RefreshCw, ExternalLink, GitBranch, X, ChevronDown, Anchor } from "lucide-react";
+import { ArrowLeft, Shield, Users, Briefcase, DollarSign, MessageSquare, CheckCircle2, Star, Building2, RefreshCw, ExternalLink, GitBranch, X, ChevronDown, Anchor, Plus, Layers, AlertCircle, ChevronRight, Send, RotateCcw } from "lucide-react";
 import { BASE_SEPOLIA, SKALE_TESTNET } from "@/lib/chains";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -98,6 +98,7 @@ interface CrewDetail {
   totalEarned: number;
   tier: string;
   memberCount: number;
+  agencyVerified: boolean;
   members: CrewMember[];
   gigs: CrewGig[];
   onChainCrewId: string | null;
@@ -200,6 +201,15 @@ function AgencyHeroCard({ crew }: { crew: CrewDetail }) {
               >
                 {tier}
               </span>
+              {crew.agencyVerified && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm font-mono text-[11px] px-2 py-0.5"
+                  style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)" }}
+                  data-testid="badge-agency-verified"
+                >
+                  <CheckCircle2 className="w-3 h-3" /> Agency Verified
+                </span>
+              )}
             </div>
 
             <h1
@@ -343,6 +353,497 @@ interface AvailableGig {
   poster: { handle: string; fusedScore: number } | null;
 }
 
+// ─── Active Engagements with Task Board ─────────────────────────────────────
+
+function ActiveEngagementsSection({
+  gigs,
+  members,
+  crewId,
+  isCrewLead,
+  isCrewMember,
+  wallet,
+}: {
+  gigs: CrewGig[];
+  members: CrewMember[];
+  crewId: string;
+  isCrewLead: boolean;
+  isCrewMember: boolean;
+  wallet: string | null;
+}) {
+  const [expandedGigId, setExpandedGigId] = useState<string | null>(null);
+
+  return (
+    <div className="space-y-4" data-testid="section-active-engagements">
+      <div className="flex items-center gap-2">
+        <Layers className="w-4 h-4" style={{ color: "var(--claw-orange)" }} />
+        <h2 className="font-display text-xl tracking-wider" style={{ color: "var(--shell-white)" }}>
+          ACTIVE ENGAGEMENTS
+        </h2>
+        {(isCrewLead || isCrewMember) && (
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-sm ml-auto" style={{ background: "rgba(59,130,246,0.08)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}>
+            Agency Mode
+          </span>
+        )}
+      </div>
+      <div className="space-y-3">
+        {gigs.map(gig => {
+          const statusColor = statusColors[gig.status] || "var(--text-muted)";
+          const isExpanded = expandedGigId === gig.id;
+          return (
+            <div key={gig.id} className="rounded-sm overflow-hidden" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
+              data-testid={`engagement-card-${gig.id}`}>
+              <button
+                onClick={() => setExpandedGigId(isExpanded ? null : gig.id)}
+                className="w-full p-4 flex items-center justify-between gap-3 hover:opacity-90 transition-opacity"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate text-left" style={{ color: "var(--shell-white)" }}>{gig.title}</p>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="text-xs font-mono" style={{ color: "var(--shell-cream)" }}>
+                        {gig.budget} {gig.currency}
+                      </span>
+                      <span className="inline-flex items-center text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
+                        style={{ background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}30` }}>
+                        {gig.status.replace(/_/g, " ").toUpperCase()}
+                      </span>
+                      <ChainBadge chain={gig.chain} />
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className={`w-4 h-4 flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                  style={{ color: "var(--text-muted)" }} />
+              </button>
+              {isExpanded && (isCrewLead || isCrewMember) && (
+                <div className="px-4 pb-4" style={{ borderTop: "1px solid rgba(0,0,0,0.08)" }}>
+                  <div className="pt-3">
+                    <TaskBoard
+                      gigId={gig.id}
+                      crewId={crewId}
+                      members={members}
+                      isLead={isCrewLead}
+                      wallet={wallet}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Agency Mode Types ───────────────────────────────────────────────────────
+
+interface Subtask {
+  id: string;
+  gigId: string;
+  crewId: string;
+  assigneeId: string | null;
+  title: string;
+  description: string | null;
+  requiredSkill: string | null;
+  usdcShare: number;
+  status: "open" | "claimed" | "in_progress" | "submitted" | "approved" | "revision";
+  submissionText: string | null;
+  leadFeedback: string | null;
+  assignee: { id: string; handle: string; avatar: string | null; fusedScore: number } | null;
+}
+
+const subtaskStatusConfig: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  open: { label: "Open", bg: "rgba(107,127,163,0.08)", color: "var(--text-muted)", border: "rgba(107,127,163,0.2)" },
+  claimed: { label: "Claimed", bg: "rgba(139,92,246,0.08)", color: "#a78bfa", border: "rgba(139,92,246,0.2)" },
+  in_progress: { label: "In Progress", bg: "rgba(59,130,246,0.08)", color: "#3b82f6", border: "rgba(59,130,246,0.2)" },
+  submitted: { label: "Submitted", bg: "rgba(242,130,10,0.08)", color: "var(--claw-amber)", border: "rgba(242,130,10,0.2)" },
+  approved: { label: "Approved", bg: "rgba(34,197,94,0.08)", color: "#22c55e", border: "rgba(34,197,94,0.2)" },
+  revision: { label: "Revision", bg: "rgba(200,57,26,0.08)", color: "var(--claw-red)", border: "rgba(200,57,26,0.2)" },
+};
+
+const KANBAN_COLUMNS: Array<{ key: string; label: string; color: string }> = [
+  { key: "open", label: "Open", color: "var(--text-muted)" },
+  { key: "claimed", label: "Claimed", color: "#a78bfa" },
+  { key: "in_progress", label: "In Progress", color: "#3b82f6" },
+  { key: "submitted", label: "Submitted", color: "var(--claw-amber)" },
+  { key: "approved", label: "Approved", color: "#22c55e" },
+  { key: "revision", label: "Revision", color: "var(--claw-red)" },
+];
+
+function AddSubtaskModal({
+  gigId,
+  crewId,
+  members,
+  wallet,
+  onClose,
+}: {
+  gigId: string;
+  crewId: string;
+  members: CrewMember[];
+  wallet: string | null;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assigneeId, setAssigneeId] = useState("");
+  const [requiredSkill, setRequiredSkill] = useState("");
+  const [usdcShare, setUsdcShare] = useState("");
+
+  const createMut = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/gigs/${gigId}/subtasks`, {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        assigneeId: assigneeId || undefined,
+        requiredSkill: requiredSkill.trim() || undefined,
+        usdcShare: parseFloat(usdcShare) || 0,
+      }, { "x-wallet-address": wallet || "" }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId, "subtasks"] });
+      toast({ title: "Subtask created" });
+      onClose();
+    },
+    onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-lg rounded-sm p-6 space-y-4" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(59,130,246,0.3)" }} data-testid="modal-add-subtask">
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-base tracking-wider" style={{ color: "var(--shell-white)" }}>ADD SUBTASK</h3>
+          <button onClick={onClose} data-testid="button-close-subtask"><X className="w-4 h-4" style={{ color: "var(--text-muted)" }} /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] uppercase tracking-wider font-mono" style={{ color: "var(--text-muted)" }}>Title *</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Write smart contract tests"
+              className="w-full mt-1 px-3 py-2 rounded-sm text-sm font-mono"
+              style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: "var(--shell-white)", outline: "none" }}
+              data-testid="input-subtask-title" />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wider font-mono" style={{ color: "var(--text-muted)" }}>Description</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
+              placeholder="Describe the deliverable..."
+              className="w-full mt-1 px-3 py-2 rounded-sm text-sm font-mono resize-none"
+              style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: "var(--shell-white)", outline: "none" }}
+              data-testid="textarea-subtask-desc" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider font-mono" style={{ color: "var(--text-muted)" }}>Assign To</label>
+              <select value={assigneeId} onChange={e => setAssigneeId(e.target.value)}
+                className="w-full mt-1 px-3 py-2 rounded-sm text-sm appearance-none"
+                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: assigneeId ? "var(--shell-white)" : "var(--text-muted)", outline: "none" }}
+                data-testid="select-subtask-assignee">
+                <option value="">Unassigned (open)</option>
+                {members.map(m => m.agent && (
+                  <option key={m.agentId} value={m.agentId}>
+                    @{m.agent.handle} [{m.role}]
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider font-mono" style={{ color: "var(--text-muted)" }}>USDC Share</label>
+              <input type="number" min="0" value={usdcShare} onChange={e => setUsdcShare(e.target.value)}
+                placeholder="0"
+                className="w-full mt-1 px-3 py-2 rounded-sm text-sm font-mono"
+                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: "var(--shell-white)", outline: "none" }}
+                data-testid="input-subtask-usdc" />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wider font-mono" style={{ color: "var(--text-muted)" }}>Required Skill</label>
+            <input value={requiredSkill} onChange={e => setRequiredSkill(e.target.value)} placeholder="e.g. solidity"
+              className="w-full mt-1 px-3 py-2 rounded-sm text-sm font-mono"
+              style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.15)", color: "var(--shell-white)", outline: "none" }}
+              data-testid="input-subtask-skill" />
+          </div>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={() => createMut.mutate()}
+            disabled={createMut.isPending || !title.trim()}
+            className="flex-1 py-2 rounded-sm text-sm font-display tracking-wider transition-opacity hover:opacity-80 disabled:opacity-40"
+            style={{ background: "rgba(59,130,246,0.12)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.3)" }}
+            data-testid="button-create-subtask">
+            {createMut.isPending ? "Creating..." : "Create Subtask"}
+          </button>
+          <button onClick={onClose} className="px-4 py-2 rounded-sm text-sm transition-opacity hover:opacity-80"
+            style={{ background: "rgba(0,0,0,0.08)", color: "var(--text-muted)", border: "1px solid rgba(0,0,0,0.1)" }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskBoard({
+  gigId,
+  crewId,
+  members,
+  isLead,
+  wallet,
+}: {
+  gigId: string;
+  crewId: string;
+  members: CrewMember[];
+  isLead: boolean;
+  wallet: string | null;
+}) {
+  const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [feedbackId, setFeedbackId] = useState<string | null>(null);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [submissionText, setSubmissionText] = useState("");
+  const myAgentId = localStorage.getItem("agentId");
+
+  const { data, isLoading } = useQuery<{ subtasks: Subtask[]; settings: any }>({
+    queryKey: ["/api/gigs", gigId, "subtasks"],
+    queryFn: () => apiRequest("GET", `/api/gigs/${gigId}/subtasks`).then(r => r.json()),
+    enabled: !!gigId,
+  });
+
+  const patchMut = useMutation({
+    mutationFn: ({ subtaskId, payload }: { subtaskId: string; payload: Record<string, any> }) =>
+      apiRequest("PATCH", `/api/gigs/${gigId}/subtasks/${subtaskId}`, payload, { "x-wallet-address": wallet || "" }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId, "subtasks"] });
+      setFeedbackId(null);
+      setSubmissionId(null);
+    },
+    onError: (err: any) => toast({ title: "Update failed", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (subtaskId: string) =>
+      apiRequest("DELETE", `/api/gigs/${gigId}/subtasks/${subtaskId}`, undefined, { "x-wallet-address": wallet || "" }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId, "subtasks"] });
+      toast({ title: "Subtask deleted" });
+    },
+    onError: (err: any) => toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
+  });
+
+  const claimMut = useMutation({
+    mutationFn: (subtaskId: string) =>
+      apiRequest("POST", `/api/gigs/${gigId}/subtasks/${subtaskId}/claim`, {}, { "x-wallet-address": wallet || "" }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId, "subtasks"] });
+      toast({ title: "Subtask claimed!" });
+    },
+    onError: (err: any) => toast({ title: "Claim failed", description: err.message, variant: "destructive" }),
+  });
+
+  if (isLoading) {
+    return <div className="grid grid-cols-3 gap-3">{[0,1,2].map(i => <div key={i} className="h-32 rounded-sm animate-pulse" style={{ background: "var(--ocean-mid)" }} />)}</div>;
+  }
+
+  const subtasks = data?.subtasks || [];
+  if (subtasks.length === 0 && !isLead) {
+    return (
+      <div className="text-center py-6 rounded-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}>
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>No subtasks yet. The crew lead will add work items here.</p>
+      </div>
+    );
+  }
+
+  const grouped: Record<string, Subtask[]> = {};
+  for (const col of KANBAN_COLUMNS) grouped[col.key] = [];
+  for (const st of subtasks) { (grouped[st.status] || (grouped["open"] = [])).push(st); }
+
+  // Visible columns: only those with cards, or "open" always if lead
+  const visibleCols = KANBAN_COLUMNS.filter(col => grouped[col.key].length > 0 || (isLead && col.key === "open"));
+
+  return (
+    <div className="space-y-3">
+      {isLead && (
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+            {subtasks.length} subtask{subtasks.length !== 1 ? "s" : ""} · $
+            {subtasks.reduce((s, t) => s + (t.usdcShare || 0), 0).toFixed(0)} USDC allocated
+          </p>
+          <button
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-1 text-[10px] font-mono px-2.5 py-1 rounded-sm transition-opacity hover:opacity-80"
+            style={{ background: "rgba(59,130,246,0.08)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+            data-testid={`button-add-subtask-${gigId}`}>
+            <Plus className="w-3 h-3" /> Add Subtask
+          </button>
+        </div>
+      )}
+
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {visibleCols.map(col => (
+          <div key={col.key} className="flex-shrink-0 w-52 space-y-2">
+            <div className="flex items-center gap-1.5 px-1">
+              <span className="w-2 h-2 rounded-full" style={{ background: col.color }} />
+              <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: col.color }}>
+                {col.label}
+              </span>
+              <span className="text-[9px] font-mono ml-auto" style={{ color: "var(--text-muted)" }}>
+                {grouped[col.key].length}
+              </span>
+            </div>
+            {grouped[col.key].map(st => {
+              const cfg = subtaskStatusConfig[st.status];
+              const isMyTask = st.assigneeId === myAgentId;
+              return (
+                <div key={st.id} className="rounded-sm p-3 space-y-2"
+                  style={{ background: "var(--ocean-mid)", border: `1px solid ${cfg.border}` }}
+                  data-testid={`card-subtask-${st.id}`}>
+                  <p className="text-[11px] font-semibold leading-tight" style={{ color: "var(--shell-white)" }}>{st.title}</p>
+                  {st.description && (
+                    <p className="text-[10px] leading-relaxed" style={{ color: "var(--text-muted)" }}>{st.description}</p>
+                  )}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {st.requiredSkill && (
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-dim)", border: "1px solid rgba(10,236,184,0.12)" }}>
+                        {st.requiredSkill}
+                      </span>
+                    )}
+                    {st.usdcShare > 0 && (
+                      <span className="text-[9px] font-mono" style={{ color: "var(--teal-glow)" }}>${st.usdcShare}</span>
+                    )}
+                  </div>
+                  {st.assignee && (
+                    <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                      @{st.assignee.handle}
+                    </p>
+                  )}
+
+                  {/* Lead actions */}
+                  {isLead && (
+                    <div className="flex flex-col gap-1 pt-1" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                      {st.status === "submitted" && (
+                        <div className="flex gap-1">
+                          <button onClick={() => patchMut.mutate({ subtaskId: st.id, payload: { status: "approved" } })}
+                            disabled={patchMut.isPending}
+                            className="flex-1 py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80 disabled:opacity-40"
+                            style={{ background: "rgba(34,197,94,0.08)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}
+                            data-testid={`button-approve-${st.id}`}>✓ Approve</button>
+                          <button onClick={() => { setFeedbackId(st.id); setFeedbackText(""); }}
+                            className="flex-1 py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80"
+                            style={{ background: "rgba(200,57,26,0.06)", color: "var(--claw-red)", border: "1px solid rgba(200,57,26,0.15)" }}
+                            data-testid={`button-revision-${st.id}`}>↩ Revision</button>
+                        </div>
+                      )}
+                      {feedbackId === st.id && (
+                        <div className="space-y-1">
+                          <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)}
+                            placeholder="Feedback for revision..."
+                            rows={2} className="w-full px-2 py-1 rounded-sm text-[10px] font-mono resize-none"
+                            style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.12)", color: "var(--shell-white)", outline: "none" }}
+                            data-testid={`textarea-feedback-${st.id}`} />
+                          <button onClick={() => patchMut.mutate({ subtaskId: st.id, payload: { status: "revision", leadFeedback: feedbackText } })}
+                            disabled={patchMut.isPending}
+                            className="w-full py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80 disabled:opacity-40"
+                            style={{ background: "rgba(200,57,26,0.08)", color: "var(--claw-red)", border: "1px solid rgba(200,57,26,0.2)" }}
+                            data-testid={`button-send-feedback-${st.id}`}>
+                            Send Feedback
+                          </button>
+                        </div>
+                      )}
+                      {st.status === "open" && (
+                        <button onClick={() => deleteMut.mutate(st.id)}
+                          disabled={deleteMut.isPending}
+                          className="w-full py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-70 disabled:opacity-40"
+                          style={{ color: "var(--text-muted)" }}
+                          data-testid={`button-delete-subtask-${st.id}`}>
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Member actions */}
+                  {!isLead && isMyTask && (
+                    <div className="flex flex-col gap-1 pt-1" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                      {st.status === "claimed" && (
+                        <button onClick={() => patchMut.mutate({ subtaskId: st.id, payload: { status: "in_progress" } })}
+                          disabled={patchMut.isPending}
+                          className="w-full py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80 disabled:opacity-40"
+                          style={{ background: "rgba(59,130,246,0.08)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+                          data-testid={`button-start-${st.id}`}>▶ Start Work</button>
+                      )}
+                      {st.status === "in_progress" && (
+                        <>
+                          {submissionId === st.id ? (
+                            <div className="space-y-1">
+                              <textarea value={submissionText} onChange={e => setSubmissionText(e.target.value)}
+                                placeholder="Describe your submission..."
+                                rows={2} className="w-full px-2 py-1 rounded-sm text-[10px] font-mono resize-none"
+                                style={{ background: "var(--ocean-deep)", border: "1px solid rgba(0,0,0,0.12)", color: "var(--shell-white)", outline: "none" }}
+                                data-testid={`textarea-submission-${st.id}`} />
+                              <button onClick={() => patchMut.mutate({ subtaskId: st.id, payload: { status: "submitted", submissionText } })}
+                                disabled={patchMut.isPending}
+                                className="w-full py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80 disabled:opacity-40"
+                                style={{ background: "rgba(242,130,10,0.08)", color: "var(--claw-amber)", border: "1px solid rgba(242,130,10,0.2)" }}
+                                data-testid={`button-submit-subtask-${st.id}`}>
+                                Submit to Lead
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => { setSubmissionId(st.id); setSubmissionText(""); }}
+                              className="w-full py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80"
+                              style={{ background: "rgba(242,130,10,0.08)", color: "var(--claw-amber)", border: "1px solid rgba(242,130,10,0.2)" }}
+                              data-testid={`button-open-submit-${st.id}`}>
+                              <Send className="w-2.5 h-2.5 inline mr-1" />Submit
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {st.status === "revision" && st.leadFeedback && (
+                        <div className="space-y-1">
+                          <p className="text-[9px] font-mono p-1.5 rounded-sm" style={{ background: "rgba(200,57,26,0.06)", color: "var(--claw-red)", border: "1px solid rgba(200,57,26,0.12)" }}>
+                            Lead: {st.leadFeedback}
+                          </p>
+                          <button onClick={() => patchMut.mutate({ subtaskId: st.id, payload: { status: "in_progress" } })}
+                            disabled={patchMut.isPending}
+                            className="w-full py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80 disabled:opacity-40"
+                            style={{ background: "rgba(59,130,246,0.08)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+                            data-testid={`button-rework-${st.id}`}>
+                            <RotateCcw className="w-2.5 h-2.5 inline mr-1" />Rework
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Unassigned: allow crew member to claim */}
+                  {!isLead && !st.assigneeId && st.status === "open" && (
+                    <button onClick={() => claimMut.mutate(st.id)}
+                      disabled={claimMut.isPending}
+                      className="w-full py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80 disabled:opacity-40 mt-1"
+                      style={{ background: "rgba(139,92,246,0.08)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.2)" }}
+                      data-testid={`button-claim-${st.id}`}>
+                      Claim Task
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            {isLead && grouped[col.key].length === 0 && col.key === "open" && (
+              <div className="rounded-sm p-3 text-center" style={{ background: "rgba(0,0,0,0.04)", border: "1px dashed rgba(0,0,0,0.1)" }}>
+                <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>No tasks</p>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {addOpen && (
+        <AddSubtaskModal gigId={gigId} crewId={crewId} members={members} wallet={wallet} onClose={() => setAddOpen(false)} />
+      )}
+    </div>
+  );
+}
+
 export default function CrewDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -470,6 +971,10 @@ export default function CrewDetailPage() {
   }
 
   const completedGigs = (crew.gigs || []).filter(g => g.status === "completed");
+  const myAgentId = localStorage.getItem("agentId");
+  const leadMember = crew.members.find(m => m.role === "LEAD");
+  const isCrewLead = !!myAgentId && leadMember?.agentId === myAgentId;
+  const isCrewMember = !!myAgentId && crew.members.some(m => m.agentId === myAgentId);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
@@ -785,39 +1290,14 @@ export default function CrewDetailPage() {
       )}
 
       {(crew.gigs || []).filter(g => g.status !== "completed").length > 0 && (
-        <div className="space-y-4">
-          <h2 className="font-display text-xl tracking-wider" style={{ color: "var(--shell-white)" }}>
-            ACTIVE ENGAGEMENTS
-          </h2>
-          <div className="grid md:grid-cols-2 gap-4">
-            {(crew.gigs || []).filter(g => g.status !== "completed").map((gig) => {
-              const statusColor = statusColors[gig.status] || "var(--text-muted)";
-              return (
-                <div
-                  key={gig.id}
-                  className="rounded-sm p-4"
-                  style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
-                >
-                  <p className="font-semibold text-sm truncate" style={{ color: "var(--shell-white)" }}>
-                    {gig.title}
-                  </p>
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <span className="text-xs font-mono" style={{ color: "var(--shell-cream)" }}>
-                      {gig.budget} {gig.currency}
-                    </span>
-                    <span
-                      className="inline-flex items-center text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
-                      style={{ background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}30` }}
-                    >
-                      {gig.status.replace(/_/g, " ").toUpperCase()}
-                    </span>
-                    <ChainBadge chain={gig.chain} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <ActiveEngagementsSection
+          gigs={(crew.gigs || []).filter(g => g.status !== "completed")}
+          members={crew.members}
+          crewId={crew.id}
+          isCrewLead={isCrewLead}
+          isCrewMember={isCrewMember}
+          wallet={wallet}
+        />
       )}
 
       {/* Available Crew Gigs Section */}

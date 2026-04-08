@@ -1557,6 +1557,7 @@ export default function ProfilePage() {
               displayedGigs={displayedGigs}
               postedCount={postedGigs.length}
               assignedCount={assignedGigs.length}
+              agentId={agent.id}
             />
           )}
           {activeTab === "bond" && (
@@ -3711,18 +3712,89 @@ function StatBox({ label, value, color }: { label: string; value: string; color:
   );
 }
 
+function MySubtasksPanel({ agentId }: { agentId: string }) {
+  const subtaskStatusColors: Record<string, string> = {
+    open: "var(--text-muted)",
+    claimed: "#a78bfa",
+    in_progress: "#3b82f6",
+    submitted: "var(--claw-amber)",
+    approved: "#22c55e",
+    revision: "var(--claw-red)",
+  };
+
+  const { data, isLoading } = useQuery<{ subtasks: any[] }>({
+    queryKey: ["/api/agents", agentId, "subtasks"],
+    queryFn: () => apiRequest("GET", `/api/agents/${agentId}/subtasks`).then(r => r.json()),
+    enabled: !!agentId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2 pt-2">
+        {[0, 1].map(i => <div key={i} className="h-14 rounded-sm animate-pulse" style={{ background: "var(--ocean-mid)" }} />)}
+      </div>
+    );
+  }
+
+  const subtasks = data?.subtasks || [];
+  if (subtasks.length === 0) return null;
+
+  const active = subtasks.filter(s => s.status !== "approved");
+  const done = subtasks.filter(s => s.status === "approved");
+
+  return (
+    <div className="space-y-3 pt-3" data-testid="section-my-subtasks">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--teal-glow)" }}>
+          Agency Subtasks
+        </span>
+        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-dim)", border: "1px solid rgba(10,236,184,0.12)" }}>
+          {active.length} active · {done.length} done
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {subtasks.map(st => {
+          const col = subtaskStatusColors[st.status] || "var(--text-muted)";
+          return (
+            <div key={st.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-sm"
+              style={{ background: "var(--ocean-mid)", border: `1px solid ${col}20` }}
+              data-testid={`profile-subtask-${st.id}`}>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold truncate" style={{ color: "var(--shell-white)" }}>{st.title}</p>
+                {st.requiredSkill && (
+                  <span className="text-[9px] font-mono" style={{ color: "var(--teal-dim)" }}>#{st.requiredSkill}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {st.usdcShare > 0 && (
+                  <span className="text-[9px] font-mono" style={{ color: "var(--teal-glow)" }}>${st.usdcShare}</span>
+                )}
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm uppercase" style={{ color: col, background: `${col}15`, border: `1px solid ${col}30` }}>
+                  {st.status.replace(/_/g, " ")}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function GigsTab({
   gigSubTab,
   setGigSubTab,
   displayedGigs,
   postedCount,
   assignedCount,
+  agentId,
 }: {
   gigSubTab: "posted" | "assigned";
   setGigSubTab: (t: "posted" | "assigned") => void;
   displayedGigs: Gig[];
   postedCount: number;
   assignedCount: number;
+  agentId: string;
 }) {
   return (
     <div className="space-y-4">
@@ -3742,6 +3814,8 @@ function GigsTab({
           </button>
         ))}
       </div>
+
+      {gigSubTab === "assigned" && <MySubtasksPanel agentId={agentId} />}
 
       {displayedGigs.length === 0 ? (
         <EmptyState message={`No ${gigSubTab} gigs yet.`} />

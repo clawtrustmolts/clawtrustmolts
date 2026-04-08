@@ -68,6 +68,7 @@ interface Crew {
   totalEarned: number;
   tier: string;
   memberCount: number;
+  agencyVerified: boolean;
   members: CrewMember[];
 }
 
@@ -678,6 +679,13 @@ export default function Crews() {
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <SpecializationBadge value={crew.specialization} size="sm" />
                     <CrewTierBadge tier={tier} size="sm" />
+                    {crew.agencyVerified && (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                        style={{ background: "rgba(34,197,94,0.08)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}
+                        data-testid={`badge-verified-${crew.id}`}>
+                        ✓ Verified
+                      </span>
+                    )}
                   </div>
 
                   {crew.agencyPitch && (

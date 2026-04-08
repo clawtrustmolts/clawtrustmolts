@@ -8719,6 +8719,338 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Agency Mode: Crew Subtask Routes ─────────────────────────────────────
+
+  // Helper: resolve requesting agentId and check crew lead status
+  async function resolveAgentFromRequest(req: any): Promise<string | null> {
+    const walletAddress = req.headers["x-wallet-address"] as string | undefined;
+    const agentIdHeader = req.headers["x-agent-id"] as string | undefined;
+    if (agentIdHeader) {
+      const agent = await storage.getAgent(agentIdHeader);
+      if (agent) return agent.id;
+    }
+    if (walletAddress) {
+      const agent = await storage.getAgentByWallet(walletAddress);
+      if (agent) return agent.id;
+    }
+    return null;
+  }
+
+  // POST /api/gigs/:id/subtasks — Lead creates a subtask
+  app.post("/api/gigs/:id/subtasks", apiLimiter, async (req, res) => {
+    try {
+      const gigId = req.params.id;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (!gig.crewId) return res.status(400).json({ message: "This gig is not assigned to a crew" });
+
+      const requesterId = await resolveAgentFromRequest(req);
+      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+
+      // Verify requester is LEAD of the crew
+      const members = await storage.getCrewMembers(gig.crewId);
+      const leadMember = members.find(m => m.role === "LEAD" && m.agentId === requesterId);
+      if (!leadMember) return res.status(403).json({ message: "Only the crew Lead can create subtasks" });
+
+      const { title, description, assigneeId, requiredSkill, usdcShare } = req.body;
+      if (!title || typeof title !== "string" || title.trim().length === 0) {
+        return res.status(400).json({ message: "title is required" });
+      }
+
+      // Validate assigneeId is a crew member
+      if (assigneeId) {
+        const isMember = members.some(m => m.agentId === assigneeId);
+        if (!isMember) return res.status(400).json({ message: "assigneeId must be a crew member" });
+      }
+
+      const subtask = await storage.createCrewSubtask({
+        gigId,
+        crewId: gig.crewId,
+        assigneeId: assigneeId || null,
+        title: title.trim(),
+        description: description?.trim() || null,
+        requiredSkill: requiredSkill?.trim() || null,
+        usdcShare: typeof usdcShare === "number" ? usdcShare : 0,
+        status: assigneeId ? "claimed" : "open",
+        submissionText: null,
+        leadFeedback: null,
+      });
+
+      // Enable parallel mode on settings if not already set
+      await storage.upsertCrewGigSettings(gigId, { parallelModeEnabled: true });
+
+      res.status(201).json(subtask);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/gigs/:id/subtasks — List subtasks for a gig
+  app.get("/api/gigs/:id/subtasks", async (req, res) => {
+    try {
+      const gigId = req.params.id;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      const subtasks = await storage.getCrewSubtasks(gigId);
+      const settings = await storage.getCrewGigSettings(gigId);
+
+      // Enrich with assignee info
+      const enriched = await Promise.all(subtasks.map(async (st) => {
+        if (!st.assigneeId) return { ...st, assignee: null };
+        const agent = await storage.getAgent(st.assigneeId);
+        return {
+          ...st,
+          assignee: agent ? { id: agent.id, handle: agent.handle, avatar: agent.avatar, fusedScore: agent.fusedScore } : null,
+        };
+      }));
+
+      res.json({ subtasks: enriched, settings: settings || null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/gigs/:id/subtasks/:subtaskId — Update subtask status/submission
+  app.patch("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, async (req, res) => {
+    try {
+      const { id: gigId, subtaskId } = req.params;
+      const subtask = await storage.getCrewSubtask(subtaskId);
+      if (!subtask || subtask.gigId !== gigId) return res.status(404).json({ message: "Subtask not found" });
+
+      const gig = await storage.getGig(gigId);
+      if (!gig || !gig.crewId) return res.status(404).json({ message: "Gig not found" });
+
+      const requesterId = await resolveAgentFromRequest(req);
+      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+
+      const members = await storage.getCrewMembers(gig.crewId);
+      const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
+      const isAssignee = subtask.assigneeId === requesterId;
+
+      if (!isLead && !isAssignee) {
+        return res.status(403).json({ message: "Not authorized to update this subtask" });
+      }
+
+      const { status, submissionText, leadFeedback, assigneeId, usdcShare, title, description, requiredSkill } = req.body;
+
+      const updateData: Record<string, any> = {};
+
+      if (isLead) {
+        // Lead can update everything
+        if (status) updateData.status = status;
+        if (leadFeedback !== undefined) updateData.leadFeedback = leadFeedback;
+        if (assigneeId !== undefined) updateData.assigneeId = assigneeId;
+        if (typeof usdcShare === "number") updateData.usdcShare = usdcShare;
+        if (title) updateData.title = title.trim();
+        if (description !== undefined) updateData.description = description?.trim() || null;
+        if (requiredSkill !== undefined) updateData.requiredSkill = requiredSkill?.trim() || null;
+      } else {
+        // Member can only update their own subtask: move to in_progress or submitted
+        const allowedStatuses = ["in_progress", "submitted"];
+        if (status && !allowedStatuses.includes(status)) {
+          return res.status(403).json({ message: "Members can only set status to in_progress or submitted" });
+        }
+        if (status) updateData.status = status;
+        if (submissionText !== undefined) updateData.submissionText = submissionText;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+
+      const updated = await storage.updateCrewSubtask(subtaskId, updateData);
+
+      // Auto-delivery check: if lead approved, check if all subtasks are approved
+      if (isLead && status === "approved") {
+        const allSubtasks = await storage.getCrewSubtasks(gigId);
+        const allApproved = allSubtasks.every(s => s.id === subtaskId ? true : s.status === "approved");
+        if (allApproved && allSubtasks.length > 0) {
+          // Trigger auto-delivery if gig is still in active state
+          if (gig.status === "assigned" || gig.status === "in_progress") {
+            await storage.updateGigStatus(gigId, "pending_validation");
+            // Mark crew as agencyVerified if not already
+            const crew = await storage.getCrew(gig.crewId);
+            if (crew && !crew.agencyVerified) {
+              await storage.updateCrew(gig.crewId, { agencyVerified: true });
+            }
+          }
+        }
+      }
+
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // DELETE /api/gigs/:id/subtasks/:subtaskId — Lead deletes open subtask
+  app.delete("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, async (req, res) => {
+    try {
+      const { id: gigId, subtaskId } = req.params;
+      const subtask = await storage.getCrewSubtask(subtaskId);
+      if (!subtask || subtask.gigId !== gigId) return res.status(404).json({ message: "Subtask not found" });
+
+      const gig = await storage.getGig(gigId);
+      if (!gig || !gig.crewId) return res.status(404).json({ message: "Gig not found" });
+
+      const requesterId = await resolveAgentFromRequest(req);
+      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+
+      const members = await storage.getCrewMembers(gig.crewId);
+      const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
+      if (!isLead) return res.status(403).json({ message: "Only the crew Lead can delete subtasks" });
+
+      if (subtask.status !== "open") {
+        return res.status(400).json({ message: "Can only delete subtasks that are still open" });
+      }
+
+      await storage.deleteCrewSubtask(subtaskId);
+      res.json({ deleted: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/gigs/:id/subtasks/:subtaskId/claim — Crew member claims an open subtask
+  app.post("/api/gigs/:id/subtasks/:subtaskId/claim", apiLimiter, async (req, res) => {
+    try {
+      const { id: gigId, subtaskId } = req.params;
+      const subtask = await storage.getCrewSubtask(subtaskId);
+      if (!subtask || subtask.gigId !== gigId) return res.status(404).json({ message: "Subtask not found" });
+      if (subtask.status !== "open") return res.status(400).json({ message: "Subtask is not open for claiming" });
+
+      const gig = await storage.getGig(gigId);
+      if (!gig || !gig.crewId) return res.status(404).json({ message: "Gig not found" });
+
+      const requesterId = await resolveAgentFromRequest(req);
+      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+
+      const members = await storage.getCrewMembers(gig.crewId);
+      const isMember = members.some(m => m.agentId === requesterId);
+      if (!isMember) return res.status(403).json({ message: "Must be a crew member to claim subtasks" });
+
+      const updated = await storage.updateCrewSubtask(subtaskId, {
+        assigneeId: requesterId,
+        status: "claimed",
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/crews/:id/agency-stats — 5-min TTL cached stats
+  const agencyStatsCache = new Map<string, { data: any; ts: number }>();
+  const AGENCY_STATS_TTL = 5 * 60 * 1000;
+
+  app.get("/api/crews/:id/agency-stats", async (req, res) => {
+    try {
+      const crewId = req.params.id;
+      const cached = agencyStatsCache.get(crewId);
+      if (cached && Date.now() - cached.ts < AGENCY_STATS_TTL) {
+        return res.json(cached.data);
+      }
+
+      const crew = await storage.getCrew(crewId);
+      if (!crew) return res.status(404).json({ message: "Crew not found" });
+
+      const members = await storage.getCrewMembers(crewId);
+      const gigs = await storage.getCrewGigs(crewId);
+      const activeGigs = gigs.filter(g => ["assigned", "in_progress"].includes(g.status));
+
+      // Gather all subtasks for active gigs
+      const subtasksByGig = await Promise.all(
+        activeGigs.map(async g => ({ gigId: g.id, subtasks: await storage.getCrewSubtasks(g.id, crewId) }))
+      );
+
+      const allSubtasks = subtasksByGig.flatMap(s => s.subtasks);
+      const subtaskStats = {
+        total: allSubtasks.length,
+        open: allSubtasks.filter(s => s.status === "open").length,
+        inProgress: allSubtasks.filter(s => s.status === "in_progress" || s.status === "claimed").length,
+        submitted: allSubtasks.filter(s => s.status === "submitted").length,
+        approved: allSubtasks.filter(s => s.status === "approved").length,
+        revision: allSubtasks.filter(s => s.status === "revision").length,
+      };
+
+      // Per-member contribution
+      const memberContributions = members.map(m => {
+        const memberSubtasks = allSubtasks.filter(s => s.assigneeId === m.agentId);
+        const approvedCount = memberSubtasks.filter(s => s.status === "approved").length;
+        const totalShare = memberSubtasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
+        return {
+          agentId: m.agentId,
+          role: m.role,
+          assigned: memberSubtasks.length,
+          approved: approvedCount,
+          totalUsdcShare: totalShare,
+        };
+      });
+
+      const data = {
+        crewId,
+        agencyVerified: crew.agencyVerified,
+        activeGigCount: activeGigs.length,
+        memberCount: members.length,
+        subtaskStats,
+        memberContributions,
+        gigsCompleted: crew.gigsCompleted,
+        totalEarned: crew.totalEarned,
+        fusedScore: crew.fusedScore,
+      };
+
+      agencyStatsCache.set(crewId, { data, ts: Date.now() });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/agents/:id/subtasks — Agent's assigned subtasks
+  app.get("/api/agents/:id/subtasks", async (req, res) => {
+    try {
+      const agentId = req.params.id;
+      const subtasks = await storage.getSubtasksForAssignee(agentId);
+
+      const enriched = await Promise.all(subtasks.map(async st => {
+        const gig = await storage.getGig(st.gigId);
+        return { ...st, gig: gig ? { id: gig.id, title: gig.title, status: gig.status, budget: gig.budget, currency: gig.currency } : null };
+      }));
+
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/gigs/:id/settings — Crew lead updates gig parallel settings
+  app.patch("/api/gigs/:id/settings", apiLimiter, async (req, res) => {
+    try {
+      const gigId = req.params.id;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (!gig.crewId) return res.status(400).json({ message: "Not a crew gig" });
+
+      const requesterId = await resolveAgentFromRequest(req);
+      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+
+      const members = await storage.getCrewMembers(gig.crewId);
+      const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
+      if (!isLead) return res.status(403).json({ message: "Only the crew Lead can update gig settings" });
+
+      const { leadCoordinationFeePct, parallelModeEnabled } = req.body;
+      const updateData: Record<string, any> = {};
+      if (typeof leadCoordinationFeePct === "number") updateData.leadCoordinationFeePct = Math.max(0, Math.min(50, leadCoordinationFeePct));
+      if (typeof parallelModeEnabled === "boolean") updateData.parallelModeEnabled = parallelModeEnabled;
+
+      const settings = await storage.upsertCrewGigSettings(gigId, updateData);
+      res.json(settings);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   const messageLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 20,
