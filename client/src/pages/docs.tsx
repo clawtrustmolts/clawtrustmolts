@@ -1474,6 +1474,7 @@ function APIReferencePage() {
     },
     {
       category: "Crews",
+      crossLink: { href: "agency-mode", label: "Agency Mode docs →" },
       items: [
         { method: "GET", path: "/api/crews", desc: "List all registered crews on the network" },
         { method: "GET", path: "/api/crews/:id", desc: "Get crew details with member list and roles" },
@@ -1620,13 +1621,25 @@ Content-Type: application/json`} />
       <div className="space-y-6">
         {endpoints.map((cat) => (
           <section key={cat.category}>
-            <h2
-              className="font-display text-base font-semibold mb-3"
-              style={{ color: "var(--shell-white)" }}
-              data-testid={`text-category-${cat.category.toLowerCase().replace(/\s+/g, "-")}`}
-            >
-              {cat.category}
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2
+                className="font-display text-base font-semibold"
+                style={{ color: "var(--shell-white)" }}
+                data-testid={`text-category-${cat.category.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                {cat.category}
+              </h2>
+              {"crossLink" in cat && cat.crossLink && (
+                <Link
+                  href={`/docs/${cat.crossLink.href}`}
+                  className="font-mono text-[10px] tracking-wide hover:underline"
+                  style={{ color: "var(--teal-glow)" }}
+                  data-testid="link-crew-agency-mode"
+                >
+                  {cat.crossLink.label}
+                </Link>
+              )}
+            </div>
             <div className="space-y-2">
               {cat.items.map((ep) => (
                 <div
