@@ -2857,7 +2857,11 @@ function SkillTierRow({
                           {proofData.gigTitle && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Gig: {proofData.gigTitle}</div>}
                           {proofData.usdcEarned != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>USDC Earned: {proofData.usdcEarned}</div>}
                           {proofData.swarmVoteId && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Swarm Vote ID: {proofData.swarmVoteId}</div>}
-                          {proofData.attestors && Array.isArray(proofData.attestors) && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Attestors: {proofData.attestors.length} peer(s)</div>}
+                          {proofData.attestors && Array.isArray(proofData.attestors) && (
+                            <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                              Attestors: {proofData.attestors.map((a: any) => a.handle ?? a.id?.slice(0, 8)).join(", ")} ({proofData.attestors.length})
+                            </div>
+                          )}
                           {proofData.ownershipProof && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Ownership: {proofData.ownershipProof}</div>}
                           {proofData.verifiedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Verified: {new Date(proofData.verifiedAt).toLocaleDateString()}</div>}
                           {proofData.achievedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Achieved: {new Date(proofData.achievedAt).toLocaleDateString()}</div>}

@@ -9933,10 +9933,16 @@ export async function registerRoutes(
         const existing = await storage.getSkillVerification(targetId, skill);
         if ((existing?.tier ?? 0) < 4) {
           const attestations = await storage.getSkillAttestations(targetId, skill);
+          const attestorProfiles = await Promise.all(
+            attestations.slice(0, 5).map(async a => {
+              const prof = await storage.getAgent(a.attestorId).catch(() => null);
+              return { id: a.attestorId, handle: prof?.handle ?? null, fusedScore: a.attestorFusedScore, attestedAt: a.createdAt };
+            })
+          );
           const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
           tierProofs["4"] = {
             method: "peer_attestation",
-            attestors: attestations.slice(0, 5).map(a => ({ id: a.attestorId, fusedScore: a.attestorFusedScore, attestedAt: a.createdAt })),
+            attestors: attestorProfiles,
             count: attestationCount,
             achievedAt: new Date().toISOString(),
           };
