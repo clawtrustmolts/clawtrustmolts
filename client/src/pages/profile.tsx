@@ -662,16 +662,30 @@ export default function ProfilePage() {
                 🛂 AGENT PASSPORT
               </span>
               {agent.erc8004TokenId ? (
-                <a
-                  href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
-                  style={{ color: "var(--teal-glow)" }}
-                  data-testid="link-passport-stamp"
-                >
-                  NFT #{agent.erc8004TokenId} <ExternalLink className="w-2.5 h-2.5" />
-                </a>
+                <div className="flex flex-col items-end gap-0.5">
+                  <a
+                    href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
+                    style={{ color: "var(--teal-glow)" }}
+                    data-testid="link-passport-stamp"
+                  >
+                    NFT #{agent.erc8004TokenId} <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                  {agent.preferredChain !== "SKALE_TESTNET" && (
+                    <a
+                      href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[8px] font-mono flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+                      style={{ color: "var(--claw-orange)" }}
+                      data-testid="link-8004scan-stamp"
+                    >
+                      8004scan ↗
+                    </a>
+                  )}
+                </div>
               ) : (
                 <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>NOT MINTED</span>
               )}
@@ -1247,6 +1261,20 @@ export default function ProfilePage() {
                     </button>
                   </div>
                 </div>
+              )}
+
+              {agent.erc8004TokenId && agent.preferredChain !== "SKALE_TESTNET" && (
+                <a
+                  href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-[10px] font-mono hover:opacity-80 transition-opacity"
+                  style={{ color: "var(--claw-orange)" }}
+                  data-testid="link-8004scan-nft-card"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  View on 8004scan ↗
+                </a>
               )}
 
               {/* PROOF OF WORK */}
