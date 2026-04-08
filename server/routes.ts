@@ -8737,15 +8737,14 @@ export async function registerRoutes(
   }
 
   // POST /api/gigs/:id/subtasks — Lead creates a subtask
-  app.post("/api/gigs/:id/subtasks", apiLimiter, async (req, res) => {
+  app.post("/api/gigs/:id/subtasks", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
       const gigId = req.params.id;
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
       if (!gig.crewId) return res.status(400).json({ message: "This gig is not assigned to a crew" });
 
-      const requesterId = await resolveAgentFromRequest(req);
-      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+      const requesterId = (req as any).agentId as string;
 
       // Verify requester is LEAD of the crew
       const members = await storage.getCrewMembers(gig.crewId);
@@ -8831,7 +8830,7 @@ export async function registerRoutes(
   });
 
   // PATCH /api/gigs/:id/subtasks/:subtaskId — Update subtask status/submission
-  app.patch("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, async (req, res) => {
+  app.patch("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
       const { id: gigId, subtaskId } = req.params;
       const subtask = await storage.getCrewSubtask(subtaskId);
@@ -8840,8 +8839,7 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig || !gig.crewId) return res.status(404).json({ message: "Gig not found" });
 
-      const requesterId = await resolveAgentFromRequest(req);
-      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+      const requesterId = (req as any).agentId as string;
 
       const members = await storage.getCrewMembers(gig.crewId);
       const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
@@ -8932,13 +8930,16 @@ export async function registerRoutes(
           })();
 
           // 5. Contribution-weighted reputation split based on approved usdcShare
+          // Runs after gig transitions to pending_validation (post-completion path)
           (async () => {
             try {
               const crewMembers = await storage.getCrewMembers(gig.crewId!);
               const approvedList = allSubtasks.map(s => s.id === subtaskId ? { ...s, status: "approved" as const } : s).filter(s => s.status === "approved");
               const totalUsdcAllocated = approvedList.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
               if (totalUsdcAllocated > 0) {
-                const LEAD_COORDINATION_FEE = 0.10; // 10% coordination fee to lead
+                // Use persisted leadCoordinationFeePct from settings (default 10%)
+                const gigSettings = await storage.getCrewGigSettings(gigId);
+                const LEAD_COORDINATION_FEE = (gigSettings?.leadCoordinationFeePct ?? 10) / 100;
                 for (const member of crewMembers) {
                   const memberTasks = approvedList.filter(s => s.assigneeId === member.agentId);
                   const memberShare = memberTasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
@@ -8973,7 +8974,7 @@ export async function registerRoutes(
   });
 
   // DELETE /api/gigs/:id/subtasks/:subtaskId — Lead deletes open subtask
-  app.delete("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, async (req, res) => {
+  app.delete("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
       const { id: gigId, subtaskId } = req.params;
       const subtask = await storage.getCrewSubtask(subtaskId);
@@ -8982,8 +8983,7 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig || !gig.crewId) return res.status(404).json({ message: "Gig not found" });
 
-      const requesterId = await resolveAgentFromRequest(req);
-      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+      const requesterId = (req as any).agentId as string;
 
       const members = await storage.getCrewMembers(gig.crewId);
       const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
@@ -9001,7 +9001,7 @@ export async function registerRoutes(
   });
 
   // POST /api/gigs/:id/subtasks/:subtaskId/claim — Crew member claims an open subtask
-  app.post("/api/gigs/:id/subtasks/:subtaskId/claim", apiLimiter, async (req, res) => {
+  app.post("/api/gigs/:id/subtasks/:subtaskId/claim", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
       const { id: gigId, subtaskId } = req.params;
       const subtask = await storage.getCrewSubtask(subtaskId);
@@ -9011,8 +9011,7 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig || !gig.crewId) return res.status(404).json({ message: "Gig not found" });
 
-      const requesterId = await resolveAgentFromRequest(req);
-      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+      const requesterId = (req as any).agentId as string;
 
       const members = await storage.getCrewMembers(gig.crewId);
       const isMember = members.some(m => m.agentId === requesterId);
@@ -9078,11 +9077,16 @@ export async function registerRoutes(
         ? +(activeSubtasks.filter(s => s.status === "in_progress" || s.status === "claimed").length / activeGigs.length).toFixed(2)
         : 0;
 
-      // onTimeRate: approved subtasks that never went to "revision" state (proxy: no leadFeedback)
+      // onTimeRate: approved subtasks whose updatedAt (completion time) was within the gig's deadline window
       const approvedSubtasks = allSubtasks.filter(s => s.status === "approved");
-      const approvedWithoutRevision = approvedSubtasks.filter(s => !s.leadFeedback);
+      const onTimeSubtasks = approvedSubtasks.filter(s => {
+        const parentGig = allGigs.find(g => g.id === s.gigId);
+        if (!parentGig || !parentGig.createdAt || !s.updatedAt) return true; // assume on-time if no data
+        const deadlineMs = new Date(parentGig.createdAt).getTime() + ((parentGig as any).deadlineHours || 72) * 3600000;
+        return new Date(s.updatedAt).getTime() <= deadlineMs;
+      });
       const onTimeRate = approvedSubtasks.length > 0
-        ? +(approvedWithoutRevision.length / approvedSubtasks.length).toFixed(3)
+        ? +(onTimeSubtasks.length / approvedSubtasks.length).toFixed(3)
         : 1;
 
       // Per-member contribution
@@ -9155,15 +9159,14 @@ export async function registerRoutes(
   });
 
   // PATCH /api/gigs/:id/settings — Crew lead updates gig parallel settings
-  app.patch("/api/gigs/:id/settings", apiLimiter, async (req, res) => {
+  app.patch("/api/gigs/:id/settings", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
       const gigId = req.params.id;
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
       if (!gig.crewId) return res.status(400).json({ message: "Not a crew gig" });
 
-      const requesterId = await resolveAgentFromRequest(req);
-      if (!requesterId) return res.status(401).json({ message: "Authentication required" });
+      const requesterId = (req as any).agentId as string;
 
       const members = await storage.getCrewMembers(gig.crewId);
       const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);

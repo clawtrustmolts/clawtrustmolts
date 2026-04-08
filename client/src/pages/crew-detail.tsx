@@ -423,6 +423,7 @@ function ActiveEngagementsSection({
                       members={members}
                       isLead={isCrewLead}
                       wallet={wallet}
+                      gigStatus={gig.status}
                     />
                   </div>
                 </div>
@@ -588,12 +589,14 @@ function TaskBoard({
   members,
   isLead,
   wallet,
+  gigStatus,
 }: {
   gigId: string;
   crewId: string;
   members: CrewMember[];
   isLead: boolean;
   wallet: string | null;
+  gigStatus: string;
 }) {
   const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
@@ -607,6 +610,16 @@ function TaskBoard({
     queryKey: ["/api/gigs", gigId, "subtasks"],
     queryFn: () => apiRequest("GET", `/api/gigs/${gigId}/subtasks`).then(r => r.json()),
     enabled: !!gigId,
+  });
+
+  const enableParallelMut = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/gigs/${gigId}/settings`, { parallelModeEnabled: true }, { "x-wallet-address": wallet || "" }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId, "subtasks"] });
+      toast({ title: "Parallel mode enabled", description: "You can now create and manage subtasks." });
+    },
+    onError: (err: any) => toast({ title: "Failed to enable parallel mode", description: err.message, variant: "destructive" }),
   });
 
   const patchMut = useMutation({
@@ -642,6 +655,36 @@ function TaskBoard({
 
   if (isLoading) {
     return <div className="grid grid-cols-3 gap-3">{[0,1,2].map(i => <div key={i} className="h-32 rounded-sm animate-pulse" style={{ background: "var(--ocean-mid)" }} />)}</div>;
+  }
+
+  const settings = data?.settings;
+  const parallelEnabled = settings?.parallelModeEnabled === true;
+  const isActiveGig = ["assigned", "in_progress"].includes(gigStatus);
+
+  // Gate: only show board when gig is active and parallel mode is enabled
+  if (!parallelEnabled) {
+    if (isLead && isActiveGig) {
+      return (
+        <div className="text-center py-6 rounded-sm space-y-3" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(59,130,246,0.18)" }}
+          data-testid="panel-parallel-disabled">
+          <p className="text-sm font-mono" style={{ color: "var(--text-muted)" }}>PARALLEL MODE NOT ENABLED</p>
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>Enable parallel mode to split this gig into subtasks and assign them to crew members.</p>
+          <button
+            data-testid="button-enable-parallel-mode"
+            onClick={() => enableParallelMut.mutate()}
+            disabled={enableParallelMut.isPending}
+            className="px-3 py-1.5 rounded-sm text-xs font-mono transition-colors"
+            style={{ background: "#3b82f6", color: "#fff", opacity: enableParallelMut.isPending ? 0.6 : 1 }}>
+            {enableParallelMut.isPending ? "Enabling..." : "ENABLE PARALLEL MODE"}
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="text-center py-4 rounded-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}>
+        <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>Parallel mode not enabled for this gig.</p>
+      </div>
+    );
   }
 
   const subtasks = data?.subtasks || [];
