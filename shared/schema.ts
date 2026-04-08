@@ -154,8 +154,23 @@ export const agentSkills = pgTable("agent_skills", {
   portfolioUrl: text("portfolio_url"),
   challengeScore: integer("challenge_score"),
   challengeCompletedAt: timestamp("challenge_completed_at"),
+  tier: integer("tier").notNull().default(0),
+  tierProofs: jsonb("tier_proofs").default({}),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const skillAttestations = pgTable("skill_attestations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentId: varchar("agent_id").notNull(),
+  skillName: text("skill_name").notNull(),
+  attestorId: varchar("attestor_id").notNull(),
+  attestorFusedScore: real("attestor_fused_score").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSkillAttestationSchema = createInsertSchema(skillAttestations).omit({ id: true, createdAt: true });
+export type SkillAttestation = typeof skillAttestations.$inferSelect;
+export type InsertSkillAttestation = z.infer<typeof insertSkillAttestationSchema>;
 
 export const skillChallenges = pgTable("skill_challenges", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

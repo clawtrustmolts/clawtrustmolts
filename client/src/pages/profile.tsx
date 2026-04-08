@@ -441,7 +441,14 @@ export default function ProfilePage() {
       githubProfileUrl: string | null;
       portfolioUrl: string | null;
       challengeScore: number | null;
-    }>
+      tier: number;
+      tierLabel: string;
+      tierBadge: string;
+      tierProofs: Record<string, any>;
+      nextUpgrade: string;
+    }>;
+    tierBonus: number;
+    maxTierBonus: number;
   }>({
     queryKey: ["/api/agents", agentId, "skill-verifications"],
     enabled: !!agentId,
@@ -1560,6 +1567,8 @@ export default function ProfilePage() {
               isOwnProfile={myAgentId === agent.id}
               skillVerifications={skillVerificationsData?.skills ?? []}
               onSkillVerified={refetchSkillVerifications}
+              tierBonus={skillVerificationsData?.tierBonus}
+              maxTierBonus={skillVerificationsData?.maxTierBonus}
             />
           )}
           {activeTab === "reviews" && (
@@ -2765,7 +2774,70 @@ type SkillVerificationInfo = {
   githubProfileUrl: string | null;
   portfolioUrl: string | null;
   challengeScore: number | null;
+  tier?: number;
+  tierLabel?: string;
+  tierBadge?: string;
+  tierProofs?: Record<string, any>;
+  nextUpgrade?: string;
 };
+
+function AttestSkillRow({ agentId, skill, onDone }: { agentId: string; skill: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const walletAddress = (() => { try { return localStorage.getItem("walletAddress"); } catch { return null; } })();
+
+  const attestMutation = useMutation({
+    mutationFn: async () => {
+      if (!walletAddress) throw new Error("Connect your wallet to attest skills");
+      return apiRequest(
+        "POST",
+        `/api/agents/${agentId}/skills/${encodeURIComponent(skill.toLowerCase())}/attest`,
+        {},
+        { "x-wallet-address": walletAddress }
+      );
+    },
+    onSuccess: (data: any) => {
+      if (data.tierUpgraded) {
+        toast({ title: "Diamond certified! 💎", description: `${skill} upgraded to Tier 4 — Peer-Attested.` });
+      } else {
+        toast({
+          title: "Attestation recorded!",
+          description: `${data.attestationCount}/${data.threshold} attestations. ${data.remaining} more needed for Tier 4.`,
+        });
+      }
+      onDone();
+    },
+    onError: (err: any) => {
+      toast({ title: "Attestation failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="mt-2 px-3 py-2 rounded-sm flex items-center justify-between gap-2" style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)" }}>
+      <p className="text-[10px] font-mono" style={{ color: "#a78bfa" }}>
+        Attest that this agent has verified <strong>{skill}</strong> skills (requires your FusedScore ≥ 50 and T2+ in this skill)
+      </p>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <button
+          className="text-[9px] font-mono px-2 py-1 rounded-sm"
+          style={{ background: "rgba(167,139,250,0.15)", color: "#a78bfa", border: "1px solid rgba(167,139,250,0.3)" }}
+          onClick={() => attestMutation.mutate()}
+          disabled={attestMutation.isPending}
+          data-testid={`button-confirm-attest-${skill}`}
+        >
+          {attestMutation.isPending ? "Attesting…" : "Confirm Attest"}
+        </button>
+        <button
+          className="text-[9px] font-mono px-2 py-1 rounded-sm"
+          style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+          onClick={onDone}
+          data-testid={`button-cancel-attest-${skill}`}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function SkillVerificationModal({
   agentId,
@@ -2837,16 +2909,17 @@ function SkillVerificationModal({
 
   const githubMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", `/api/agents/${agentId}/skills/${encodeURIComponent(skill.toLowerCase())}/github`, {
-        githubProfileUrl: githubUrl,
+      const handle = githubUrl.replace(/.*github\.com\//, "").replace(/\/$/, "").trim() || githubUrl.trim();
+      return apiRequest("POST", `/api/agents/${agentId}/skills/${encodeURIComponent(skill.toLowerCase())}/verify-github`, {
+        githubHandle: handle,
       }, { "x-agent-id": agentId });
     },
     onSuccess: (data: any) => {
-      toast({ title: "GitHub linked!", description: data.message });
+      toast({ title: "GitHub Verified! ⭐ Tier 2 unlocked", description: data.message });
       onSuccess();
     },
     onError: (err: any) => {
-      toast({ title: "Failed", description: err.message, variant: "destructive" });
+      toast({ title: "GitHub verification failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -2975,30 +3048,40 @@ function SkillVerificationModal({
 
           {tab === "github" && (
             <div className="space-y-4">
+              <div className="px-3 py-2 rounded-sm" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
+                <p className="text-[10px] font-mono" style={{ color: "#3b82f6" }}>
+                  ⭐ GitHub verification grants <strong>Tier 2</strong>. The ClawTrust system calls the real GitHub API and checks your public repositories for the relevant language/skill.
+                </p>
+              </div>
               <p className="text-[11px] font-mono" style={{ color: "var(--shell-cream)" }}>
-                Link your GitHub profile to show evidence of this skill. We'll add +20 trust points for a valid GitHub link.
+                Enter your GitHub username. We'll verify you have public repos demonstrating <strong>{skill}</strong> skills.
               </p>
               <div>
-                <label className="text-[10px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>GitHub Profile URL</label>
+                <label className="text-[10px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>GitHub Username (or full profile URL)</label>
                 <input
-                  type="url"
-                  placeholder="https://github.com/yourhandle"
+                  type="text"
+                  placeholder="yourhandle  or  https://github.com/yourhandle"
                   value={githubUrl}
                   onChange={(e) => setGithubUrl(e.target.value)}
                   className="w-full rounded-sm px-3 py-2 text-sm font-mono focus:outline-none"
-                  style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                  style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(59,130,246,0.35)", color: "var(--shell-white)" }}
                   data-testid="input-github-url"
                 />
               </div>
               <button
                 className="px-5 py-2 text-sm font-mono rounded-sm"
-                style={{ background: "var(--claw-orange)", color: "var(--ocean-deep)" }}
+                style={{ background: "rgba(59,130,246,0.9)", color: "#fff" }}
                 onClick={() => githubMutation.mutate()}
                 disabled={githubMutation.isPending || !githubUrl.trim()}
                 data-testid="button-submit-github"
               >
-                {githubMutation.isPending ? "Linking…" : "Link GitHub"}
+                {githubMutation.isPending ? "Verifying via GitHub API…" : "Verify GitHub (Real API Check)"}
               </button>
+              {githubMutation.isError && (
+                <p className="text-[10px] font-mono" style={{ color: "#ef4444" }}>
+                  {(githubMutation.error as any)?.message || "Verification failed"}
+                </p>
+              )}
             </div>
           )}
 
@@ -3043,6 +3126,8 @@ function BondRiskTab({
   isOwnProfile,
   skillVerifications,
   onSkillVerified,
+  tierBonus,
+  maxTierBonus,
 }: {
   agent: Agent;
   bondData?: BondStatus;
@@ -3050,6 +3135,8 @@ function BondRiskTab({
   isOwnProfile?: boolean;
   skillVerifications?: SkillVerificationInfo[];
   onSkillVerified?: () => void;
+  tierBonus?: number;
+  maxTierBonus?: number;
 }) {
   const bd = bondData;
   const events = bondHistory?.events || [];
@@ -3058,6 +3145,8 @@ function BondRiskTab({
   const [bondAction, setBondAction] = useState<"deposit" | "withdraw" | null>(null);
   const [bondAmount, setBondAmount] = useState("");
   const [verifySkill, setVerifySkill] = useState<string | null>(null);
+  const [attestingSkill, setAttestingSkill] = useState<string | null>(null);
+  const currentAgent = (() => { try { return localStorage.getItem("agentId"); } catch { return null; } })();
   const [custodyDismissed, setCustodyDismissed] = useState(() =>
     typeof window !== "undefined" && localStorage.getItem("clawtrust_custody_banner_dismissed") === "1"
   );
@@ -3298,55 +3387,112 @@ function BondRiskTab({
       {/* SKILL VERIFICATION */}
       {agent.skills.length > 0 && (
         <SectionCard testId="card-skill-verifications">
-          <SectionTitle icon={<CheckCircle className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
-            SKILL VERIFICATION
-          </SectionTitle>
-          <p className="text-[11px] font-mono mb-4" style={{ color: "var(--text-muted)" }}>
-            Prove your skills through challenges, GitHub links, or portfolio evidence. Verified skills increase your hire rate.
+          <div className="flex items-start justify-between mb-1">
+            <SectionTitle icon={<CheckCircle className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
+              SKILL VERIFICATION
+            </SectionTitle>
+            {tierBonus !== undefined && (
+              <div className="text-[10px] font-mono px-2 py-0.5 rounded-sm flex-shrink-0" style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.15)" }}>
+                Tier Bonus: +{tierBonus}/{maxTierBonus ?? 15}
+              </div>
+            )}
+          </div>
+          <p className="text-[11px] font-mono mb-2" style={{ color: "var(--text-muted)" }}>
+            T0 Declared → T1 Challenge-Passed → T2 GitHub-Verified → T3 Gig-Proven → T4 Peer-Attested (Diamond)
           </p>
           <div className="space-y-2">
             {agent.skills.map((skill) => {
               const sv = skillVerifications?.find((v) => v.skill === skill);
+              const tier = sv?.tier ?? 0;
               const isVerified = sv?.status === "verified";
               const isPartial = sv?.status === "partial";
+              const TIER_COLORS = ["var(--text-muted)", "var(--claw-amber)", "#3b82f6", "var(--teal-glow)", "#a78bfa"];
+              const TIER_BADGES = ["", "✓", "⭐", "🏆", "💎"];
               return (
                 <div
                   key={skill}
-                  className="flex items-center justify-between px-3 py-2 rounded-sm"
-                  style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.04)" }}
+                  className="px-3 py-2 rounded-sm"
+                  style={{ background: "rgba(0,0,0,0.12)", border: `1px solid ${tier > 0 ? "rgba(10,236,184,0.1)" : "rgba(255,255,255,0.04)"}` }}
                   data-testid={`skill-verify-row-${skill}`}
                 >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{
-                        background: isVerified ? "rgba(10,236,184,0.15)" : isPartial ? "rgba(232,84,10,0.12)" : "rgba(255,255,255,0.04)",
-                      }}
-                    >
-                      {isVerified ? (
-                        <CheckCircle className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
-                      ) : isPartial ? (
-                        <Clock className="w-3 h-3" style={{ color: "var(--claw-amber)" }} />
-                      ) : (
-                        <HelpCircle className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ background: isVerified ? "rgba(10,236,184,0.15)" : isPartial ? "rgba(232,84,10,0.12)" : "rgba(255,255,255,0.04)" }}
+                      >
+                        {isVerified ? (
+                          <CheckCircle className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+                        ) : isPartial ? (
+                          <Clock className="w-3 h-3" style={{ color: "var(--claw-amber)" }} />
+                        ) : (
+                          <HelpCircle className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{skill}</span>
+                        {tier > 0 && (
+                          <span
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                            style={{ background: `${TIER_COLORS[tier]}22`, color: TIER_COLORS[tier], border: `1px solid ${TIER_COLORS[tier]}44` }}
+                            data-testid={`badge-skill-tier-${skill}`}
+                          >
+                            {TIER_BADGES[tier]} T{tier} {sv?.tierLabel}
+                          </span>
+                        )}
+                        {tier === 0 && (
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                            T0 Declared
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {isOwnProfile && tier < 2 && (
+                        <button
+                          className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+                          style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+                          onClick={() => setVerifySkill(skill)}
+                          data-testid={`button-verify-skill-${skill}`}
+                        >
+                          {tier === 0 ? "Verify" : "Upgrade"}
+                        </button>
+                      )}
+                      {isOwnProfile && tier >= 1 && tier < 2 && (
+                        <button
+                          className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+                          style={{ background: "rgba(59,130,246,0.1)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+                          onClick={() => setVerifySkill(skill)}
+                          data-testid={`button-github-verify-skill-${skill}`}
+                        >
+                          GitHub
+                        </button>
+                      )}
+                      {!isOwnProfile && tier >= 2 && currentAgent && (
+                        <button
+                          className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+                          style={{ background: "rgba(167,139,250,0.1)", color: "#a78bfa", border: "1px solid rgba(167,139,250,0.2)" }}
+                          onClick={() => {
+                            if (attestingSkill === skill) {
+                              setAttestingSkill(null);
+                            } else {
+                              setAttestingSkill(skill);
+                            }
+                          }}
+                          data-testid={`button-attest-skill-${skill}`}
+                        >
+                          Attest
+                        </button>
                       )}
                     </div>
-                    <div>
-                      <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{skill}</span>
-                      <span className="ml-2 text-[10px] font-mono" style={{ color: isVerified ? "var(--teal-glow)" : isPartial ? "var(--claw-amber)" : "var(--text-muted)" }}>
-                        {isVerified ? `Verified · Score ${sv?.trustScore ?? 0}` : isPartial ? `Partial · Score ${sv?.trustScore ?? 0}` : "Unverified"}
-                      </span>
-                    </div>
                   </div>
-                  {isOwnProfile && !isVerified && (
-                    <button
-                      className="text-[10px] font-mono px-2.5 py-1 rounded-sm"
-                      style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
-                      onClick={() => setVerifySkill(skill)}
-                      data-testid={`button-verify-skill-${skill}`}
-                    >
-                      Verify
-                    </button>
+                  {attestingSkill === skill && (
+                    <AttestSkillRow agentId={agent.id} skill={skill} onDone={() => { setAttestingSkill(null); refetchSkillVerifications(); }} />
+                  )}
+                  {tier < 4 && sv?.nextUpgrade && (
+                    <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+                      Next: {sv.nextUpgrade}
+                    </p>
                   )}
                 </div>
               );

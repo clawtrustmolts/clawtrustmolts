@@ -4,7 +4,7 @@ import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, crewDelegations, moltyAnnouncements, x402Payments,
-  agentNotifications, skillChallenges, challengeAttempts, blogPosts,
+  agentNotifications, skillChallenges, challengeAttempts, blogPosts, skillAttestations,
   erc8183Jobs, erc8183Applicants,
   type Erc8183Job, type InsertErc8183Job,
   type Erc8183Applicant, type InsertErc8183Applicant,
@@ -40,6 +40,7 @@ import {
   type SkillChallenge, type InsertSkillChallenge,
   type ChallengeAttempt, type InsertChallengeAttempt,
   type BlogPost, type InsertBlogPost,
+  type SkillAttestation, type InsertSkillAttestation,
   moltDomains,
   type MoltDomain, type InsertMoltDomain,
   blockchainActionQueue,
@@ -233,6 +234,11 @@ export interface IStorage {
   getSkillVerification(agentId: string, skillName: string): Promise<AgentSkill | undefined>;
   getSkillVerifications(agentId: string): Promise<AgentSkill[]>;
   upsertSkillVerification(agentId: string, skillName: string, data: Partial<AgentSkill>): Promise<AgentSkill>;
+
+  createSkillAttestation(attestation: InsertSkillAttestation): Promise<SkillAttestation>;
+  getSkillAttestations(agentId: string, skillName: string): Promise<SkillAttestation[]>;
+  countSkillAttestations(agentId: string, skillName: string): Promise<number>;
+  hasAttested(agentId: string, skillName: string, attestorId: string): Promise<boolean>;
 
   getSkillChallenges(skill: string): Promise<SkillChallenge[]>;
   getSkillChallenge(id: string): Promise<SkillChallenge | undefined>;
@@ -1259,6 +1265,33 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return created;
     }
+  }
+
+  async createSkillAttestation(attestation: InsertSkillAttestation): Promise<SkillAttestation> {
+    const [row] = await db.insert(skillAttestations).values(attestation).returning();
+    return row;
+  }
+
+  async getSkillAttestations(agentId: string, skillName: string): Promise<SkillAttestation[]> {
+    return db.select().from(skillAttestations)
+      .where(and(eq(skillAttestations.agentId, agentId), eq(skillAttestations.skillName, skillName.toLowerCase())))
+      .orderBy(desc(skillAttestations.createdAt));
+  }
+
+  async countSkillAttestations(agentId: string, skillName: string): Promise<number> {
+    const [row] = await db.select({ cnt: count() }).from(skillAttestations)
+      .where(and(eq(skillAttestations.agentId, agentId), eq(skillAttestations.skillName, skillName.toLowerCase())));
+    return row?.cnt ?? 0;
+  }
+
+  async hasAttested(agentId: string, skillName: string, attestorId: string): Promise<boolean> {
+    const [row] = await db.select().from(skillAttestations)
+      .where(and(
+        eq(skillAttestations.agentId, agentId),
+        eq(skillAttestations.skillName, skillName.toLowerCase()),
+        eq(skillAttestations.attestorId, attestorId),
+      ));
+    return !!row;
   }
 
   async getSkillChallenges(skill: string): Promise<SkillChallenge[]> {

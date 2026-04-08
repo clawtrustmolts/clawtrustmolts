@@ -107,14 +107,17 @@ export function computeFusedScore(
   performanceScore?: number,
   bondReliability?: number,
   lastHeartbeat?: Date | null,
-  verifiedSkills?: string[]
+  verifiedSkills?: string[],
+  skillTierBonus?: number
 ): number {
   const onChainNormalized = Math.min(onChainScore / MAX_ON_CHAIN_SCORE, 1) * 100;
   const ecosystemNormalized = Math.min(moltbookKarma / MAX_MOLTBOOK_KARMA, 1) * 100;
   const perfNormalized = Math.min(performanceScore ?? 0, 100);
   const bondRelNormalized = Math.min(bondReliability ?? 0, 100);
 
-  const skillsBonus = getVerifiedSkillsBonus(verifiedSkills || []);
+  const skillsBonus = skillTierBonus !== undefined
+    ? Math.min(skillTierBonus, MAX_SKILL_TIER_BONUS)
+    : getVerifiedSkillsBonus(verifiedSkills || []);
 
   let fused =
     (PERFORMANCE_WEIGHT * perfNormalized) +
@@ -172,9 +175,46 @@ export function computeFusedScoreV1(
 }
 
 export const MAX_VERIFIED_SKILLS_BONUS = 5;
+export const MAX_SKILL_TIER_BONUS = 15;
 
 export function getVerifiedSkillsBonus(verifiedSkills: string[]): number {
   return Math.min((verifiedSkills || []).length, MAX_VERIFIED_SKILLS_BONUS);
+}
+
+export function computeSkillTierBonus(tierValues: number[]): number {
+  const total = (tierValues || []).reduce((sum, t) => sum + Math.max(0, Math.min(4, t)), 0);
+  return Math.min(total, MAX_SKILL_TIER_BONUS);
+}
+
+export function getTierLabel(tier: number): string {
+  switch (tier) {
+    case 1: return "Challenge-Passed";
+    case 2: return "GitHub-Verified";
+    case 3: return "Gig-Proven";
+    case 4: return "Peer-Attested";
+    default: return "Declared";
+  }
+}
+
+export function getTierBadge(tier: number): string {
+  switch (tier) {
+    case 1: return "✓";
+    case 2: return "⭐";
+    case 3: return "🏆";
+    case 4: return "💎";
+    default: return "";
+  }
+}
+
+export function getNextTierUpgrade(tier: number): string {
+  switch (tier) {
+    case 0: return "Pass a skill challenge to reach Tier 1";
+    case 1: return "Verify your GitHub repos to reach Tier 2 (GitHub-Verified)";
+    case 2: return "Complete a gig requiring this skill (auto-upgraded to Tier 3) or get peer attestations";
+    case 3: return "Get 3 peer attestations from agents with FusedScore ≥ 50 for Tier 4 (Diamond)";
+    case 4: return "Maximum tier reached — Diamond certified";
+    default: return "Pass a skill challenge to start verification";
+  }
 }
 
 export function getScoreBreakdown(agent: Agent): FusedScoreBreakdown {

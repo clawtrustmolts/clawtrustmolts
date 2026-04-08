@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address, getAddress as toChecksumAddress, verifyMessage } from "viem";
-import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL } from "./reputation";
+import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL, computeSkillTierBonus, getTierLabel, getTierBadge, getNextTierUpgrade, MAX_VERIFIED_SKILLS_BONUS, getVerifiedSkillsBonus } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
   buildIdentityMetadata,
@@ -2525,6 +2525,39 @@ export async function registerRoutes(
       });
       await storage.updateGigStatus(gigId, "completed");
 
+      // ── Gig-Proven skill tier upgrade (Tier 3) for assignee ──────────────
+      if (gig.assigneeId && gig.skillsRequired && gig.skillsRequired.length > 0) {
+        (async () => {
+          try {
+            for (const skillName of gig.skillsRequired) {
+              const existing = await storage.getSkillVerification(gig.assigneeId!, skillName.toLowerCase());
+              if ((existing?.tier ?? 0) < 3) {
+                const newTier = Math.max(existing?.tier ?? 0, 3);
+                const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+                tierProofs["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, completedAt: new Date().toISOString() };
+                await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
+                  tier: newTier,
+                  tierProofs,
+                  status: "verified",
+                  verifiedAt: existing?.verifiedAt ?? new Date(),
+                });
+              }
+            }
+            const allVerifications = await storage.getSkillVerifications(gig.assigneeId!);
+            const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
+            const agentForUpdate = await storage.getAgent(gig.assigneeId!);
+            if (agentForUpdate) {
+              const baseScore = getScoreBreakdown(agentForUpdate).fusedScore;
+              const oldBonus = getVerifiedSkillsBonus(agentForUpdate.verifiedSkills || []);
+              const newFusedScore = Math.max(0, Math.round((baseScore - oldBonus + tierBonus) * 10) / 10);
+              await storage.updateAgent(gig.assigneeId!, { fusedScore: newFusedScore });
+            }
+          } catch (e: any) {
+            console.error("[SkillTier] Gig-proven upgrade error (escrow release):", e.message?.slice(0, 200));
+          }
+        })();
+      }
+
       // ── Post-release side effects ─────────────────────────────────────────
       const assignee = await storage.getAgent(gig.assigneeId);
       if (assignee) {
@@ -2941,6 +2974,32 @@ export async function registerRoutes(
           await storage.updateValidation(validation.id, { status: "approved" });
           await storage.updateGigStatus(gigId, "completed");
           console.log(`[Swarm] Auto-approved validation ${validation.id} for gig ${gigId} (${autoVotescast}/${threshold} votes)`);
+          // Gig-Proven skill tier upgrade (Tier 3) for assignee
+          if (gig.assigneeId && gig.skillsRequired && gig.skillsRequired.length > 0) {
+            (async () => {
+              try {
+                for (const skillName of gig.skillsRequired) {
+                  const existing2 = await storage.getSkillVerification(gig.assigneeId!, skillName.toLowerCase());
+                  if ((existing2?.tier ?? 0) < 3) {
+                    const tp2 = (existing2?.tierProofs as Record<string, any>) ?? {};
+                    tp2["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, completedAt: new Date().toISOString() };
+                    await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
+                      tier: Math.max(existing2?.tier ?? 0, 3), tierProofs: tp2, status: "verified", verifiedAt: existing2?.verifiedAt ?? new Date(),
+                    });
+                  }
+                }
+                const allVer2 = await storage.getSkillVerifications(gig.assigneeId!);
+                const bonus2 = computeSkillTierBonus(allVer2.map(v => v.tier ?? 0));
+                const ag2 = await storage.getAgent(gig.assigneeId!);
+                if (ag2) {
+                  const bs2 = getScoreBreakdown(ag2).fusedScore;
+                  await storage.updateAgent(gig.assigneeId!, { fusedScore: Math.max(0, Math.round((bs2 - getVerifiedSkillsBonus(ag2.verifiedSkills || []) + bonus2) * 10) / 10) });
+                }
+              } catch (e: any) {
+                console.error("[SkillTier] Gig-proven upgrade error (swarm auto-approve):", e.message?.slice(0, 200));
+              }
+            })();
+          }
           // Record on-chain crew gig completion if crew-assigned (non-blocking)
           if (gig.crewId) {
             (async () => {
@@ -3150,6 +3209,32 @@ export async function registerRoutes(
         if (gig2) {
           await storage.updateGigStatus(gig2.id, "completed");
 
+          // Gig-Proven skill tier upgrade (Tier 3) for assignee (swarm vote resolution)
+          if (gig2.assigneeId && gig2.skillsRequired && gig2.skillsRequired.length > 0) {
+            (async () => {
+              try {
+                for (const skillName of gig2.skillsRequired) {
+                  const existing3 = await storage.getSkillVerification(gig2.assigneeId!, skillName.toLowerCase());
+                  if ((existing3?.tier ?? 0) < 3) {
+                    const tp3 = (existing3?.tierProofs as Record<string, any>) ?? {};
+                    tp3["3"] = { method: "gig_proven", gigId: gig2.id, gigTitle: gig2.title, completedAt: new Date().toISOString() };
+                    await storage.upsertSkillVerification(gig2.assigneeId!, skillName.toLowerCase(), {
+                      tier: Math.max(existing3?.tier ?? 0, 3), tierProofs: tp3, status: "verified", verifiedAt: existing3?.verifiedAt ?? new Date(),
+                    });
+                  }
+                }
+                const allVer3 = await storage.getSkillVerifications(gig2.assigneeId!);
+                const bonus3 = computeSkillTierBonus(allVer3.map(v => v.tier ?? 0));
+                const ag3 = await storage.getAgent(gig2.assigneeId!);
+                if (ag3) {
+                  const bs3 = getScoreBreakdown(ag3).fusedScore;
+                  await storage.updateAgent(gig2.assigneeId!, { fusedScore: Math.max(0, Math.round((bs3 - getVerifiedSkillsBonus(ag3.verifiedSkills || []) + bonus3) * 10) / 10) });
+                }
+              } catch (e: any) {
+                console.error("[SkillTier] Gig-proven upgrade error (swarm vote resolution):", e.message?.slice(0, 200));
+              }
+            })();
+          }
           // Record on-chain crew gig completion for swarm-approved crew gigs (non-blocking)
           if (gig2.crewId) {
             (async () => {
@@ -3827,8 +3912,9 @@ export async function registerRoutes(
 
       const protocol = req.headers["x-forwarded-proto"] || "http";
       const baseUrl = `https://clawtrust.org`;
+      const skillVerifications = await storage.getSkillVerifications(agent.id);
 
-      res.json(generateCardMetadata(agent, baseUrl));
+      res.json(generateCardMetadata(agent, baseUrl, skillVerifications));
     } catch (err: any) {
       res.status(500).json({ message: "Failed to generate card metadata" });
     }
@@ -9185,7 +9271,8 @@ export async function registerRoutes(
       if (!agent) return res.status(404).json({ message: "Agent not found" });
       const verifications = await storage.getSkillVerifications(agent.id);
       const skillsWithStatus = agent.skills.map((skill) => {
-        const verification = verifications.find((v) => v.skillName === skill);
+        const verification = verifications.find((v) => v.skillName.toLowerCase() === skill.toLowerCase());
+        const tier = verification?.tier ?? 0;
         return {
           skill,
           status: verification?.status ?? "unverified",
@@ -9195,9 +9282,16 @@ export async function registerRoutes(
           githubProfileUrl: verification?.githubProfileUrl ?? null,
           portfolioUrl: verification?.portfolioUrl ?? null,
           challengeScore: verification?.challengeScore ?? null,
+          tier,
+          tierLabel: getTierLabel(tier),
+          tierBadge: getTierBadge(tier),
+          tierProofs: verification?.tierProofs ?? {},
+          nextUpgrade: getNextTierUpgrade(tier),
         };
       });
-      res.json({ skills: skillsWithStatus });
+      const tierValues = skillsWithStatus.map(s => s.tier);
+      const tierBonus = computeSkillTierBonus(tierValues);
+      res.json({ skills: skillsWithStatus, tierBonus, maxTierBonus: 15 });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -9437,13 +9531,19 @@ export async function registerRoutes(
       if (passed) {
         const existing = await storage.getSkillVerification(agentId, skill);
         const newTrustScore = Math.max(existing?.trustScore ?? 0, Math.round(score * 0.6));
+        const currentTier = existing?.tier ?? 0;
+        const newTier = Math.max(currentTier, 1);
+        const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+        tierProofs["1"] = { method: "challenge", score, passedAt: new Date().toISOString() };
         await storage.upsertSkillVerification(agentId, skill, {
           status: "verified",
           verifiedAt: new Date(),
           challengeScore: score,
           challengeCompletedAt: new Date(),
-          verificationMethod: "challenge",
+          verificationMethod: existing?.verificationMethod && existing.verificationMethod !== "challenge" ? existing.verificationMethod : "challenge",
           trustScore: Math.min(100, (existing?.trustScore ?? 0) + newTrustScore),
+          tier: newTier,
+          tierProofs,
         });
 
         const currentVerified = agent.verifiedSkills || [];
@@ -9451,12 +9551,16 @@ export async function registerRoutes(
           ? currentVerified
           : [...currentVerified, skill];
 
+        const allVerifications = await storage.getSkillVerifications(agentId);
+        const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
         const updatedAgent: typeof agent = { ...agent, verifiedSkills: newVerifiedSkills };
-        const newFusedScore = getScoreBreakdown(updatedAgent).fusedScore;
+        const baseScore = getScoreBreakdown(updatedAgent).fusedScore;
+        const oldBonus = (newVerifiedSkills.length <= MAX_VERIFIED_SKILLS_BONUS ? newVerifiedSkills.length : MAX_VERIFIED_SKILLS_BONUS);
+        const newFusedScore = Math.round((baseScore - oldBonus + tierBonus) * 10) / 10;
 
         await storage.updateAgent(agentId, {
           verifiedSkills: newVerifiedSkills,
-          fusedScore: newFusedScore,
+          fusedScore: Math.max(0, newFusedScore),
         });
       }
 
@@ -9483,10 +9587,79 @@ export async function registerRoutes(
   app.post("/api/skill-challenges/:skill/attempt", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
   app.post("/api/skill-challenges/:skill/submit", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
 
-  app.post("/api/agents/:id/skills/:skill/github", apiLimiter, walletAuthMiddleware, async (req, res) => {
+  const GITHUB_SKILL_LANGUAGES: Record<string, string[]> = {
+    solidity: ["Solidity"],
+    typescript: ["TypeScript"],
+    javascript: ["JavaScript", "TypeScript"],
+    python: ["Python"],
+    rust: ["Rust"],
+    react: ["JavaScript", "TypeScript"],
+    "node": ["JavaScript", "TypeScript"],
+    "nodejs": ["JavaScript", "TypeScript"],
+    go: ["Go"],
+    java: ["Java"],
+    "c++": ["C++", "C"],
+    audit: [],
+    research: [],
+    content: [],
+    documentation: [],
+    testing: ["JavaScript", "TypeScript", "Python"],
+    "data-analysis": ["Python", "R", "Jupyter Notebook"],
+    "trust-verification": [],
+    "reputation-analysis": [],
+    "swarm-validation": [],
+    "agent-onboarding": [],
+  };
+
+  async function verifyGitHubSkill(
+    githubHandle: string,
+    skill: string
+  ): Promise<{ ok: boolean; repoCount: number; topRepo: string | null; languages: string[]; error?: string }> {
+    const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    const headers: Record<string, string> = { "User-Agent": "ClawTrust-Skill-Verifier/1.0", "Accept": "application/vnd.github+json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    try {
+      const userResp = await fetch(`https://api.github.com/users/${encodeURIComponent(githubHandle)}`, { headers });
+      if (!userResp.ok) {
+        if (userResp.status === 404) return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub user '${githubHandle}' not found` };
+        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub API error: ${userResp.status}` };
+      }
+      const userData = await userResp.json() as { public_repos: number; login: string };
+      if (userData.public_repos === 0) {
+        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: "GitHub account has no public repositories" };
+      }
+
+      const targetLanguages = GITHUB_SKILL_LANGUAGES[skill.toLowerCase()] ?? [];
+      if (targetLanguages.length === 0) {
+        return { ok: true, repoCount: userData.public_repos, topRepo: null, languages: [], error: undefined };
+      }
+
+      const repoResp = await fetch(
+        `https://api.github.com/search/repositories?q=user:${encodeURIComponent(githubHandle)}&sort=stars&order=desc&per_page=30`,
+        { headers }
+      );
+      if (!repoResp.ok) return { ok: true, repoCount: userData.public_repos, topRepo: null, languages: [], error: undefined };
+      const repoData = await repoResp.json() as { items: Array<{ name: string; language: string | null; stargazers_count: number }> };
+      const matchingRepos = (repoData.items || []).filter(r => r.language && targetLanguages.some(l => l.toLowerCase() === r.language!.toLowerCase()));
+      if (matchingRepos.length === 0) {
+        return {
+          ok: false, repoCount: userData.public_repos, topRepo: null, languages: [],
+          error: `No public repositories found using ${targetLanguages.join("/")} for skill '${skill}'`,
+        };
+      }
+      const topRepo = matchingRepos[0]?.name ?? null;
+      const uniqueLangs = [...new Set(matchingRepos.map(r => r.language!).filter(Boolean))];
+      return { ok: true, repoCount: matchingRepos.length, topRepo, languages: uniqueLangs };
+    } catch (err: any) {
+      return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub API unavailable: ${err.message?.slice(0, 100)}` };
+    }
+  }
+
+  app.post("/api/agents/:id/skills/:skill/verify-github", strictLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const id = String(req.params.id);
-      const skill = String(req.params.skill);
+      const skill = String(req.params.skill).toLowerCase();
 
       const agent = await storage.getAgent(id);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -9496,30 +9669,164 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Authenticated wallet does not own this agent" });
       }
 
-      const { githubProfileUrl } = req.body;
-      if (!githubProfileUrl || typeof githubProfileUrl !== "string") {
-        return res.status(400).json({ message: "githubProfileUrl required" });
+      const { githubHandle } = req.body;
+      if (!githubHandle || typeof githubHandle !== "string" || !/^[a-zA-Z0-9_-]{1,39}$/.test(githubHandle.trim())) {
+        return res.status(400).json({ message: "githubHandle required (your GitHub username, not a URL)" });
       }
 
-      const githubUrlPattern = /^https?:\/\/(www\.)?github\.com\/[a-zA-Z0-9_-]+\/?$/;
-      if (!githubUrlPattern.test(githubProfileUrl.trim())) {
-        return res.status(400).json({ message: "Must be a valid GitHub profile URL (e.g. https://github.com/yourhandle)" });
+      const existing = await storage.getSkillVerification(id, skill);
+      if ((existing?.tier ?? 0) >= 2) {
+        return res.status(400).json({ message: `Skill '${skill}' is already GitHub-verified (Tier 2 or higher)` });
       }
 
-      const existing = await storage.getSkillVerification(id, skill.toLowerCase());
-      const addedScore = 20;
-      const newTrust = Math.min(100, (existing?.trustScore ?? 0) + addedScore);
+      const result = await verifyGitHubSkill(githubHandle.trim(), skill);
+      if (!result.ok) {
+        return res.status(422).json({
+          message: result.error || "GitHub verification failed",
+          githubHandle: githubHandle.trim(),
+          skill,
+          hint: "Make sure your GitHub account has public repositories demonstrating this skill",
+        });
+      }
 
-      await storage.upsertSkillVerification(id, skill.toLowerCase(), {
-        githubProfileUrl: githubProfileUrl.trim(),
+      const currentTier = existing?.tier ?? 0;
+      const newTier = Math.max(currentTier, 2);
+      const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+      tierProofs["2"] = {
+        method: "github_api",
+        githubHandle: githubHandle.trim(),
+        repoCount: result.repoCount,
+        topRepo: result.topRepo,
+        languages: result.languages,
+        verifiedAt: new Date().toISOString(),
+      };
+      const newTrust = Math.min(100, (existing?.trustScore ?? 0) + 30);
+      const githubProfileUrl = `https://github.com/${githubHandle.trim()}`;
+
+      await storage.upsertSkillVerification(id, skill, {
+        githubProfileUrl,
         trustScore: newTrust,
         status: existing?.status === "verified" ? "verified" : "partial",
-        verificationMethod: existing?.verificationMethod ?? "github",
+        verificationMethod: "github_api",
+        tier: newTier,
+        tierProofs,
       });
 
+      const allVerifications = await storage.getSkillVerifications(id);
+      const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
+      const agentNow = await storage.getAgent(id);
+      if (agentNow) {
+        const baseScore = getScoreBreakdown(agentNow).fusedScore;
+        const oldBonus = getVerifiedSkillsBonus(agentNow.verifiedSkills || []);
+        const newFusedScore = Math.max(0, Math.round((baseScore - oldBonus + tierBonus) * 10) / 10);
+        await storage.updateAgent(id, { fusedScore: newFusedScore });
+      }
+
       res.json({
-        message: `GitHub profile linked for skill '${skill}'. Trust score +${addedScore}.`,
+        message: `GitHub verified for skill '${skill}'. ${result.repoCount} matching repo(s) found.`,
+        tier: newTier,
+        tierLabel: getTierLabel(newTier),
+        tierBadge: getTierBadge(newTier),
+        githubHandle: githubHandle.trim(),
+        repoCount: result.repoCount,
+        topRepo: result.topRepo,
         trustScore: newTrust,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/skills/:skill/github", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    const id = String(req.params.id);
+    const skill = String(req.params.skill).toLowerCase();
+    const { githubHandle, githubProfileUrl } = req.body;
+    const handle = githubHandle || (githubProfileUrl ? githubProfileUrl.replace(/.*github\.com\//, "").replace(/\/$/, "") : null);
+    if (handle) {
+      return res.redirect(307, `/api/agents/${id}/skills/${skill}/verify-github`);
+    }
+    return res.status(400).json({ message: "Use POST /api/agents/:id/skills/:skill/verify-github with { githubHandle } for real GitHub API verification" });
+  });
+
+  app.post("/api/agents/:id/skills/:skill/attest", strictLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const targetId = String(req.params.id);
+      const skill = String(req.params.skill).toLowerCase();
+
+      const targetAgent = await storage.getAgent(targetId);
+      if (!targetAgent) return res.status(404).json({ message: "Agent not found" });
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) return res.status(401).json({ message: "Wallet authentication required" });
+
+      const attestorAgent = await storage.getAgentByWallet(walletAddress);
+      if (!attestorAgent) return res.status(404).json({ message: "Your agent is not registered" });
+      if (attestorAgent.id === targetId) return res.status(400).json({ message: "You cannot attest your own skill" });
+
+      if (attestorAgent.fusedScore < 50) {
+        return res.status(403).json({
+          message: `Your FusedScore must be ≥ 50 to attest peer skills (yours: ${attestorAgent.fusedScore.toFixed(1)})`,
+        });
+      }
+
+      const attestorSkillRecord = await storage.getSkillVerification(attestorAgent.id, skill);
+      if ((attestorSkillRecord?.tier ?? 0) < 2) {
+        return res.status(403).json({
+          message: `You must have skill '${skill}' at Tier 2 (GitHub-Verified) or higher to attest it`,
+        });
+      }
+
+      const alreadyAttested = await storage.hasAttested(targetId, skill, attestorAgent.id);
+      if (alreadyAttested) return res.status(400).json({ message: "You have already attested this skill for this agent" });
+
+      await storage.createSkillAttestation({
+        agentId: targetId,
+        skillName: skill,
+        attestorId: attestorAgent.id,
+        attestorFusedScore: attestorAgent.fusedScore,
+      });
+
+      const attestationCount = await storage.countSkillAttestations(targetId, skill);
+      const ATTESTATION_THRESHOLD = 3;
+      let tierUpgraded = false;
+
+      if (attestationCount >= ATTESTATION_THRESHOLD) {
+        const existing = await storage.getSkillVerification(targetId, skill);
+        if ((existing?.tier ?? 0) < 4) {
+          const attestations = await storage.getSkillAttestations(targetId, skill);
+          const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+          tierProofs["4"] = {
+            method: "peer_attestation",
+            attestors: attestations.slice(0, 5).map(a => ({ id: a.attestorId, fusedScore: a.attestorFusedScore, attestedAt: a.createdAt })),
+            count: attestationCount,
+            achievedAt: new Date().toISOString(),
+          };
+          await storage.upsertSkillVerification(targetId, skill, {
+            tier: 4,
+            tierProofs,
+            trustScore: Math.min(100, (existing?.trustScore ?? 0) + 20),
+          });
+
+          const allVerifications = await storage.getSkillVerifications(targetId);
+          const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
+          const agentNow = await storage.getAgent(targetId);
+          if (agentNow) {
+            const baseScore = getScoreBreakdown(agentNow).fusedScore;
+            const oldBonus = getVerifiedSkillsBonus(agentNow.verifiedSkills || []);
+            const newFusedScore = Math.max(0, Math.round((baseScore - oldBonus + tierBonus) * 10) / 10);
+            await storage.updateAgent(targetId, { fusedScore: newFusedScore });
+          }
+          tierUpgraded = true;
+        }
+      }
+
+      res.json({
+        message: `Attestation recorded for skill '${skill}' on agent ${targetAgent.handle}`,
+        attestationCount,
+        threshold: ATTESTATION_THRESHOLD,
+        tierUpgraded,
+        tierUnlocked: tierUpgraded ? 4 : null,
+        remaining: Math.max(0, ATTESTATION_THRESHOLD - attestationCount),
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

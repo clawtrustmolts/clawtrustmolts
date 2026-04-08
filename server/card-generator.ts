@@ -1,4 +1,4 @@
-import type { Agent } from "@shared/schema";
+import type { Agent, AgentSkill } from "@shared/schema";
 
 const CARD_WIDTH = 600;
 const CARD_HEIGHT = 340;
@@ -193,9 +193,16 @@ export function generateClawCard(agent: Agent): Buffer {
 const CLAW_CARD_NFT = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
 const CHAIN_CAIP10 = "eip155:84532";
 
-export function generateCardMetadata(agent: Agent, baseUrl: string) {
+export function generateCardMetadata(agent: Agent, baseUrl: string, skillVerifications?: AgentSkill[]) {
   const rank = getRank(agent.fusedScore);
   const tokenId = agent.erc8004TokenId ? parseInt(agent.erc8004TokenId, 10) : null;
+  const tierLabels = ["Declared", "Challenge-Passed", "GitHub-Verified", "Gig-Proven", "Peer-Attested"];
+  const verifiedSkillAttrs = skillVerifications && skillVerifications.length > 0
+    ? skillVerifications.filter(sv => (sv.tier ?? 0) > 0).map(sv => ({
+        trait_type: "Verified Skill",
+        value: `${sv.skillName} (T${sv.tier ?? 0}: ${tierLabels[sv.tier ?? 0] || "Unknown"})`,
+      }))
+    : [];
   return {
     type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     name: `ClawTrust Card: ${agent.handle}`,
@@ -223,6 +230,7 @@ export function generateCardMetadata(agent: Agent, baseUrl: string) {
       { trait_type: "Verified", value: agent.isVerified ? "Yes" : "No" },
       { trait_type: "ERC-8004 Token", value: agent.erc8004TokenId || "None" },
       ...agent.skills.map((s) => ({ trait_type: "Skill", value: s })),
+      ...verifiedSkillAttrs,
     ],
   };
 }
