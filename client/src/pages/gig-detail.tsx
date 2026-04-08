@@ -1163,7 +1163,7 @@ export default function GigDetailPage() {
                 <Layers className="w-4 h-4" style={{ color: "#3b82f6" }} />
                 WORK LOG
               </h3>
-              <GigWorkLog gigId={gig.id} wallet={localStorage.getItem("walletAddress")} />
+              <GigWorkLog gigId={gig.id} />
             </div>
           )}
 
@@ -1242,9 +1242,8 @@ export default function GigDetailPage() {
 
 // ─── Work Log: crew gig subtask activity timeline ───────────────────────────
 
-function GigWorkLog({ gigId, wallet }: { gigId: string; wallet: string | null }) {
-  const subtaskStatusColors: Record<string, string> = {
-    open: "var(--text-muted)",
+function GigWorkLog({ gigId }: { gigId: string }) {
+  const STATUS_COLORS: Record<string, string> = {
     claimed: "#a78bfa",
     in_progress: "#3b82f6",
     submitted: "var(--claw-amber)",
@@ -1252,12 +1251,16 @@ function GigWorkLog({ gigId, wallet }: { gigId: string; wallet: string | null })
     revision: "var(--claw-red)",
   };
 
-  const { data, isLoading } = useQuery<{ subtasks: any[]; settings: any }>({
-    queryKey: ["/api/gigs", gigId, "subtasks"],
-    queryFn: () =>
-      apiRequest("GET", `/api/gigs/${gigId}/subtasks`, undefined,
-        wallet ? { "x-wallet-address": wallet } : undefined
-      ).then(r => r.json()),
+  const { data, isLoading } = useQuery<{
+    gigId: string;
+    crewId: string | null;
+    parallelModeEnabled: boolean;
+    contributions: Array<{ role: string; taskCount: number; approvedCount: number; totalUsdcShare: number; identifier: string }>;
+    timeline: Array<{ subtaskTitle: string; requiredSkill: string | null; status: string; role: string; identifier: string; usdcShare: number; updatedAt: string | null }>;
+    totals: { subtasks: number; approved: number; totalUsdcAllocated: number };
+  }>({
+    queryKey: ["/api/gigs", gigId, "work-log"],
+    queryFn: () => apiRequest("GET", `/api/gigs/${gigId}/work-log`).then(r => r.json()),
     enabled: !!gigId,
   });
 
@@ -1269,56 +1272,67 @@ function GigWorkLog({ gigId, wallet }: { gigId: string; wallet: string | null })
     );
   }
 
-  const subtasks = data?.subtasks || [];
-  if (subtasks.length === 0) {
-    return <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>No subtasks yet. The crew lead will add work items here.</p>;
+  const totals = data?.totals;
+  const timeline = data?.timeline || [];
+  const contributions = data?.contributions || [];
+
+  if (!data?.parallelModeEnabled || timeline.length === 0) {
+    return <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>No parallel task activity yet.</p>;
   }
 
-  const approved = subtasks.filter(s => s.status === "approved").length;
-  const totalUSDC = subtasks.filter(s => s.status === "approved").reduce((sum: number, s: any) => sum + (s.usdcShare || 0), 0);
-
   return (
-    <div className="space-y-3" data-testid="section-work-log">
+    <div className="space-y-4" data-testid="section-work-log">
+      {/* Summary bar */}
       <div className="flex items-center gap-3 text-[10px] font-mono flex-wrap" style={{ color: "var(--text-muted)" }}>
-        <span>{subtasks.length} subtask{subtasks.length !== 1 ? "s" : ""}</span>
-        <span style={{ color: "#22c55e" }}>✓ {approved} approved</span>
-        {totalUSDC > 0 && <span style={{ color: "var(--teal-glow)" }}>${totalUSDC} USDC allocated</span>}
+        <span>{totals?.subtasks ?? 0} subtasks</span>
+        <span style={{ color: "#22c55e" }}>✓ {totals?.approved ?? 0} approved</span>
+        {(totals?.totalUsdcAllocated ?? 0) > 0 && (
+          <span style={{ color: "var(--teal-glow)" }}>${totals!.totalUsdcAllocated} USDC allocated</span>
+        )}
       </div>
-      <div className="space-y-2">
-        {subtasks.map((st: any) => {
-          const col = subtaskStatusColors[st.status] || "var(--text-muted)";
-          const StatusIcon = st.status === "approved" ? CheckCircle2 : st.status === "revision" ? RotateCcw : Layers;
-          return (
-            <div key={st.id}
-              className="flex items-start gap-3 px-3 py-2.5 rounded-sm"
-              style={{ background: "var(--ocean-mid)", border: `1px solid ${col}20` }}
-              data-testid={`worklog-subtask-${st.id}`}>
-              <StatusIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: col }} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-[11px] font-semibold" style={{ color: "var(--shell-white)" }}>{st.title}</p>
-                  {st.requiredSkill && (
-                    <span className="text-[9px] font-mono" style={{ color: "var(--teal-dim)" }}>#{st.requiredSkill}</span>
-                  )}
-                  {st.usdcShare > 0 && (
-                    <span className="text-[9px] font-mono" style={{ color: "var(--teal-glow)" }}>${st.usdcShare}</span>
-                  )}
-                </div>
-                {st.assignee && (
-                  <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
-                    @{st.assignee.handle}
-                  </p>
-                )}
-                {st.submissionText && st.status === "approved" && (
-                  <p className="text-[10px] mt-1 leading-relaxed" style={{ color: "var(--shell-cream)" }}>
-                    {st.submissionText}
-                  </p>
-                )}
+
+      {/* Contribution grid — role-level, anonymized */}
+      {contributions.length > 0 && (
+        <div className="grid grid-cols-2 gap-2" data-testid="grid-contributions">
+          {contributions.filter(c => c.taskCount > 0).map((c, i) => (
+            <div key={i} className="px-3 py-2 rounded-sm" style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.05)" }}
+              data-testid={`contribution-${c.role}-${i}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-mono font-bold" style={{ color: "var(--shell-white)" }}>{c.identifier}</span>
+                <span className="text-[9px] font-mono" style={{ color: "#22c55e" }}>{c.approvedCount}/{c.taskCount}</span>
               </div>
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm flex-shrink-0 uppercase"
-                style={{ color: col, background: `${col}12`, border: `1px solid ${col}25` }}>
-                {st.status.replace(/_/g, " ")}
-              </span>
+              {c.totalUsdcShare > 0 && (
+                <p className="text-[8px] font-mono mt-0.5" style={{ color: "var(--teal-glow)" }}>${c.totalUsdcShare} USDC</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Activity timeline */}
+      <div className="space-y-1.5">
+        {timeline.slice(0, 10).map((item, i) => {
+          const col = STATUS_COLORS[item.status] || "var(--text-muted)";
+          const StatusIcon = item.status === "approved" ? CheckCircle2 : item.status === "revision" ? RotateCcw : Layers;
+          return (
+            <div key={i}
+              className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm"
+              style={{ background: "var(--ocean-mid)", border: `1px solid ${col}18` }}
+              data-testid={`worklog-entry-${i}`}>
+              <StatusIcon className="w-3 h-3 flex-shrink-0" style={{ color: col }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-semibold truncate" style={{ color: "var(--shell-white)" }}>{item.subtaskTitle}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>{item.identifier}</span>
+                  {item.requiredSkill && <span className="text-[8px] font-mono" style={{ color: "var(--teal-dim)" }}>#{item.requiredSkill}</span>}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm uppercase" style={{ color: col, background: `${col}15` }}>
+                  {item.status.replace(/_/g, " ")}
+                </span>
+                {item.usdcShare > 0 && <span className="text-[8px] font-mono" style={{ color: "var(--teal-glow)" }}>${item.usdcShare}</span>}
+              </div>
             </div>
           );
         })}

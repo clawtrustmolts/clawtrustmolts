@@ -1544,6 +1544,8 @@ export async function registerRoutes(
             console.error("[Crew] recordCrewGigCompletion (status PATCH) error:", e.message?.slice(0, 200));
           }
         })();
+        // Agency rep split + agencyVerified — post-gig-completion
+        triggerAgencyRepSplitOnCompletion(gigId.data).catch(() => {});
       }
 
       res.json(updated);
@@ -2627,6 +2629,8 @@ export async function registerRoutes(
             console.error("[Crew] recordCrewGigCompletion (escrow release) error:", e.message?.slice(0, 200));
           }
         })();
+        // Agency rep split + agencyVerified — post-gig-completion (escrow released)
+        triggerAgencyRepSplitOnCompletion(gigId).catch(() => {});
       }
 
       res.json({
@@ -3031,6 +3035,8 @@ export async function registerRoutes(
                 console.error("[Crew] recordCrewGigCompletion (swarm auto-approve) error:", e.message?.slice(0, 200));
               }
             })();
+            // Agency rep split + agencyVerified — post-gig-completion (swarm approved)
+            triggerAgencyRepSplitOnCompletion(gigId).catch(() => {});
           }
         }
       }
@@ -8736,6 +8742,105 @@ export async function registerRoutes(
     return null;
   }
 
+  /**
+   * Resolve caller identity using ONLY cryptographically verified sources.
+   * Never trusts raw x-agent-id header to prevent IDOR / identity spoofing.
+   * Sources (in priority):
+   *   1. req.wallet — set by walletAuthMiddleware (Privy JWT or verified SIWE)
+   *   2. req.agentId — set by agentAuthMiddleware (verified wallet ownership)
+   *   3. x-wallet-address + x-wallet-signature + x-wallet-sig-timestamp (SIWE proof)
+   *   4. E2E test bypass (dev/test only)
+   * Returns null if no verified identity is available.
+   */
+  async function resolveVerifiedIdentity(req: any): Promise<string | null> {
+    // Path A: Privy JWT (walletAuthMiddleware) or agentAuthMiddleware already ran
+    if ((req as any).agentId) return (req as any).agentId as string;
+    if ((req as any).wallet) {
+      const a = await storage.getAgentByWallet((req as any).wallet);
+      return a?.id ?? null;
+    }
+
+    // Path B: E2E test bypass (dev only)
+    if (isTestBypass(req)) {
+      const walletHeader = req.headers["x-wallet-address"] as string | undefined;
+      if (walletHeader && /^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+        const a = await storage.getAgentByWallet(walletHeader);
+        return a?.id ?? null;
+      }
+    }
+
+    // Path C: SDK agents with SIWE proof
+    const walletHdr = req.headers["x-wallet-address"] as string | undefined;
+    const sig = req.headers["x-wallet-signature"] as string | undefined;
+    const sigTs = req.headers["x-wallet-sig-timestamp"] as string | undefined;
+    if (walletHdr && sig && sigTs && /^0x[a-fA-F0-9]{40}$/.test(walletHdr)) {
+      try {
+        const ts = parseInt(sigTs, 10);
+        const now = Date.now();
+        if (!isNaN(ts) && now - ts <= SIG_TTL_MS && ts <= now + 60_000) {
+          const message = buildSignMessage(ts);
+          const valid = await verifyMessage({ address: walletHdr as Address, message, signature: sig as `0x${string}` });
+          if (valid) {
+            const a = await storage.getAgentByWallet(walletHdr);
+            return a?.id ?? null;
+          }
+        }
+      } catch {}
+    }
+
+    return null;
+  }
+
+  /**
+   * Contribution-weighted reputation split for crew agency gigs.
+   * Must be called AFTER gig reaches `completed` status (post-swarm-validation).
+   * Also marks crew agencyVerified on first completed parallel-task gig.
+   */
+  async function triggerAgencyRepSplitOnCompletion(gigId: string): Promise<void> {
+    try {
+      const gig = await storage.getGig(gigId);
+      if (!gig || !gig.crewId || !gig.crewGig) return; // Only for agency crew gigs
+
+      const crewMembers = await storage.getCrewMembers(gig.crewId);
+      const subtasks = await storage.getCrewSubtasks(gigId);
+      const approvedSubtasks = subtasks.filter(s => s.status === "approved");
+
+      // Mark crew agencyVerified: first completed parallel-task gig
+      const crew = await storage.getCrew(gig.crewId);
+      if (crew && !crew.agencyVerified && approvedSubtasks.length > 0) {
+        await storage.updateCrew(gig.crewId, { agencyVerified: true });
+        console.log(`[Agency] Crew ${gig.crewId} marked agencyVerified after gig ${gigId} completed`);
+      }
+
+      const totalUsdcAllocated = approvedSubtasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
+      if (totalUsdcAllocated <= 0) return;
+
+      const gigSettings = await storage.getCrewGigSettings(gigId);
+      const LEAD_FEE = (gigSettings?.leadCoordinationFeePct ?? 10) / 100;
+
+      for (const member of crewMembers) {
+        const memberTasks = approvedSubtasks.filter(s => s.assigneeId === member.agentId);
+        const memberShare = memberTasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
+        const memberIsLead = member.role === "LEAD";
+        const rawWeight = totalUsdcAllocated > 0 ? memberShare / totalUsdcAllocated : 0;
+        const weightedShare = memberIsLead ? rawWeight + LEAD_FEE : rawWeight * (1 - LEAD_FEE);
+        if (weightedShare > 0) {
+          const repBonus = Math.max(1, Math.round(weightedShare * 10));
+          await storage.createReputationEvent({
+            agentId: member.agentId,
+            eventType: "agency_delivery",
+            scoreChange: repBonus,
+            source: "swarm",
+            details: JSON.stringify({ gigId, gigTitle: gig.title, usdcShare: memberShare, weightedShare: +weightedShare.toFixed(3), leadFee: memberIsLead ? LEAD_FEE : 0 }),
+          }).catch(() => {});
+        }
+      }
+      console.log(`[Agency] Rep split complete for gig ${gigId}: ${crewMembers.length} members, totalUsdc=${totalUsdcAllocated}, leadFee=${LEAD_FEE}`);
+    } catch (e: any) {
+      console.error("[Agency] triggerAgencyRepSplitOnCompletion error:", e.message?.slice(0, 200));
+    }
+  }
+
   // POST /api/gigs/:id/subtasks — Lead creates a subtask
   app.post("/api/gigs/:id/subtasks", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
@@ -8791,7 +8896,8 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
-      const requesterId = await resolveAgentFromRequest(req);
+      // Use only cryptographically verified identity — never trust raw x-agent-id header
+      const requesterId = await resolveVerifiedIdentity(req);
       let requesterRole: string | null = null;
       if (requesterId && gig.crewId) {
         const members = await storage.getCrewMembers(gig.crewId);
@@ -8884,7 +8990,7 @@ export async function registerRoutes(
         // treat the just-approved subtask as approved regardless of DB propagation lag
         const allApproved = allSubtasks.every(s => s.id === subtaskId ? true : s.status === "approved");
         if (allApproved && allSubtasks.length > 0 && (gig.status === "assigned" || gig.status === "in_progress")) {
-          // 1. Aggregate approved submission texts into gig.deliverableNote
+          // 1. Compile approved submission texts into gig deliverableNote
           const approvedSubtasks = allSubtasks.map(s => s.id === subtaskId ? { ...s, status: "approved" as const } : s);
           const deliverableLines = approvedSubtasks
             .filter(s => s.submissionText)
@@ -8894,25 +9000,21 @@ export async function registerRoutes(
             deliverableNote: deliverableLines || "Agency multi-agent delivery: all subtasks approved.",
           });
 
-          // 2. Advance gig to pending_validation
+          // 2. Advance gig to pending_validation (triggers swarm review)
           await storage.updateGigStatus(gigId, "pending_validation");
 
-          // 3. Mark crew as agencyVerified
-          const crew = await storage.getCrew(gig.crewId);
-          if (crew && !crew.agencyVerified) {
-            await storage.updateCrew(gig.crewId, { agencyVerified: true });
-          }
-
-          // 4. Trigger swarm validation if none exists yet
+          // 3. Trigger swarm validation if none exists yet
           (async () => {
             try {
               const existingValidation = await storage.getValidationByGig(gigId);
               if (!existingValidation) {
-                const crewMembers = await storage.getCrewMembers(gig.crewId!);
-                const threshold = Math.max(1, Math.ceil(crewMembers.length / 2));
-                // Pick top agents by fusedScore as validators (exclude crew members to avoid self-validation)
-                const memberAgentIds = new Set(crewMembers.map(m => m.agentId));
-                const allTopAgents = (await storage.getAgents()).filter(a => !memberAgentIds.has(a.id)).sort((a, b) => b.fusedScore - a.fusedScore).slice(0, threshold);
+                const crewMembersForValidation = await storage.getCrewMembers(gig.crewId!);
+                const threshold = Math.max(1, Math.ceil(crewMembersForValidation.length / 2));
+                const memberAgentIds = new Set(crewMembersForValidation.map(m => m.agentId));
+                const allTopAgents = (await storage.getAgents())
+                  .filter(a => !memberAgentIds.has(a.id))
+                  .sort((a, b) => b.fusedScore - a.fusedScore)
+                  .slice(0, threshold);
                 if (allTopAgents.length > 0) {
                   await storage.createValidation({
                     gigId,
@@ -8928,42 +9030,8 @@ export async function registerRoutes(
               console.error("[Agency] Auto-validation trigger error:", e.message?.slice(0, 200));
             }
           })();
-
-          // 5. Contribution-weighted reputation split based on approved usdcShare
-          // Runs after gig transitions to pending_validation (post-completion path)
-          (async () => {
-            try {
-              const crewMembers = await storage.getCrewMembers(gig.crewId!);
-              const approvedList = allSubtasks.map(s => s.id === subtaskId ? { ...s, status: "approved" as const } : s).filter(s => s.status === "approved");
-              const totalUsdcAllocated = approvedList.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
-              if (totalUsdcAllocated > 0) {
-                // Use persisted leadCoordinationFeePct from settings (default 10%)
-                const gigSettings = await storage.getCrewGigSettings(gigId);
-                const LEAD_COORDINATION_FEE = (gigSettings?.leadCoordinationFeePct ?? 10) / 100;
-                for (const member of crewMembers) {
-                  const memberTasks = approvedList.filter(s => s.assigneeId === member.agentId);
-                  const memberShare = memberTasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
-                  const memberIsLead = member.role === "LEAD";
-                  const rawWeight = memberShare / totalUsdcAllocated;
-                  const weightedShare = memberIsLead
-                    ? rawWeight + LEAD_COORDINATION_FEE
-                    : rawWeight * (1 - LEAD_COORDINATION_FEE);
-                  if (weightedShare > 0) {
-                    const repBonus = Math.max(1, Math.round(weightedShare * 10)); // up to 10 rep points per gig
-                    await storage.createReputationEvent({
-                      agentId: member.agentId,
-                      eventType: "agency_delivery",
-                      scoreChange: repBonus,
-                      source: "swarm",
-                      details: JSON.stringify({ gigId, gigTitle: gig.title, usdcShare: memberShare, weightedShare: +weightedShare.toFixed(3) }),
-                    }).catch(() => {});
-                  }
-                }
-              }
-            } catch (e: any) {
-              console.error("[Agency] Weighted rep split error:", e.message?.slice(0, 200));
-            }
-          })();
+          // NOTE: agencyVerified + contribution-weighted rep split run AFTER gig reaches
+          //       `completed` status (post-swarm-validation), via triggerAgencyRepSplitOnCompletion.
         }
       }
 
@@ -9135,8 +9203,8 @@ export async function registerRoutes(
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
-      // Determine if requester is viewing their own profile
-      const requesterId = await resolveAgentFromRequest(req);
+      // Use only cryptographically verified identity to prevent IDOR
+      const requesterId = await resolveVerifiedIdentity(req);
       const isSelf = requesterId === agentId;
 
       const subtasks = await storage.getSubtasksForAssignee(agentId);
@@ -9153,6 +9221,72 @@ export async function registerRoutes(
       }));
 
       res.json({ subtasks: enriched });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/gigs/:id/work-log — Public anonymized crew contribution summary for gig Work Log display
+  app.get("/api/gigs/:id/work-log", async (req, res) => {
+    try {
+      const gigId = req.params.id;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (!gig.crewId) return res.json({ gigId, crewId: null, contributions: [], timeline: [], settings: null });
+
+      const [members, subtasks, settings] = await Promise.all([
+        storage.getCrewMembers(gig.crewId),
+        storage.getCrewSubtasks(gigId),
+        storage.getCrewGigSettings(gigId),
+      ]);
+
+      // Aggregate by member, using role-based identifiers (anonymized by default)
+      const contributions = await Promise.all(members.map(async (m) => {
+        const myTasks = subtasks.filter(s => s.assigneeId === m.agentId);
+        const approvedTasks = myTasks.filter(s => s.status === "approved");
+        const agent = await storage.getAgent(m.agentId);
+        return {
+          role: m.role,
+          taskCount: myTasks.length,
+          approvedCount: approvedTasks.length,
+          totalUsdcShare: +approvedTasks.reduce((s, t) => s + (t.usdcShare || 0), 0).toFixed(2),
+          // Expose handle only for LEAD; members get anonymized role identifier
+          identifier: m.role === "LEAD"
+            ? (agent?.handle ? `@${agent.handle}` : "Lead")
+            : `${m.role}#${m.agentId.slice(0, 6)}`,
+        };
+      }));
+
+      // Activity timeline — role-level only, no raw submissionText, no full handles
+      const timelineClean = subtasks
+        .filter(s => s.status !== "open")
+        .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+        .slice(0, 30)
+        .map(s => {
+          const member = members.find(m => m.agentId === s.assigneeId);
+          return {
+            subtaskTitle: s.title,
+            requiredSkill: s.requiredSkill,
+            status: s.status,
+            role: member?.role ?? "UNASSIGNED",
+            identifier: member ? `${member.role}#${member.agentId.slice(0, 6)}` : "UNASSIGNED",
+            usdcShare: s.usdcShare,
+            updatedAt: s.updatedAt,
+          };
+        });
+
+      res.json({
+        gigId,
+        crewId: gig.crewId,
+        parallelModeEnabled: settings?.parallelModeEnabled ?? false,
+        contributions,
+        timeline: timelineClean,
+        totals: {
+          subtasks: subtasks.length,
+          approved: subtasks.filter(s => s.status === "approved").length,
+          totalUsdcAllocated: +subtasks.filter(s => s.status === "approved").reduce((s, t) => s + (t.usdcShare || 0), 0).toFixed(2),
+        },
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
