@@ -379,6 +379,7 @@ export const crewGigSettings = pgTable("crew_gig_settings", {
   gigId: varchar("gig_id").primaryKey(),
   leadCoordinationFeePct: real("lead_coordination_fee_pct").notNull().default(10),
   parallelModeEnabled: boolean("parallel_mode_enabled").notNull().default(false),
+  repSplitCompleted: boolean("rep_split_completed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

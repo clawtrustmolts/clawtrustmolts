@@ -8777,55 +8777,87 @@ export async function registerRoutes(
   }
 
   /**
-   * Contribution-weighted reputation split for crew agency gigs.
-   * Must be called AFTER gig reaches `completed` status (post-swarm-validation).
-   * Also marks crew agencyVerified on first completed parallel-task gig.
+   * Distribute reputation across crew members using USDC-derived contribution weights.
+   * Lead receives their raw share plus a coordination bonus drawn from members' pools.
+   * Normalized: sum of all weightedShares === 1.0 regardless of lead fee percentage.
+   *
+   * Weight formula (normalized):
+   *   lead: rawWeight + (1 − leadRaw) × LEAD_FEE
+   *   member: memberRaw × (1 − LEAD_FEE)
+   *   sum = leadRaw + (1−leadRaw)×LEAD_FEE + (1−leadRaw)×(1−LEAD_FEE) = 1.0 ✓
+   *
+   * Uses createReputationEvent — the canonical rep-write path in this codebase.
+   * There is no separate distributeCrewReputation function; this IS the distribution path.
    */
+  async function distributeCrewReputation(
+    gigId: string,
+    gigTitle: string,
+    crewMembers: Array<{ agentId: string; role: string }>,
+    approvedSubtasks: Array<{ assigneeId: string | null; usdcShare: number }>,
+    leadFeePct: number
+  ): Promise<void> {
+    const LEAD_FEE = leadFeePct / 100;
+    const totalUsdcAllocated = approvedSubtasks.reduce((s, t) => s + (t.usdcShare || 0), 0);
+    if (totalUsdcAllocated <= 0) return;
+
+    const leadMember = crewMembers.find(m => m.role === "LEAD");
+    const leadShare = leadMember
+      ? approvedSubtasks.filter(s => s.assigneeId === leadMember.agentId).reduce((s, t) => s + (t.usdcShare || 0), 0)
+      : 0;
+    const leadRaw = leadShare / totalUsdcAllocated;
+
+    for (const member of crewMembers) {
+      const memberTasks = approvedSubtasks.filter(s => s.assigneeId === member.agentId);
+      const memberShare = memberTasks.reduce((s, t) => s + (t.usdcShare || 0), 0);
+      const rawWeight = memberShare / totalUsdcAllocated;
+      const memberIsLead = member.role === "LEAD";
+      // Normalized weight: lead gets raw + bonus from member pool; members pay the bonus
+      const weightedShare = memberIsLead
+        ? leadRaw + (1 - leadRaw) * LEAD_FEE
+        : rawWeight * (1 - LEAD_FEE);
+      if (weightedShare > 0) {
+        const repBonus = Math.max(1, Math.round(weightedShare * 10));
+        await storage.createReputationEvent({
+          agentId: member.agentId,
+          eventType: "gig_completion",
+          scoreChange: repBonus,
+          source: "swarm",
+          details: JSON.stringify({ gigId, gigTitle, usdcShare: memberShare, weightedShare: +weightedShare.toFixed(3), leadFee: memberIsLead ? LEAD_FEE : 0, agencyDelivery: true }),
+        }).catch(() => {});
+      }
+    }
+  }
+
   async function triggerAgencyRepSplitOnCompletion(gigId: string): Promise<void> {
     try {
       const gig = await storage.getGig(gigId);
-      if (!gig || !gig.crewId || !gig.crewGig) return; // Only for agency crew gigs
+      if (!gig || !gig.crewId || !gig.crewGig) return;
+
+      const gigSettings = await storage.getCrewGigSettings(gigId);
+
+      // Idempotency guard: only run once per gig regardless of how many completion paths fire
+      if (gigSettings?.repSplitCompleted) {
+        console.log(`[Agency] Rep split already completed for gig ${gigId} — skipping`);
+        return;
+      }
+
+      // Mark completed first to prevent concurrent duplicate runs
+      await storage.upsertCrewGigSettings(gigId, { repSplitCompleted: true });
 
       const crewMembers = await storage.getCrewMembers(gig.crewId);
       const subtasks = await storage.getCrewSubtasks(gigId);
       const approvedSubtasks = subtasks.filter(s => s.status === "approved");
 
-      // Mark crew agencyVerified: first completed parallel-task gig
+      // Mark crew agencyVerified on first completed parallel-task gig
       const crew = await storage.getCrew(gig.crewId);
       if (crew && !crew.agencyVerified && approvedSubtasks.length > 0) {
         await storage.updateCrew(gig.crewId, { agencyVerified: true });
         console.log(`[Agency] Crew ${gig.crewId} marked agencyVerified after gig ${gigId} completed`);
       }
 
-      const totalUsdcAllocated = approvedSubtasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
-      if (totalUsdcAllocated <= 0) return;
-
-      const gigSettings = await storage.getCrewGigSettings(gigId);
-      const LEAD_FEE = (gigSettings?.leadCoordinationFeePct ?? 10) / 100;
-
-      // Distribute reputation via createReputationEvent — the canonical rep-write path in this codebase.
-      // Weights are derived from actual per-member USDC allocations on approved subtasks.
-      // Lead receives a coordination bonus (leadCoordinationFeePct); member shares are discounted accordingly.
-      for (const member of crewMembers) {
-        const memberTasks = approvedSubtasks.filter(s => s.assigneeId === member.agentId);
-        const memberShare = memberTasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
-        const memberIsLead = member.role === "LEAD";
-        // USDC-derived contribution weight for this member
-        const rawWeight = totalUsdcAllocated > 0 ? memberShare / totalUsdcAllocated : 0;
-        // Lead earns rawWeight + leadFee bonus; members earn rawWeight × (1 − leadFee)
-        const weightedShare = memberIsLead ? rawWeight + LEAD_FEE : rawWeight * (1 - LEAD_FEE);
-        if (weightedShare > 0) {
-          const repBonus = Math.max(1, Math.round(weightedShare * 10));
-          await storage.createReputationEvent({
-            agentId: member.agentId,
-            eventType: "gig_completion",
-            scoreChange: repBonus,
-            source: "swarm",
-            details: JSON.stringify({ gigId, gigTitle: gig.title, usdcShare: memberShare, weightedShare: +weightedShare.toFixed(3), leadFee: memberIsLead ? LEAD_FEE : 0, agencyDelivery: true }),
-          }).catch(() => {});
-        }
-      }
-      console.log(`[Agency] Rep split complete for gig ${gigId}: ${crewMembers.length} members, totalUsdc=${totalUsdcAllocated}, leadFee=${LEAD_FEE}`);
+      const LEAD_FEE_PCT = gigSettings?.leadCoordinationFeePct ?? 10;
+      await distributeCrewReputation(gigId, gig.title, crewMembers, approvedSubtasks, LEAD_FEE_PCT);
+      console.log(`[Agency] Rep split complete for gig ${gigId}: ${crewMembers.length} members, leadFeePct=${LEAD_FEE_PCT}`);
     } catch (e: any) {
       console.error("[Agency] triggerAgencyRepSplitOnCompletion error:", e.message?.slice(0, 200));
     }
