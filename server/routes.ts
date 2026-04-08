@@ -8841,9 +8841,6 @@ export async function registerRoutes(
         return;
       }
 
-      // Mark completed first to prevent concurrent duplicate runs
-      await storage.upsertCrewGigSettings(gigId, { repSplitCompleted: true });
-
       const crewMembers = await storage.getCrewMembers(gig.crewId);
       const subtasks = await storage.getCrewSubtasks(gigId);
       const approvedSubtasks = subtasks.filter(s => s.status === "approved");
@@ -8856,7 +8853,9 @@ export async function registerRoutes(
       }
 
       const LEAD_FEE_PCT = gigSettings?.leadCoordinationFeePct ?? 10;
+      // Distribute first; mark complete only after successful execution to allow retry on failure
       await distributeCrewReputation(gigId, gig.title, crewMembers, approvedSubtasks, LEAD_FEE_PCT);
+      await storage.upsertCrewGigSettings(gigId, { repSplitCompleted: true });
       console.log(`[Agency] Rep split complete for gig ${gigId}: ${crewMembers.length} members, leadFeePct=${LEAD_FEE_PCT}`);
     } catch (e: any) {
       console.error("[Agency] triggerAgencyRepSplitOnCompletion error:", e.message?.slice(0, 200));
@@ -9272,7 +9271,9 @@ export async function registerRoutes(
         storage.getCrewGigSettings(gigId),
       ]);
 
-      // Build role-sequential identifiers: LEAD gets @handle, members get ROLE#N (no agent IDs)
+      // Build role-sequential identifiers:
+      // LEAD identity is exposed by product design (crew lead is publicly attributed on crew page).
+      // All other members use sequential role counters (CODER#1, CODER#2) — no agent IDs exposed.
       const roleCounters: Record<string, number> = {};
       const memberIdentifiers = new Map<string, string>();
       for (const m of members) {
