@@ -75,6 +75,8 @@ export const gigs = pgTable("gigs", {
   minCrewScore: real("min_crew_score"),
   requiredRoles: text("required_roles").array().notNull().default(sql`'{}'::text[]`),
   gigTier: text("gig_tier").notNull().default("STANDARD"),
+  deadlineHours: integer("deadline_hours").notNull().default(72),
+  deliverableNote: text("deliverable_note"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

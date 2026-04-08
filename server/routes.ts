@@ -8545,7 +8545,7 @@ export async function registerRoutes(
 
       // Enrich with poster info
       const enriched = await Promise.all(eligible.slice(0, limit).map(async (gig) => {
-        const poster = gig.agentId ? await storage.getAgent(gig.agentId) : null;
+        const poster = gig.posterId ? await storage.getAgent(gig.posterId) : null;
         return { ...gig, poster: poster ? { handle: poster.handle, fusedScore: poster.fusedScore } : null };
       }));
 
@@ -8866,7 +8866,7 @@ export async function registerRoutes(
   // POST /api/gigs/:id/subtasks — Lead creates a subtask
   app.post("/api/gigs/:id/subtasks", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
-      const gigId = req.params.id;
+      const gigId = req.params.id as string;
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
       if (!gig.crewId) return res.status(400).json({ message: "This gig is not assigned to a crew" });
@@ -8914,7 +8914,7 @@ export async function registerRoutes(
   // GET /api/gigs/:id/subtasks — List subtasks for a gig (role-filtered)
   app.get("/api/gigs/:id/subtasks", async (req, res) => {
     try {
-      const gigId = req.params.id;
+      const gigId = req.params.id as string;
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
@@ -8932,11 +8932,14 @@ export async function registerRoutes(
       const subtasks = await storage.getCrewSubtasks(gigId);
       const settings = await storage.getCrewGigSettings(gigId);
 
-      // Role-based visibility: lead sees all; member sees only assigned; non-member sees open tasks only (no submission details)
+      // Role-based visibility: lead sees all; member sees only their assigned tasks;
+      // non-crew users receive an empty list (no data exposure outside the crew)
+      if (!isLead && !isMember) {
+        return res.json({ subtasks: [], settings: settings || null });
+      }
       const visible = subtasks.filter(st => {
         if (isLead) return true;
-        if (isMember) return st.assigneeId === requesterId;
-        return st.status === "open";
+        return st.assigneeId === requesterId; // member: only assigned subtasks
       });
 
       // Enrich with assignee info; strip submission details for non-members
@@ -8960,7 +8963,8 @@ export async function registerRoutes(
   // PATCH /api/gigs/:id/subtasks/:subtaskId — Update subtask status/submission
   app.patch("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
-      const { id: gigId, subtaskId } = req.params;
+      const gigId = req.params.id as string;
+      const subtaskId = req.params.subtaskId as string;
       const subtask = await storage.getCrewSubtask(subtaskId);
       if (!subtask || subtask.gigId !== gigId) return res.status(404).json({ message: "Subtask not found" });
 
@@ -9070,7 +9074,8 @@ export async function registerRoutes(
   // DELETE /api/gigs/:id/subtasks/:subtaskId — Lead deletes open subtask
   app.delete("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
-      const { id: gigId, subtaskId } = req.params;
+      const gigId = req.params.id as string;
+      const subtaskId = req.params.subtaskId as string;
       const subtask = await storage.getCrewSubtask(subtaskId);
       if (!subtask || subtask.gigId !== gigId) return res.status(404).json({ message: "Subtask not found" });
 
@@ -9097,7 +9102,8 @@ export async function registerRoutes(
   // POST /api/gigs/:id/subtasks/:subtaskId/claim — Crew member claims an open subtask
   app.post("/api/gigs/:id/subtasks/:subtaskId/claim", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
-      const { id: gigId, subtaskId } = req.params;
+      const gigId = req.params.id as string;
+      const subtaskId = req.params.subtaskId as string;
       const subtask = await storage.getCrewSubtask(subtaskId);
       if (!subtask || subtask.gigId !== gigId) return res.status(404).json({ message: "Subtask not found" });
       if (subtask.status !== "open") return res.status(400).json({ message: "Subtask is not open for claiming" });
@@ -9225,7 +9231,7 @@ export async function registerRoutes(
   // GET /api/agents/:id/subtasks — Agent's assigned subtasks (profile view; public but redacted for non-self)
   app.get("/api/agents/:id/subtasks", apiLimiter, async (req, res) => {
     try {
-      const agentId = req.params.id;
+      const agentId = req.params.id as string;
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
@@ -9255,7 +9261,7 @@ export async function registerRoutes(
   // GET /api/gigs/:id/work-log — Public anonymized crew contribution summary for gig Work Log display
   app.get("/api/gigs/:id/work-log", async (req, res) => {
     try {
-      const gigId = req.params.id;
+      const gigId = req.params.id as string;
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
       if (!gig.crewId) return res.json({ gigId, crewId: null, contributions: [], timeline: [], settings: null });
@@ -9330,7 +9336,7 @@ export async function registerRoutes(
   // PATCH /api/gigs/:id/settings — Crew lead updates gig parallel settings
   app.patch("/api/gigs/:id/settings", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
-      const gigId = req.params.id;
+      const gigId = req.params.id as string;
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
       if (!gig.crewId) return res.status(400).json({ message: "Not a crew gig" });
