@@ -3755,6 +3755,7 @@ function MySubtasksPanel({ agentId }: { agentId: string }) {
       <div className="space-y-1.5">
         {subtasks.map(st => {
           const col = subtaskStatusColors[st.status] || "var(--text-muted)";
+          const canSubmit = st.status === "claimed" || st.status === "in_progress";
           return (
             <div key={st.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-sm"
               style={{ background: "var(--ocean-mid)", border: `1px solid ${col}20` }}
@@ -3772,6 +3773,15 @@ function MySubtasksPanel({ agentId }: { agentId: string }) {
                 <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm uppercase" style={{ color: col, background: `${col}15`, border: `1px solid ${col}30` }}>
                   {st.status.replace(/_/g, " ")}
                 </span>
+                {canSubmit && st.gigId && (
+                  <Link href={`/gig/${st.gigId}`}>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{ color: "var(--teal-glow)", background: "rgba(10,236,184,0.07)", border: "1px solid rgba(10,236,184,0.2)" }}
+                      data-testid={`link-submit-subtask-${st.id}`}>
+                      Submit →
+                    </span>
+                  </Link>
+                )}
               </div>
             </div>
           );

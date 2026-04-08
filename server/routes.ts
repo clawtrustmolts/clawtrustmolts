@@ -8727,21 +8727,6 @@ export async function registerRoutes(
 
   // ─── Agency Mode: Crew Subtask Routes ─────────────────────────────────────
 
-  // Helper: resolve requesting agentId and check crew lead status
-  async function resolveAgentFromRequest(req: any): Promise<string | null> {
-    const walletAddress = req.headers["x-wallet-address"] as string | undefined;
-    const agentIdHeader = req.headers["x-agent-id"] as string | undefined;
-    if (agentIdHeader) {
-      const agent = await storage.getAgent(agentIdHeader);
-      if (agent) return agent.id;
-    }
-    if (walletAddress) {
-      const agent = await storage.getAgentByWallet(walletAddress);
-      if (agent) return agent.id;
-    }
-    return null;
-  }
-
   /**
    * Resolve caller identity using ONLY cryptographically verified sources.
    * Never trusts raw x-agent-id header to prevent IDOR / identity spoofing.
@@ -8818,20 +8803,25 @@ export async function registerRoutes(
       const gigSettings = await storage.getCrewGigSettings(gigId);
       const LEAD_FEE = (gigSettings?.leadCoordinationFeePct ?? 10) / 100;
 
+      // Distribute reputation via createReputationEvent — the canonical rep-write path in this codebase.
+      // Weights are derived from actual per-member USDC allocations on approved subtasks.
+      // Lead receives a coordination bonus (leadCoordinationFeePct); member shares are discounted accordingly.
       for (const member of crewMembers) {
         const memberTasks = approvedSubtasks.filter(s => s.assigneeId === member.agentId);
         const memberShare = memberTasks.reduce((sum, s) => sum + (s.usdcShare || 0), 0);
         const memberIsLead = member.role === "LEAD";
+        // USDC-derived contribution weight for this member
         const rawWeight = totalUsdcAllocated > 0 ? memberShare / totalUsdcAllocated : 0;
+        // Lead earns rawWeight + leadFee bonus; members earn rawWeight × (1 − leadFee)
         const weightedShare = memberIsLead ? rawWeight + LEAD_FEE : rawWeight * (1 - LEAD_FEE);
         if (weightedShare > 0) {
           const repBonus = Math.max(1, Math.round(weightedShare * 10));
           await storage.createReputationEvent({
             agentId: member.agentId,
-            eventType: "agency_delivery",
+            eventType: "gig_completion",
             scoreChange: repBonus,
             source: "swarm",
-            details: JSON.stringify({ gigId, gigTitle: gig.title, usdcShare: memberShare, weightedShare: +weightedShare.toFixed(3), leadFee: memberIsLead ? LEAD_FEE : 0 }),
+            details: JSON.stringify({ gigId, gigTitle: gig.title, usdcShare: memberShare, weightedShare: +weightedShare.toFixed(3), leadFee: memberIsLead ? LEAD_FEE : 0, agencyDelivery: true }),
           }).catch(() => {});
         }
       }
@@ -8990,11 +8980,15 @@ export async function registerRoutes(
         // treat the just-approved subtask as approved regardless of DB propagation lag
         const allApproved = allSubtasks.every(s => s.id === subtaskId ? true : s.status === "approved");
         if (allApproved && allSubtasks.length > 0 && (gig.status === "assigned" || gig.status === "in_progress")) {
-          // 1. Compile approved submission texts into gig deliverableNote
+          // 1. Compile approved submission texts into gig deliverableNote (with role attribution)
           const approvedSubtasks = allSubtasks.map(s => s.id === subtaskId ? { ...s, status: "approved" as const } : s);
           const deliverableLines = approvedSubtasks
             .filter(s => s.submissionText)
-            .map(s => `[${s.title}] ${s.submissionText}`)
+            .map(s => {
+              const member = members.find(m => m.agentId === s.assigneeId);
+              const roleLabel = member?.role ?? "MEMBER";
+              return `[${roleLabel}: ${s.title}] ${s.submissionText}`;
+            })
             .join("\n---\n");
           await storage.updateGig(gigId, {
             deliverableNote: deliverableLines || "Agency multi-agent delivery: all subtasks approved.",
@@ -9240,24 +9234,33 @@ export async function registerRoutes(
         storage.getCrewGigSettings(gigId),
       ]);
 
-      // Aggregate by member, using role-based identifiers (anonymized by default)
-      const contributions = await Promise.all(members.map(async (m) => {
+      // Build role-sequential identifiers: LEAD gets @handle, members get ROLE#N (no agent IDs)
+      const roleCounters: Record<string, number> = {};
+      const memberIdentifiers = new Map<string, string>();
+      for (const m of members) {
+        if (m.role === "LEAD") {
+          const agent = await storage.getAgent(m.agentId);
+          memberIdentifiers.set(m.agentId, agent?.handle ? `@${agent.handle}` : "Lead");
+        } else {
+          roleCounters[m.role] = (roleCounters[m.role] ?? 0) + 1;
+          memberIdentifiers.set(m.agentId, `${m.role}#${roleCounters[m.role]}`);
+        }
+      }
+
+      // Aggregate by member, using sequential role identifiers (no agent ID exposure)
+      const contributions = members.map((m) => {
         const myTasks = subtasks.filter(s => s.assigneeId === m.agentId);
         const approvedTasks = myTasks.filter(s => s.status === "approved");
-        const agent = await storage.getAgent(m.agentId);
         return {
           role: m.role,
           taskCount: myTasks.length,
           approvedCount: approvedTasks.length,
           totalUsdcShare: +approvedTasks.reduce((s, t) => s + (t.usdcShare || 0), 0).toFixed(2),
-          // Expose handle only for LEAD; members get anonymized role identifier
-          identifier: m.role === "LEAD"
-            ? (agent?.handle ? `@${agent.handle}` : "Lead")
-            : `${m.role}#${m.agentId.slice(0, 6)}`,
+          identifier: memberIdentifiers.get(m.agentId) ?? m.role,
         };
-      }));
+      });
 
-      // Activity timeline — role-level only, no raw submissionText, no full handles
+      // Activity timeline — role-level only, no raw submissionText, no full agent IDs
       const timelineClean = subtasks
         .filter(s => s.status !== "open")
         .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
@@ -9269,7 +9272,7 @@ export async function registerRoutes(
             requiredSkill: s.requiredSkill,
             status: s.status,
             role: member?.role ?? "UNASSIGNED",
-            identifier: member ? `${member.role}#${member.agentId.slice(0, 6)}` : "UNASSIGNED",
+            identifier: member ? (memberIdentifiers.get(member.agentId) ?? member.role) : "UNASSIGNED",
             usdcShare: s.usdcShare,
             updatedAt: s.updatedAt,
           };

@@ -706,6 +706,8 @@ export default function GigDetailPage() {
     enabled: !!gigId,
   });
 
+  const [crewTab, setCrewTab] = useState<"team" | "work-log">("team");
+
   const { data: validations } = useQuery<ValidationInfo[]>({
     queryKey: ["/api/validations"],
     enabled: gig?.status === "pending_validation" || gig?.status === "disputed",
@@ -1152,86 +1154,100 @@ export default function GigDetailPage() {
             )}
           </div>
 
-          {/* CREW WORK LOG */}
-          {gig.crewGig && (
-            <div
-              className="rounded-sm p-5"
-              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(59,130,246,0.18)" }}
-              data-testid="card-crew-work-log"
-            >
-              <h3 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
-                <Layers className="w-4 h-4" style={{ color: "#3b82f6" }} />
-                WORK LOG
-              </h3>
-              <GigWorkLog gigId={gig.id} />
-            </div>
-          )}
-
-          {/* CREW APPLICANTS */}
+          {/* CREW PANEL — tabbed: Team | Work Log */}
           {((crewApplicants && crewApplicants.length > 0) || gig.crewGig) && (
             <div
-              className="rounded-sm p-5"
-              style={{
-                background: "var(--ocean-mid)",
-                border: "1px solid rgba(139,92,246,0.20)",
-              }}
-              data-testid="card-crew-applicants"
+              className="rounded-sm"
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(139,92,246,0.20)" }}
+              data-testid="card-crew-panel"
             >
-              <h3 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
-                <Users className="w-4 h-4" style={{ color: "#a78bfa" }} />
-                AGENCY BIDS ({(crewApplicants || []).length})
-              </h3>
-              {(crewApplicants || []).length === 0 ? (
-                <EmptyState message="No agency bids yet." />
-              ) : (
-                <div className="space-y-3">
-                  {(crewApplicants || []).map((ca) => (
-                    <div
-                      key={ca.id}
-                      className="p-3 rounded-sm"
-                      style={{ background: "rgba(139,92,246,0.04)", border: "1px solid rgba(139,92,246,0.1)" }}
-                      data-testid={`crew-applicant-${ca.id}`}
+              {/* Tab bar */}
+              <div className="flex border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+                {(["team", "work-log"] as const).map(tab => {
+                  const label = tab === "team"
+                    ? `AGENCY BIDS (${(crewApplicants || []).length})`
+                    : "WORK LOG";
+                  const Icon = tab === "team" ? Users : Layers;
+                  const iconColor = tab === "team" ? "#a78bfa" : "#3b82f6";
+                  const isActive = crewTab === tab;
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setCrewTab(tab)}
+                      data-testid={`tab-crew-${tab}`}
+                      className="flex items-center gap-1.5 px-5 py-3 text-[11px] font-mono tracking-wider transition-colors"
+                      style={{
+                        color: isActive ? "var(--shell-white)" : "var(--text-muted)",
+                        borderBottom: isActive ? `2px solid ${iconColor}` : "2px solid transparent",
+                        background: "transparent",
+                      }}
                     >
-                      {ca.crew ? (
-                        <Link href={`/crews/${ca.crew.id}`}>
-                          <div className="cursor-pointer">
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-xs font-semibold" style={{ color: "var(--shell-white)" }}>
-                                {ca.crew.name}
+                      <Icon className="w-3.5 h-3.5" style={{ color: isActive ? iconColor : undefined }} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Tab content */}
+              <div className="p-5">
+                {crewTab === "team" && (
+                  <>
+                    {(crewApplicants || []).length === 0 ? (
+                      <EmptyState message="No agency bids yet." />
+                    ) : (
+                      <div className="space-y-3">
+                        {(crewApplicants || []).map((ca) => (
+                          <div
+                            key={ca.id}
+                            className="p-3 rounded-sm"
+                            style={{ background: "rgba(139,92,246,0.04)", border: "1px solid rgba(139,92,246,0.1)" }}
+                            data-testid={`crew-applicant-${ca.id}`}
+                          >
+                            {ca.crew ? (
+                              <Link href={`/crews/${ca.crew.id}`}>
+                                <div className="cursor-pointer">
+                                  <div className="flex items-center justify-between gap-2 mb-1">
+                                    <span className="text-xs font-semibold" style={{ color: "var(--shell-white)" }}>
+                                      {ca.crew.name}
+                                    </span>
+                                    <span className="text-[10px] font-mono" style={{ color: "#a78bfa" }}>
+                                      {ca.crew.fusedScore.toFixed(1)}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa" }}>
+                                      @{ca.crew.handle}
+                                    </span>
+                                    <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                                      {ca.crew.memberCount} members · ${ca.crew.bondPool.toFixed(0)} bonded
+                                    </span>
+                                  </div>
+                                </div>
+                              </Link>
+                            ) : (
+                              <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                                Crew ID: {ca.crewId}
                               </span>
-                              <span className="text-[10px] font-mono" style={{ color: "#a78bfa" }}>
-                                {ca.crew.fusedScore.toFixed(1)}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa" }}>
-                                @{ca.crew.handle}
-                              </span>
-                              <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
-                                {ca.crew.memberCount} members · ${ca.crew.bondPool.toFixed(0)} bonded
-                              </span>
-                            </div>
+                            )}
+                            {ca.message && (
+                              <p className="text-[10px] mt-1" style={{ color: "var(--shell-cream)" }}>
+                                {ca.message}
+                              </p>
+                            )}
+                            {ca.createdAt && (
+                              <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+                                {timeAgo(ca.createdAt)}
+                              </p>
+                            )}
                           </div>
-                        </Link>
-                      ) : (
-                        <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
-                          Crew ID: {ca.crewId}
-                        </span>
-                      )}
-                      {ca.message && (
-                        <p className="text-[10px] mt-1" style={{ color: "var(--shell-cream)" }}>
-                          {ca.message}
-                        </p>
-                      )}
-                      {ca.createdAt && (
-                        <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
-                          {timeAgo(ca.createdAt)}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+                {crewTab === "work-log" && <GigWorkLog gigId={gig.id} />}
+              </div>
             </div>
           )}
         </div>
