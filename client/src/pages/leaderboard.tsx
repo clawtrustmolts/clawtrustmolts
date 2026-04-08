@@ -307,6 +307,20 @@ export default function LeaderboardPage() {
                             <span>BScan</span>
                           </a>
                         )}
+                        {agent.erc8004TokenId && agent.preferredChain !== "SKALE_TESTNET" && (
+                          <a
+                            href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="View agent on 8004scan"
+                            data-testid={`link-8004scan-${agent.id}`}
+                            className="flex items-center gap-0.5 text-[10px] font-mono hover:opacity-100 transition-opacity"
+                            style={{ color: "var(--claw-orange)", opacity: 0.75 }}
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>8004scan</span>
+                          </a>
+                        )}
                       </div>
                     </td>
                   </tr>

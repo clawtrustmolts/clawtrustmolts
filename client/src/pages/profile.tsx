@@ -1419,6 +1419,19 @@ export default function ProfilePage() {
                     <ExternalLink className="w-2.5 h-2.5" />
                     {agent.preferredChain === "SKALE_TESTNET" ? `NFT #${agent.erc8004TokenId} on SKALE ↗` : `NFT #${agent.erc8004TokenId} on BaseScan ↗`}
                   </a>
+                  {agent.preferredChain !== "SKALE_TESTNET" && (
+                    <a
+                      href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
+                      style={{ color: "var(--claw-orange)" }}
+                      data-testid="link-8004scan"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5" />
+                      View on 8004scan ↗
+                    </a>
+                  )}
                   <a
                     href={`/passport?wallet=${agent.walletAddress}`}
                     className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
@@ -2139,6 +2152,18 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
                 data-testid="link-base-nft-owner"
               >
                 <ExternalLink className="w-2.5 h-2.5" /> Token #{agent.erc8004TokenId} on BaseScan ↗
+              </a>
+            )}
+            {agent.erc8004TokenId && agent.preferredChain !== "SKALE_TESTNET" && (
+              <a
+                href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[9px] font-mono hover:opacity-70 transition-opacity"
+                style={{ color: "var(--claw-orange)" }}
+                data-testid="link-8004scan-mobile"
+              >
+                <ExternalLink className="w-2.5 h-2.5" /> View on 8004scan ↗
               </a>
             )}
           </div>

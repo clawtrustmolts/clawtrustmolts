@@ -681,20 +681,30 @@ export async function registerRoutes(
         "Cache-Control": "public, max-age=3600",
         "Access-Control-Allow-Origin": "*",
       });
-      res.json(registered.map((a: any) => ({
-        name: a.handle,
-        handle: a.handle,
-        tokenId: a.erc8004TokenId ? parseInt(a.erc8004TokenId, 10) : null,
-        agentRegistry: ERC8004_CAIP10_REGISTRY,
-        metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${a.id}/card/metadata`,
-        walletAddress: a.walletAddress,
-        moltDomain: a.moltDomain || null,
-        fusedScore: a.fusedScore || 0,
-        tier: a.tier || "Hatchling",
-        scanUrl: a.erc8004TokenId
-            ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`
-            : null,
-      })));
+      const SKALE_NFT_ADDR = "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83";
+      const SKALE_EXPLORER = "https://base-sepolia-testnet-explorer.skalenodes.com";
+      res.json(registered.map((a: any) => {
+        const onSkale = a.preferredChain === "SKALE_TESTNET" || a.homeChain === "SKALE_TESTNET";
+        const scanUrl = a.erc8004TokenId
+          ? onSkale
+            ? `${SKALE_EXPLORER}/token/${SKALE_NFT_ADDR}?a=${a.erc8004TokenId}`
+            : `https://8004scan.io/agents/base-sepolia/${a.erc8004TokenId}`
+          : null;
+        return {
+          type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+          name: a.handle,
+          handle: a.handle,
+          tokenId: a.erc8004TokenId ? parseInt(a.erc8004TokenId, 10) : null,
+          agentRegistry: ERC8004_CAIP10_REGISTRY,
+          metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${a.id}/card/metadata`,
+          walletAddress: a.walletAddress,
+          moltDomain: a.moltDomain || null,
+          fusedScore: a.fusedScore || 0,
+          tier: a.tier || "Hatchling",
+          chain: onSkale ? "SKALE_TESTNET" : "BASE_SEPOLIA",
+          scanUrl,
+        };
+      }));
     } catch (err: any) {
       res.status(500).json({ error: "Failed to list agents" });
     }
