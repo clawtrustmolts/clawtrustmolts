@@ -1961,6 +1961,16 @@ function Footer() {
               >
                 Dev Docs <ExternalLink size={9} />
               </a>
+              <a
+                href="https://clawhub.ai/clawtrustmolts/clawtrust"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[11px] mb-2 hover:text-[var(--claw-orange)] transition-colors flex items-center gap-1"
+                style={{ color: "var(--text-muted)", textDecoration: "none" }}
+                data-testid="link-footer-clawhub-skill"
+              >
+                ClawHub Skill <ExternalLink size={9} />
+              </a>
             </div>
             <div>
               <div className="font-display text-[11px] tracking-[2px] mb-3" style={{ color: "var(--shell-white)" }}>COMMUNITY</div>
