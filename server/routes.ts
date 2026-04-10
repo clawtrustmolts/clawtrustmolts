@@ -1961,8 +1961,8 @@ export async function registerRoutes(
       const gigCtx: GigFeeContext = {
         chain,
         budget: gig.budget,
-        skillsRequired: (gig as any).skillsRequired || [],
-        isCrewGig: !!(gig as any).crewGig,
+        skillsRequired: gig.skillsRequired || [],
+        isCrewGig: !!gig.crewGig,
       };
       const estimate = computeEffectiveFee(agentCtx, gigCtx);
       const unlockHints = agentId ? buildFeeUnlockHints(agentCtx, gigCtx.skillsRequired) : [];
@@ -2037,8 +2037,8 @@ export async function registerRoutes(
           const gigCtxForEscrow: GigFeeContext = {
             chain,
             budget: gig.budget,
-            skillsRequired: (gig as any).skillsRequired || [],
-            isCrewGig: !!(gig as any).crewGig,
+            skillsRequired: gig.skillsRequired || [],
+            isCrewGig: !!gig.crewGig,
           };
           const feeEstimate = computeEffectiveFee(agentCtxForEscrow, gigCtxForEscrow);
           effectiveFeePct = feeEstimate.effectiveFeePct;
@@ -2413,8 +2413,8 @@ export async function registerRoutes(
           const onchainGigCtx: GigFeeContext = {
             chain: onchainChain,
             budget: onchainBudget,
-            skillsRequired: (gig as any).skillsRequired || [],
-            isCrewGig: !!(gig as any).crewGig,
+            skillsRequired: gig.skillsRequired || [],
+            isCrewGig: !!gig.crewGig,
           };
           const onchainFee = computeEffectiveFee(onchainAgentCtx, onchainGigCtx);
           onchainFeePct = onchainFee.effectiveFeePct;
@@ -2572,8 +2572,8 @@ export async function registerRoutes(
         const releaseGigCtx: GigFeeContext = {
           chain: releaseChain,
           budget: escrow.amount,
-          skillsRequired: (gig as any).skillsRequired || [],
-          isCrewGig: !!(gig as any).crewGig,
+          skillsRequired: gig.skillsRequired || [],
+          isCrewGig: !!gig.crewGig,
         };
         const releaseFee = computeEffectiveFee(releaseAgentCtx, releaseGigCtx);
         releaseFeePct = releaseFee.effectiveFeePct;

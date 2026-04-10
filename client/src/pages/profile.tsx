@@ -496,20 +496,7 @@ export default function ProfilePage() {
     enabled: activeTab === "commerce",
   });
 
-  const { data: feeProfileData } = useQuery<{
-    agentId: string;
-    handle: string;
-    fusedScore: number;
-    totalGigsCompleted: number;
-    availableBond: number;
-    verifiedSkillCount: number;
-    chains: {
-      BASE_SEPOLIA: { effectiveFeePct: number; breakdown: any };
-      SKALE_TESTNET: { effectiveFeePct: number; breakdown: any };
-      BASE_SEPOLIA_CREW: { effectiveFeePct: number; breakdown: any };
-    };
-    unlockHints: Array<{ action: string; saving: number }>;
-  }>({
+  const { data: feeProfileData } = useQuery<FeeProfileData>({
     queryKey: ["/api/agents", agentId, "fee-profile"],
     enabled: !!agentId,
   });
@@ -1931,30 +1918,90 @@ function ProofOfWorkSection({ agentId, receipts, mcpSkills, proofUris }: {
   );
 }
 
-function FeeProfileCard({
-  data,
-  isOwner,
-}: {
-  data: {
-    fusedScore: number;
-    totalGigsCompleted: number;
-    availableBond: number;
-    verifiedSkillCount: number;
-    chains: {
-      BASE_SEPOLIA: { effectiveFeePct: number; breakdown: any };
-      SKALE_TESTNET: { effectiveFeePct: number; breakdown: any };
-      BASE_SEPOLIA_CREW: { effectiveFeePct: number; breakdown: any };
-    };
-    unlockHints: Array<{ action: string; saving: number }>;
+interface FeeBreakdownData {
+  fusedScore: number;
+  tierName: string;
+  baseFee: number;
+  chainModifier: number;
+  chain: string;
+  discounts: Array<{ label: string; amount: number }>;
+  surcharges: Array<{ label: string; amount: number }>;
+  totalDiscount: number;
+  totalSurcharge: number;
+  subtotal: number;
+  effectiveFee: number;
+  floor: number;
+  ceiling: number;
+  clamped: boolean;
+}
+
+interface ChainFeeEntry {
+  effectiveFeePct: number;
+  breakdown: FeeBreakdownData;
+}
+
+interface FeeProfileData {
+  agentId: string;
+  handle: string;
+  fusedScore: number;
+  totalGigsCompleted: number;
+  availableBond: number;
+  verifiedSkillCount: number;
+  chains: {
+    BASE_SEPOLIA: ChainFeeEntry;
+    SKALE_TESTNET: ChainFeeEntry;
+    BASE_SEPOLIA_CREW: ChainFeeEntry;
   };
-  isOwner: boolean;
-}) {
+  unlockHints: Array<{ action: string; saving: number }>;
+}
+
+function FeeChainDetail({ entry, selectedChain }: { entry: ChainFeeEntry; selectedChain: string }) {
+  const bd = entry.breakdown;
+  const discounts = bd.discounts ?? [];
+  const surcharges = bd.surcharges ?? [];
+
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-[10px] font-mono">
+        <span style={{ color: "var(--text-muted)" }}>FusedScore tier</span>
+        <span style={{ color: "var(--shell-white)" }}>{bd.tierName} ({bd.fusedScore})</span>
+      </div>
+      <div className="flex justify-between text-[10px] font-mono">
+        <span style={{ color: "var(--text-muted)" }}>Base fee</span>
+        <span style={{ color: "var(--shell-white)" }}>{bd.baseFee.toFixed(2)}%</span>
+      </div>
+      {(bd.chainModifier ?? 0) > 0 && (
+        <div className="flex justify-between text-[10px] font-mono">
+          <span style={{ color: "var(--text-muted)" }}>SKALE chain modifier</span>
+          <span style={{ color: "var(--claw-amber)" }}>+{bd.chainModifier.toFixed(2)}%</span>
+        </div>
+      )}
+      {discounts.map((d, i) => (
+        <div key={i} className="flex justify-between text-[10px] font-mono">
+          <span style={{ color: "var(--text-muted)" }}>{d.label}</span>
+          <span style={{ color: "#22c55e" }}>−{d.amount.toFixed(2)}%</span>
+        </div>
+      ))}
+      {surcharges.map((s, i) => (
+        <div key={i} className="flex justify-between text-[10px] font-mono">
+          <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
+          <span style={{ color: "var(--claw-amber)" }}>+{s.amount.toFixed(2)}%</span>
+        </div>
+      ))}
+      <div
+        className="flex justify-between text-[10px] font-mono pt-1"
+        style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
+      >
+        <span style={{ color: "var(--text-muted)" }}>Effective fee</span>
+        <span style={{ color: "var(--teal-glow)", fontWeight: 600 }}>{entry.effectiveFeePct.toFixed(2)}%</span>
+      </div>
+    </div>
+  );
+}
+
+function FeeProfileCard({ data, isOwner }: { data: FeeProfileData; isOwner: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [selectedChain, setSelectedChain] = useState<"BASE_SEPOLIA" | "SKALE_TESTNET" | "BASE_SEPOLIA_CREW">("BASE_SEPOLIA");
-  const chain = data.chains[selectedChain];
-  const bd = chain.breakdown;
-  const discounts: Array<{ label: string; amount: number }> = bd.discounts ?? [];
-  const surcharges: Array<{ label: string; amount: number }> = bd.surcharges ?? [];
 
   return (
     <div
@@ -1974,13 +2021,16 @@ function FeeProfileCard({
             Fee Profile
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span
-            className="text-[12px] font-mono font-bold"
-            style={{ color: "var(--shell-white)" }}
-            data-testid="text-fee-profile-pct"
-          >
-            {data.chains.BASE_SEPOLIA.effectiveFeePct.toFixed(2)}%
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+            Base{" "}
+            <span className="font-bold" style={{ color: "var(--shell-white)" }} data-testid="text-fee-base-pct">
+              {data.chains.BASE_SEPOLIA.effectiveFeePct.toFixed(2)}%
+            </span>
+            {" "}· SKALE{" "}
+            <span className="font-bold" style={{ color: "var(--shell-white)" }} data-testid="text-fee-skale-pct">
+              {data.chains.SKALE_TESTNET.effectiveFeePct.toFixed(2)}%
+            </span>
           </span>
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {expanded ? "▲" : "▼"}
@@ -2007,46 +2057,12 @@ function FeeProfileCard({
                 }}
                 data-testid={`button-fee-chain-${c.toLowerCase()}`}
               >
-                {c === "BASE_SEPOLIA" ? "Base" : c === "SKALE_TESTNET" ? "SKALE" : "Crew"}
+                {c === "BASE_SEPOLIA" ? "Base" : c === "SKALE_TESTNET" ? "SKALE" : "Crew +Surcharge"}
               </button>
             ))}
           </div>
 
-          <div className="space-y-1">
-            <div className="flex justify-between text-[10px] font-mono">
-              <span style={{ color: "var(--text-muted)" }}>FusedScore tier</span>
-              <span style={{ color: "var(--shell-white)" }}>{bd.tierName} ({bd.fusedScore})</span>
-            </div>
-            <div className="flex justify-between text-[10px] font-mono">
-              <span style={{ color: "var(--text-muted)" }}>Base fee</span>
-              <span style={{ color: "var(--shell-white)" }}>{bd.baseFee.toFixed(2)}%</span>
-            </div>
-            {(bd.chainModifier ?? 0) > 0 && (
-              <div className="flex justify-between text-[10px] font-mono">
-                <span style={{ color: "var(--text-muted)" }}>SKALE chain modifier</span>
-                <span style={{ color: "var(--claw-amber)" }}>+{bd.chainModifier.toFixed(2)}%</span>
-              </div>
-            )}
-            {discounts.map((d: { label: string; amount: number }, i: number) => (
-              <div key={i} className="flex justify-between text-[10px] font-mono">
-                <span style={{ color: "var(--text-muted)" }}>{d.label}</span>
-                <span style={{ color: "#22c55e" }}>−{d.amount.toFixed(2)}%</span>
-              </div>
-            ))}
-            {surcharges.map((s: { label: string; amount: number }, i: number) => (
-              <div key={i} className="flex justify-between text-[10px] font-mono">
-                <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
-                <span style={{ color: "var(--claw-amber)" }}>+{s.amount.toFixed(2)}%</span>
-              </div>
-            ))}
-            <div
-              className="flex justify-between text-[10px] font-mono pt-1"
-              style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
-            >
-              <span style={{ color: "var(--text-muted)" }}>Effective fee</span>
-              <span style={{ color: "var(--teal-glow)", fontWeight: 600 }}>{chain.effectiveFeePct.toFixed(2)}%</span>
-            </div>
-          </div>
+          <FeeChainDetail entry={data.chains[selectedChain]} selectedChain={selectedChain} />
 
           {isOwner && data.unlockHints.length > 0 && (
             <div

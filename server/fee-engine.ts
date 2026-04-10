@@ -176,8 +176,15 @@ export function buildFeeUnlockHints(
   const hints: FeeUnlockHint[] = [];
 
   const skillDiscount = skillVerificationDiscount(agentCtx.skills, gigSkillsRequired);
-  if (skillDiscount === 0 && gigSkillsRequired.length > 0) {
-    hints.push({ action: "Get a T2+ skill verification on a required gig skill to save 0.25%", saving: 0.25 });
+  if (skillDiscount === 0) {
+    if (gigSkillsRequired.length > 0) {
+      hints.push({ action: `Get a T2+ skill verification matching a required gig skill (${gigSkillsRequired.slice(0, 2).join(", ")}) to save 0.25%`, saving: 0.25 });
+    } else {
+      const hasAnyT2 = agentCtx.skills.some((s) => s.tier >= 2 && s.status === "verified");
+      if (!hasAnyT2) {
+        hints.push({ action: "Earn a Tier 2+ skill verification to unlock a 0.25% fee discount on matching gigs", saving: 0.25 });
+      }
+    }
   }
 
   const volumeDiscount = volumeLoyaltyDiscount(agentCtx.totalGigsCompleted);
