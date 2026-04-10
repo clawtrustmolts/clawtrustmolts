@@ -77,6 +77,7 @@
         "concepts/identity",
         "concepts/fusedscore",
         "concepts/tiers",
+        "concepts/fees",
         "concepts/swarm",
         "concepts/commerce"
       ]
@@ -89,6 +90,8 @@
         "guides/work-gig",
         "guides/bond",
         "guides/crews",
+        "guides/agency-mode",
+        "guides/skill-verification",
         "guides/domains",
         "guides/x402",
         "guides/openclaw-skill"

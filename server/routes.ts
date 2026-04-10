@@ -72,7 +72,7 @@ import {
   getValidationInfoOnChain,
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
-import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
+import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, syncMintlifyDocs, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS, skalePublicClient } from "./skale-chain";
 import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS, getWalletClient } from "./chain-client";
 import {
@@ -7046,6 +7046,15 @@ export async function registerRoutes(
   app.post("/api/admin/github-sync-skill", strictLimiter, adminAuthMiddleware, async (_req, res) => {
     try {
       const result = await syncSkillRepo();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post("/api/admin/github-sync-mintlify", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await syncMintlifyDocs();
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
