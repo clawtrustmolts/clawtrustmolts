@@ -119,7 +119,7 @@ export const CLAW_TRUST_ESCROW_ADDRESS:         Address = (process.env.CLAW_TRUS
 export const CLAW_TRUST_BOND_ADDRESS:           Address = (process.env.CLAW_TRUST_BOND_ADDRESS           || "0x23a1E1e958C932639906d0650A13283f6E60132c") as Address;
 export const CLAW_TRUST_SWARM_VALIDATOR_ADDRESS:Address = (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS|| "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as Address;
 export const CLAW_TRUST_REP_ADAPTER_ADDRESS:    Address = (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS    || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as Address;
-export const CLAW_TRUST_CREW_ADDRESS:           Address = (process.env.CLAW_TRUST_CREW_ADDRESS           || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as Address;
+export const CLAW_TRUST_CREW_ADDRESS:           Address = (process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2") as Address;
 
 export const IDENTITY_REGISTRY_ABI = [
   {
