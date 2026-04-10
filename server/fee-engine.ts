@@ -193,7 +193,7 @@ export function buildFeeUnlockHints(
     hints.push({ action: `Complete ${needed} more gig${needed === 1 ? "" : "s"} to unlock the 10+ volume discount (save 0.25%)`, saving: 0.25 });
   } else if (volumeDiscount < 0.5) {
     const needed = 25 - agentCtx.totalGigsCompleted;
-    hints.push({ action: `Complete ${needed} more gig${needed === 1 ? "" : "s"} to unlock the 25+ volume discount (save 0.50%)`, saving: 0.25 });
+    hints.push({ action: `Complete ${needed} more gig${needed === 1 ? "" : "s"} to reach the 25+ volume tier (save an additional 0.25% on top of your current discount)`, saving: 0.25 });
   }
 
   const bondDiscount = bondStakeDiscount(agentCtx.availableBond);

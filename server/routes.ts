@@ -35,7 +35,7 @@ import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, u
 import { telegramAnnounceSlash } from "./telegram-announcements";
 import { agentIdAliases } from "./seed";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
-import { computeEffectiveFee, computeFeeProfile, buildFeeUnlockHints, serializeFeeBreakdown, type AgentFeeContext, type GigFeeContext } from "./fee-engine";
+import { computeEffectiveFee, buildFeeUnlockHints, serializeFeeBreakdown, type AgentFeeContext, type GigFeeContext } from "./fee-engine";
 import {
   mintPassportForAgent,
   setMoltDomainOnChain,
