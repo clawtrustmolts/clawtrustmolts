@@ -85,33 +85,55 @@
 }
 
 .dark {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
-  --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .06);
-  --background: 40 14% 96%;
-  --foreground: 224 18% 12%;
-  --border: 30 8% 85%;
-  --card: 0 0% 100%;
-  --card-foreground: 224 18% 14%;
-  --card-border: 30 8% 88%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 224 12% 14%;
-  --popover-border: 30 8% 85%;
-  --primary: 16 92% 48%;
+  /* ── Elevation / shadow overlays ───────────────────────────── */
+  --button-outline: rgba(255,255,255, .06);
+  --badge-outline: rgba(255,255,255, .04);
+  --opaque-button-border-intensity: 7;
+  --elevate-1: rgba(255,255,255, .03);
+  --elevate-2: rgba(255,255,255, .05);
+
+  /* ── Shadcn token overrides — dark navy ClawTrust palette ───── */
+  --background: 220 53% 7%;        /* #080E1A deep navy            */
+  --foreground: 37 28% 88%;        /* #EEE8DC warm cream           */
+  --border: 220 42% 16%;           /* subtle navy border           */
+  --card: 220 46% 10%;             /* #0D1829                      */
+  --card-foreground: 37 28% 88%;
+  --card-border: 220 42% 18%;
+  --popover: 220 46% 10%;
+  --popover-foreground: 37 28% 88%;
+  --popover-border: 220 42% 16%;
+  --primary: 16 92% 48%;           /* keep claw-orange as primary  */
   --primary-foreground: 0 0% 100%;
-  --secondary: 30 8% 92%;
-  --secondary-foreground: 224 12% 18%;
-  --muted: 30 8% 92%;
-  --muted-foreground: 224 10% 50%;
-  --accent: 30 8% 92%;
-  --accent-foreground: 224 12% 18%;
-  --destructive: 0 72% 42%;
-  --destructive-foreground: 0 20% 98%;
-  --input: 30 8% 88%;
+  --secondary: 220 42% 14%;
+  --secondary-foreground: 37 24% 80%;
+  --muted: 220 42% 14%;
+  --muted-foreground: 220 18% 52%;  /* #6B7FA3                     */
+  --accent: 220 42% 14%;
+  --accent-foreground: 37 24% 80%;
+  --destructive: 0 72% 40%;
+  --destructive-foreground: 0 0% 98%;
+  --input: 220 42% 16%;
   --ring: 16 92% 48%;
 
+  /* ── Sidebar dark ───────────────────────────────────────────── */
+  --sidebar: 220 53% 7%;
+  --sidebar-foreground: 37 28% 88%;
+  --sidebar-border: 220 42% 16%;
+  --sidebar-primary: 16 92% 48%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 42% 14%;
+  --sidebar-accent-foreground: 37 24% 80%;
+  --sidebar-ring: 16 92% 48%;
+
+  /* ── Custom ClawTrust palette (landing page + dark-section) ─── */
+  --ocean-deep: #080E1A;
+  --ocean-mid: #0D1829;
+  --ocean-surface: #122035;
+  --shell-white: #EEE8DC;
+  --shell-cream: #C4B99A;
+  --text-muted: #6B7FA3;
+
+  /* ── Derived border colors ──────────────────────────────────── */
   --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-accent-border: hsl(var(--sidebar-accent));
   --primary-border: hsl(var(--primary));
