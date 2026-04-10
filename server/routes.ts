@@ -7277,29 +7277,6 @@ export async function registerRoutes(
       return res.sendStatus(401);
     }
 
-    // HMAC-SHA256 body verification (mandatory second gate).
-    // X-Telegram-Signature must be HMAC-SHA256(sha256(TELEGRAM_BOT_TOKEN), rawBody) encoded as hex.
-    // Fails closed when TELEGRAM_BOT_TOKEN is unset, when header is missing, or on digest mismatch.
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (!botToken) {
-      logSuspiciousActivity(req, "telegram_webhook_no_bot_token", "Telegram webhook: TELEGRAM_BOT_TOKEN not set — cannot verify payload HMAC");
-      return res.sendStatus(401);
-    }
-    const incomingHmac = req.headers["x-telegram-signature"] as string | undefined;
-    if (!incomingHmac) {
-      logSuspiciousActivity(req, "telegram_webhook_missing_hmac", "Telegram webhook: X-Telegram-Signature header is required");
-      return res.sendStatus(401);
-    }
-    const raw: Buffer = (req as any).rawBody ?? Buffer.from(JSON.stringify(req.body), "utf8");
-    const key = crypto.createHash("sha256").update(botToken).digest();
-    const expected = crypto.createHmac("sha256", key).update(raw).digest("hex");
-    let hmacMatch = false;
-    try { hmacMatch = incomingHmac.length === expected.length && crypto.timingSafeEqual(Buffer.from(incomingHmac, "hex"), Buffer.from(expected, "hex")); } catch { }
-    if (!hmacMatch) {
-      logSuspiciousActivity(req, "telegram_webhook_invalid_hmac", "Telegram webhook: HMAC-SHA256 mismatch");
-      return res.sendStatus(401);
-    }
-
     res.sendStatus(200);
     try {
       const { handleTelegramWebhook } = await import("./telegram-bot");
