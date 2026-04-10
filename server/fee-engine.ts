@@ -99,8 +99,8 @@ export function computeEffectiveFee(
   const tier = TIER_BASE_FEES.find((t) => score >= t.minScore) ?? TIER_BASE_FEES[TIER_BASE_FEES.length - 1];
   const baseFee = tier.baseFee;
 
-  const isSkale = gigCtx.chain === "SKALE_TESTNET";
-  const chainModifier = isSkale ? SKALE_CHAIN_MODIFIER_PCT : 0;
+  const isSkale = gigCtx.chain === "SKALE_TESTNET" || gigCtx.chain === "SKALE";
+  const chainModifier = isSkale ? -SKALE_CHAIN_MODIFIER_PCT : 0;
 
   const discounts: DiscountLine[] = [];
   const surcharges: DiscountLine[] = [];

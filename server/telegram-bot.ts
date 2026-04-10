@@ -559,6 +559,11 @@ Top ${sorted.length} agents by FusedScore
           tiers[t] = (tiers[t] || 0) + 1;
         });
 
+        const baseGigsCompleted = allGigs.filter(g => g.status === "completed" && g.chain === "BASE_SEPOLIA").length;
+        const skaleGigsCompleted = allGigs.filter(g => g.status === "completed" && (g.chain === "SKALE_TESTNET" || g.chain === "SKALE")).length;
+        const baseGigsOpen = allGigs.filter(g => g.status === "open" && g.chain === "BASE_SEPOLIA").length;
+        const skaleGigsOpen = allGigs.filter(g => g.status === "open" && (g.chain === "SKALE_TESTNET" || g.chain === "SKALE")).length;
+
         const keyboard = new InlineKeyboard()
           .url("EXPLORE CLAWTRUST", CLAWTRUST_URL)
           .url("🐦 @Clawtrustmolts", "https://x.com/clawtrustmolts");
@@ -586,9 +591,15 @@ Top ${sorted.length} agents by FusedScore
 ✅ Gigs Completed:     <b>${completedGigs}</b>
 💰 USDC Escrowed:      <b>$${formatUSD(totalEscrowed)}</b>
 
+━━━━━━━━━ BY CHAIN ━━━━━━━━━━
+🔵 Base Sepolia
+   Open: <b>${baseGigsOpen}</b> · Done: <b>${baseGigsCompleted}</b>
+🟣 SKALE (zero gas)
+   Open: <b>${skaleGigsOpen}</b> · Done: <b>${skaleGigsCompleted}</b>
+
 ━━━━━━━━━ PROTOCOL ━━━━━━━━━━
-🔵 Base Sepolia (chainId 84532)
-🟣 SKALE zero-gas (chainId 324705682)
+🔵 Base Sepolia · chainId 84532
+🟣 SKALE zero-gas · chainId 324705682
 📋 ERC-8004 · ERC-8183
 💳 USDC payments · On-chain escrow
 🦞 Swarm: 3-of-5 quorum
@@ -893,7 +904,8 @@ clawtrust.org 🦞`,
           const baseFee = computeEffectiveFee(agentFeeCtx, { chain: "BASE_SEPOLIA", budget, skillsRequired: [], isCrewGig: false });
           const skaleFee = computeEffectiveFee(agentFeeCtx, { chain: "SKALE_TESTNET", budget, skillsRequired: [], isCrewGig: false });
           const tier = getTier(agent.fusedScore);
-          const chainMod = skaleFee.breakdown.chainModifier !== 0 ? ` (incl. -${Math.abs(skaleFee.breakdown.chainModifier).toFixed(2)}% chain modifier)` : "";
+          const chainModSign = skaleFee.breakdown.chainModifier < 0 ? "" : "+";
+          const chainModDisplay = skaleFee.breakdown.chainModifier !== 0 ? `${chainModSign}${skaleFee.breakdown.chainModifier.toFixed(2)}%` : "0%";
 
           const keyboard = new InlineKeyboard().url("📊 FULL PROFILE", agentProfileUrl(agent));
           await reply(ctx,
@@ -915,7 +927,7 @@ Agent keeps:   <b>$${baseFee.netAmountUsdc.toFixed(2)} USDC</b>
 
 🟣 SKALE (zero gas)
 Base tier fee: <b>${skaleFee.breakdown.baseFee.toFixed(2)}%</b>
-Chain modifier: <b>-0.25%</b>${chainMod}
+Chain discount: <b>${chainModDisplay}</b>
 Platform fee:  <b>${skaleFee.effectiveFeePct.toFixed(2)}%</b> ($${skaleFee.feeAmountUsdc.toFixed(2)})
 Agent keeps:   <b>$${skaleFee.netAmountUsdc.toFixed(2)} USDC</b>
 

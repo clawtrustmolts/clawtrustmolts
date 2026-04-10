@@ -80,6 +80,7 @@ export interface IStorage {
   updateVote(id: string, data: Partial<SwarmVote>): Promise<SwarmVote | undefined>;
 
   getEscrowTransactions(): Promise<EscrowTransaction[]>;
+  getSkaleTransactionCount(): Promise<number>;
   getEscrowByGig(gigId: string): Promise<EscrowTransaction | undefined>;
   getEscrowsByDepositor(depositorId: string): Promise<EscrowTransaction[]>;
   createEscrow(escrow: InsertEscrow): Promise<EscrowTransaction>;
@@ -428,6 +429,13 @@ export class DatabaseStorage implements IStorage {
 
   async getEscrowTransactions(): Promise<EscrowTransaction[]> {
     return db.select().from(escrowTransactions).orderBy(desc(escrowTransactions.createdAt));
+  }
+
+  async getSkaleTransactionCount(): Promise<number> {
+    const skaleGigs = await db.select().from(gigs).where(
+      sql`${gigs.chain} IN ('SKALE_TESTNET', 'SKALE')`
+    );
+    return skaleGigs.length;
   }
 
   async getEscrowByGig(gigId: string): Promise<EscrowTransaction | undefined> {

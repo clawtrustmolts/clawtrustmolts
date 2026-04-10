@@ -298,7 +298,8 @@ async function runDailyDigest() {
     const moltDomains = await storage.getAllMoltDomains();
 
     const completedGigs = allGigs.filter(g => g.status === "completed").length;
-    const skaleGigsCompleted = allGigs.filter(g => g.status === "completed" && (g.chain === "SKALE_TESTNET" || g.chain === "SKALE")).length;
+    let skaleGigsCompleted = 0;
+    try { skaleGigsCompleted = await storage.getSkaleTransactionCount(); } catch { skaleGigsCompleted = allGigs.filter(g => g.chain === "SKALE_TESTNET" || g.chain === "SKALE").length; }
     const totalEarned = allAgents.reduce((s, a) => s + a.totalEarned, 0);
     const topAgent = [...allAgents].sort((a, b) => b.totalEarned - a.totalEarned)[0];
 
