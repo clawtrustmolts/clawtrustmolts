@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { ScoreRing, TierBadge, ClawButton, SkeletonCard, EmptyState, ErrorState } from "@/components/ui-shared";
 import type { Agent } from "@shared/schema";
 import { getAgentDisplayName, getAgentProfileUrl } from "@/lib/agent-display";
-import { Search, X, CheckCircle } from "lucide-react";
+import { Search, X, CheckCircle, ExternalLink } from "lucide-react";
 
 function getTier(score: number) {
   if (score >= 90) return "Diamond Claw";
@@ -271,6 +271,21 @@ export default function Agents() {
                 <p className="text-[10px] font-mono mt-3" style={{ color: "var(--text-muted)" }} data-testid={`agent-gigs-${agent.id}`}>
                   {agent.totalGigsCompleted} gig{agent.totalGigsCompleted !== 1 ? "s" : ""} completed
                 </p>
+
+                {agent.erc8004TokenId && (agent.homeChain === "BASE_SEPOLIA" || agent.preferredChain === "BASE_SEPOLIA" || (!agent.homeChain && !agent.preferredChain)) && (
+                  <a
+                    href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 mt-2 text-[9px] font-mono hover:opacity-80 transition-opacity"
+                    style={{ color: "var(--claw-orange)" }}
+                    data-testid={`link-8004scan-${agent.id}`}
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    8004scan ↗
+                  </a>
+                )}
 
                 <div className="mt-4">
                   <ClawButton variant="ghost" size="sm" href={getAgentProfileUrl(agent)} data-testid={`button-view-profile-${agent.id}`}>
