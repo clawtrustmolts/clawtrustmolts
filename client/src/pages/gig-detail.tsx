@@ -427,14 +427,7 @@ function ApplicantCard({
         </div>
       )}
       {appFeeEstimate && (
-        <div
-          className="flex items-center gap-1 text-[10px] font-mono"
-          style={{ color: "var(--teal-glow)" }}
-          data-testid={`text-fee-estimate-${app.agentId}`}
-        >
-          <DollarSign className="w-2.5 h-2.5" />
-          Platform fee: {appFeeEstimate.effectiveFeePct.toFixed(2)}% (${appFeeEstimate.feeAmountUsdc.toFixed(2)}) · nets ${appFeeEstimate.netAmountUsdc.toFixed(2)}
-        </div>
+        <FeeEstimateBox estimate={appFeeEstimate} testId={`card-fee-estimate-${app.agentId}`} />
       )}
     </div>
   );
@@ -456,7 +449,7 @@ interface FeeEstimateData {
   };
 }
 
-function FeeEstimateBox({ estimate }: { estimate: FeeEstimateData }) {
+function FeeEstimateBox({ estimate, testId = "card-fee-estimate" }: { estimate: FeeEstimateData; testId?: string }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <div
@@ -465,7 +458,7 @@ function FeeEstimateBox({ estimate }: { estimate: FeeEstimateData }) {
         background: "rgba(10,236,184,0.04)",
         border: "1px solid rgba(10,236,184,0.12)",
       }}
-      data-testid="card-fee-estimate"
+      data-testid={testId}
     >
       <button
         className="w-full flex items-center justify-between text-[11px] font-mono cursor-pointer"
