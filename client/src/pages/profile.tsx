@@ -2945,20 +2945,24 @@ function OverviewTab({
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>ClawCard Contract</span>
               <a
-                href="https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4"
+                href={agent.preferredChain === "SKALE_TESTNET"
+                  ? "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83"
+                  : "https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 hover:opacity-70 transition-opacity"
                 style={{ color: "var(--shell-cream)" }}
                 data-testid="link-basescan-contract"
               >
-                0xf24e41...342C4 <ExternalLink className="w-2.5 h-2.5" />
+                {agent.preferredChain === "SKALE_TESTNET" ? "0xdB7F6c...cb83" : "0xf24e41...342C4"} <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Rep Registry</span>
               <a
-                href="https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"
+                href={agent.preferredChain === "SKALE_TESTNET"
+                  ? "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"
+                  : "https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 hover:opacity-70 transition-opacity"
@@ -2969,7 +2973,9 @@ function OverviewTab({
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Network</span>
-              <span style={{ color: "var(--teal-glow)" }}>Base Sepolia · Chain 84532</span>
+              <span style={{ color: agent.preferredChain === "SKALE_TESTNET" ? "#a78bfa" : "var(--teal-glow)" }}>
+                {agent.preferredChain === "SKALE_TESTNET" ? "SKALE · Chain 324705682" : "Base Sepolia · Chain 84532"}
+              </span>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Verified</span>
@@ -2980,14 +2986,17 @@ function OverviewTab({
           </div>
           <div className="mt-4 pt-3 border-t" style={{ borderColor: "rgba(10, 236, 184, 0.15)" }}>
             <a
-              href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
+              href={agent.preferredChain === "SKALE_TESTNET"
+                ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${erc8004.tokenId}`
+                : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[10px] font-mono flex items-center gap-1.5 hover:opacity-70 transition-opacity"
-              style={{ color: "var(--teal-glow)" }}
+              style={{ color: agent.preferredChain === "SKALE_TESTNET" ? "#a78bfa" : "var(--teal-glow)" }}
               data-testid="link-basescan-passport"
             >
-              <ExternalLink className="w-3 h-3" /> View full passport on BaseScan ↗
+              <ExternalLink className="w-3 h-3" />
+              {agent.preferredChain === "SKALE_TESTNET" ? "View full passport on SKALE Explorer ↗" : "View full passport on BaseScan ↗"}
             </a>
           </div>
 
@@ -4508,8 +4517,17 @@ function CommerceTab({
   isLoading: boolean;
 }) {
   const [commerceSubTab, setCommerceSubTab] = useState<"posted" | "taken">("posted");
+  const isSkale = agent.preferredChain === "SKALE_TESTNET";
+  const explorerBase = isSkale
+    ? "https://base-sepolia-testnet-explorer.skalenodes.com"
+    : "https://sepolia.basescan.org";
+  const explorerLabel = isSkale ? "SKALE Explorer" : "Basescan";
   const contractAddress = info?.contractAddress || stats?.contractAddress || "0x1933D67CDB911653765e84758f47c60A1E868bC0";
-  const basescanUrl = info?.basescanUrl || stats?.basescanUrl || `https://sepolia.basescan.org/address/${contractAddress}`;
+  const basescanUrl = info?.basescanUrl
+    ? (isSkale ? `${explorerBase}/address/${contractAddress}` : info.basescanUrl)
+    : stats?.basescanUrl
+      ? (isSkale ? `${explorerBase}/address/${contractAddress}` : stats.basescanUrl)
+      : `${explorerBase}/address/${contractAddress}`;
   const isRegistered = agentCheck?.isRegisteredAgent ?? false;
 
   const erc8183StatusMap: Record<string, { label: string; bg: string; color: string }> = {
@@ -4748,8 +4766,8 @@ function CommerceTab({
               const currency = item.budgetUsdc != null ? "USDC" : (item.currency ?? "USDC");
               const href = isRealData ? `/commerce?job=${item.id}` : `/gig/${item.id}`;
               const basescanHref = item.txHashCreated
-                ? `https://sepolia.basescan.org/tx/${item.txHashCreated}`
-                : `https://sepolia.basescan.org/address/${contractAddress}`;
+                ? `${explorerBase}/tx/${item.txHashCreated}`
+                : `${explorerBase}/address/${contractAddress}`;
 
               return (
                 <div
@@ -4794,7 +4812,7 @@ function CommerceTab({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex-shrink-0 ml-2 p-1 rounded-sm transition-opacity hover:opacity-70"
-                    title="View on Basescan"
+                    title={`View on ${explorerLabel}`}
                     data-testid={`commerce-basescan-${item.id}`}
                   >
                     <ExternalLink className="w-3.5 h-3.5" style={{ color: "#0052FF" }} />
@@ -4818,7 +4836,9 @@ function CommerceTab({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Chain</span>
-              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>Base Sepolia (84532)</span>
+              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>
+                {isSkale ? "SKALE Base Sepolia (324705682)" : "Base Sepolia (84532)"}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Platform Fee</span>
