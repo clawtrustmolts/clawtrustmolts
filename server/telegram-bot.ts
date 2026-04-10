@@ -879,15 +879,21 @@ clawtrust.org 🦞`,
 
     bot.command("fee", async (ctx) => {
       try {
-        const query = ctx.match?.trim();
+        const raw = ctx.match?.trim() || "";
+        const parts = raw.split(/\s+/);
+        const agentQuery = parts[0] || "";
+        const amountRaw = parts[1] ? parseFloat(parts[1]) : NaN;
+        const budget = !isNaN(amountRaw) && amountRaw > 0 ? amountRaw : 100;
+
         let agent: any = null;
-        if (query) agent = await lookupAgent(query);
+        if (agentQuery) agent = await lookupAgent(agentQuery);
 
         if (agent) {
           const agentFeeCtx = { fusedScore: agent.fusedScore, totalGigsCompleted: agent.totalGigsCompleted || 0, availableBond: agent.availableBond || 0, skills: [] };
-          const baseFee = computeEffectiveFee(agentFeeCtx, { chain: "BASE_SEPOLIA", budget: 100, skillsRequired: [], isCrewGig: false });
-          const skaleFee = computeEffectiveFee(agentFeeCtx, { chain: "SKALE_TESTNET", budget: 100, skillsRequired: [], isCrewGig: false });
+          const baseFee = computeEffectiveFee(agentFeeCtx, { chain: "BASE_SEPOLIA", budget, skillsRequired: [], isCrewGig: false });
+          const skaleFee = computeEffectiveFee(agentFeeCtx, { chain: "SKALE_TESTNET", budget, skillsRequired: [], isCrewGig: false });
           const tier = getTier(agent.fusedScore);
+          const chainMod = skaleFee.breakdown.chainModifier !== 0 ? ` (incl. -${Math.abs(skaleFee.breakdown.chainModifier).toFixed(2)}% chain modifier)` : "";
 
           const keyboard = new InlineKeyboard().url("📊 FULL PROFILE", agentProfileUrl(agent));
           await reply(ctx,
@@ -898,16 +904,20 @@ clawtrust.org 🦞`,
 Agent: <b>${agentName(agent)}</b>
 Tier: <b>${tier}</b> ${tierEmoji(tier)}
 FusedScore: <b>${agent.fusedScore}/100</b>
+Gig amount: <b>${budget} USDC</b>
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🔵 BASE SEPOLIA
-Platform fee: <b>${baseFee.effectiveFeePct.toFixed(2)}%</b>
-On a 100 USDC gig: keeps <b>$${baseFee.netAmountUsdc.toFixed(2)}</b>
+Base tier fee: <b>${baseFee.breakdown.baseFee.toFixed(2)}%</b>
+Platform fee:  <b>${baseFee.effectiveFeePct.toFixed(2)}%</b> ($${baseFee.feeAmountUsdc.toFixed(2)})
+Agent keeps:   <b>$${baseFee.netAmountUsdc.toFixed(2)} USDC</b>
 
 🟣 SKALE (zero gas)
-Platform fee: <b>${skaleFee.effectiveFeePct.toFixed(2)}%</b>
-On a 100 USDC gig: keeps <b>$${skaleFee.netAmountUsdc.toFixed(2)}</b>
+Base tier fee: <b>${skaleFee.breakdown.baseFee.toFixed(2)}%</b>
+Chain modifier: <b>-0.25%</b>${chainMod}
+Platform fee:  <b>${skaleFee.effectiveFeePct.toFixed(2)}%</b> ($${skaleFee.feeAmountUsdc.toFixed(2)})
+Agent keeps:   <b>$${skaleFee.netAmountUsdc.toFixed(2)} USDC</b>
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -934,17 +944,17 @@ Your tier = your fee rate.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 EXTRA DISCOUNTS
-→ T2+ skill match: -0.25%
-→ 10+ gigs done:   -0.25%
-→ 25+ gigs done:   -0.50%
-→ Bond $10+:       -0.15%
-→ Bond $100+:      -0.25%
-→ Bond $500+:      -0.40%
-→ SKALE chain:     -0.25%
+→ T2+ skill match:  -0.25%
+→ 10+ gigs done:    -0.25%
+→ 25+ gigs done:    -0.50%
+→ Bond $10+:        -0.15%
+→ Bond $100+:       -0.25%
+→ Bond $500+:       -0.40%
+→ SKALE chain:      -0.25%
 
 Floor: 0.50% · Ceiling: 3.50%
 
-Use <code>/fee jarvis.molt</code> for a personal quote 🦞`
+Use <code>/fee jarvis.molt 500</code> for an exact quote 🦞`
           );
         }
       } catch (err) {
@@ -1062,7 +1072,7 @@ in the agent economy. 🦞`,
         const allAgents = await storage.getAgents();
         const topEarners = [...allAgents]
           .sort((a, b) => b.totalEarned - a.totalEarned)
-          .slice(0, 10);
+          .slice(0, 5);
 
         let text =
 `┌─────────────────────────────┐
@@ -1071,14 +1081,13 @@ in the agent economy. 🦞`,
 
 Ranked by total USDC earned
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-        const medals = ["🥇", "🥈", "🥉"];
+        const medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"];
         for (let i = 0; i < topEarners.length; i++) {
           const a = topEarners[i];
-          const prefix = medals[i] || `#${i + 1}`;
-          const name = agentName(a).slice(0, 16).padEnd(16);
-          text += `${prefix} <b>${name}</b> ${formatUSD(a.totalEarned)} USDC\n`;
+          const name = agentName(a).slice(0, 14);
+          text += `${medals[i]} <b>${name}</b>\n   ${formatUSD(a.totalEarned)} USDC · ${a.totalGigsCompleted} gigs ${tierEmoji(getTier(a.fusedScore))}\n`;
         }
 
         text += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nEvery USDC is verifiable on-chain.\nclawtrust.org 🦞`;

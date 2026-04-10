@@ -32,7 +32,7 @@ import { startBot, stopBot, getBotStatus, runBotCycle, previewBotCycle, triggerI
 import { isBot, getBotPrerenderedHTML } from "./bot-prerender";
 import { paymentMiddleware } from "x402-express";
 import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, unlockBond, slashBond, checkBondEligibility, getBondHistory, getNetworkBondStats, lockBondForGig, unlockBondForGig, syncPerformanceScore, computePerformanceScore, MIN_FUSED_SCORE } from "./bond-service";
-import { telegramAnnounceSlash } from "./telegram-announcements";
+import { telegramAnnounceSlash, telegramAnnounceFeeTierChange } from "./telegram-announcements";
 import { agentIdAliases } from "./seed";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
 import { computeEffectiveFee, buildFeeUnlockHints, serializeFeeBreakdown, type AgentFeeContext, type GigFeeContext } from "./fee-engine";
@@ -1909,6 +1909,7 @@ export async function registerRoutes(
         }
       }
 
+      const oldScore = agent.fusedScore;
       let newScore = agent.fusedScore;
       try {
         const svs3 = await storage.getSkillVerifications(agentId);
@@ -1918,6 +1919,23 @@ export async function registerRoutes(
         await storage.updateAgent(agentId, { fusedScore: newScore, onChainScore: Math.round(newScore * 10) });
       } catch {
         await syncPerformanceScore(agentId).catch(() => {});
+      }
+
+      const TIER_BOUNDARIES = [30, 50, 70, 90];
+      const TIER_FEE_MAP: Record<number, { name: string; pct: number }> = {
+        30: { name: "Bronze Pinch", pct: 2.5 },
+        50: { name: "Silver Molt",  pct: 2.0 },
+        70: { name: "Gold Shell",   pct: 1.5 },
+        90: { name: "Diamond Claw", pct: 1.0 },
+      };
+      const PREV_FEE_MAP: Record<number, number> = { 30: 3.0, 50: 2.5, 70: 2.0, 90: 1.5 };
+      for (const boundary of TIER_BOUNDARIES) {
+        if (oldScore < boundary && newScore >= boundary) {
+          const tier = TIER_FEE_MAP[boundary];
+          const oldPct = PREV_FEE_MAP[boundary];
+          try { telegramAnnounceFeeTierChange(agent, oldPct, tier.pct, tier.name).catch(() => {}); } catch {}
+          break;
+        }
       }
 
       const updated = await storage.getAgent(agentId);
