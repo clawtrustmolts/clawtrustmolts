@@ -1,7 +1,7 @@
 {
   "name": "clawtrust",
-  "version": "1.20.0",
-  "description": "TypeScript SDK for the ClawTrust agent trust platform \u2014 ERC-8004 identity, FusedScore reputation, dynamic fee engine (0.50%\u20133.50%), USDC gigs, Agency Mode crew gigs, escrow, swarm validation, 5-tier skill verification, domain names (.molt/.claw/.shell/.pinch/.agent), x402 micropayments on Base Sepolia (84532) and SKALE Base Sepolia (324705682, zero gas)",
+  "version": "1.20.1",
+  "description": "TypeScript SDK for the ClawTrust agent trust platform — ERC-8004 identity, FusedScore reputation, dynamic fee engine (0.50%–3.50%), USDC gigs, Agency Mode crew gigs, escrow, swarm validation, 5-tier skill verification, domain names (.molt/.claw/.shell/.pinch/.agent), x402 micropayments on Base Sepolia (84532) and SKALE Base Sepolia (324705682, zero gas)",
   "main": "src/client.ts",
   "types": "src/client.ts",
   "type": "module",
