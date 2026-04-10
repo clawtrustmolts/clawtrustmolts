@@ -107,9 +107,12 @@ interface GigsResponse {
 
 interface FollowEntry {
   id: string;
-  handle: string;
+  followerAgentId?: string;
+  followedAgentId?: string;
+  handle?: string;
   avatar?: string | null;
   fusedScore?: number;
+  agent?: { id: string; handle: string; fusedScore?: number } | null;
 }
 
 interface FollowersResponse {
@@ -321,6 +324,75 @@ export default function ProfilePage() {
   const isAgentLoading = isMoltDomain ? moltLoading : agentLoading;
   const isAgentError = isMoltDomain ? moltError : agentError;
 
+  const followQKey = ["/api/agents", agentId, "followers"];
+
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/agents/${agentId}/follow`, {}, { "x-agent-id": myAgentId || "" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || "Follow failed");
+      }
+      return res.json();
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: followQKey });
+      const prev = queryClient.getQueryData<FollowersResponse>(followQKey);
+      queryClient.setQueryData<FollowersResponse>(followQKey, (old) => {
+        if (!old || !myAgentId) return old;
+        const alreadyIn = old.followers.some(f => f.followerAgentId === myAgentId);
+        if (alreadyIn) return old;
+        const optimisticEntry: FollowEntry = { id: `optimistic-${myAgentId}`, followerAgentId: myAgentId };
+        return {
+          followers: [...old.followers, optimisticEntry],
+          count: old.count + 1,
+        };
+      });
+      return { prev };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: followQKey });
+      toast({ title: "Following", description: `You are now following this agent.` });
+    },
+    onError: (err: any, _v, ctx) => {
+      if (ctx?.prev !== undefined) queryClient.setQueryData(followQKey, ctx.prev);
+      toast({ title: "Follow failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const unfollowMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/agents/${agentId}/follow`, {}, { "x-agent-id": myAgentId || "" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || "Unfollow failed");
+      }
+      return res.json();
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: followQKey });
+      const prev = queryClient.getQueryData<FollowersResponse>(followQKey);
+      queryClient.setQueryData<FollowersResponse>(followQKey, (old) => {
+        if (!old || !myAgentId) return old;
+        const isPresent = old.followers.some(f => f.followerAgentId === myAgentId);
+        if (!isPresent) return old;
+        return {
+          followers: old.followers.filter(f => f.followerAgentId !== myAgentId),
+          count: Math.max(0, old.count - 1),
+        };
+      });
+      return { prev };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: followQKey });
+      toast({ title: "Unfollowed", description: "You unfollowed this agent." });
+    },
+    onError: (err: any, _v, ctx) => {
+      if (ctx?.prev !== undefined) queryClient.setQueryData(followQKey, ctx.prev);
+      toast({ title: "Unfollow failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const { data: moltInfo } = useQuery<{ moltDomain: string | null; record: { foundingMoltNumber: number | null } | null }>({
     queryKey: ["/api/agents", agentId, "molt-info"],
     enabled: !!agentId,
@@ -441,7 +513,14 @@ export default function ProfilePage() {
       githubProfileUrl: string | null;
       portfolioUrl: string | null;
       challengeScore: number | null;
-    }>
+      tier: number;
+      tierLabel: string;
+      tierBadge: string;
+      tierProofs: Record<string, any>;
+      nextUpgrade: string;
+    }>;
+    tierBonus: number;
+    maxTierBonus: number;
   }>({
     queryKey: ["/api/agents", agentId, "skill-verifications"],
     enabled: !!agentId,
@@ -487,6 +566,11 @@ export default function ProfilePage() {
   }>({
     queryKey: ["/api/erc8183/info"],
     enabled: activeTab === "commerce",
+  });
+
+  const { data: feeProfileData } = useQuery<FeeProfileData>({
+    queryKey: ["/api/agents", agentId, "fee-profile"],
+    enabled: !!agentId,
   });
 
   const { data: erc8183AgentCheck, isLoading: isErc8183AgentCheckLoading } = useQuery<{ wallet: string; isRegisteredAgent: boolean }>({
@@ -662,16 +746,41 @@ export default function ProfilePage() {
                 🛂 AGENT PASSPORT
               </span>
               {agent.erc8004TokenId ? (
-                <a
-                  href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
-                  style={{ color: "var(--teal-glow)" }}
-                  data-testid="link-passport-stamp"
-                >
-                  NFT #{agent.erc8004TokenId} <ExternalLink className="w-2.5 h-2.5" />
-                </a>
+                <div className="flex flex-col items-end gap-0.5">
+                  <a
+                    href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
+                    style={{ color: "var(--teal-glow)" }}
+                    data-testid="link-passport-stamp"
+                  >
+                    NFT #{agent.erc8004TokenId} <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                  {agent.preferredChain === "SKALE_TESTNET" ? (
+                    <a
+                      href={`https://base-sepolia-testnet-explorer.skalenodes.com/address/${agent.walletAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[8px] font-mono flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+                      style={{ color: "#a78bfa" }}
+                      data-testid="link-skale-explorer-stamp"
+                    >
+                      SKALE ↗
+                    </a>
+                  ) : (
+                    <a
+                      href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[8px] font-mono flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+                      style={{ color: "var(--claw-orange)" }}
+                      data-testid="link-8004scan-stamp"
+                    >
+                      8004scan ↗
+                    </a>
+                  )}
+                </div>
               ) : (
                 <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>NOT MINTED</span>
               )}
@@ -827,14 +936,30 @@ export default function ProfilePage() {
                     Hire This Agent
                   </button>
                 </Link>
-                <button
-                  className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
-                  style={{ background: "rgba(0,0,0,0.12)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
-                  data-testid="button-follow"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  Follow
-                </button>
+                {(() => {
+                  const isOwnProfile = myAgentId === agent.id;
+                  const isFollowing = !isOwnProfile && (followersData?.followers?.some(f => f.followerAgentId === myAgentId) ?? false);
+                  const isFollowPending = followMutation.isPending || unfollowMutation.isPending;
+                  const canFollow = !!myAgentId && !isOwnProfile;
+                  return (
+                    <button
+                      className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                      style={{
+                        background: isFollowing ? "rgba(10,236,184,0.1)" : "rgba(0,0,0,0.12)",
+                        color: isFollowing ? "var(--teal-glow)" : "var(--text-muted)",
+                        border: isFollowing ? "1px solid rgba(10,236,184,0.25)" : "1px solid rgba(255,255,255,0.08)",
+                        opacity: (!canFollow || isFollowPending) ? 0.4 : 1,
+                        cursor: canFollow ? "pointer" : "default",
+                      }}
+                      disabled={!canFollow || isFollowPending}
+                      onClick={() => canFollow && (isFollowing ? unfollowMutation.mutate() : followMutation.mutate())}
+                      data-testid="button-follow"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      {isFollowing ? "Unfollow" : "Follow"}
+                    </button>
+                  );
+                })()}
                 <Link href={`/messages?agentId=${agent.id}`} className="col-span-1">
                   <button
                     className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
@@ -1047,6 +1172,8 @@ export default function ProfilePage() {
                 <ScoreBar label="Ecosystem" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="15%" />
               </div>
 
+              {feeProfileData && <FeeProfileCard data={feeProfileData} isOwner={myAgentId === agent.id} />}
+
               <div className="space-y-1.5 pt-1">
                 {agent.moltbookLink && (
                   <a
@@ -1084,10 +1211,12 @@ export default function ProfilePage() {
                         return d.onChainTxHash ? (
                           <a
                             key={d.id}
-                            href={`https://sepolia.basescan.org/tx/${d.onChainTxHash}`}
+                            href={agent.preferredChain === "SKALE_TESTNET"
+                              ? `https://base-sepolia-testnet-explorer.skalenodes.com/tx/${d.onChainTxHash}`
+                              : `https://sepolia.basescan.org/tx/${d.onChainTxHash}`}
                             target="_blank" rel="noopener noreferrer"
                             className="hover:opacity-80 transition-opacity"
-                            title="View on Basescan"
+                            title={agent.preferredChain === "SKALE_TESTNET" ? "View on SKALE Explorer" : "View on Basescan"}
                           >
                             {badge}
                           </a>
@@ -1212,7 +1341,9 @@ export default function ProfilePage() {
                   </div>
                   <div className="mt-2 pt-2 flex items-center justify-between gap-2" style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}>
                     <span className="text-[8px] font-mono truncate" style={{ color: "var(--text-muted)" }}>
-                      0xf24e41980ed48576Eb379D2116C1AaD075B342C4
+                      {agent.preferredChain === "SKALE_TESTNET"
+                        ? "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83"
+                        : "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}
                     </span>
                     <span className="text-[8px] font-mono flex-shrink-0 px-1 py-0.5 rounded-sm" style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)" }}>
                       ✓ ON-CHAIN
@@ -1247,6 +1378,34 @@ export default function ProfilePage() {
                     </button>
                   </div>
                 </div>
+              )}
+
+              {agent.erc8004TokenId && (
+                agent.preferredChain === "SKALE_TESTNET" ? (
+                  <a
+                    href={`https://base-sepolia-testnet-explorer.skalenodes.com/address/${agent.walletAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-[10px] font-mono hover:opacity-80 transition-opacity"
+                    style={{ color: "#a78bfa" }}
+                    data-testid="link-skale-explorer-nft-card"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    View on SKALE Explorer ↗
+                  </a>
+                ) : (
+                  <a
+                    href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-[10px] font-mono hover:opacity-80 transition-opacity"
+                    style={{ color: "var(--claw-orange)" }}
+                    data-testid="link-8004scan-nft-card"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    View on 8004scan ↗
+                  </a>
+                )
               )}
 
               {/* PROOF OF WORK */}
@@ -1419,6 +1578,19 @@ export default function ProfilePage() {
                     <ExternalLink className="w-2.5 h-2.5" />
                     {agent.preferredChain === "SKALE_TESTNET" ? `NFT #${agent.erc8004TokenId} on SKALE ↗` : `NFT #${agent.erc8004TokenId} on BaseScan ↗`}
                   </a>
+                  {(agent.homeChain === "BASE_SEPOLIA" || agent.preferredChain === "BASE_SEPOLIA" || (!agent.homeChain && !agent.preferredChain)) && (
+                    <a
+                      href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
+                      style={{ color: "var(--claw-orange)" }}
+                      data-testid="link-8004scan"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5" />
+                      View on 8004scan ↗
+                    </a>
+                  )}
                   <a
                     href={`/passport?wallet=${agent.walletAddress}`}
                     className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
@@ -1509,6 +1681,7 @@ export default function ProfilePage() {
               displayedGigs={displayedGigs}
               postedCount={postedGigs.length}
               assignedCount={assignedGigs.length}
+              agentId={agent.id}
             />
           )}
           {activeTab === "bond" && (
@@ -1519,6 +1692,8 @@ export default function ProfilePage() {
               isOwnProfile={myAgentId === agent.id}
               skillVerifications={skillVerificationsData?.skills ?? []}
               onSkillVerified={refetchSkillVerifications}
+              tierBonus={skillVerificationsData?.tierBonus}
+              maxTierBonus={skillVerificationsData?.maxTierBonus}
             />
           )}
           {activeTab === "reviews" && (
@@ -1860,6 +2035,174 @@ function ProofOfWorkSection({ agentId, receipts, mcpSkills, proofUris }: {
   );
 }
 
+interface FeeBreakdownData {
+  fusedScore: number;
+  tierName: string;
+  baseFee: number;
+  chainModifier: number;
+  chain: string;
+  discounts: Array<{ label: string; amount: number }>;
+  surcharges: Array<{ label: string; amount: number }>;
+  totalDiscount: number;
+  totalSurcharge: number;
+  subtotal: number;
+  effectiveFee: number;
+  floor: number;
+  ceiling: number;
+  clamped: boolean;
+}
+
+interface ChainFeeEntry {
+  effectiveFeePct: number;
+  breakdown: FeeBreakdownData;
+}
+
+interface FeeProfileData {
+  agentId: string;
+  handle: string;
+  fusedScore: number;
+  totalGigsCompleted: number;
+  availableBond: number;
+  verifiedSkillCount: number;
+  chains: {
+    BASE_SEPOLIA: ChainFeeEntry;
+    SKALE_TESTNET: ChainFeeEntry;
+    BASE_SEPOLIA_CREW: ChainFeeEntry;
+  };
+  unlockHints: Array<{ action: string; saving: number }>;
+}
+
+function FeeChainDetail({ entry, selectedChain }: { entry: ChainFeeEntry; selectedChain: string }) {
+  const bd = entry.breakdown;
+  const discounts = bd.discounts ?? [];
+  const surcharges = bd.surcharges ?? [];
+
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-[10px] font-mono">
+        <span style={{ color: "var(--text-muted)" }}>FusedScore tier</span>
+        <span style={{ color: "var(--shell-white)" }}>{bd.tierName} ({bd.fusedScore})</span>
+      </div>
+      <div className="flex justify-between text-[10px] font-mono">
+        <span style={{ color: "var(--text-muted)" }}>Base fee</span>
+        <span style={{ color: "var(--shell-white)" }}>{bd.baseFee.toFixed(2)}%</span>
+      </div>
+      {(bd.chainModifier ?? 0) > 0 && (
+        <div className="flex justify-between text-[10px] font-mono">
+          <span style={{ color: "var(--text-muted)" }}>SKALE chain modifier</span>
+          <span style={{ color: "var(--claw-amber)" }}>+{bd.chainModifier.toFixed(2)}%</span>
+        </div>
+      )}
+      {discounts.map((d, i) => (
+        <div key={i} className="flex justify-between text-[10px] font-mono">
+          <span style={{ color: "var(--text-muted)" }}>{d.label}</span>
+          <span style={{ color: "#22c55e" }}>−{d.amount.toFixed(2)}%</span>
+        </div>
+      ))}
+      {surcharges.map((s, i) => (
+        <div key={i} className="flex justify-between text-[10px] font-mono">
+          <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
+          <span style={{ color: "var(--claw-amber)" }}>+{s.amount.toFixed(2)}%</span>
+        </div>
+      ))}
+      <div
+        className="flex justify-between text-[10px] font-mono pt-1"
+        style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
+      >
+        <span style={{ color: "var(--text-muted)" }}>Effective fee</span>
+        <span style={{ color: "var(--teal-glow)", fontWeight: 600 }}>{entry.effectiveFeePct.toFixed(2)}%</span>
+      </div>
+    </div>
+  );
+}
+
+function FeeProfileCard({ data, isOwner }: { data: FeeProfileData; isOwner: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const [selectedChain, setSelectedChain] = useState<"BASE_SEPOLIA" | "SKALE_TESTNET" | "BASE_SEPOLIA_CREW">("BASE_SEPOLIA");
+
+  return (
+    <div
+      className="rounded-sm overflow-hidden"
+      style={{ border: "1px solid rgba(10,236,184,0.14)", background: "rgba(10,236,184,0.03)" }}
+      data-testid="card-fee-profile"
+    >
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-3 py-2"
+        onClick={() => setExpanded((v) => !v)}
+        data-testid="button-fee-profile-toggle"
+      >
+        <div className="flex items-center gap-2">
+          <DollarSign className="w-3.5 h-3.5" style={{ color: "var(--teal-glow)" }} />
+          <span className="text-[11px] font-mono uppercase tracking-wide" style={{ color: "var(--teal-glow)" }}>
+            Fee Profile
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+            Base{" "}
+            <span className="font-bold" style={{ color: "var(--shell-white)" }} data-testid="text-fee-base-pct">
+              {data.chains.BASE_SEPOLIA.effectiveFeePct.toFixed(2)}%
+            </span>
+            {" "}· SKALE{" "}
+            <span className="font-bold" style={{ color: "var(--shell-white)" }} data-testid="text-fee-skale-pct">
+              {data.chains.SKALE_TESTNET.effectiveFeePct.toFixed(2)}%
+            </span>
+          </span>
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            {expanded ? "▲" : "▼"}
+          </span>
+        </div>
+      </button>
+
+      {expanded && (
+        <div
+          className="px-3 pb-3 space-y-3"
+          style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
+        >
+          <div className="flex gap-1 pt-2">
+            {(["BASE_SEPOLIA", "SKALE_TESTNET", "BASE_SEPOLIA_CREW"] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setSelectedChain(c)}
+                className="flex-1 text-[9px] font-mono uppercase px-1 py-1 rounded-sm transition-colors"
+                style={{
+                  background: selectedChain === c ? "rgba(10,236,184,0.15)" : "transparent",
+                  color: selectedChain === c ? "var(--teal-glow)" : "var(--text-muted)",
+                  border: selectedChain === c ? "1px solid rgba(10,236,184,0.3)" : "1px solid transparent",
+                }}
+                data-testid={`button-fee-chain-${c.toLowerCase()}`}
+              >
+                {c === "BASE_SEPOLIA" ? "Base" : c === "SKALE_TESTNET" ? "SKALE" : "Crew +Surcharge"}
+              </button>
+            ))}
+          </div>
+
+          <FeeChainDetail entry={data.chains[selectedChain]} selectedChain={selectedChain} />
+
+          {isOwner && data.unlockHints.length > 0 && (
+            <div
+              className="rounded-sm px-2.5 py-2 space-y-1"
+              style={{ background: "rgba(232,84,10,0.05)", border: "1px solid rgba(232,84,10,0.15)" }}
+              data-testid="fee-unlock-hints"
+            >
+              <p className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--claw-amber)" }}>
+                Reduce your fees
+              </p>
+              {data.unlockHints.slice(0, 3).map((h, i) => (
+                <p key={i} className="text-[10px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                  • {h.action}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -1900,7 +2243,7 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
             <div className="space-y-1">
               {[
                 { label: "Performance", desc: "Gigs completed, dispute rate, repeat hires — swarm verified" },
-                { label: "On-Chain", desc: "Feedback scores recorded by ClawTrustRepAdapter on Base Sepolia" },
+                { label: "On-Chain", desc: `Feedback scores recorded by ClawTrustRepAdapter on ${agent.preferredChain === "SKALE_TESTNET" ? "SKALE" : "Base Sepolia"}` },
                 { label: "Bond", desc: "USDC bond held vs. slashes applied" },
                 { label: "Ecosystem", desc: "Social karma from Moltbook profile + viral bonus" },
               ].map(item => (
@@ -2139,6 +2482,18 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
                 data-testid="link-base-nft-owner"
               >
                 <ExternalLink className="w-2.5 h-2.5" /> Token #{agent.erc8004TokenId} on BaseScan ↗
+              </a>
+            )}
+            {agent.erc8004TokenId && (agent.homeChain === "BASE_SEPOLIA" || agent.preferredChain === "BASE_SEPOLIA" || (!agent.homeChain && !agent.preferredChain)) && (
+              <a
+                href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[9px] font-mono hover:opacity-70 transition-opacity"
+                style={{ color: "var(--claw-orange)" }}
+                data-testid="link-8004scan-mobile"
+              >
+                <ExternalLink className="w-2.5 h-2.5" /> View on 8004scan ↗
               </a>
             )}
           </div>
@@ -2590,20 +2945,24 @@ function OverviewTab({
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>ClawCard Contract</span>
               <a
-                href="https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4"
+                href={agent.preferredChain === "SKALE_TESTNET"
+                  ? "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83"
+                  : "https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 hover:opacity-70 transition-opacity"
                 style={{ color: "var(--shell-cream)" }}
                 data-testid="link-basescan-contract"
               >
-                0xf24e41...342C4 <ExternalLink className="w-2.5 h-2.5" />
+                {agent.preferredChain === "SKALE_TESTNET" ? "0xdB7F6c...cb83" : "0xf24e41...342C4"} <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Rep Registry</span>
               <a
-                href="https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"
+                href={agent.preferredChain === "SKALE_TESTNET"
+                  ? "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"
+                  : "https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 hover:opacity-70 transition-opacity"
@@ -2614,7 +2973,9 @@ function OverviewTab({
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Network</span>
-              <span style={{ color: "var(--teal-glow)" }}>Base Sepolia · Chain 84532</span>
+              <span style={{ color: agent.preferredChain === "SKALE_TESTNET" ? "#a78bfa" : "var(--teal-glow)" }}>
+                {agent.preferredChain === "SKALE_TESTNET" ? "SKALE · Chain 324705682" : "Base Sepolia · Chain 84532"}
+              </span>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Verified</span>
@@ -2625,14 +2986,17 @@ function OverviewTab({
           </div>
           <div className="mt-4 pt-3 border-t" style={{ borderColor: "rgba(10, 236, 184, 0.15)" }}>
             <a
-              href={`https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
+              href={agent.preferredChain === "SKALE_TESTNET"
+                ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${erc8004.tokenId}`
+                : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[10px] font-mono flex items-center gap-1.5 hover:opacity-70 transition-opacity"
-              style={{ color: "var(--teal-glow)" }}
+              style={{ color: agent.preferredChain === "SKALE_TESTNET" ? "#a78bfa" : "var(--teal-glow)" }}
               data-testid="link-basescan-passport"
             >
-              <ExternalLink className="w-3 h-3" /> View full passport on BaseScan ↗
+              <ExternalLink className="w-3 h-3" />
+              {agent.preferredChain === "SKALE_TESTNET" ? "View full passport on SKALE Explorer ↗" : "View full passport on BaseScan ↗"}
             </a>
           </div>
 
@@ -2712,7 +3076,222 @@ type SkillVerificationInfo = {
   githubProfileUrl: string | null;
   portfolioUrl: string | null;
   challengeScore: number | null;
+  tier?: number;
+  tierLabel?: string;
+  tierBadge?: string;
+  tierProofs?: Record<string, any>;
+  nextUpgrade?: string;
 };
+
+function SkillTierRow({
+  skill, sv, isOwnProfile, currentAgent, agentId,
+  tierColors, tierBadges, onVerify, onAttest, attestingSkill, onAttestDone
+}: {
+  skill: string;
+  sv?: SkillVerificationInfo;
+  isOwnProfile?: boolean;
+  currentAgent: string | null;
+  agentId: string;
+  tierColors: string[];
+  tierBadges: string[];
+  onVerify: (s: string) => void;
+  onAttest: (s: string) => void;
+  attestingSkill: string | null;
+  onAttestDone: () => void;
+}) {
+  const tier = sv?.tier ?? 0;
+  const isVerified = sv?.status === "verified";
+  const isPartial = sv?.status === "partial";
+  const tierNames: Record<string, string> = { "1": "Challenge-Passed", "2": "GitHub-Verified", "3": "Gig-Proven", "4": "Peer-Attested" };
+  const hasProofs = tier > 0 && sv?.tierProofs && Object.keys(sv.tierProofs).length > 0;
+  return (
+    <div
+      className="px-3 py-2 rounded-sm"
+      style={{ background: "rgba(0,0,0,0.12)", border: `1px solid ${tier > 0 ? "rgba(10,236,184,0.1)" : "rgba(255,255,255,0.04)"}` }}
+      data-testid={`skill-verify-row-${skill}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: isVerified ? "rgba(10,236,184,0.15)" : isPartial ? "rgba(232,84,10,0.12)" : "rgba(255,255,255,0.04)" }}
+          >
+            {isVerified ? (
+              <CheckCircle className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
+            ) : isPartial ? (
+              <Clock className="w-3 h-3" style={{ color: "var(--claw-amber)" }} />
+            ) : (
+              <HelpCircle className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{skill}</span>
+            {tier > 0 && (
+              <div className="relative inline-block group">
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm cursor-default"
+                  style={{ background: `${tierColors[tier]}22`, color: tierColors[tier], border: `1px solid ${tierColors[tier]}44` }}
+                  data-testid={`badge-skill-tier-${skill}`}
+                >
+                  {tierBadges[tier]} T{tier} {sv?.tierLabel}
+                </span>
+                {hasProofs && (
+                  <div
+                    className="absolute bottom-full left-0 mb-1.5 z-50 w-56 rounded-sm overflow-hidden opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-150"
+                    style={{ border: "1px solid rgba(10,236,184,0.2)", background: "rgba(8,12,20,0.97)", boxShadow: "0 4px 20px rgba(0,0,0,0.6)" }}
+                    data-testid={`proof-details-${skill}`}
+                  >
+                    <div className="px-2 py-1" style={{ borderBottom: "1px solid rgba(10,236,184,0.1)", background: "rgba(10,236,184,0.04)" }}>
+                      <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--teal-glow)" }}>Proof Evidence</span>
+                    </div>
+                    {(Object.entries(sv!.tierProofs!) as [string, Record<string, any>][]).map(([proofTier, proofData]) => (
+                      <div key={proofTier} className="px-2 py-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                        <div className="text-[9px] font-mono mb-1" style={{ color: tierColors[parseInt(proofTier)] || "var(--text-muted)" }}>
+                          T{proofTier} {tierNames[proofTier] || "Verified"}
+                        </div>
+                        <div className="space-y-0.5">
+                          {proofData.method && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Method: {proofData.method}</div>}
+                          {proofData.githubHandle && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>GitHub: <a href={`https://github.com/${proofData.githubHandle}`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#3b82f6" }}>@{proofData.githubHandle}</a></div>}
+                          {proofData.repoCount != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Repos: {proofData.repoCount} qualifying</div>}
+                          {proofData.commitCount != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Commits: {proofData.commitCount}</div>}
+                          {proofData.topRepo && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Top Repo: {proofData.topRepo}</div>}
+                          {proofData.challengeScore != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Challenge Score: {proofData.challengeScore}%</div>}
+                          {proofData.gigTitle && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Gig: {proofData.gigTitle}</div>}
+                          {proofData.usdcEarned != null && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>USDC Earned: {proofData.usdcEarned}</div>}
+                          {proofData.swarmVoteId && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Swarm Vote ID: {proofData.swarmVoteId}</div>}
+                          {proofData.attestors && Array.isArray(proofData.attestors) && (
+                            <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                              Attestors: {proofData.attestors.map((a: any) => a.handle ?? a.id?.slice(0, 8)).join(", ")} ({proofData.attestors.length})
+                            </div>
+                          )}
+                          {proofData.ownershipProof && <div className="text-[8px] font-mono" style={{ color: "var(--shell-cream)" }}>Ownership: {proofData.ownershipProof}</div>}
+                          {proofData.registry_pr?.prUrl && (
+                            <div className="text-[8px] font-mono flex items-center gap-1" style={{ color: "var(--teal-glow)" }}>
+                              PR Merged ✓{" "}
+                              <a href={proofData.registry_pr.prUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#3b82f6" }}>
+                                #{proofData.registry_pr.prNumber}
+                              </a>
+                            </div>
+                          )}
+                          {proofData.verifiedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Verified: {new Date(proofData.verifiedAt).toLocaleDateString()}</div>}
+                          {proofData.achievedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Achieved: {new Date(proofData.achievedAt).toLocaleDateString()}</div>}
+                          {proofData.completedAt && <div className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>Completed: {new Date(proofData.completedAt).toLocaleDateString()}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {tier === 0 && (
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                T0 Declared
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isOwnProfile && tier < 2 && (
+            <button
+              className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+              style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
+              onClick={() => onVerify(skill)}
+              data-testid={`button-verify-skill-${skill}`}
+            >
+              {tier === 0 ? "Verify" : "Upgrade"}
+            </button>
+          )}
+          {isOwnProfile && tier >= 1 && tier < 2 && (
+            <button
+              className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+              style={{ background: "rgba(59,130,246,0.1)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+              onClick={() => onVerify(skill)}
+              data-testid={`button-github-verify-skill-${skill}`}
+            >
+              GitHub
+            </button>
+          )}
+          {!isOwnProfile && tier >= 2 && currentAgent && (
+            <button
+              className="text-[9px] font-mono px-2 py-0.5 rounded-sm"
+              style={{ background: "rgba(167,139,250,0.1)", color: "#a78bfa", border: "1px solid rgba(167,139,250,0.2)" }}
+              onClick={() => onAttest(skill)}
+              data-testid={`button-attest-skill-${skill}`}
+            >
+              Attest
+            </button>
+          )}
+        </div>
+      </div>
+      {attestingSkill === skill && (
+        <AttestSkillRow agentId={agentId} skill={skill} onDone={onAttestDone} />
+      )}
+      {tier < 4 && sv?.nextUpgrade && (
+        <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+          Next: {sv.nextUpgrade}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AttestSkillRow({ agentId, skill, onDone }: { agentId: string; skill: string; onDone: () => void }) {
+  const { toast } = useToast();
+  const walletAddress = (() => { try { return localStorage.getItem("walletAddress"); } catch { return null; } })();
+
+  const attestMutation = useMutation({
+    mutationFn: async () => {
+      if (!walletAddress) throw new Error("Connect your wallet to attest skills");
+      return apiRequest(
+        "POST",
+        `/api/agents/${agentId}/skills/${encodeURIComponent(skill.toLowerCase())}/attest`,
+        {},
+        { "x-wallet-address": walletAddress }
+      );
+    },
+    onSuccess: (data: any) => {
+      if (data.tierUpgraded) {
+        toast({ title: "Diamond certified! 💎", description: `${skill} upgraded to Tier 4 — Peer-Attested.` });
+      } else {
+        toast({
+          title: "Attestation recorded!",
+          description: `${data.attestationCount}/${data.threshold} attestations. ${data.remaining} more needed for Tier 4.`,
+        });
+      }
+      onDone();
+    },
+    onError: (err: any) => {
+      toast({ title: "Attestation failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="mt-2 px-3 py-2 rounded-sm flex items-center justify-between gap-2" style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)" }}>
+      <p className="text-[10px] font-mono" style={{ color: "#a78bfa" }}>
+        Attest that this agent has verified <strong>{skill}</strong> skills (requires your FusedScore ≥ 50 and T2+ in this skill)
+      </p>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <button
+          className="text-[9px] font-mono px-2 py-1 rounded-sm"
+          style={{ background: "rgba(167,139,250,0.15)", color: "#a78bfa", border: "1px solid rgba(167,139,250,0.3)" }}
+          onClick={() => attestMutation.mutate()}
+          disabled={attestMutation.isPending}
+          data-testid={`button-confirm-attest-${skill}`}
+        >
+          {attestMutation.isPending ? "Attesting…" : "Confirm Attest"}
+        </button>
+        <button
+          className="text-[9px] font-mono px-2 py-1 rounded-sm"
+          style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+          onClick={onDone}
+          data-testid={`button-cancel-attest-${skill}`}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function SkillVerificationModal({
   agentId,
@@ -2725,10 +3304,11 @@ function SkillVerificationModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const [tab, setTab] = useState<"challenge" | "github" | "portfolio">("challenge");
+  const [tab, setTab] = useState<"challenge" | "github" | "registry" | "portfolio">("challenge");
   const [submission, setSubmission] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
   const [portfolioUrl, setPortfolioUrl] = useState("");
+  const [registryInstructionsOpen, setRegistryInstructionsOpen] = useState(false);
   const [challengeData, setChallengeData] = useState<any>(null);
   const [challengeLoading, setChallengeLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -2784,16 +3364,32 @@ function SkillVerificationModal({
 
   const githubMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", `/api/agents/${agentId}/skills/${encodeURIComponent(skill.toLowerCase())}/github`, {
-        githubProfileUrl: githubUrl,
-      }, { "x-agent-id": agentId });
+      const handle = githubUrl.replace(/.*github\.com\//, "").replace(/\/$/, "").trim() || githubUrl.trim();
+      const walletAddress = (typeof window !== "undefined" && localStorage.getItem("walletAddress")) || "";
+      if (!walletAddress) throw new Error("Connect your wallet first to prove GitHub ownership");
+      const message = `I am ${handle} on GitHub. My ClawTrust wallet is ${walletAddress.toLowerCase()}.`;
+      let walletSignature = "";
+      try {
+        const ethereum = (window as any).ethereum;
+        if (!ethereum) throw new Error("No wallet provider found — install MetaMask or WalletConnect");
+        walletSignature = await ethereum.request({
+          method: "personal_sign",
+          params: [message, walletAddress],
+        });
+      } catch (signErr: any) {
+        throw new Error(`Wallet signature required to prove GitHub ownership: ${signErr.message || signErr}`);
+      }
+      return apiRequest("POST", `/api/agents/${agentId}/skills/${encodeURIComponent(skill.toLowerCase())}/verify-github`, {
+        githubHandle: handle,
+        walletSignature,
+      }, { "x-agent-id": agentId, "x-wallet-address": walletAddress });
     },
     onSuccess: (data: any) => {
-      toast({ title: "GitHub linked!", description: data.message });
+      toast({ title: "GitHub Verified! ⭐ Tier 2 unlocked", description: data.message });
       onSuccess();
     },
     onError: (err: any) => {
-      toast({ title: "Failed", description: err.message, variant: "destructive" });
+      toast({ title: "GitHub verification failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -2815,6 +3411,7 @@ function SkillVerificationModal({
   const tabs = [
     { id: "challenge" as const, label: "Take Challenge" },
     { id: "github" as const, label: "Link GitHub" },
+    { id: "registry" as const, label: "Registry PR" },
     { id: "portfolio" as const, label: "Portfolio URL" },
   ];
 
@@ -2922,30 +3519,107 @@ function SkillVerificationModal({
 
           {tab === "github" && (
             <div className="space-y-4">
+              <div className="px-3 py-2 rounded-sm" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
+                <p className="text-[10px] font-mono" style={{ color: "#3b82f6" }}>
+                  ⭐ GitHub verification grants <strong>Tier 2</strong>. The ClawTrust system calls the real GitHub API and checks your public repositories for the relevant language/skill.
+                </p>
+              </div>
               <p className="text-[11px] font-mono" style={{ color: "var(--shell-cream)" }}>
-                Link your GitHub profile to show evidence of this skill. We'll add +20 trust points for a valid GitHub link.
+                Enter your GitHub username. We'll verify you have public repos demonstrating <strong>{skill}</strong> skills. Your wallet will sign a short ownership message to prove you control both the wallet and the GitHub handle.
               </p>
               <div>
-                <label className="text-[10px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>GitHub Profile URL</label>
+                <label className="text-[10px] uppercase tracking-wider font-mono mb-1.5 block" style={{ color: "var(--text-muted)" }}>GitHub Username (or full profile URL)</label>
                 <input
-                  type="url"
-                  placeholder="https://github.com/yourhandle"
+                  type="text"
+                  placeholder="yourhandle  or  https://github.com/yourhandle"
                   value={githubUrl}
                   onChange={(e) => setGithubUrl(e.target.value)}
                   className="w-full rounded-sm px-3 py-2 text-sm font-mono focus:outline-none"
-                  style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(232,84,10,0.25)", color: "var(--shell-white)" }}
+                  style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(59,130,246,0.35)", color: "var(--shell-white)" }}
                   data-testid="input-github-url"
                 />
               </div>
               <button
                 className="px-5 py-2 text-sm font-mono rounded-sm"
-                style={{ background: "var(--claw-orange)", color: "var(--ocean-deep)" }}
+                style={{ background: "rgba(59,130,246,0.9)", color: "#fff" }}
                 onClick={() => githubMutation.mutate()}
                 disabled={githubMutation.isPending || !githubUrl.trim()}
                 data-testid="button-submit-github"
               >
-                {githubMutation.isPending ? "Linking…" : "Link GitHub"}
+                {githubMutation.isPending ? "Verifying via GitHub API…" : "Verify GitHub (Real API Check)"}
               </button>
+              {githubMutation.isError && (
+                <p className="text-[10px] font-mono" style={{ color: "#ef4444" }}>
+                  {(githubMutation.error as any)?.message || "Verification failed"}
+                </p>
+              )}
+            </div>
+          )}
+
+          {tab === "registry" && (
+            <div className="space-y-4">
+              <div className="px-3 py-2 rounded-sm" style={{ background: "rgba(10,236,184,0.06)", border: "1px solid rgba(10,236,184,0.2)" }}>
+                <p className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
+                  ⭐ PR Merge path grants <strong>Tier 2</strong>. A maintainer reviews your proof file and merges your PR — community-moderated and transparent.
+                </p>
+              </div>
+              <p className="text-[11px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                Fork the public skill registry, add a proof file under{" "}
+                <code className="text-[10px] px-1 rounded-sm" style={{ background: "rgba(0,0,0,0.3)", color: "var(--claw-amber)" }}>
+                  skills/{skill.toLowerCase()}/{"{your-handle}"}/proof.md
+                </code>{" "}
+                and open a PR. Once merged, your skill is automatically upgraded.
+              </p>
+
+              <div className="flex flex-col gap-2">
+                <a
+                  href={`https://github.com/clawtrustmolts/skill-registry/fork`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-5 py-2 text-sm font-mono rounded-sm"
+                  style={{ background: "var(--teal-glow)", color: "var(--ocean-deep)", textDecoration: "none" }}
+                  data-testid="link-fork-registry"
+                >
+                  Fork the Skill Registry →
+                </a>
+                <a
+                  href="https://github.com/clawtrustmolts/skill-registry"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-center text-[10px] font-mono"
+                  style={{ color: "#3b82f6" }}
+                  data-testid="link-view-registry"
+                >
+                  View registry repo ↗
+                </a>
+              </div>
+
+              <div>
+                <button
+                  className="flex items-center gap-1.5 text-[10px] font-mono"
+                  style={{ color: "var(--text-muted)" }}
+                  onClick={() => setRegistryInstructionsOpen((v) => !v)}
+                  data-testid="button-toggle-registry-instructions"
+                >
+                  {registryInstructionsOpen ? "▾" : "▸"} Step-by-step instructions
+                </button>
+                {registryInstructionsOpen && (
+                  <div
+                    className="mt-2 p-3 rounded-sm space-y-1.5 text-[10px] font-mono"
+                    style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.05)", color: "var(--shell-cream)" }}
+                    data-testid="panel-registry-instructions"
+                  >
+                    <div><span style={{ color: "var(--teal-glow)" }}>1.</span> Click <strong>Fork the Skill Registry</strong> to create your own copy</div>
+                    <div><span style={{ color: "var(--teal-glow)" }}>2.</span> In your fork, create: <code style={{ color: "var(--claw-amber)" }}>skills/{skill.toLowerCase()}/{"{your-handle}"}/proof.md</code></div>
+                    <div><span style={{ color: "var(--teal-glow)" }}>3.</span> Write your proof — include links to repos, contracts, or articles demonstrating <strong>{skill}</strong></div>
+                    <div><span style={{ color: "var(--teal-glow)" }}>4.</span> Open a PR titled: <code style={{ color: "var(--claw-amber)" }}>[{skill.toLowerCase()}] Proof from @your-handle</code></div>
+                    <div><span style={{ color: "var(--teal-glow)" }}>5.</span> A maintainer reviews and merges — your skill upgrades automatically ✓</div>
+                    <div className="pt-1" style={{ color: "var(--text-muted)" }}>
+                      Your handle in the path must match your ClawTrust handle exactly (lowercase).
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -2990,6 +3664,8 @@ function BondRiskTab({
   isOwnProfile,
   skillVerifications,
   onSkillVerified,
+  tierBonus,
+  maxTierBonus,
 }: {
   agent: Agent;
   bondData?: BondStatus;
@@ -2997,6 +3673,8 @@ function BondRiskTab({
   isOwnProfile?: boolean;
   skillVerifications?: SkillVerificationInfo[];
   onSkillVerified?: () => void;
+  tierBonus?: number;
+  maxTierBonus?: number;
 }) {
   const bd = bondData;
   const events = bondHistory?.events || [];
@@ -3005,6 +3683,8 @@ function BondRiskTab({
   const [bondAction, setBondAction] = useState<"deposit" | "withdraw" | null>(null);
   const [bondAmount, setBondAmount] = useState("");
   const [verifySkill, setVerifySkill] = useState<string | null>(null);
+  const [attestingSkill, setAttestingSkill] = useState<string | null>(null);
+  const currentAgent = (() => { try { return localStorage.getItem("agentId"); } catch { return null; } })();
   const [custodyDismissed, setCustodyDismissed] = useState(() =>
     typeof window !== "undefined" && localStorage.getItem("clawtrust_custody_banner_dismissed") === "1"
   );
@@ -3015,7 +3695,7 @@ function BondRiskTab({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bond", agent.id] });
-      queryClient.invalidateQueries({ queryKey: [`/api/agents/${agent.id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agent.id] });
       toast({ title: "Deposit successful!", description: `${bondAmount} USDC added to your bond.` });
       setBondAction(null);
       setBondAmount("");
@@ -3031,7 +3711,7 @@ function BondRiskTab({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bond", agent.id] });
-      queryClient.invalidateQueries({ queryKey: [`/api/agents/${agent.id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agent.id] });
       toast({ title: "Withdrawal successful!", description: `${bondAmount} USDC removed from your bond.` });
       setBondAction(null);
       setBondAmount("");
@@ -3245,59 +3925,40 @@ function BondRiskTab({
       {/* SKILL VERIFICATION */}
       {agent.skills.length > 0 && (
         <SectionCard testId="card-skill-verifications">
-          <SectionTitle icon={<CheckCircle className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
-            SKILL VERIFICATION
-          </SectionTitle>
-          <p className="text-[11px] font-mono mb-4" style={{ color: "var(--text-muted)" }}>
-            Prove your skills through challenges, GitHub links, or portfolio evidence. Verified skills increase your hire rate.
+          <div className="flex items-start justify-between mb-1">
+            <SectionTitle icon={<CheckCircle className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />}>
+              SKILL VERIFICATION
+            </SectionTitle>
+            {tierBonus !== undefined && (
+              <div className="text-[10px] font-mono px-2 py-0.5 rounded-sm flex-shrink-0" style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.15)" }}>
+                Tier Bonus: +{tierBonus}/{maxTierBonus ?? 15}
+              </div>
+            )}
+          </div>
+          <p className="text-[11px] font-mono mb-2" style={{ color: "var(--text-muted)" }}>
+            T0 Declared → T1 Challenge-Passed → T2 GitHub-Verified → T3 Gig-Proven → T4 Peer-Attested (Diamond)
           </p>
           <div className="space-y-2">
-            {agent.skills.map((skill) => {
-              const sv = skillVerifications?.find((v) => v.skill === skill);
-              const isVerified = sv?.status === "verified";
-              const isPartial = sv?.status === "partial";
-              return (
-                <div
+            {(() => {
+              const TIER_COLORS = ["var(--text-muted)", "var(--teal-glow)", "#3b82f6", "#f59e0b", "#a78bfa"];
+              const TIER_BADGES = ["", "✓", "⭐", "🏆", "💎"];
+              return agent.skills.map((skill) => (
+                <SkillTierRow
                   key={skill}
-                  className="flex items-center justify-between px-3 py-2 rounded-sm"
-                  style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.04)" }}
-                  data-testid={`skill-verify-row-${skill}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{
-                        background: isVerified ? "rgba(10,236,184,0.15)" : isPartial ? "rgba(232,84,10,0.12)" : "rgba(255,255,255,0.04)",
-                      }}
-                    >
-                      {isVerified ? (
-                        <CheckCircle className="w-3 h-3" style={{ color: "var(--teal-glow)" }} />
-                      ) : isPartial ? (
-                        <Clock className="w-3 h-3" style={{ color: "var(--claw-amber)" }} />
-                      ) : (
-                        <HelpCircle className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
-                      )}
-                    </div>
-                    <div>
-                      <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>{skill}</span>
-                      <span className="ml-2 text-[10px] font-mono" style={{ color: isVerified ? "var(--teal-glow)" : isPartial ? "var(--claw-amber)" : "var(--text-muted)" }}>
-                        {isVerified ? `Verified · Score ${sv?.trustScore ?? 0}` : isPartial ? `Partial · Score ${sv?.trustScore ?? 0}` : "Unverified"}
-                      </span>
-                    </div>
-                  </div>
-                  {isOwnProfile && !isVerified && (
-                    <button
-                      className="text-[10px] font-mono px-2.5 py-1 rounded-sm"
-                      style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}
-                      onClick={() => setVerifySkill(skill)}
-                      data-testid={`button-verify-skill-${skill}`}
-                    >
-                      Verify
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                  skill={skill}
+                  sv={skillVerifications?.find((v) => v.skill === skill)}
+                  isOwnProfile={isOwnProfile}
+                  currentAgent={currentAgent}
+                  agentId={agent.id}
+                  tierColors={TIER_COLORS}
+                  tierBadges={TIER_BADGES}
+                  onVerify={setVerifySkill}
+                  onAttest={(s) => setAttestingSkill(attestingSkill === s ? null : s)}
+                  attestingSkill={attestingSkill}
+                  onAttestDone={() => { setAttestingSkill(null); refetchSkillVerifications?.(); }}
+                />
+              ));
+            })()}
           </div>
         </SectionCard>
       )}
@@ -3429,18 +4090,99 @@ function StatBox({ label, value, color }: { label: string; value: string; color:
   );
 }
 
+function MySubtasksPanel({ agentId }: { agentId: string }) {
+  const subtaskStatusColors: Record<string, string> = {
+    open: "var(--text-muted)",
+    claimed: "#a78bfa",
+    in_progress: "#3b82f6",
+    submitted: "var(--claw-amber)",
+    approved: "#22c55e",
+    revision: "var(--claw-red)",
+  };
+
+  const { data, isLoading } = useQuery<{ subtasks: any[] }>({
+    queryKey: ["/api/agents", agentId, "subtasks"],
+    queryFn: () => apiRequest("GET", `/api/agents/${agentId}/subtasks`).then(r => r.json()),
+    enabled: !!agentId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2 pt-2">
+        {[0, 1].map(i => <div key={i} className="h-14 rounded-sm animate-pulse" style={{ background: "var(--ocean-mid)" }} />)}
+      </div>
+    );
+  }
+
+  const subtasks = data?.subtasks || [];
+  if (subtasks.length === 0) return null;
+
+  const active = subtasks.filter(s => s.status !== "approved");
+  const done = subtasks.filter(s => s.status === "approved");
+
+  return (
+    <div className="space-y-3 pt-3" data-testid="section-my-subtasks">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--teal-glow)" }}>
+          Agency Subtasks
+        </span>
+        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-dim)", border: "1px solid rgba(10,236,184,0.12)" }}>
+          {active.length} active · {done.length} done
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {subtasks.map(st => {
+          const col = subtaskStatusColors[st.status] || "var(--text-muted)";
+          const canSubmit = st.status === "claimed" || st.status === "in_progress";
+          return (
+            <div key={st.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-sm"
+              style={{ background: "var(--ocean-mid)", border: `1px solid ${col}20` }}
+              data-testid={`profile-subtask-${st.id}`}>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold truncate" style={{ color: "var(--shell-white)" }}>{st.title}</p>
+                {st.requiredSkill && (
+                  <span className="text-[9px] font-mono" style={{ color: "var(--teal-dim)" }}>#{st.requiredSkill}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {st.usdcShare > 0 && (
+                  <span className="text-[9px] font-mono" style={{ color: "var(--teal-glow)" }}>${st.usdcShare}</span>
+                )}
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm uppercase" style={{ color: col, background: `${col}15`, border: `1px solid ${col}30` }}>
+                  {st.status.replace(/_/g, " ")}
+                </span>
+                {canSubmit && st.gigId && (
+                  <Link href={`/gig/${st.gigId}`}>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{ color: "var(--teal-glow)", background: "rgba(10,236,184,0.07)", border: "1px solid rgba(10,236,184,0.2)" }}
+                      data-testid={`link-submit-subtask-${st.id}`}>
+                      Submit →
+                    </span>
+                  </Link>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function GigsTab({
   gigSubTab,
   setGigSubTab,
   displayedGigs,
   postedCount,
   assignedCount,
+  agentId,
 }: {
   gigSubTab: "posted" | "assigned";
   setGigSubTab: (t: "posted" | "assigned") => void;
   displayedGigs: Gig[];
   postedCount: number;
   assignedCount: number;
+  agentId: string;
 }) {
   return (
     <div className="space-y-4">
@@ -3460,6 +4202,8 @@ function GigsTab({
           </button>
         ))}
       </div>
+
+      {gigSubTab === "assigned" && <MySubtasksPanel agentId={agentId} />}
 
       {displayedGigs.length === 0 ? (
         <EmptyState message={`No ${gigSubTab} gigs yet.`} />
@@ -3773,8 +4517,17 @@ function CommerceTab({
   isLoading: boolean;
 }) {
   const [commerceSubTab, setCommerceSubTab] = useState<"posted" | "taken">("posted");
+  const isSkale = agent.preferredChain === "SKALE_TESTNET";
+  const explorerBase = isSkale
+    ? "https://base-sepolia-testnet-explorer.skalenodes.com"
+    : "https://sepolia.basescan.org";
+  const explorerLabel = isSkale ? "SKALE Explorer" : "Basescan";
   const contractAddress = info?.contractAddress || stats?.contractAddress || "0x1933D67CDB911653765e84758f47c60A1E868bC0";
-  const basescanUrl = info?.basescanUrl || stats?.basescanUrl || `https://sepolia.basescan.org/address/${contractAddress}`;
+  const basescanUrl = info?.basescanUrl
+    ? (isSkale ? `${explorerBase}/address/${contractAddress}` : info.basescanUrl)
+    : stats?.basescanUrl
+      ? (isSkale ? `${explorerBase}/address/${contractAddress}` : stats.basescanUrl)
+      : `${explorerBase}/address/${contractAddress}`;
   const isRegistered = agentCheck?.isRegisteredAgent ?? false;
 
   const erc8183StatusMap: Record<string, { label: string; bg: string; color: string }> = {
@@ -3872,7 +4625,7 @@ function CommerceTab({
             data-testid="link-basescan-erc8183"
           >
             <ExternalLink className="w-3 h-3" />
-            ClawTrustAC on Basescan
+            ClawTrustAC on {explorerLabel}
           </a>
         </div>
 
@@ -4013,8 +4766,8 @@ function CommerceTab({
               const currency = item.budgetUsdc != null ? "USDC" : (item.currency ?? "USDC");
               const href = isRealData ? `/commerce?job=${item.id}` : `/gig/${item.id}`;
               const basescanHref = item.txHashCreated
-                ? `https://sepolia.basescan.org/tx/${item.txHashCreated}`
-                : `https://sepolia.basescan.org/address/${contractAddress}`;
+                ? `${explorerBase}/tx/${item.txHashCreated}`
+                : `${explorerBase}/address/${contractAddress}`;
 
               return (
                 <div
@@ -4059,7 +4812,7 @@ function CommerceTab({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex-shrink-0 ml-2 p-1 rounded-sm transition-opacity hover:opacity-70"
-                    title="View on Basescan"
+                    title={`View on ${explorerLabel}`}
                     data-testid={`commerce-basescan-${item.id}`}
                   >
                     <ExternalLink className="w-3.5 h-3.5" style={{ color: "#0052FF" }} />
@@ -4083,7 +4836,9 @@ function CommerceTab({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Chain</span>
-              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>Base Sepolia (84532)</span>
+              <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>
+                {isSkale ? "SKALE Base Sepolia (324705682)" : "Base Sepolia (84532)"}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>Platform Fee</span>
