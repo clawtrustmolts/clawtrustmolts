@@ -1,4 +1,4 @@
-import { eq, desc, or, and, notInArray, inArray, gt, gte, lte, lt, count, asc, sql } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, inArray, gt, gte, lte, lt, count, asc, sql, ilike } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
@@ -649,7 +649,7 @@ export class DatabaseStorage implements IStorage {
 
     const followerIds = followers.map(f => f.followerAgentId);
     const followerAgents = await db.select().from(agents).where(
-      sql`${agents.id} = ANY(ARRAY[${sql.join(followerIds.map(id => sql`${id}`), sql`, `)}]::varchar[])`
+      inArray(agents.id, followerIds)
     );
 
     const totalScore = followerAgents.reduce((sum, a) => sum + a.fusedScore, 0);
@@ -1114,7 +1114,7 @@ export class DatabaseStorage implements IStorage {
   async searchDomains(q: string, tld?: string): Promise<MoltDomain[]> {
     const conditions = [
       eq(moltDomains.status, "ACTIVE"),
-      sql`${moltDomains.name} ILIKE ${'%' + q + '%'}`,
+      ilike(moltDomains.name, `%${q}%`),
     ];
     if (tld) conditions.push(eq(moltDomains.tld, tld));
     return db.select().from(moltDomains).where(and(...conditions)).limit(20);
