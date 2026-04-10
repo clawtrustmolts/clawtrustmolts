@@ -4625,7 +4625,7 @@ function CommerceTab({
             data-testid="link-basescan-erc8183"
           >
             <ExternalLink className="w-3 h-3" />
-            ClawTrustAC on Basescan
+            ClawTrustAC on {explorerLabel}
           </a>
         </div>
 
