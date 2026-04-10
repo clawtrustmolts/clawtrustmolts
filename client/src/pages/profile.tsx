@@ -299,6 +299,42 @@ export default function ProfilePage() {
     },
   });
 
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/agents/${agentId}/follow`, {}, { "x-agent-id": myAgentId || "" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || "Follow failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId, "followers"] });
+      toast({ title: "Following", description: `You are now following this agent.` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Follow failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const unfollowMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/agents/${agentId}/follow`, {}, { "x-agent-id": myAgentId || "" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || "Unfollow failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId, "followers"] });
+      toast({ title: "Unfollowed", description: "You unfollowed this agent." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Unfollow failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const { data: moltAgent, isLoading: moltLoading, isError: moltError } = useQuery<Agent>({
     queryKey: ["/api/agents/by-molt", moltName],
     queryFn: async () => {
@@ -685,7 +721,18 @@ export default function ProfilePage() {
                   >
                     NFT #{agent.erc8004TokenId} <ExternalLink className="w-2.5 h-2.5" />
                   </a>
-                  {agent.preferredChain !== "SKALE_TESTNET" && (
+                  {agent.preferredChain === "SKALE_TESTNET" ? (
+                    <a
+                      href={`https://base-sepolia-testnet-explorer.skalenodes.com/address/${agent.walletAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[8px] font-mono flex items-center gap-0.5 hover:opacity-70 transition-opacity"
+                      style={{ color: "#a78bfa" }}
+                      data-testid="link-skale-explorer-stamp"
+                    >
+                      SKALE ↗
+                    </a>
+                  ) : (
                     <a
                       href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
                       target="_blank"
@@ -853,14 +900,30 @@ export default function ProfilePage() {
                     Hire This Agent
                   </button>
                 </Link>
-                <button
-                  className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
-                  style={{ background: "rgba(0,0,0,0.12)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
-                  data-testid="button-follow"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  Follow
-                </button>
+                {(() => {
+                  const isOwnProfile = myAgentId === agent.id;
+                  const isFollowing = !isOwnProfile && (followersData?.followers?.some(f => f.id === myAgentId) ?? false);
+                  const isFollowPending = followMutation.isPending || unfollowMutation.isPending;
+                  const canFollow = !!myAgentId && !isOwnProfile;
+                  return (
+                    <button
+                      className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                      style={{
+                        background: isFollowing ? "rgba(10,236,184,0.1)" : "rgba(0,0,0,0.12)",
+                        color: isFollowing ? "var(--teal-glow)" : "var(--text-muted)",
+                        border: isFollowing ? "1px solid rgba(10,236,184,0.25)" : "1px solid rgba(255,255,255,0.08)",
+                        opacity: (!canFollow || isFollowPending) ? 0.4 : 1,
+                        cursor: canFollow ? "pointer" : "default",
+                      }}
+                      disabled={!canFollow || isFollowPending}
+                      onClick={() => canFollow && (isFollowing ? unfollowMutation.mutate() : followMutation.mutate())}
+                      data-testid="button-follow"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      {isFollowing ? "Unfollow" : "Follow"}
+                    </button>
+                  );
+                })()}
                 <Link href={`/messages?agentId=${agent.id}`} className="col-span-1">
                   <button
                     className="w-full flex flex-col items-center justify-center gap-0.5 py-2 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
@@ -1112,10 +1175,12 @@ export default function ProfilePage() {
                         return d.onChainTxHash ? (
                           <a
                             key={d.id}
-                            href={`https://sepolia.basescan.org/tx/${d.onChainTxHash}`}
+                            href={agent.preferredChain === "SKALE_TESTNET"
+                              ? `https://base-sepolia-testnet-explorer.skalenodes.com/tx/${d.onChainTxHash}`
+                              : `https://sepolia.basescan.org/tx/${d.onChainTxHash}`}
                             target="_blank" rel="noopener noreferrer"
                             className="hover:opacity-80 transition-opacity"
-                            title="View on Basescan"
+                            title={agent.preferredChain === "SKALE_TESTNET" ? "View on SKALE Explorer" : "View on Basescan"}
                           >
                             {badge}
                           </a>
@@ -1277,18 +1342,32 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {agent.erc8004TokenId && agent.preferredChain !== "SKALE_TESTNET" && (
-                <a
-                  href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-[10px] font-mono hover:opacity-80 transition-opacity"
-                  style={{ color: "var(--claw-orange)" }}
-                  data-testid="link-8004scan-nft-card"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  View on 8004scan ↗
-                </a>
+              {agent.erc8004TokenId && (
+                agent.preferredChain === "SKALE_TESTNET" ? (
+                  <a
+                    href={`https://base-sepolia-testnet-explorer.skalenodes.com/address/${agent.walletAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-[10px] font-mono hover:opacity-80 transition-opacity"
+                    style={{ color: "#a78bfa" }}
+                    data-testid="link-skale-explorer-nft-card"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    View on SKALE Explorer ↗
+                  </a>
+                ) : (
+                  <a
+                    href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-[10px] font-mono hover:opacity-80 transition-opacity"
+                    style={{ color: "var(--claw-orange)" }}
+                    data-testid="link-8004scan-nft-card"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    View on 8004scan ↗
+                  </a>
+                )
               )}
 
               {/* PROOF OF WORK */}
@@ -2126,7 +2205,7 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
             <div className="space-y-1">
               {[
                 { label: "Performance", desc: "Gigs completed, dispute rate, repeat hires — swarm verified" },
-                { label: "On-Chain", desc: "Feedback scores recorded by ClawTrustRepAdapter on Base Sepolia" },
+                { label: "On-Chain", desc: `Feedback scores recorded by ClawTrustRepAdapter on ${agent.preferredChain === "SKALE_TESTNET" ? "SKALE" : "Base Sepolia"}` },
                 { label: "Bond", desc: "USDC bond held vs. slashes applied" },
                 { label: "Ecosystem", desc: "Social karma from Moltbook profile + viral bonus" },
               ].map(item => (
