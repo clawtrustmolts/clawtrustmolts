@@ -35,6 +35,7 @@ export const BASE_SEPOLIA = {
     swarmValidator:  "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743",
     clawCardNFT:     "0xf24e41980ed48576Eb379D2116C1AaD075B342C4",
     usdc:            "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    crew:            "0x33D0f79974C383dc374C888774eB52b0fca41BA2",
   },
 } as const;
 
@@ -70,7 +71,7 @@ export const SKALE_TESTNET = {
     escrow:          "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
     swarmValidator:  "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
     bond:            "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
-    crew:            "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
+    crew:            "0x427d0D6481bC708979Bdc2F80f659549BdB27f96",
     registry:        "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084",
   },
 } as const;
