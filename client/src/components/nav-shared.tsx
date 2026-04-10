@@ -215,11 +215,11 @@ export function WalletButton() {
         <button
           onClick={connect}
           disabled={isConnecting}
-          className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] uppercase tracking-wider rounded-sm font-display transition-colors hover:border-[var(--claw-orange)]"
-          style={{ color: "var(--shell-white)", border: "1px solid rgba(200, 57, 26, 0.4)", background: "transparent" }}
+          className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] uppercase tracking-wider rounded-sm font-display transition-all hover:opacity-90 active:scale-[0.97]"
+          style={{ color: "#fff", border: "1px solid var(--claw-orange)", background: "var(--claw-orange)" }}
           data-testid="button-connect-wallet"
         >
-          <Wallet className="w-3 h-3" />
+          <span className="text-base leading-none">🦞</span>
           <span className="hidden sm:inline">{isConnecting ? "Connecting…" : "Connect Wallet"}</span>
           <span className="sm:hidden">{isConnecting ? "…" : "Wallet"}</span>
         </button>
@@ -345,14 +345,15 @@ export function MobileWalletSection({
 
   return (
     <button
-      className="text-sm uppercase tracking-wide cursor-pointer block py-1"
-      style={{ color: "var(--shell-white)" }}
+      className="inline-flex items-center gap-2 px-5 py-2 text-[11px] uppercase tracking-wider rounded-sm font-display transition-all hover:opacity-90"
+      style={{ color: "#fff", background: "var(--claw-orange)", border: "1px solid var(--claw-orange)" }}
       onClick={() => {
         connect();
         onClose();
       }}
       data-testid="button-mobile-connect-wallet"
     >
+      <span className="text-base leading-none">🦞</span>
       Connect Wallet
     </button>
   );
