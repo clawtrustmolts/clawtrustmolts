@@ -337,17 +337,29 @@ function DisputeModal({ gigId, agentId, onClose }: { gigId: string; agentId: str
 function ApplicantCard({
   app,
   requiredSkills,
+  gigId,
   onAssign,
   assigning,
 }: {
   app: GigApplicant;
   requiredSkills: string[];
+  gigId: string;
   onAssign: () => void;
   assigning: boolean;
 }) {
   const { data: svData } = useQuery<{ skills: Array<{ skill: string; status: string; trustScore: number }> }>({
     queryKey: ["/api/agents", app.agentId, "skill-verifications"],
     enabled: requiredSkills.length > 0,
+  });
+
+  const { data: appFeeEstimate } = useQuery<FeeEstimateData>({
+    queryKey: ["/api/gigs", gigId, "fee-estimate", app.agentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/gigs/${gigId}/fee-estimate?agentId=${encodeURIComponent(app.agentId)}`);
+      if (!res.ok) throw new Error("Failed to fetch fee estimate");
+      return res.json();
+    },
+    enabled: !!gigId && !!app.agentId,
   });
 
   const verifiedSkills = svData?.skills.filter((s) => requiredSkills.map(r => r.toLowerCase()).includes(s.skill.toLowerCase()) && s.status === "verified") ?? [];
@@ -414,6 +426,16 @@ function ApplicantCard({
           )}
         </div>
       )}
+      {appFeeEstimate && (
+        <div
+          className="flex items-center gap-1 text-[10px] font-mono"
+          style={{ color: "var(--teal-glow)" }}
+          data-testid={`text-fee-estimate-${app.agentId}`}
+        >
+          <DollarSign className="w-2.5 h-2.5" />
+          Platform fee: {appFeeEstimate.effectiveFeePct.toFixed(2)}% (${appFeeEstimate.feeAmountUsdc.toFixed(2)}) · nets ${appFeeEstimate.netAmountUsdc.toFixed(2)}
+        </div>
+      )}
     </div>
   );
 }
@@ -434,47 +456,56 @@ interface FeeEstimateData {
   };
 }
 
-function FeeEstimateBox({ estimate, budget }: { estimate: FeeEstimateData; budget: number }) {
+function FeeEstimateBox({ estimate }: { estimate: FeeEstimateData }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <div
-      className="rounded-sm px-3 py-2 space-y-1.5"
+      className="rounded-sm px-3 py-2 space-y-1"
       style={{
         background: "rgba(10,236,184,0.04)",
         border: "1px solid rgba(10,236,184,0.12)",
       }}
       data-testid="card-fee-estimate"
     >
-      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--teal-glow)" }}>
-        <DollarSign className="w-3 h-3" />
-        Platform Fee Estimate
-      </div>
-      <div className="flex justify-between items-center text-[11px] font-mono">
-        <span style={{ color: "var(--text-muted)" }}>Your FusedScore Tier</span>
-        <span style={{ color: "var(--shell-white)" }}>{estimate.breakdown.tierName} ({estimate.breakdown.fusedScore})</span>
-      </div>
-      <div className="flex justify-between items-center text-[11px] font-mono">
-        <span style={{ color: "var(--text-muted)" }}>Base Fee</span>
-        <span style={{ color: "var(--shell-white)" }}>{estimate.breakdown.baseFee.toFixed(2)}%</span>
-      </div>
-      {estimate.breakdown.chainModifier > 0 && (
-        <div className="flex justify-between items-center text-[11px] font-mono">
-          <span style={{ color: "var(--text-muted)" }}>Chain Modifier (SKALE)</span>
-          <span style={{ color: "var(--claw-amber)" }}>+{estimate.breakdown.chainModifier.toFixed(2)}%</span>
+      <button
+        className="w-full flex items-center justify-between text-[11px] font-mono cursor-pointer"
+        onClick={() => setExpanded((v) => !v)}
+        data-testid="button-fee-estimate-toggle"
+        type="button"
+      >
+        <span className="flex items-center gap-1.5" style={{ color: "var(--teal-glow)" }}>
+          <DollarSign className="w-3 h-3" />
+          Platform fee: {estimate.effectiveFeePct.toFixed(2)}% (${estimate.feeAmountUsdc.toFixed(2)})
+        </span>
+        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+          {expanded ? "▲" : "▼"}
+        </span>
+      </button>
+      {expanded && (
+        <div
+          className="pt-1 space-y-1"
+          style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
+        >
+          <div className="flex justify-between text-[10px] font-mono">
+            <span style={{ color: "var(--text-muted)" }}>FusedScore tier</span>
+            <span style={{ color: "var(--shell-white)" }}>{estimate.breakdown.tierName} ({estimate.breakdown.fusedScore})</span>
+          </div>
+          <div className="flex justify-between text-[10px] font-mono">
+            <span style={{ color: "var(--text-muted)" }}>Base fee</span>
+            <span style={{ color: "var(--shell-white)" }}>{estimate.breakdown.baseFee.toFixed(2)}%</span>
+          </div>
+          {estimate.breakdown.chainModifier > 0 && (
+            <div className="flex justify-between text-[10px] font-mono">
+              <span style={{ color: "var(--text-muted)" }}>SKALE chain modifier</span>
+              <span style={{ color: "var(--claw-amber)" }}>+{estimate.breakdown.chainModifier.toFixed(2)}%</span>
+            </div>
+          )}
+          <div className="flex justify-between text-[10px] font-mono">
+            <span style={{ color: "var(--text-muted)" }}>You receive</span>
+            <span style={{ color: "#22c55e" }}>${estimate.netAmountUsdc.toFixed(2)} USDC</span>
+          </div>
         </div>
       )}
-      <div
-        className="flex justify-between items-center text-[11px] font-mono pt-1"
-        style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
-      >
-        <span style={{ color: "var(--shell-white)" }}>Effective Fee</span>
-        <span style={{ color: "var(--teal-glow)", fontWeight: 600 }}>
-          {estimate.effectiveFeePct.toFixed(2)}% (${estimate.feeAmountUsdc.toFixed(2)})
-        </span>
-      </div>
-      <div className="flex justify-between items-center text-[11px] font-mono">
-        <span style={{ color: "var(--text-muted)" }}>You receive</span>
-        <span style={{ color: "#22c55e" }}>${estimate.netAmountUsdc.toFixed(2)} USDC</span>
-      </div>
     </div>
   );
 }
@@ -594,7 +625,7 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
         {gig.status === "open" && !isMyGig && (
           <>
             {feeEstimate && (
-              <FeeEstimateBox estimate={feeEstimate} budget={gig.budget} />
+              <FeeEstimateBox estimate={feeEstimate} />
             )}
             <ClawButton
               size="sm"
@@ -729,6 +760,7 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
                   key={app.id}
                   app={app}
                   requiredSkills={gig.skillsRequired ?? []}
+                  gigId={gig.id}
                   onAssign={() => assignMutation.mutate(app.agentId)}
                   assigning={assignMutation.isPending}
                 />

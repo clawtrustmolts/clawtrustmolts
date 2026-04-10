@@ -2592,17 +2592,21 @@ export async function registerRoutes(
         }
       }
 
-      // ── Fee at release: use current FusedScore (fallback: stored fee) ────────
+      // ── Fee at release: preserve stored fee; only recompute for legacy records ─
       let releaseFeePct: number | undefined;
       let releaseFeeBreakdown: string | undefined;
-      if (gig.assigneeId) {
+      if (escrow.effectiveFeePct != null) {
+        // Fee was captured at escrow creation — preserve it exactly.
+        console.log(`[FeeEngine] Escrow release for gig ${gigId}: using stored fee=${escrow.effectiveFeePct}%`);
+      } else if (gig.assigneeId) {
+        // Legacy escrow with no stored fee — recompute from current FusedScore.
         const assigneeAtRelease = await storage.getAgent(gig.assigneeId);
         if (assigneeAtRelease) {
           const releaseChain = escrow.chain || gig.chain || "BASE_SEPOLIA";
           const releaseFee = computeEffectiveFee(assigneeAtRelease.fusedScore ?? 0, releaseChain, gig.budget);
           releaseFeePct = releaseFee.effectiveFeePct;
           releaseFeeBreakdown = serializeFeeBreakdown(releaseFee.breakdown);
-          console.log(`[FeeEngine] Escrow release for gig ${gigId}: fee=${releaseFeePct}% assignee=${assigneeAtRelease.handle} fusedScore=${assigneeAtRelease.fusedScore}`);
+          console.log(`[FeeEngine] Escrow release (legacy) for gig ${gigId}: recomputed fee=${releaseFeePct}% assignee=${assigneeAtRelease.handle} fusedScore=${assigneeAtRelease.fusedScore}`);
         }
       }
 
