@@ -496,6 +496,24 @@ export default function ProfilePage() {
     enabled: activeTab === "commerce",
   });
 
+  const { data: feeProfileData } = useQuery<{
+    agentId: string;
+    handle: string;
+    fusedScore: number;
+    totalGigsCompleted: number;
+    availableBond: number;
+    verifiedSkillCount: number;
+    chains: {
+      BASE_SEPOLIA: { effectiveFeePct: number; breakdown: any };
+      SKALE_TESTNET: { effectiveFeePct: number; breakdown: any };
+      BASE_SEPOLIA_CREW: { effectiveFeePct: number; breakdown: any };
+    };
+    unlockHints: Array<{ action: string; saving: number }>;
+  }>({
+    queryKey: ["/api/agents", agentId, "fee-profile"],
+    enabled: !!agentId,
+  });
+
   const { data: erc8183AgentCheck, isLoading: isErc8183AgentCheckLoading } = useQuery<{ wallet: string; isRegisteredAgent: boolean }>({
     queryKey: ["/api/erc8183/agents", displayAgent?.walletAddress, "check"],
     queryFn: async () => {
@@ -1067,6 +1085,8 @@ export default function ProfilePage() {
                 <ScoreBar label="Bond Reliability" value={breakdown?.bondReliabilityNormalized ?? (agent.bondReliability ?? 0)} weight="20%" />
                 <ScoreBar label="Ecosystem" value={breakdown?.moltbookNormalized ?? agent.moltbookKarma} weight="15%" />
               </div>
+
+              {feeProfileData && <FeeProfileCard data={feeProfileData} isOwner={myAgentId === agent.id} />}
 
               <div className="space-y-1.5 pt-1">
                 {agent.moltbookLink && (
@@ -1905,6 +1925,145 @@ function ProofOfWorkSection({ agentId, receipts, mcpSkills, proofUris }: {
               On-chain verified work
             </a>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FeeProfileCard({
+  data,
+  isOwner,
+}: {
+  data: {
+    fusedScore: number;
+    totalGigsCompleted: number;
+    availableBond: number;
+    verifiedSkillCount: number;
+    chains: {
+      BASE_SEPOLIA: { effectiveFeePct: number; breakdown: any };
+      SKALE_TESTNET: { effectiveFeePct: number; breakdown: any };
+      BASE_SEPOLIA_CREW: { effectiveFeePct: number; breakdown: any };
+    };
+    unlockHints: Array<{ action: string; saving: number }>;
+  };
+  isOwner: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [selectedChain, setSelectedChain] = useState<"BASE_SEPOLIA" | "SKALE_TESTNET" | "BASE_SEPOLIA_CREW">("BASE_SEPOLIA");
+  const chain = data.chains[selectedChain];
+  const bd = chain.breakdown;
+  const discounts: Array<{ label: string; amount: number }> = bd.discounts ?? [];
+  const surcharges: Array<{ label: string; amount: number }> = bd.surcharges ?? [];
+
+  return (
+    <div
+      className="rounded-sm overflow-hidden"
+      style={{ border: "1px solid rgba(10,236,184,0.14)", background: "rgba(10,236,184,0.03)" }}
+      data-testid="card-fee-profile"
+    >
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-3 py-2"
+        onClick={() => setExpanded((v) => !v)}
+        data-testid="button-fee-profile-toggle"
+      >
+        <div className="flex items-center gap-2">
+          <DollarSign className="w-3.5 h-3.5" style={{ color: "var(--teal-glow)" }} />
+          <span className="text-[11px] font-mono uppercase tracking-wide" style={{ color: "var(--teal-glow)" }}>
+            Fee Profile
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[12px] font-mono font-bold"
+            style={{ color: "var(--shell-white)" }}
+            data-testid="text-fee-profile-pct"
+          >
+            {data.chains.BASE_SEPOLIA.effectiveFeePct.toFixed(2)}%
+          </span>
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            {expanded ? "▲" : "▼"}
+          </span>
+        </div>
+      </button>
+
+      {expanded && (
+        <div
+          className="px-3 pb-3 space-y-3"
+          style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
+        >
+          <div className="flex gap-1 pt-2">
+            {(["BASE_SEPOLIA", "SKALE_TESTNET", "BASE_SEPOLIA_CREW"] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setSelectedChain(c)}
+                className="flex-1 text-[9px] font-mono uppercase px-1 py-1 rounded-sm transition-colors"
+                style={{
+                  background: selectedChain === c ? "rgba(10,236,184,0.15)" : "transparent",
+                  color: selectedChain === c ? "var(--teal-glow)" : "var(--text-muted)",
+                  border: selectedChain === c ? "1px solid rgba(10,236,184,0.3)" : "1px solid transparent",
+                }}
+                data-testid={`button-fee-chain-${c.toLowerCase()}`}
+              >
+                {c === "BASE_SEPOLIA" ? "Base" : c === "SKALE_TESTNET" ? "SKALE" : "Crew"}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px] font-mono">
+              <span style={{ color: "var(--text-muted)" }}>FusedScore tier</span>
+              <span style={{ color: "var(--shell-white)" }}>{bd.tierName} ({bd.fusedScore})</span>
+            </div>
+            <div className="flex justify-between text-[10px] font-mono">
+              <span style={{ color: "var(--text-muted)" }}>Base fee</span>
+              <span style={{ color: "var(--shell-white)" }}>{bd.baseFee.toFixed(2)}%</span>
+            </div>
+            {(bd.chainModifier ?? 0) > 0 && (
+              <div className="flex justify-between text-[10px] font-mono">
+                <span style={{ color: "var(--text-muted)" }}>SKALE chain modifier</span>
+                <span style={{ color: "var(--claw-amber)" }}>+{bd.chainModifier.toFixed(2)}%</span>
+              </div>
+            )}
+            {discounts.map((d: { label: string; amount: number }, i: number) => (
+              <div key={i} className="flex justify-between text-[10px] font-mono">
+                <span style={{ color: "var(--text-muted)" }}>{d.label}</span>
+                <span style={{ color: "#22c55e" }}>−{d.amount.toFixed(2)}%</span>
+              </div>
+            ))}
+            {surcharges.map((s: { label: string; amount: number }, i: number) => (
+              <div key={i} className="flex justify-between text-[10px] font-mono">
+                <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
+                <span style={{ color: "var(--claw-amber)" }}>+{s.amount.toFixed(2)}%</span>
+              </div>
+            ))}
+            <div
+              className="flex justify-between text-[10px] font-mono pt-1"
+              style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
+            >
+              <span style={{ color: "var(--text-muted)" }}>Effective fee</span>
+              <span style={{ color: "var(--teal-glow)", fontWeight: 600 }}>{chain.effectiveFeePct.toFixed(2)}%</span>
+            </div>
+          </div>
+
+          {isOwner && data.unlockHints.length > 0 && (
+            <div
+              className="rounded-sm px-2.5 py-2 space-y-1"
+              style={{ background: "rgba(232,84,10,0.05)", border: "1px solid rgba(232,84,10,0.15)" }}
+              data-testid="fee-unlock-hints"
+            >
+              <p className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "var(--claw-amber)" }}>
+                Reduce your fees
+              </p>
+              {data.unlockHints.slice(0, 3).map((h, i) => (
+                <p key={i} className="text-[10px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                  • {h.action}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

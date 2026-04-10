@@ -10,12 +10,21 @@ const TIER_BASE_FEES: Array<{ minScore: number; name: string; baseFee: number }>
   { minScore: 0,  name: "Hatchling",    baseFee: 3.0 },
 ];
 
+export interface DiscountLine {
+  label: string;
+  amount: number;
+}
+
 export interface FeeBreakdown {
   fusedScore: number;
   tierName: string;
   baseFee: number;
   chainModifier: number;
   chain: string;
+  discounts: DiscountLine[];
+  surcharges: DiscountLine[];
+  totalDiscount: number;
+  totalSurcharge: number;
   subtotal: number;
   effectiveFee: number;
   floor: number;
@@ -31,32 +40,103 @@ export interface FeeEstimate {
   displayLine: string;
 }
 
+export interface AgentFeeContext {
+  fusedScore: number;
+  totalGigsCompleted: number;
+  availableBond: number;
+  skills: Array<{ skillName: string; tier: number; status: string }>;
+}
+
+export interface GigFeeContext {
+  chain: string;
+  budget: number;
+  skillsRequired: string[];
+  isCrewGig: boolean;
+}
+
+export interface FeeUnlockHint {
+  action: string;
+  saving: number;
+}
+
+function skillVerificationDiscount(
+  agentSkills: Array<{ skillName: string; tier: number; status: string }>,
+  gigSkillsRequired: string[],
+): number {
+  if (!gigSkillsRequired || gigSkillsRequired.length === 0) return 0;
+  const hasT2Match = agentSkills.some(
+    (s) =>
+      s.tier >= 2 &&
+      s.status === "verified" &&
+      gigSkillsRequired.some((r) => r.toLowerCase() === s.skillName.toLowerCase()),
+  );
+  return hasT2Match ? 0.25 : 0;
+}
+
+function volumeLoyaltyDiscount(totalGigsCompleted: number): number {
+  if (totalGigsCompleted >= 25) return 0.5;
+  if (totalGigsCompleted >= 10) return 0.25;
+  return 0;
+}
+
+function bondStakeDiscount(availableBond: number): number {
+  if (availableBond >= 500) return 0.4;
+  if (availableBond >= 100) return 0.25;
+  if (availableBond >= 10) return 0.15;
+  return 0;
+}
+
+function agencyModeSurcharge(isCrewGig: boolean): number {
+  return isCrewGig ? 0.25 : 0;
+}
+
 export function computeEffectiveFee(
-  fusedScore: number,
-  chain: string,
-  budgetUsdc: number,
+  agentCtx: AgentFeeContext,
+  gigCtx: GigFeeContext,
 ): FeeEstimate {
-  const score = Math.max(0, Math.min(100, fusedScore));
+  const score = Math.max(0, Math.min(100, agentCtx.fusedScore));
 
   const tier = TIER_BASE_FEES.find((t) => score >= t.minScore) ?? TIER_BASE_FEES[TIER_BASE_FEES.length - 1];
   const baseFee = tier.baseFee;
 
-  const isSkale = chain === "SKALE_TESTNET";
+  const isSkale = gigCtx.chain === "SKALE_TESTNET";
   const chainModifier = isSkale ? SKALE_CHAIN_MODIFIER_PCT : 0;
 
-  const subtotal = Math.round((baseFee + chainModifier) * 100) / 100;
+  const discounts: DiscountLine[] = [];
+  const surcharges: DiscountLine[] = [];
+
+  const skillDiscount = skillVerificationDiscount(agentCtx.skills, gigCtx.skillsRequired);
+  if (skillDiscount > 0) discounts.push({ label: "Skill T2+ verified match", amount: skillDiscount });
+
+  const volumeDiscount = volumeLoyaltyDiscount(agentCtx.totalGigsCompleted);
+  if (volumeDiscount > 0) discounts.push({ label: `Volume loyalty (${agentCtx.totalGigsCompleted}+ gigs)`, amount: volumeDiscount });
+
+  const bondDiscount = bondStakeDiscount(agentCtx.availableBond);
+  if (bondDiscount > 0) discounts.push({ label: `Bond stake ($${agentCtx.availableBond.toFixed(0)} USDC)`, amount: bondDiscount });
+
+  const agencySurcharge = agencyModeSurcharge(gigCtx.isCrewGig);
+  if (agencySurcharge > 0) surcharges.push({ label: "Agency Mode crew gig", amount: agencySurcharge });
+
+  const totalDiscount = discounts.reduce((s, d) => s + d.amount, 0);
+  const totalSurcharge = surcharges.reduce((s, d) => s + d.amount, 0);
+
+  const subtotal = Math.round((baseFee + chainModifier - totalDiscount + totalSurcharge) * 100) / 100;
   const clamped = subtotal < FEE_FLOOR_PCT || subtotal > FEE_CEILING_PCT;
   const effectiveFee = Math.min(FEE_CEILING_PCT, Math.max(FEE_FLOOR_PCT, subtotal));
 
-  const feeAmountUsdc = Math.round(budgetUsdc * (effectiveFee / 100) * 100) / 100;
-  const netAmountUsdc = Math.round((budgetUsdc - feeAmountUsdc) * 100) / 100;
+  const feeAmountUsdc = Math.round(gigCtx.budget * (effectiveFee / 100) * 100) / 100;
+  const netAmountUsdc = Math.round((gigCtx.budget - feeAmountUsdc) * 100) / 100;
 
   const breakdown: FeeBreakdown = {
     fusedScore: score,
     tierName: tier.name,
     baseFee,
     chainModifier,
-    chain,
+    chain: gigCtx.chain,
+    discounts,
+    surcharges,
+    totalDiscount,
+    totalSurcharge,
     subtotal,
     effectiveFee,
     floor: FEE_FLOOR_PCT,
@@ -69,8 +149,56 @@ export function computeEffectiveFee(
     feeAmountUsdc,
     netAmountUsdc,
     breakdown,
-    displayLine: `Platform fee: ${effectiveFee.toFixed(2)}% ($${((budgetUsdc * effectiveFee) / 100).toFixed(2)})`,
+    displayLine: `Platform fee: ${effectiveFee.toFixed(2)}% ($${feeAmountUsdc.toFixed(2)})`,
   };
+}
+
+export function computeFeeProfile(
+  agentCtx: AgentFeeContext,
+  chains: string[],
+): Record<string, FeeEstimate> {
+  const result: Record<string, FeeEstimate> = {};
+  for (const chain of chains) {
+    result[chain] = computeEffectiveFee(agentCtx, {
+      chain,
+      budget: 100,
+      skillsRequired: [],
+      isCrewGig: false,
+    });
+  }
+  return result;
+}
+
+export function buildFeeUnlockHints(
+  agentCtx: AgentFeeContext,
+  gigSkillsRequired: string[],
+): FeeUnlockHint[] {
+  const hints: FeeUnlockHint[] = [];
+
+  const skillDiscount = skillVerificationDiscount(agentCtx.skills, gigSkillsRequired);
+  if (skillDiscount === 0 && gigSkillsRequired.length > 0) {
+    hints.push({ action: "Get a T2+ skill verification on a required gig skill to save 0.25%", saving: 0.25 });
+  }
+
+  const volumeDiscount = volumeLoyaltyDiscount(agentCtx.totalGigsCompleted);
+  if (volumeDiscount < 0.25) {
+    const needed = 10 - agentCtx.totalGigsCompleted;
+    hints.push({ action: `Complete ${needed} more gig${needed === 1 ? "" : "s"} to unlock the 10+ volume discount (save 0.25%)`, saving: 0.25 });
+  } else if (volumeDiscount < 0.5) {
+    const needed = 25 - agentCtx.totalGigsCompleted;
+    hints.push({ action: `Complete ${needed} more gig${needed === 1 ? "" : "s"} to unlock the 25+ volume discount (save 0.50%)`, saving: 0.25 });
+  }
+
+  const bondDiscount = bondStakeDiscount(agentCtx.availableBond);
+  if (bondDiscount === 0) {
+    hints.push({ action: "Stake $10+ USDC in bond to save 0.15%", saving: 0.15 });
+  } else if (bondDiscount < 0.25) {
+    hints.push({ action: "Increase bond stake to $100+ USDC to save 0.25%", saving: 0.1 });
+  } else if (bondDiscount < 0.4) {
+    hints.push({ action: "Increase bond stake to $500+ USDC to save 0.40%", saving: 0.15 });
+  }
+
+  return hints;
 }
 
 export function formatFeeDisplay(feePct: number, budgetUsdc: number): string {

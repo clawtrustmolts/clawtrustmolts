@@ -433,17 +433,27 @@ function ApplicantCard({
   );
 }
 
+interface DiscountLine {
+  label: string;
+  amount: number;
+}
+
 interface FeeEstimateData {
   effectiveFeePct: number;
   feeAmountUsdc: number;
   netAmountUsdc: number;
   budget: number;
+  unlockHints?: Array<{ action: string; saving: number }>;
   breakdown: {
     fusedScore: number;
     tierName: string;
     baseFee: number;
     chainModifier: number;
     chain: string;
+    discounts?: DiscountLine[];
+    surcharges?: DiscountLine[];
+    totalDiscount?: number;
+    totalSurcharge?: number;
     effectiveFee: number;
     clamped: boolean;
   };
@@ -451,6 +461,12 @@ interface FeeEstimateData {
 
 function FeeEstimateBox({ estimate, testId = "card-fee-estimate" }: { estimate: FeeEstimateData; testId?: string }) {
   const [expanded, setExpanded] = useState(false);
+  const discounts = estimate.breakdown.discounts ?? [];
+  const surcharges = estimate.breakdown.surcharges ?? [];
+  const totalDiscount = estimate.breakdown.totalDiscount ?? 0;
+  const totalSurcharge = estimate.breakdown.totalSurcharge ?? 0;
+  const hasModifiers = discounts.length > 0 || surcharges.length > 0 || estimate.breakdown.chainModifier > 0;
+
   return (
     <div
       className="rounded-sm px-3 py-2 space-y-1"
@@ -469,6 +485,14 @@ function FeeEstimateBox({ estimate, testId = "card-fee-estimate" }: { estimate: 
         <span className="flex items-center gap-1.5" style={{ color: "var(--teal-glow)" }}>
           <DollarSign className="w-3 h-3" />
           Platform fee: {estimate.effectiveFeePct.toFixed(2)}% (${estimate.feeAmountUsdc.toFixed(2)})
+          {totalDiscount > 0 && (
+            <span
+              className="text-[10px] px-1 rounded-sm"
+              style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+            >
+              −{totalDiscount.toFixed(2)}%
+            </span>
+          )}
         </span>
         <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
           {expanded ? "▲" : "▼"}
@@ -493,10 +517,46 @@ function FeeEstimateBox({ estimate, testId = "card-fee-estimate" }: { estimate: 
               <span style={{ color: "var(--claw-amber)" }}>+{estimate.breakdown.chainModifier.toFixed(2)}%</span>
             </div>
           )}
+          {discounts.map((d, i) => (
+            <div key={i} className="flex justify-between text-[10px] font-mono">
+              <span style={{ color: "var(--text-muted)" }}>{d.label}</span>
+              <span style={{ color: "#22c55e" }}>−{d.amount.toFixed(2)}%</span>
+            </div>
+          ))}
+          {surcharges.map((s, i) => (
+            <div key={i} className="flex justify-between text-[10px] font-mono">
+              <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
+              <span style={{ color: "var(--claw-amber)" }}>+{s.amount.toFixed(2)}%</span>
+            </div>
+          ))}
+          {hasModifiers && (
+            <div
+              className="flex justify-between text-[10px] font-mono pt-0.5"
+              style={{ borderTop: "1px solid rgba(10,236,184,0.08)" }}
+            >
+              <span style={{ color: "var(--text-muted)" }}>Effective fee</span>
+              <span style={{ color: "var(--teal-glow)", fontWeight: 600 }}>{estimate.effectiveFeePct.toFixed(2)}%</span>
+            </div>
+          )}
           <div className="flex justify-between text-[10px] font-mono">
             <span style={{ color: "var(--text-muted)" }}>You receive</span>
             <span style={{ color: "#22c55e" }}>${estimate.netAmountUsdc.toFixed(2)} USDC</span>
           </div>
+          {estimate.unlockHints && estimate.unlockHints.length > 0 && (
+            <div
+              className="pt-1 mt-0.5 space-y-0.5"
+              style={{ borderTop: "1px solid rgba(10,236,184,0.08)" }}
+            >
+              <div className="text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "var(--text-muted)" }}>
+                Fee reduction opportunities
+              </div>
+              {estimate.unlockHints.map((h, i) => (
+                <div key={i} className="text-[10px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                  • {h.action}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

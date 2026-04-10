@@ -35,7 +35,7 @@ import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, u
 import { telegramAnnounceSlash } from "./telegram-announcements";
 import { agentIdAliases } from "./seed";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
-import { computeEffectiveFee, serializeFeeBreakdown } from "./fee-engine";
+import { computeEffectiveFee, computeFeeProfile, buildFeeUnlockHints, serializeFeeBreakdown, type AgentFeeContext, type GigFeeContext } from "./fee-engine";
 import {
   mintPassportForAgent,
   setMoltDomainOnChain,
@@ -1944,15 +1944,28 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
-      let fusedScore = 0;
+      let agentCtx: AgentFeeContext = { fusedScore: 0, totalGigsCompleted: 0, availableBond: 0, skills: [] };
       if (agentId) {
         const agent = await storage.getAgent(agentId);
         if (!agent) return res.status(404).json({ message: "Agent not found" });
-        fusedScore = agent.fusedScore ?? 0;
+        const agentSkills = await storage.getSkillVerifications(agentId);
+        agentCtx = {
+          fusedScore: agent.fusedScore ?? 0,
+          totalGigsCompleted: agent.totalGigsCompleted ?? 0,
+          availableBond: agent.availableBond ?? 0,
+          skills: agentSkills.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+        };
       }
 
       const chain = gig.chain || "BASE_SEPOLIA";
-      const estimate = computeEffectiveFee(fusedScore, chain, gig.budget);
+      const gigCtx: GigFeeContext = {
+        chain,
+        budget: gig.budget,
+        skillsRequired: (gig as any).skillsRequired || [],
+        isCrewGig: !!(gig as any).crewGig,
+      };
+      const estimate = computeEffectiveFee(agentCtx, gigCtx);
+      const unlockHints = agentId ? buildFeeUnlockHints(agentCtx, gigCtx.skillsRequired) : [];
 
       return res.json({
         gigId,
@@ -1960,6 +1973,7 @@ export async function registerRoutes(
         budget: gig.budget,
         currency: gig.currency,
         chain,
+        unlockHints,
         ...estimate,
       });
     } catch (err: any) {
@@ -2013,7 +2027,20 @@ export async function registerRoutes(
       if (gig.assigneeId) {
         const assigneeForFee = await storage.getAgent(gig.assigneeId);
         if (assigneeForFee) {
-          const feeEstimate = computeEffectiveFee(assigneeForFee.fusedScore ?? 0, chain, gig.budget);
+          const assigneeSkills = await storage.getSkillVerifications(gig.assigneeId);
+          const agentCtxForEscrow: AgentFeeContext = {
+            fusedScore: assigneeForFee.fusedScore ?? 0,
+            totalGigsCompleted: assigneeForFee.totalGigsCompleted ?? 0,
+            availableBond: assigneeForFee.availableBond ?? 0,
+            skills: assigneeSkills.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+          };
+          const gigCtxForEscrow: GigFeeContext = {
+            chain,
+            budget: gig.budget,
+            skillsRequired: (gig as any).skillsRequired || [],
+            isCrewGig: !!(gig as any).crewGig,
+          };
+          const feeEstimate = computeEffectiveFee(agentCtxForEscrow, gigCtxForEscrow);
           effectiveFeePct = feeEstimate.effectiveFeePct;
           feeBreakdown = serializeFeeBreakdown(feeEstimate.breakdown);
           console.log(`[FeeEngine] Escrow create for gig ${gigId}: fee=${effectiveFeePct}% assignee=${assigneeForFee.handle} fusedScore=${assigneeForFee.fusedScore}`);
@@ -2376,7 +2403,20 @@ export async function registerRoutes(
         let onchainFeePct: number | undefined;
         let onchainFeeBreakdown: string | undefined;
         if (assignee) {
-          const onchainFee = computeEffectiveFee(assignee.fusedScore ?? 0, onchainChain, onchainBudget);
+          const assigneeSkillsOnchain = await storage.getSkillVerifications(assignee.id);
+          const onchainAgentCtx: AgentFeeContext = {
+            fusedScore: assignee.fusedScore ?? 0,
+            totalGigsCompleted: assignee.totalGigsCompleted ?? 0,
+            availableBond: assignee.availableBond ?? 0,
+            skills: assigneeSkillsOnchain.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+          };
+          const onchainGigCtx: GigFeeContext = {
+            chain: onchainChain,
+            budget: onchainBudget,
+            skillsRequired: (gig as any).skillsRequired || [],
+            isCrewGig: !!(gig as any).crewGig,
+          };
+          const onchainFee = computeEffectiveFee(onchainAgentCtx, onchainGigCtx);
           onchainFeePct = onchainFee.effectiveFeePct;
           onchainFeeBreakdown = serializeFeeBreakdown(onchainFee.breakdown);
         }
@@ -2522,7 +2562,20 @@ export async function registerRoutes(
         // Legacy escrow with no stored fee — recompute from current FusedScore.
         const releaseChain = escrow.chain || gig.chain || "BASE_SEPOLIA";
         const assigneeAtRelease = await storage.getAgent(gig.assigneeId!);
-        const releaseFee = computeEffectiveFee(assigneeAtRelease?.fusedScore ?? 0, releaseChain, escrow.amount);
+        const releaseSkills = assigneeAtRelease ? await storage.getSkillVerifications(assigneeAtRelease.id) : [];
+        const releaseAgentCtx: AgentFeeContext = {
+          fusedScore: assigneeAtRelease?.fusedScore ?? 0,
+          totalGigsCompleted: assigneeAtRelease?.totalGigsCompleted ?? 0,
+          availableBond: assigneeAtRelease?.availableBond ?? 0,
+          skills: releaseSkills.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+        };
+        const releaseGigCtx: GigFeeContext = {
+          chain: releaseChain,
+          budget: escrow.amount,
+          skillsRequired: (gig as any).skillsRequired || [],
+          isCrewGig: !!(gig as any).crewGig,
+        };
+        const releaseFee = computeEffectiveFee(releaseAgentCtx, releaseGigCtx);
         releaseFeePct = releaseFee.effectiveFeePct;
         releaseFeeBreakdown = serializeFeeBreakdown(releaseFee.breakdown);
         console.log(`[FeeEngine] Escrow release (legacy) for gig ${gigId}: recomputed fee=${releaseFeePct}% fusedScore=${assigneeAtRelease?.fusedScore ?? 0}`);
@@ -6187,6 +6240,51 @@ export async function registerRoutes(
       gigs: filtered,
       total: filtered.length,
       agent: { id: agent.id, handle: agent.handle },
+    });
+  });
+
+  app.get("/api/agents/:id/fee-profile", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.id);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const agent = await storage.getAgent(agentId.data);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    const agentSkills = await storage.getSkillVerifications(agentId.data);
+    const agentCtx: AgentFeeContext = {
+      fusedScore: agent.fusedScore ?? 0,
+      totalGigsCompleted: agent.totalGigsCompleted ?? 0,
+      availableBond: agent.availableBond ?? 0,
+      skills: agentSkills.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+    };
+
+    const baseEstimate = computeEffectiveFee(agentCtx, { chain: "BASE_SEPOLIA", budget: 100, skillsRequired: [], isCrewGig: false });
+    const skaleEstimate = computeEffectiveFee(agentCtx, { chain: "SKALE_TESTNET", budget: 100, skillsRequired: [], isCrewGig: false });
+    const crewEstimate = computeEffectiveFee(agentCtx, { chain: "BASE_SEPOLIA", budget: 100, skillsRequired: [], isCrewGig: true });
+    const unlockHints = buildFeeUnlockHints(agentCtx, []);
+
+    return res.json({
+      agentId: agent.id,
+      handle: agent.handle,
+      fusedScore: agent.fusedScore ?? 0,
+      totalGigsCompleted: agent.totalGigsCompleted ?? 0,
+      availableBond: agent.availableBond ?? 0,
+      verifiedSkillCount: agentSkills.filter((s) => s.status === "verified" && s.tier >= 2).length,
+      chains: {
+        BASE_SEPOLIA: {
+          effectiveFeePct: baseEstimate.effectiveFeePct,
+          breakdown: baseEstimate.breakdown,
+        },
+        SKALE_TESTNET: {
+          effectiveFeePct: skaleEstimate.effectiveFeePct,
+          breakdown: skaleEstimate.breakdown,
+        },
+        BASE_SEPOLIA_CREW: {
+          effectiveFeePct: crewEstimate.effectiveFeePct,
+          breakdown: crewEstimate.breakdown,
+        },
+      },
+      unlockHints,
     });
   });
 
