@@ -1127,6 +1127,114 @@ ClawTrust is the open-source reputation engine and autonomous ecosystem for AI a
   }
 }
 
+export async function syncMintlifyDocs(): Promise<RepoSyncResult> {
+  const timestamp = new Date().toISOString().split("T")[0];
+  const rootDir = process.cwd();
+  const docsDir = path.resolve(rootDir, "mintlify-docs");
+  const DOCS_BRANCH = "docs/mintlify";
+  const MINTLIFY_EXTENSIONS = new Set([".mdx", ".md", ".json", ".svg", ".png", ".jpg", ".jpeg", ".webp"]);
+
+  if (!fs.existsSync(docsDir)) {
+    return { repo: `${REPO_OWNER}/${REPO_NAME}`, success: false, filesCount: 0, message: "mintlify-docs directory not found" };
+  }
+
+  function walkDocs(currentDir: string, relativeBase: string): Array<{ repoPath: string; localPath: string }> {
+    const results: Array<{ repoPath: string; localPath: string }> = [];
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      const relPath = relativeBase ? `${relativeBase}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+        results.push(...walkDocs(fullPath, relPath));
+      } else if (entry.isFile()) {
+        if (entry.name.startsWith(".")) continue;
+        const ext = path.extname(entry.name).toLowerCase();
+        if (!MINTLIFY_EXTENSIONS.has(ext)) continue;
+        const stat = fs.statSync(fullPath);
+        if (stat.size > 1_000_000) continue;
+        results.push({ repoPath: relPath, localPath: path.relative(rootDir, fullPath) });
+      }
+    }
+    return results;
+  }
+
+  const docFiles = walkDocs(docsDir, "");
+  if (docFiles.length === 0) {
+    return { repo: `${REPO_OWNER}/${REPO_NAME}`, success: false, filesCount: 0, message: "No mintlify docs files found" };
+  }
+
+  const treeItems: Array<{ path: string; mode: string; type: string; sha: string }> = [];
+  let errorCount = 0;
+  const isBinaryExt = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+
+  const BATCH_SIZE = 6;
+  for (let i = 0; i < docFiles.length; i += BATCH_SIZE) {
+    const batch = docFiles.slice(i, i + BATCH_SIZE);
+    const blobResults = await Promise.all(
+      batch.map(async ({ repoPath, localPath }) => {
+        try {
+          const ext = path.extname(localPath).toLowerCase();
+          let blobSha: string;
+          if (isBinaryExt.has(ext)) {
+            blobSha = await createBinaryBlobForRepo(REPO_NAME, localPath);
+          } else {
+            const content = fs.readFileSync(path.resolve(rootDir, localPath), "utf-8");
+            blobSha = await createBlobForRepo(REPO_NAME, content);
+          }
+          return { repoPath, blobSha, error: null };
+        } catch (err: any) {
+          return { repoPath, blobSha: null, error: err.message };
+        }
+      })
+    );
+
+    for (const { repoPath, blobSha, error } of blobResults) {
+      if (blobSha) {
+        treeItems.push({ path: repoPath, mode: "100644", type: "blob", sha: blobSha });
+      } else {
+        console.warn(`[MintlifySync] Failed to blob: ${repoPath} — ${error}`);
+        errorCount++;
+      }
+    }
+  }
+
+  if (treeItems.length === 0) {
+    return { repo: `${REPO_OWNER}/${REPO_NAME}`, success: false, filesCount: 0, message: "Failed to create any blobs" };
+  }
+
+  let headSha: string;
+  try {
+    headSha = await getRefForRepo(REPO_NAME, DOCS_BRANCH);
+  } catch {
+    const mainSha = await getRefForRepo(REPO_NAME, "main");
+    headSha = mainSha;
+  }
+  const baseTreeSha = await getCommitForRepo(REPO_NAME, headSha);
+
+  const MAX_TREE_BATCH = 100;
+  let currentTreeSha = baseTreeSha;
+  for (let i = 0; i < treeItems.length; i += MAX_TREE_BATCH) {
+    const batch = treeItems.slice(i, i + MAX_TREE_BATCH);
+    currentTreeSha = await createTreeForRepo(REPO_NAME, currentTreeSha, batch);
+  }
+
+  const commitSha = await createCommitForRepo(
+    REPO_NAME,
+    `docs: sync mintlify docs from platform [${timestamp}] — ${treeItems.length} files`,
+    currentTreeSha,
+    headSha
+  );
+  await updateRefForRepo(REPO_NAME, DOCS_BRANCH, commitSha);
+
+  return {
+    repo: `${REPO_OWNER}/${REPO_NAME}`,
+    success: true,
+    filesCount: treeItems.length,
+    message: `Pushed ${treeItems.length} files to ${REPO_OWNER}/${REPO_NAME} branch ${DOCS_BRANCH} (${errorCount} errors)`,
+  };
+}
+
 export async function syncAllRepos(): Promise<{
   success: boolean;
   repos: RepoSyncResult[];
