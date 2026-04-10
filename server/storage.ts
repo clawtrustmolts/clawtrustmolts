@@ -1,13 +1,15 @@
-import { eq, desc, or, and, notInArray, inArray, gt, gte, lte, lt, count, asc, sql } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, inArray, gt, gte, lte, lt, count, asc, sql, ilike } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
   agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
-  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, moltyAnnouncements, x402Payments,
-  agentNotifications, skillChallenges, challengeAttempts, blogPosts,
-  erc8183Jobs, erc8183Applicants,
+  agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, crewDelegations, moltyAnnouncements, x402Payments,
+  agentNotifications, skillChallenges, challengeAttempts, blogPosts, skillAttestations,
+  erc8183Jobs, erc8183Applicants, crewSubtasks, crewGigSettings,
   type Erc8183Job, type InsertErc8183Job,
   type Erc8183Applicant, type InsertErc8183Applicant,
+  type CrewSubtask, type InsertCrewSubtask,
+  type CrewGigSettings,
   type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
   type Gig, type InsertGig,
@@ -31,6 +33,7 @@ import {
   type Crew, type InsertCrew,
   type CrewMember, type InsertCrewMember,
   type CrewGigApplicant, type InsertCrewGigApplicant,
+  type CrewDelegation, type InsertCrewDelegation,
   type MoltyAnnouncement, type InsertMoltyAnnouncement,
   type X402Payment, type InsertX402Payment,
   slashEvents, reputationMigrations,
@@ -39,6 +42,7 @@ import {
   type SkillChallenge, type InsertSkillChallenge,
   type ChallengeAttempt, type InsertChallengeAttempt,
   type BlogPost, type InsertBlogPost,
+  type SkillAttestation, type InsertSkillAttestation,
   moltDomains,
   type MoltDomain, type InsertMoltDomain,
   blockchainActionQueue,
@@ -179,6 +183,11 @@ export interface IStorage {
   createCrewGigApplicant(applicant: InsertCrewGigApplicant): Promise<CrewGigApplicant>;
   getCrewGigs(crewId: string): Promise<Gig[]>;
 
+  createCrewDelegation(d: InsertCrewDelegation): Promise<CrewDelegation>;
+  getCrewDelegations(crewId: string): Promise<{ outgoing: CrewDelegation[]; incoming: CrewDelegation[] }>;
+  updateCrewDelegationStatus(id: string, status: string): Promise<CrewDelegation | undefined>;
+  getAllCrewDelegationsCount(): Promise<number>;
+
   getMoltyAnnouncements(pinned?: boolean, limit?: number): Promise<MoltyAnnouncement[]>;
   createMoltyAnnouncement(announcement: InsertMoltyAnnouncement): Promise<MoltyAnnouncement>;
 
@@ -206,6 +215,7 @@ export interface IStorage {
   getAllDomainsByTld(tld?: string): Promise<MoltDomain[]>;
   searchDomains(q: string, tld?: string): Promise<MoltDomain[]>;
   updateDomainOnChain(id: number, tokenId: number, txHash: string): Promise<void>;
+  updateDomainWallet(id: number, newWallet: string): Promise<void>;
   getNextFoundingMoltNumber(): Promise<number | null>;
   countMoltDomains(): Promise<number>;
   releaseMoltDomain(name: string, force?: boolean): Promise<{ released: boolean; reason?: string }>;
@@ -215,6 +225,7 @@ export interface IStorage {
   getPendingBlockchainActions(limit: number): Promise<BlockchainAction[]>;
   updateBlockchainAction(id: number, data: Partial<BlockchainAction>): Promise<void>;
   getBlockchainQueueItems(): Promise<BlockchainAction[]>;
+  hasPendingBlockchainActionForAgent(type: string, agentId: string): Promise<boolean>;
 
   createNotification(data: InsertAgentNotification): Promise<AgentNotification>;
   getNotificationsForAgent(agentId: string, limit?: number): Promise<AgentNotification[]>;
@@ -225,6 +236,11 @@ export interface IStorage {
   getSkillVerification(agentId: string, skillName: string): Promise<AgentSkill | undefined>;
   getSkillVerifications(agentId: string): Promise<AgentSkill[]>;
   upsertSkillVerification(agentId: string, skillName: string, data: Partial<AgentSkill>): Promise<AgentSkill>;
+
+  createSkillAttestation(attestation: InsertSkillAttestation): Promise<SkillAttestation>;
+  getSkillAttestations(agentId: string, skillName: string): Promise<SkillAttestation[]>;
+  countSkillAttestations(agentId: string, skillName: string): Promise<number>;
+  hasAttested(agentId: string, skillName: string, attestorId: string): Promise<boolean>;
 
   getSkillChallenges(skill: string): Promise<SkillChallenge[]>;
   getSkillChallenge(id: string): Promise<SkillChallenge | undefined>;
@@ -250,6 +266,18 @@ export interface IStorage {
   getErc8183ApplicationsByAgent(agentId: string): Promise<(Erc8183Applicant & { job?: Erc8183Job })[]>;
   getValidationsForAgent(agentId: string): Promise<SwarmValidation[]>;
   countErc8183Jobs(filters?: { status?: string; chain?: string }): Promise<number>;
+
+  // Crew Subtasks (Agency Mode)
+  createCrewSubtask(subtask: InsertCrewSubtask): Promise<CrewSubtask>;
+  getCrewSubtasks(gigId: string, crewId?: string): Promise<CrewSubtask[]>;
+  getCrewSubtask(id: string): Promise<CrewSubtask | undefined>;
+  updateCrewSubtask(id: string, data: Partial<CrewSubtask>): Promise<CrewSubtask | undefined>;
+  deleteCrewSubtask(id: string): Promise<void>;
+  getSubtasksForAssignee(assigneeId: string): Promise<CrewSubtask[]>;
+
+  // Crew Gig Settings
+  getCrewGigSettings(gigId: string): Promise<CrewGigSettings | undefined>;
+  upsertCrewGigSettings(gigId: string, data: Partial<Omit<CrewGigSettings, "gigId">>): Promise<CrewGigSettings>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -621,7 +649,7 @@ export class DatabaseStorage implements IStorage {
 
     const followerIds = followers.map(f => f.followerAgentId);
     const followerAgents = await db.select().from(agents).where(
-      sql`${agents.id} = ANY(ARRAY[${sql.join(followerIds.map(id => sql`${id}`), sql`, `)}]::varchar[])`
+      inArray(agents.id, followerIds)
     );
 
     const totalScore = followerAgents.reduce((sum, a) => sum + a.fusedScore, 0);
@@ -933,6 +961,29 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(gigs).where(eq(gigs.crewId, crewId)).orderBy(desc(gigs.createdAt));
   }
 
+  async createCrewDelegation(d: InsertCrewDelegation): Promise<CrewDelegation> {
+    const [created] = await db.insert(crewDelegations).values(d).returning();
+    return created;
+  }
+
+  async getCrewDelegations(crewId: string): Promise<{ outgoing: CrewDelegation[]; incoming: CrewDelegation[] }> {
+    const [outgoing, incoming] = await Promise.all([
+      db.select().from(crewDelegations).where(eq(crewDelegations.fromCrewId, crewId)).orderBy(desc(crewDelegations.createdAt)),
+      db.select().from(crewDelegations).where(eq(crewDelegations.toCrewId, crewId)).orderBy(desc(crewDelegations.createdAt)),
+    ]);
+    return { outgoing, incoming };
+  }
+
+  async updateCrewDelegationStatus(id: string, status: string): Promise<CrewDelegation | undefined> {
+    const [updated] = await db.update(crewDelegations).set({ status }).where(eq(crewDelegations.id, id)).returning();
+    return updated;
+  }
+
+  async getAllCrewDelegationsCount(): Promise<number> {
+    const [row] = await db.select({ c: count() }).from(crewDelegations);
+    return row?.c ?? 0;
+  }
+
   async getMoltyAnnouncements(pinned?: boolean, limit?: number): Promise<MoltyAnnouncement[]> {
     let query = db.select().from(moltyAnnouncements);
     if (pinned !== undefined) {
@@ -1063,7 +1114,7 @@ export class DatabaseStorage implements IStorage {
   async searchDomains(q: string, tld?: string): Promise<MoltDomain[]> {
     const conditions = [
       eq(moltDomains.status, "ACTIVE"),
-      sql`${moltDomains.name} ILIKE ${'%' + q + '%'}`,
+      ilike(moltDomains.name, `%${q}%`),
     ];
     if (tld) conditions.push(eq(moltDomains.tld, tld));
     return db.select().from(moltDomains).where(and(...conditions)).limit(20);
@@ -1071,6 +1122,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateDomainOnChain(id: number, tokenId: number, txHash: string): Promise<void> {
     await db.update(moltDomains).set({ onChainTokenId: tokenId, onChainTxHash: txHash }).where(eq(moltDomains.id, id));
+  }
+
+  async updateDomainWallet(id: number, newWallet: string): Promise<void> {
+    await db.update(moltDomains).set({ walletAddress: newWallet.toLowerCase() }).where(eq(moltDomains.id, id));
   }
 
   async getMoltDomainByAgent(agentId: string): Promise<MoltDomain | undefined> {
@@ -1153,6 +1208,21 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(blockchainActionQueue).orderBy(desc(blockchainActionQueue.createdAt)).limit(100);
   }
 
+  async hasPendingBlockchainActionForAgent(type: string, agentId: string): Promise<boolean> {
+    const rows = await db.select({ id: blockchainActionQueue.id })
+      .from(blockchainActionQueue)
+      .where(
+        and(
+          eq(blockchainActionQueue.type, type as any),
+          eq(blockchainActionQueue.agentId, agentId),
+          eq(blockchainActionQueue.status, "pending"),
+          lte(blockchainActionQueue.retries, 4),
+        )
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async createNotification(data: InsertAgentNotification): Promise<AgentNotification> {
     const [row] = await db.insert(agentNotifications).values({
       agentId: data.agentId,
@@ -1209,6 +1279,33 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return created;
     }
+  }
+
+  async createSkillAttestation(attestation: InsertSkillAttestation): Promise<SkillAttestation> {
+    const [row] = await db.insert(skillAttestations).values(attestation).returning();
+    return row;
+  }
+
+  async getSkillAttestations(agentId: string, skillName: string): Promise<SkillAttestation[]> {
+    return db.select().from(skillAttestations)
+      .where(and(eq(skillAttestations.agentId, agentId), eq(skillAttestations.skillName, skillName.toLowerCase())))
+      .orderBy(desc(skillAttestations.createdAt));
+  }
+
+  async countSkillAttestations(agentId: string, skillName: string): Promise<number> {
+    const [row] = await db.select({ cnt: count() }).from(skillAttestations)
+      .where(and(eq(skillAttestations.agentId, agentId), eq(skillAttestations.skillName, skillName.toLowerCase())));
+    return row?.cnt ?? 0;
+  }
+
+  async hasAttested(agentId: string, skillName: string, attestorId: string): Promise<boolean> {
+    const [row] = await db.select().from(skillAttestations)
+      .where(and(
+        eq(skillAttestations.agentId, agentId),
+        eq(skillAttestations.skillName, skillName.toLowerCase()),
+        eq(skillAttestations.attestorId, attestorId),
+      ));
+    return !!row;
   }
 
   async getSkillChallenges(skill: string): Promise<SkillChallenge[]> {
@@ -1579,6 +1676,59 @@ Be specific and methodical.`,
     const [result] = await db.select({ value: count() }).from(erc8183Jobs)
       .where(conditions.length > 0 ? and(...conditions) : undefined);
     return result?.value || 0;
+  }
+
+  // ─── Crew Subtasks (Agency Mode) ────────────────────────────────────────────
+
+  async createCrewSubtask(subtask: InsertCrewSubtask): Promise<CrewSubtask> {
+    const [created] = await db.insert(crewSubtasks).values(subtask).returning();
+    return created;
+  }
+
+  async getCrewSubtasks(gigId: string, crewId?: string): Promise<CrewSubtask[]> {
+    const conditions: any[] = [eq(crewSubtasks.gigId, gigId)];
+    if (crewId) conditions.push(eq(crewSubtasks.crewId, crewId));
+    return db.select().from(crewSubtasks)
+      .where(and(...conditions))
+      .orderBy(asc(crewSubtasks.createdAt));
+  }
+
+  async getCrewSubtask(id: string): Promise<CrewSubtask | undefined> {
+    const [row] = await db.select().from(crewSubtasks).where(eq(crewSubtasks.id, id));
+    return row;
+  }
+
+  async updateCrewSubtask(id: string, data: Partial<CrewSubtask>): Promise<CrewSubtask | undefined> {
+    const [updated] = await db.update(crewSubtasks)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(crewSubtasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCrewSubtask(id: string): Promise<void> {
+    await db.delete(crewSubtasks).where(eq(crewSubtasks.id, id));
+  }
+
+  async getSubtasksForAssignee(assigneeId: string): Promise<CrewSubtask[]> {
+    return db.select().from(crewSubtasks)
+      .where(eq(crewSubtasks.assigneeId, assigneeId))
+      .orderBy(desc(crewSubtasks.createdAt));
+  }
+
+  // ─── Crew Gig Settings ───────────────────────────────────────────────────────
+
+  async getCrewGigSettings(gigId: string): Promise<CrewGigSettings | undefined> {
+    const [row] = await db.select().from(crewGigSettings).where(eq(crewGigSettings.gigId, gigId));
+    return row;
+  }
+
+  async upsertCrewGigSettings(gigId: string, data: Partial<Omit<CrewGigSettings, "gigId">>): Promise<CrewGigSettings> {
+    const [row] = await db.insert(crewGigSettings)
+      .values({ gigId, ...data })
+      .onConflictDoUpdate({ target: crewGigSettings.gigId, set: data })
+      .returning();
+    return row;
   }
 }
 
