@@ -2,12 +2,12 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, MOLT_RESERVED_NAMES } from "@shared/schema";
+import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, insertBlogPostSchema, MOLT_RESERVED_NAMES, type Crew } from "@shared/schema";
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address, getAddress as toChecksumAddress, verifyMessage } from "viem";
-import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL } from "./reputation";
+import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL, computeSkillTierBonus, getTierLabel, getTierBadge, getNextTierUpgrade, MAX_VERIFIED_SKILLS_BONUS } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
   buildIdentityMetadata,
@@ -35,6 +35,7 @@ import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, u
 import { telegramAnnounceSlash } from "./telegram-announcements";
 import { agentIdAliases } from "./seed";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
+import { computeEffectiveFee, buildFeeUnlockHints, serializeFeeBreakdown, type AgentFeeContext, type GigFeeContext } from "./fee-engine";
 import {
   mintPassportForAgent,
   setMoltDomainOnChain,
@@ -71,7 +72,7 @@ import {
   getValidationInfoOnChain,
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
-import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
+import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, syncMintlifyDocs, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS, skalePublicClient } from "./skale-chain";
 import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS, getWalletClient } from "./chain-client";
 import {
@@ -546,6 +547,19 @@ async function adminAuthMiddleware(req: Request, res: Response, next: NextFuncti
   next();
 }
 
+async function syncAgentSkillBonusAndVerifiedSkills(agentId: string): Promise<void> {
+  const allVerifications = await storage.getSkillVerifications(agentId);
+  const verifiedFromTiers = allVerifications.filter(v => (v.tier ?? 0) >= 1).map(v => v.skillName);
+  const tierBonus = computeSkillTierBonus(allVerifications.map(v => v.tier ?? 0));
+  const agent = await storage.getAgent(agentId);
+  if (!agent) return;
+  const newFusedScore = Math.max(0, Math.round(getScoreBreakdown(agent, tierBonus).fusedScore * 10) / 10);
+  await storage.updateAgent(agentId, {
+    fusedScore: newFusedScore,
+    verifiedSkills: verifiedFromTiers,
+  });
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -681,20 +695,30 @@ export async function registerRoutes(
         "Cache-Control": "public, max-age=3600",
         "Access-Control-Allow-Origin": "*",
       });
-      res.json(registered.map((a: any) => ({
-        name: a.handle,
-        handle: a.handle,
-        tokenId: a.erc8004TokenId ? parseInt(a.erc8004TokenId, 10) : null,
-        agentRegistry: ERC8004_CAIP10_REGISTRY,
-        metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${a.id}/card/metadata`,
-        walletAddress: a.walletAddress,
-        moltDomain: a.moltDomain || null,
-        fusedScore: a.fusedScore || 0,
-        tier: a.tier || "Hatchling",
-        scanUrl: a.erc8004TokenId
-            ? `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${a.erc8004TokenId}`
-            : null,
-      })));
+      const SKALE_NFT_ADDR = "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83";
+      const SKALE_EXPLORER = "https://base-sepolia-testnet-explorer.skalenodes.com";
+      res.json(registered.map((a: any) => {
+        const onSkale = a.preferredChain === "SKALE_TESTNET" || a.homeChain === "SKALE_TESTNET";
+        const scanUrl = a.erc8004TokenId
+          ? onSkale
+            ? `${SKALE_EXPLORER}/token/${SKALE_NFT_ADDR}?a=${a.erc8004TokenId}`
+            : `https://8004scan.io/agents/base-sepolia/${a.erc8004TokenId}`
+          : null;
+        return {
+          type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+          name: a.handle,
+          handle: a.handle,
+          tokenId: a.erc8004TokenId ? parseInt(a.erc8004TokenId, 10) : null,
+          agentRegistry: ERC8004_CAIP10_REGISTRY,
+          metadataUri: `${PRODUCTION_BASE_URL}/api/agents/${a.id}/card/metadata`,
+          walletAddress: a.walletAddress,
+          moltDomain: a.moltDomain || null,
+          fusedScore: a.fusedScore || 0,
+          tier: a.tier || "Hatchling",
+          chain: onSkale ? "SKALE_TESTNET" : "BASE_SEPOLIA",
+          scanUrl,
+        };
+      }));
     } catch (err: any) {
       res.status(500).json({ error: "Failed to list agents" });
     }
@@ -714,6 +738,28 @@ export async function registerRoutes(
   }
 
   setInterval(x402CleanupExpired, 60_000);
+
+  // ─── Crew score auto-sync: recalculate crew FusedScore every 30 minutes ──
+  async function syncAllCrewScores() {
+    try {
+      const allCrews = await storage.getCrews();
+      for (const crew of allCrews) {
+        const members = await storage.getCrewMembers(crew.id);
+        if (members.length === 0) continue;
+        const agentData = await Promise.all(members.map(m => storage.getAgent(m.agentId)));
+        const valid = agentData.filter(Boolean);
+        if (valid.length === 0) continue;
+        const avgScore = Math.round((valid.reduce((s, a) => s + (a!.fusedScore || 0), 0) / valid.length) * 10) / 10;
+        const bondPool = Math.round(valid.reduce((s, a) => s + (a!.availableBond || 0), 0) * 100) / 100;
+        if (avgScore !== crew.fusedScore || bondPool !== crew.bondPool) {
+          await storage.updateCrew(crew.id, { fusedScore: avgScore, bondPool });
+        }
+      }
+    } catch (e) {
+      // Non-critical: silently skip
+    }
+  }
+  setInterval(syncAllCrewScores, 30 * 60 * 1000); // every 30 min
 
   function x402ReplayGuard(req: Request, res: Response, next: NextFunction) {
     const paymentHeader = (req.headers["x-payment"] || req.headers["x-payment-response"]) as string | undefined;
@@ -895,7 +941,17 @@ export async function registerRoutes(
   const CLAW_CARD_NFT_ADDR = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
   const ERC8004_REGISTRY_ADDR = "0x8004A818BFB912233c491871b3d84c89A494BD9e";
 
+  const SKALE_NFT_ADDR_ERC8004 = "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83";
+  const SKALE_EXPLORER_URL = "https://base-sepolia-testnet-explorer.skalenodes.com";
+
   function buildErc8004Payload(agent: any) {
+    const onSkale = agent.preferredChain === "SKALE_TESTNET" || agent.homeChain === "SKALE_TESTNET";
+    const chainLabel = onSkale ? "skale-testnet" : "base-sepolia";
+    const scanUrl = agent.erc8004TokenId
+      ? onSkale
+        ? `${SKALE_EXPLORER_URL}/token/${SKALE_NFT_ADDR_ERC8004}?a=${agent.erc8004TokenId}`
+        : `https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`
+      : null;
     return {
       agentId: agent.id,
       handle: agent.handle,
@@ -904,7 +960,7 @@ export async function registerRoutes(
       erc8004TokenId: agent.erc8004TokenId || null,
       registryAddress: ERC8004_REGISTRY_ADDR,
       nftAddress: CLAW_CARD_NFT_ADDR,
-      chain: "base-sepolia",
+      chain: chainLabel,
       fusedScore: agent.fusedScore,
       onChainScore: agent.onChainScore,
       moltbookKarma: agent.moltbookKarma,
@@ -916,6 +972,7 @@ export async function registerRoutes(
       basescanUrl: agent.erc8004TokenId
         ? `https://sepolia.basescan.org/token/${CLAW_CARD_NFT_ADDR}?a=${agent.erc8004TokenId}`
         : null,
+      scanUrl,
       clawtrust: `https://clawtrust.org/profile/${agent.handle}`,
       resolvedAt: new Date().toISOString(),
     };
@@ -1466,6 +1523,32 @@ export async function registerRoutes(
       }
 
       const updated = await storage.updateGigStatus(gigId.data, status);
+
+      // Record on-chain crew gig completion when a crew gig reaches completed via status PATCH (non-blocking)
+      if (status === "completed" && gig.crewId) {
+        (async () => {
+          try {
+            const crew = await storage.getCrew(gig.crewId!);
+            if (crew) {
+              const { recordCrewGigCompletion } = await import("./blockchain");
+              await recordCrewGigCompletion({
+                onChainCrewId: crew.onChainCrewId || null,
+                onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                crewDbId: crew.id,
+              });
+              await storage.updateCrew(crew.id, {
+                gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                totalEarned: (crew.totalEarned || 0) + (gig.budget || 0),
+              });
+            }
+          } catch (e: any) {
+            console.error("[Crew] recordCrewGigCompletion (status PATCH) error:", e.message?.slice(0, 200));
+          }
+        })();
+        // Agency rep split + agencyVerified — post-gig-completion
+        triggerAgencyRepSplitOnCompletion(gigId.data).catch(() => {});
+      }
+
       res.json(updated);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -1481,10 +1564,12 @@ export async function registerRoutes(
 
     const events = await storage.getReputationEvents(req.params.agentId);
     const dbBreakdown = getScoreBreakdown(agent);
+    const agentSkillVerifications = await storage.getSkillVerifications(req.params.agentId);
+    const agentTierBonus = computeSkillTierBonus(agentSkillVerifications.map(v => v.tier ?? 0));
 
     let liveFused;
     try {
-      liveFused = await computeLiveFusedReputation(agent);
+      liveFused = await computeLiveFusedReputation(agent, agentTierBonus);
     } catch (err: any) {
       liveFused = null;
     }
@@ -1617,7 +1702,11 @@ export async function registerRoutes(
 
       const dbBreakdown = getScoreBreakdown(agent);
       let liveFused: any = null;
-      try { liveFused = await computeLiveFusedReputation(agent); } catch {}
+      try {
+        const svs = await storage.getSkillVerifications(agent.id);
+        const tb = computeSkillTierBonus(svs.map(v => v.tier ?? 0));
+        liveFused = await computeLiveFusedReputation(agent, tb);
+      } catch {}
 
       const fusedScore = liveFused?.fusedScore ?? dbBreakdown.fusedScore;
       const tier = liveFused?.tier ?? dbBreakdown.tier;
@@ -1667,7 +1756,11 @@ export async function registerRoutes(
 
       const dbBreakdown = getScoreBreakdown(agent);
       let liveFused: any = null;
-      try { liveFused = await computeLiveFusedReputation(agent); } catch {}
+      try {
+        const svs2 = await storage.getSkillVerifications(agent.id);
+        const tb2 = computeSkillTierBonus(svs2.map(v => v.tier ?? 0));
+        liveFused = await computeLiveFusedReputation(agent, tb2);
+      } catch {}
 
       const fusedScore = liveFused?.fusedScore ?? dbBreakdown.fusedScore;
       const tier = liveFused?.tier ?? dbBreakdown.tier;
@@ -1818,7 +1911,9 @@ export async function registerRoutes(
 
       let newScore = agent.fusedScore;
       try {
-        const liveFused = await computeLiveFusedReputation(agent);
+        const svs3 = await storage.getSkillVerifications(agentId);
+        const tb3 = computeSkillTierBonus(svs3.map(v => v.tier ?? 0));
+        const liveFused = await computeLiveFusedReputation(agent, tb3);
         newScore = liveFused.fusedScore;
         await storage.updateAgent(agentId, { fusedScore: newScore, onChainScore: Math.round(newScore * 10) });
       } catch {
@@ -1834,6 +1929,52 @@ export async function registerRoutes(
         synced: true,
         syncedAt: new Date().toISOString(),
         message: "Reputation score synced across chains",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Fee estimate (read-only, no auth required) ─────────────────────────────
+  app.get("/api/gigs/:id/fee-estimate", async (req, res) => {
+    try {
+      const gigId = req.params.id;
+      const agentId = req.query.agentId as string | undefined;
+
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      let agentCtx: AgentFeeContext = { fusedScore: 0, totalGigsCompleted: 0, availableBond: 0, skills: [] };
+      if (agentId) {
+        const agent = await storage.getAgent(agentId);
+        if (!agent) return res.status(404).json({ message: "Agent not found" });
+        const agentSkills = await storage.getSkillVerifications(agentId);
+        agentCtx = {
+          fusedScore: agent.fusedScore ?? 0,
+          totalGigsCompleted: agent.totalGigsCompleted ?? 0,
+          availableBond: agent.availableBond ?? 0,
+          skills: agentSkills.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+        };
+      }
+
+      const chain = gig.chain || "BASE_SEPOLIA";
+      const gigCtx: GigFeeContext = {
+        chain,
+        budget: gig.budget,
+        skillsRequired: gig.skillsRequired || [],
+        isCrewGig: !!gig.crewGig,
+      };
+      const estimate = computeEffectiveFee(agentCtx, gigCtx);
+      const unlockHints = agentId ? buildFeeUnlockHints(agentCtx, gigCtx.skillsRequired) : [];
+
+      return res.json({
+        gigId,
+        agentId: agentId || null,
+        budget: gig.budget,
+        currency: gig.currency,
+        chain,
+        unlockHints,
+        ...estimate,
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1880,6 +2021,32 @@ export async function registerRoutes(
         }
       }
 
+      // ── Compute and store effective fee at escrow creation time ─────────────
+      let effectiveFeePct: number | undefined;
+      let feeBreakdown: string | undefined;
+      if (gig.assigneeId) {
+        const assigneeForFee = await storage.getAgent(gig.assigneeId);
+        if (assigneeForFee) {
+          const assigneeSkills = await storage.getSkillVerifications(gig.assigneeId);
+          const agentCtxForEscrow: AgentFeeContext = {
+            fusedScore: assigneeForFee.fusedScore ?? 0,
+            totalGigsCompleted: assigneeForFee.totalGigsCompleted ?? 0,
+            availableBond: assigneeForFee.availableBond ?? 0,
+            skills: assigneeSkills.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+          };
+          const gigCtxForEscrow: GigFeeContext = {
+            chain,
+            budget: gig.budget,
+            skillsRequired: gig.skillsRequired || [],
+            isCrewGig: !!gig.crewGig,
+          };
+          const feeEstimate = computeEffectiveFee(agentCtxForEscrow, gigCtxForEscrow);
+          effectiveFeePct = feeEstimate.effectiveFeePct;
+          feeBreakdown = serializeFeeBreakdown(feeEstimate.breakdown);
+          console.log(`[FeeEngine] Escrow create for gig ${gigId}: fee=${effectiveFeePct}% assignee=${assigneeForFee.handle} fusedScore=${assigneeForFee.fusedScore}`);
+        }
+      }
+
       const escrow = await storage.createEscrow({
         gigId,
         depositorId,
@@ -1887,6 +2054,8 @@ export async function registerRoutes(
         currency: gig.currency,
         chain,
         status: "pending",
+        ...(effectiveFeePct !== undefined ? { effectiveFeePct } : {}),
+        ...(feeBreakdown !== undefined ? { feeBreakdown } : {}),
       });
 
       if (circleWalletId) {
@@ -2108,6 +2277,28 @@ export async function registerRoutes(
           await storage.updateEscrow(escrow.id, { status: "released" });
         }
         await storage.updateGigStatus(gigId, "completed");
+        // Record on-chain crew gig completion for admin-resolved gigs (non-blocking)
+        if (gig.crewId) {
+          (async () => {
+            try {
+              const crew = await storage.getCrew(gig.crewId!);
+              if (crew) {
+                const { recordCrewGigCompletion } = await import("./blockchain");
+                await recordCrewGigCompletion({
+                  onChainCrewId: crew.onChainCrewId || null,
+                  onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                  crewDbId: crew.id,
+                });
+                await storage.updateCrew(crew.id, {
+                  gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                  totalEarned: (crew.totalEarned || 0) + (gig.budget || 0),
+                });
+              }
+            } catch (e: any) {
+              console.error("[Crew] recordCrewGigCompletion (admin-resolve) error:", e.message?.slice(0, 200));
+            }
+          })();
+        }
       } else {
         if (escrow.circleWalletId && isCircleConfigured()) {
           const depositor = await storage.getAgent(escrow.depositorId);
@@ -2207,13 +2398,37 @@ export async function registerRoutes(
         if (!gig) return res.status(404).json({ message: "Gig not found" });
         const walletAddress = (req as any).walletAddress as string;
         const assignee = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+        const onchainChain = (chain || gig.chain || "BASE_SEPOLIA") as "BASE_SEPOLIA" | "SOL_DEVNET" | "SKALE_TESTNET";
+        const onchainBudget = (gig as any).budgetUsdc ?? gig.budget;
+        let onchainFeePct: number | undefined;
+        let onchainFeeBreakdown: string | undefined;
+        if (assignee) {
+          const assigneeSkillsOnchain = await storage.getSkillVerifications(assignee.id);
+          const onchainAgentCtx: AgentFeeContext = {
+            fusedScore: assignee.fusedScore ?? 0,
+            totalGigsCompleted: assignee.totalGigsCompleted ?? 0,
+            availableBond: assignee.availableBond ?? 0,
+            skills: assigneeSkillsOnchain.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+          };
+          const onchainGigCtx: GigFeeContext = {
+            chain: onchainChain,
+            budget: onchainBudget,
+            skillsRequired: gig.skillsRequired || [],
+            isCrewGig: !!gig.crewGig,
+          };
+          const onchainFee = computeEffectiveFee(onchainAgentCtx, onchainGigCtx);
+          onchainFeePct = onchainFee.effectiveFeePct;
+          onchainFeeBreakdown = serializeFeeBreakdown(onchainFee.breakdown);
+        }
         const created = await storage.createEscrow({
           gigId,
           depositorId: walletAddress,
-          amount:      (gig as any).budgetUsdc ?? gig.budget,
+          amount:      onchainBudget,
           currency:    "USDC",
-          chain:       (chain || gig.chain || "BASE_SEPOLIA") as "BASE_SEPOLIA" | "SOL_DEVNET" | "SKALE_TESTNET",
+          chain:       onchainChain,
           status:      "locked",
+          ...(onchainFeePct !== undefined ? { effectiveFeePct: onchainFeePct } : {}),
+          ...(onchainFeeBreakdown !== undefined ? { feeBreakdown: onchainFeeBreakdown } : {}),
         });
         await storage.updateEscrow(created.id, { txHash: lockTxHash });
         await storage.updateGig(gigId, { status: "in_progress" });
@@ -2336,6 +2551,39 @@ export async function registerRoutes(
         }
       }
 
+      // ── Compute effective fee before payout — preserve stored; recompute for legacy ──
+      let releaseFeePct: number;
+      let releaseFeeBreakdown: string | undefined;
+      if (escrow.effectiveFeePct != null) {
+        releaseFeePct = escrow.effectiveFeePct;
+        releaseFeeBreakdown = escrow.feeBreakdown ?? undefined;
+        console.log(`[FeeEngine] Escrow release for gig ${gigId}: using stored fee=${releaseFeePct}%`);
+      } else {
+        // Legacy escrow with no stored fee — recompute from current FusedScore.
+        const releaseChain = escrow.chain || gig.chain || "BASE_SEPOLIA";
+        const assigneeAtRelease = await storage.getAgent(gig.assigneeId!);
+        const releaseSkills = assigneeAtRelease ? await storage.getSkillVerifications(assigneeAtRelease.id) : [];
+        const releaseAgentCtx: AgentFeeContext = {
+          fusedScore: assigneeAtRelease?.fusedScore ?? 0,
+          totalGigsCompleted: assigneeAtRelease?.totalGigsCompleted ?? 0,
+          availableBond: assigneeAtRelease?.availableBond ?? 0,
+          skills: releaseSkills.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+        };
+        const releaseGigCtx: GigFeeContext = {
+          chain: releaseChain,
+          budget: escrow.amount,
+          skillsRequired: gig.skillsRequired || [],
+          isCrewGig: !!gig.crewGig,
+        };
+        const releaseFee = computeEffectiveFee(releaseAgentCtx, releaseGigCtx);
+        releaseFeePct = releaseFee.effectiveFeePct;
+        releaseFeeBreakdown = serializeFeeBreakdown(releaseFee.breakdown);
+        console.log(`[FeeEngine] Escrow release (legacy) for gig ${gigId}: recomputed fee=${releaseFeePct}% fusedScore=${assigneeAtRelease?.fusedScore ?? 0}`);
+      }
+      const feeAmount = Math.round(escrow.amount * (releaseFeePct / 100) * 100) / 100;
+      const netPayout = Math.round((escrow.amount - feeAmount) * 100) / 100;
+      console.log(`[FeeEngine] Gig ${gigId}: budget=${escrow.amount} fee=${feeAmount} net=${netPayout} USDC`);
+
       let circleTransfer = null;
       let circleAttemptFailed = false;
       if (isCircleConfigured()) {
@@ -2358,7 +2606,7 @@ export async function registerRoutes(
               circleTransfer = await transferUSDC({
                 sourceWalletId: escrow.circleWalletId,
                 destinationAddress: destAddress,
-                amount: escrow.amount.toString(),
+                amount: netPayout.toString(),
                 chain: escrow.chain || "BASE_SEPOLIA",
               });
             } catch (err: any) {
@@ -2375,22 +2623,22 @@ export async function registerRoutes(
       let onChainTxHash: string | undefined;
       if ((!isCircleConfigured() || circleAttemptFailed) && !circleTransfer && gig.assigneeId) {
         const assigneeAgent = await storage.getAgent(gig.assigneeId);
-        if (assigneeAgent?.walletAddress && escrow.amount > 0) {
+        if (assigneeAgent?.walletAddress && netPayout > 0) {
           // E2E test bypass — skip oracle balance preflight and mark released without real transfer
           if (isE2ERelease) {
-            console.log(`[Escrow] E2E bypass: simulating oracle transfer for gig ${gigId} (amount=${escrow.amount} USDC)`);
+            console.log(`[Escrow] E2E bypass: simulating oracle transfer for gig ${gigId} (netPayout=${netPayout} USDC after ${releaseFeePct}% fee)`);
             onChainTxHash = `e2e-simulated-tx-${Date.now()}`;
           } else {
           // Pre-flight: verify oracle wallet has sufficient USDC before releasing
           try {
             const oracleBalance = await getUSDCBalance(ORACLE_WALLET_ADDRESS);
             const LOW_BALANCE_WARN = 5;
-            if (oracleBalance < escrow.amount) {
-              console.error(`[Escrow] Oracle wallet underfunded: ${oracleBalance.toFixed(2)} USDC available, ${escrow.amount} USDC needed for gig ${gigId}`);
+            if (oracleBalance < netPayout) {
+              console.error(`[Escrow] Oracle wallet underfunded: ${oracleBalance.toFixed(2)} USDC available, ${netPayout} USDC needed for gig ${gigId}`);
               return res.status(503).json({
-                message: `Oracle wallet underfunded. Available: ${oracleBalance.toFixed(2)} USDC, needed: ${escrow.amount} USDC. Contact platform support to fund the oracle wallet.`,
+                message: `Oracle wallet underfunded. Available: ${oracleBalance.toFixed(2)} USDC, needed: ${netPayout} USDC. Contact platform support to fund the oracle wallet.`,
                 oracleBalance,
-                required: escrow.amount,
+                required: netPayout,
                 oracleWallet: ORACLE_WALLET_ADDRESS,
               });
             }
@@ -2418,7 +2666,7 @@ export async function registerRoutes(
             console.warn("[Escrow] Could not check oracle ETH balance before release:", gasCheckErr.message);
           }
           try {
-            onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, escrow.amount);
+            onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, netPayout);
             console.log(`[Escrow] On-chain USDC transfer complete: ${onChainTxHash}`);
           } catch (txErr: any) {
             console.error("[Escrow] On-chain USDC transfer failed:", txErr.message);
@@ -2433,8 +2681,34 @@ export async function registerRoutes(
         status: "released",
         circleTransactionId: circleTransfer?.transactionId || null,
         ...(onChainTxHash ? { releaseTxHash: onChainTxHash } : {}),
+        effectiveFeePct: releaseFeePct,
+        ...(releaseFeeBreakdown !== undefined ? { feeBreakdown: releaseFeeBreakdown } : {}),
       });
       await storage.updateGigStatus(gigId, "completed");
+
+      // ── Gig-Proven skill tier upgrade (Tier 3) for assignee ──────────────
+      if (gig.assigneeId && gig.skillsRequired && gig.skillsRequired.length > 0) {
+        (async () => {
+          try {
+            const escrowAmt = escrow?.amount;
+            const swarmValidation = await storage.getValidationByGig(gigId);
+            for (const skillName of gig.skillsRequired) {
+              const existing = await storage.getSkillVerification(gig.assigneeId!, skillName.toLowerCase());
+              if ((existing?.tier ?? 0) < 3) {
+                const newTier = Math.max(existing?.tier ?? 0, 3);
+                const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+                tierProofs["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: escrowAmt ?? gig.budget, swarmVoteId: swarmValidation?.id ?? null, completedAt: new Date().toISOString() };
+                await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
+                  tier: newTier, tierProofs, status: "verified", verifiedAt: existing?.verifiedAt ?? new Date(),
+                });
+              }
+            }
+            await syncAgentSkillBonusAndVerifiedSkills(gig.assigneeId!);
+          } catch (e: any) {
+            console.error("[SkillTier] Gig-proven upgrade error (escrow release):", e.message?.slice(0, 200));
+          }
+        })();
+      }
 
       // ── Post-release side effects ─────────────────────────────────────────
       const assignee = await storage.getAgent(gig.assigneeId);
@@ -2468,6 +2742,31 @@ export async function registerRoutes(
         notifyAgent(gig.posterId, "gig_completed", "Gig Completed", `${assignee.handle} completed "${gig.title}" — trust receipt ready.`, { gigId }).catch(() => {});
       }
 
+      // If this gig was crew-assigned, record on-chain crew gig completion (non-blocking)
+      if (gig.crewId) {
+        (async () => {
+          try {
+            const crew = await storage.getCrew(gig.crewId!);
+            if (crew) {
+              const { recordCrewGigCompletion } = await import("./blockchain");
+              await recordCrewGigCompletion({
+                onChainCrewId: crew.onChainCrewId || null,
+                onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                crewDbId: crew.id,
+              });
+              await storage.updateCrew(crew.id, {
+                gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                totalEarned: (crew.totalEarned || 0) + (gig.budget || 0),
+              });
+            }
+          } catch (e: any) {
+            console.error("[Crew] recordCrewGigCompletion (escrow release) error:", e.message?.slice(0, 200));
+          }
+        })();
+        // Agency rep split + agencyVerified — post-gig-completion (escrow released)
+        triggerAgencyRepSplitOnCompletion(gigId).catch(() => {});
+      }
+
       res.json({
         status: "released",
         success: true,
@@ -2477,6 +2776,12 @@ export async function registerRoutes(
         circleTransfer,
         onChainTxHash,
         chain: escrow.chain,
+        fee: {
+          effectiveFeePct: releaseFeePct,
+          feeAmount,
+          netPayout,
+          budgetTotal: escrow.amount,
+        },
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -2829,6 +3134,50 @@ export async function registerRoutes(
           await storage.updateValidation(validation.id, { status: "approved" });
           await storage.updateGigStatus(gigId, "completed");
           console.log(`[Swarm] Auto-approved validation ${validation.id} for gig ${gigId} (${autoVotescast}/${threshold} votes)`);
+          // Gig-Proven skill tier upgrade (Tier 3) for assignee
+          if (gig.assigneeId && gig.skillsRequired && gig.skillsRequired.length > 0) {
+            (async () => {
+              try {
+                for (const skillName of gig.skillsRequired) {
+                  const existing2 = await storage.getSkillVerification(gig.assigneeId!, skillName.toLowerCase());
+                  if ((existing2?.tier ?? 0) < 3) {
+                    const tp2 = (existing2?.tierProofs as Record<string, any>) ?? {};
+                    tp2["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: gig.budget, swarmVoteId: validation.id, completedAt: new Date().toISOString() };
+                    await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
+                      tier: Math.max(existing2?.tier ?? 0, 3), tierProofs: tp2, status: "verified", verifiedAt: existing2?.verifiedAt ?? new Date(),
+                    });
+                  }
+                }
+                await syncAgentSkillBonusAndVerifiedSkills(gig.assigneeId!);
+              } catch (e: any) {
+                console.error("[SkillTier] Gig-proven upgrade error (swarm auto-approve):", e.message?.slice(0, 200));
+              }
+            })();
+          }
+          // Record on-chain crew gig completion if crew-assigned (non-blocking)
+          if (gig.crewId) {
+            (async () => {
+              try {
+                const crew = await storage.getCrew(gig.crewId!);
+                if (crew) {
+                  const { recordCrewGigCompletion } = await import("./blockchain");
+                  await recordCrewGigCompletion({
+                    onChainCrewId: crew.onChainCrewId || null,
+                    onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                    crewDbId: crew.id,
+                  });
+                  await storage.updateCrew(crew.id, {
+                    gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                    totalEarned: (crew.totalEarned || 0) + (gig.budget || 0),
+                  });
+                }
+              } catch (e: any) {
+                console.error("[Crew] recordCrewGigCompletion (swarm auto-approve) error:", e.message?.slice(0, 200));
+              }
+            })();
+            // Agency rep split + agencyVerified — post-gig-completion (swarm approved)
+            triggerAgencyRepSplitOnCompletion(gigId).catch(() => {});
+          }
         }
       }
 
@@ -2918,21 +3267,19 @@ export async function registerRoutes(
 
       const gig = gigForSelfCheck;
       if (gig && gig.skillsRequired && gig.skillsRequired.length > 0) {
-        if (voter) {
-          const voterVerified = (voter.verifiedSkills || []).map((s: string) => s.toLowerCase());
-          const gigSkills = gig.skillsRequired.map((s: string) => s.toLowerCase());
-          const hasRelevantSkill = gigSkills.some((gs: string) => voterVerified.includes(gs));
-          // Skill match is only enforced when the validator has verified skills but none
-          // match the gig. Validators with zero verified skills are general validators
-          // and can vote on any gig — they are deprioritised at selection time, so they
-          // only reach this point when not enough skilled validators exist.
-          if (voterVerified.length > 0 && !hasRelevantSkill) {
-            return res.status(403).json({
-              message: "Your verified skills do not match this gig's requirements. Complete a Skill Proof for a relevant skill to vote on this gig.",
-              requiredSkills: gig.skillsRequired,
-              yourVerifiedSkills: voter.verifiedSkills || [],
-            });
-          }
+        const gigSkills = gig.skillsRequired.map((s: string) => s.toLowerCase());
+        const voterSkillVerifications = await storage.getSkillVerifications(voterId);
+        const voterTier1Skills = voterSkillVerifications
+          .filter(sv => (sv.tier ?? 0) >= 1)
+          .map(sv => sv.skillName.toLowerCase());
+        const hasQualifyingSkill = gigSkills.some(gs => voterTier1Skills.includes(gs));
+        if (!hasQualifyingSkill) {
+          return res.status(403).json({
+            message: "You must have at least Tier 1 (Challenge-Passed) verification in one of the gig's required skills to vote on this validation.",
+            requiredSkills: gig.skillsRequired,
+            yourTier1Skills: voterTier1Skills,
+            hint: "Pass a skill challenge for a relevant skill (e.g. POST /api/skill-challenges/:skill/attempt) to qualify as a validator.",
+          });
         }
       }
 
@@ -3015,6 +3362,49 @@ export async function registerRoutes(
 
         if (gig2) {
           await storage.updateGigStatus(gig2.id, "completed");
+
+          // Gig-Proven skill tier upgrade (Tier 3) for assignee (swarm vote resolution)
+          if (gig2.assigneeId && gig2.skillsRequired && gig2.skillsRequired.length > 0) {
+            (async () => {
+              try {
+                for (const skillName of gig2.skillsRequired) {
+                  const existing3 = await storage.getSkillVerification(gig2.assigneeId!, skillName.toLowerCase());
+                  if ((existing3?.tier ?? 0) < 3) {
+                    const tp3 = (existing3?.tierProofs as Record<string, any>) ?? {};
+                    tp3["3"] = { method: "gig_proven", gigId: gig2.id, gigTitle: gig2.title, usdcEarned: gig2.budget, swarmVoteId: validationId, completedAt: new Date().toISOString() };
+                    await storage.upsertSkillVerification(gig2.assigneeId!, skillName.toLowerCase(), {
+                      tier: Math.max(existing3?.tier ?? 0, 3), tierProofs: tp3, status: "verified", verifiedAt: existing3?.verifiedAt ?? new Date(),
+                    });
+                  }
+                }
+                await syncAgentSkillBonusAndVerifiedSkills(gig2.assigneeId!);
+              } catch (e: any) {
+                console.error("[SkillTier] Gig-proven upgrade error (swarm vote resolution):", e.message?.slice(0, 200));
+              }
+            })();
+          }
+          // Record on-chain crew gig completion for swarm-approved crew gigs (non-blocking)
+          if (gig2.crewId) {
+            (async () => {
+              try {
+                const crew = await storage.getCrew(gig2.crewId!);
+                if (crew) {
+                  const { recordCrewGigCompletion } = await import("./blockchain");
+                  await recordCrewGigCompletion({
+                    onChainCrewId: crew.onChainCrewId || null,
+                    onChainCrewIdSkale: crew.onChainCrewIdSkale || null,
+                    crewDbId: crew.id,
+                  });
+                  await storage.updateCrew(crew.id, {
+                    gigsCompleted: (crew.gigsCompleted || 0) + 1,
+                    totalEarned: (crew.totalEarned || 0) + (gig2.budget || 0),
+                  });
+                }
+              } catch (e: any) {
+                console.error("[Crew] recordCrewGigCompletion (swarm vote resolution) error:", e.message?.slice(0, 200));
+              }
+            })();
+          }
 
           if (gig2.assigneeId) {
             await storage.createReputationEvent({
@@ -3670,8 +4060,9 @@ export async function registerRoutes(
 
       const protocol = req.headers["x-forwarded-proto"] || "http";
       const baseUrl = `https://clawtrust.org`;
+      const skillVerifications = await storage.getSkillVerifications(agent.id);
 
-      res.json(generateCardMetadata(agent, baseUrl));
+      res.json(generateCardMetadata(agent, baseUrl, skillVerifications));
     } catch (err: any) {
       res.status(500).json({ message: "Failed to generate card metadata" });
     }
@@ -3737,10 +4128,10 @@ export async function registerRoutes(
           basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_BOND_ADDRESS || "0x23a1E1e958C932639906d0650A13283f6E60132c"}`,
         },
         ClawTrustCrew: {
-          address: process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3",
+          address: process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2",
           description: "Multi-agent crew registry",
-          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
-          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3"}`,
+          basescan: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2"}`,
+          basescanUrl: `${BASESCAN_ADDR}/${process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2"}`,
         },
         ClawTrustAC: {
           address: process.env.CLAW_TRUST_AC_ADDRESS || "0x1933D67CDB911653765e84758f47c60A1E868bC0",
@@ -3853,13 +4244,20 @@ export async function registerRoutes(
 
         if (dbAgentFallback) {
           const tid = dbAgentFallback.erc8004TokenId || null;
-          const bsUrl = tid ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}` : null;
+          const agentPrefChain: string = dbAgentFallback.homeChain || dbAgentFallback.preferredChain || "BASE_SEPOLIA";
+          const isSkaleAgent = agentPrefChain === "SKALE_TESTNET";
+          const bsUrl = tid
+            ? isSkaleAgent
+              ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/${SKALE_CONTRACTS.clawCardNFT}?a=${tid}`
+              : `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}`
+            : null;
           return res.json({
             valid: true,
             standard: "ERC-8004",
-            chain: "base-sepolia",
-            chainId: 84532,
-            contract: { clawCardNFT: nftAddress, tokenId: tid, basescanUrl: bsUrl },
+            chain: isSkaleAgent ? "SKALE_TESTNET" : "base-sepolia",
+            chainId: isSkaleAgent ? 324705682 : 84532,
+            preferredChain: agentPrefChain,
+            contract: { clawCardNFT: isSkaleAgent ? SKALE_CONTRACTS.clawCardNFT : nftAddress, tokenId: tid, basescanUrl: bsUrl },
             identity: {
               wallet: dbAgentFallback.walletAddress,
               moltDomain: dbAgentFallback.moltDomain,
@@ -3928,15 +4326,24 @@ export async function registerRoutes(
       const skills = passportData.skills || dbAgent?.skills || [];
       const active = passportData.active !== undefined ? passportData.active : true;
 
+      const mainAgentPrefChain: string = dbAgent?.homeChain || dbAgent?.preferredChain || "BASE_SEPOLIA";
+      const isMainSkaleAgent = mainAgentPrefChain === "SKALE_TESTNET";
+      const finalBasescanUrl = tokenId
+        ? isMainSkaleAgent
+          ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/${SKALE_CONTRACTS.clawCardNFT}?a=${tokenId}`
+          : basescanUrl
+        : null;
+
       res.json({
         valid: true,
         standard: "ERC-8004",
-        chain: "base-sepolia",
-        chainId: 84532,
+        chain: isMainSkaleAgent ? "SKALE_TESTNET" : "base-sepolia",
+        chainId: isMainSkaleAgent ? 324705682 : 84532,
+        preferredChain: mainAgentPrefChain,
         contract: {
-          clawCardNFT: nftAddress,
+          clawCardNFT: isMainSkaleAgent ? SKALE_CONTRACTS.clawCardNFT : nftAddress,
           tokenId,
-          basescanUrl,
+          basescanUrl: finalBasescanUrl,
         },
         identity: {
           wallet: walletAddress,
@@ -4527,6 +4934,52 @@ export async function registerRoutes(
       if (!address) return res.status(400).json({ message: "address required" });
       const domains = await storage.getDomainsByWallet(address);
       res.json({ domains, total: domains.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/domains/:id/transfer", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const domainId = Number(req.params.id);
+      const { toWallet } = req.body;
+      const fromWallet = (req as any).wallet as string;
+
+      if (!toWallet || !/^0x[0-9a-fA-F]{40}$/.test(toWallet)) {
+        return res.status(400).json({ message: "Valid toWallet address required" });
+      }
+      if (toWallet.toLowerCase() === fromWallet.toLowerCase()) {
+        return res.status(400).json({ message: "Cannot transfer to yourself" });
+      }
+
+      const domains = await storage.getDomainsByWallet(fromWallet.toLowerCase());
+      const domain = domains.find(d => d.id === domainId);
+      if (!domain) return res.status(404).json({ message: "Domain not found or not owned by you" });
+
+      await storage.updateDomainWallet(domainId, toWallet.toLowerCase());
+
+      const REGISTRY_ADDR = "0x82AEAA9921aC1408626851c90FCf74410D059dF4";
+      const CLAWCARD_ADDR = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+      const contractAddr = domain.tld === ".molt" ? CLAWCARD_ADDR : REGISTRY_ADDR;
+      const onChainUrl = domain.onChainTokenId
+        ? `https://sepolia.basescan.org/address/${contractAddr}#writeContract`
+        : null;
+
+      res.json({
+        success: true,
+        message: `Database updated. Complete on-chain transfer via Basescan.`,
+        domain: { ...domain, walletAddress: toWallet.toLowerCase() },
+        onChainInstructions: domain.onChainTokenId
+          ? {
+              contractAddress: contractAddr,
+              tokenId: domain.onChainTokenId,
+              method: "safeTransferFrom(address from, address to, uint256 tokenId)",
+              from: fromWallet,
+              to: toWallet,
+              basescanUrl: onChainUrl,
+            }
+          : null,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -5806,6 +6259,51 @@ export async function registerRoutes(
     });
   });
 
+  app.get("/api/agents/:id/fee-profile", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.id);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const agent = await storage.getAgent(agentId.data);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    const agentSkills = await storage.getSkillVerifications(agentId.data);
+    const agentCtx: AgentFeeContext = {
+      fusedScore: agent.fusedScore ?? 0,
+      totalGigsCompleted: agent.totalGigsCompleted ?? 0,
+      availableBond: agent.availableBond ?? 0,
+      skills: agentSkills.map((s) => ({ skillName: s.skillName, tier: s.tier, status: s.status ?? "pending" })),
+    };
+
+    const baseEstimate = computeEffectiveFee(agentCtx, { chain: "BASE_SEPOLIA", budget: 100, skillsRequired: [], isCrewGig: false });
+    const skaleEstimate = computeEffectiveFee(agentCtx, { chain: "SKALE_TESTNET", budget: 100, skillsRequired: [], isCrewGig: false });
+    const crewEstimate = computeEffectiveFee(agentCtx, { chain: "BASE_SEPOLIA", budget: 100, skillsRequired: [], isCrewGig: true });
+    const unlockHints = buildFeeUnlockHints(agentCtx, []);
+
+    return res.json({
+      agentId: agent.id,
+      handle: agent.handle,
+      fusedScore: agent.fusedScore ?? 0,
+      totalGigsCompleted: agent.totalGigsCompleted ?? 0,
+      availableBond: agent.availableBond ?? 0,
+      verifiedSkillCount: agentSkills.filter((s) => s.status === "verified" && s.tier >= 2).length,
+      chains: {
+        BASE_SEPOLIA: {
+          effectiveFeePct: baseEstimate.effectiveFeePct,
+          breakdown: baseEstimate.breakdown,
+        },
+        SKALE_TESTNET: {
+          effectiveFeePct: skaleEstimate.effectiveFeePct,
+          breakdown: skaleEstimate.breakdown,
+        },
+        BASE_SEPOLIA_CREW: {
+          effectiveFeePct: crewEstimate.effectiveFeePct,
+          breakdown: crewEstimate.breakdown,
+        },
+      },
+      unlockHints,
+    });
+  });
+
   app.get("/api/agents/:id/earnings", async (req, res) => {
     const agentId = safeId.safeParse(req.params.id);
     if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
@@ -6023,20 +6521,23 @@ export async function registerRoutes(
     try {
       // DB reads + 4 direct SKALE RPC/event-log reads run concurrently
       const [
-        agents, gigs, escrows, validations,
+        agents, gigs, escrows, validations, allCrews,
         onChainIdentityCount,  // IdentityRegistry Transfer(from=0x0) mint events
         onChainPassportSupply, // ClawCardNFT.totalSupply() via eth_call (PFP NFT)
         onChainEscrow,         // EscrowReleased events (completed gigs + USDC paid out)
         onChainValidations,    // ValidationResolved(approved=true) events
+        crewDelegationsCount,
       ] = await Promise.all([
         storage.getAgents(),
         storage.getGigs(),
         storage.getEscrowTransactions(),
         storage.getValidations(),
+        storage.getCrews(),
         readSkaleIdentityCount(),
         readSkalePassportTotalSupply(),
         readSkaleEscrowStats(),
         readSkaleSwarmValidationCount(),
+        storage.getAllCrewDelegationsCount(),
       ]);
       const now = Date.now();
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -6119,11 +6620,18 @@ export async function registerRoutes(
       // Total stats
       const totalAgents = agents.length;
       const totalGigsCompleted = gigs.filter(g => g.status === "completed").length;
+      const totalCrewsFormed = allCrews.length;
+      const crewsOnChainBase = allCrews.filter((c: any) => c.onChainCrewId).length;
+      const crewsOnChainSkale = allCrews.filter((c: any) => c.onChainCrewIdSkale).length;
 
       res.json({
         updatedAt: new Date().toISOString(),
         totalAgents,
         totalGigsCompleted,
+        totalCrewsFormed,
+        crewsOnChainBase,
+        crewsOnChainSkale,
+        crewDelegations: crewDelegationsCount,
         tranche1: {
           mainnetContractsDeployed,
           passportsOnSkale,
@@ -6313,7 +6821,7 @@ export async function registerRoutes(
           ClawTrustRepAdapter:     (process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS     || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB") as `0x${string}`,
           ClawTrustSwarmValidator: (process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743") as `0x${string}`,
           ClawTrustBond:           (process.env.CLAW_TRUST_BOND_ADDRESS            || "0x23a1E1e958C932639906d0650A13283f6E60132c") as `0x${string}`,
-          ClawTrustCrew:           (process.env.CLAW_TRUST_CREW_ADDRESS            || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3") as `0x${string}`,
+          ClawTrustCrew:           (process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2") as `0x${string}`,
           ERC8004IdentityRegistry:    "0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF" as `0x${string}`,
           ERC8004ReputationRegistry: "0x8004B663056A597Dffe9eCcC1965A193B7388713" as `0x${string}`,
           ClawTrustAC:               "0x1933D67CDB911653765e84758f47c60A1E868bC0" as `0x${string}`,
@@ -6560,6 +7068,15 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/github-sync-mintlify", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    try {
+      const result = await syncMintlifyDocs();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   app.post("/api/admin/publish-clawhub", strictLimiter, adminAuthMiddleware, async (req, res) => {
     try {
       const { version } = req.body || {};
@@ -6567,6 +7084,156 @@ export async function registerRoutes(
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // POST /api/webhooks/github/skills — receives GitHub pull_request webhook from clawtrustmolts/skill-registry
+  // When a PR is merged into main, upgrades matching agent skills to T2 automatically.
+  app.post("/api/webhooks/github/skills", async (req, res) => {
+    try {
+      const webhookSecret = process.env.GITHUB_SKILL_REGISTRY_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        console.warn("[SkillRegistry] GITHUB_SKILL_REGISTRY_WEBHOOK_SECRET not configured — rejecting request");
+        return res.status(500).json({ message: "Webhook secret not configured" });
+      }
+
+      // Validate X-Hub-Signature-256 HMAC
+      const sigHeader = req.headers["x-hub-signature-256"] as string | undefined;
+      if (!sigHeader) {
+        console.warn("[SkillRegistry] Missing X-Hub-Signature-256 header");
+        return res.status(401).json({ message: "Missing signature header" });
+      }
+      // Use the raw buffer captured by Express's JSON verify callback for accurate HMAC
+      const rawBody: Buffer | string = (req as any).rawBody ?? JSON.stringify(req.body);
+      const expectedSig = "sha256=" + crypto.createHmac("sha256", webhookSecret).update(rawBody).digest("hex");
+      const sigBuf = Buffer.from(sigHeader);
+      const expBuf = Buffer.from(expectedSig);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        console.warn("[SkillRegistry] Signature mismatch — possible spoofing attempt");
+        return res.status(401).json({ message: "Invalid signature" });
+      }
+
+      // Only handle pull_request events
+      const ghEvent = req.headers["x-github-event"] as string | undefined;
+      if (ghEvent !== "pull_request") {
+        return res.status(200).json({ message: `Ignored event: ${ghEvent}` });
+      }
+
+      const payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+
+      // Guard 1: Validate repository identity to prevent secret reuse/misrouting
+      const repoFullName = payload.repository?.full_name as string | undefined;
+      if (repoFullName !== "clawtrustmolts/skill-registry") {
+        console.warn(`[SkillRegistry] Rejected payload from unexpected repo: ${repoFullName}`);
+        return res.status(400).json({ message: "Unexpected repository source" });
+      }
+
+      // Only process merged PRs into main
+      if (payload.action !== "closed" || !payload.pull_request?.merged || payload.pull_request?.base?.ref !== "main") {
+        return res.status(200).json({ message: "Not a merged main-branch PR — skipped" });
+      }
+
+      const prNumber = payload.pull_request.number as number;
+      const prUrl = payload.pull_request.html_url as string;
+      const mergedAt = payload.pull_request.merged_at as string;
+
+      // Fetch all changed files from GitHub API with pagination
+      const ghToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+      const ghHeaders = {
+        Authorization: ghToken ? `Bearer ${ghToken}` : "",
+        "User-Agent": "ClawTrust-Skill-Registry/1.0",
+        Accept: "application/vnd.github+json",
+      };
+      let files: Array<{ filename: string }> = [];
+      let page = 1;
+      while (true) {
+        const filesResp = await fetch(
+          `https://api.github.com/repos/clawtrustmolts/skill-registry/pulls/${prNumber}/files?per_page=100&page=${page}`,
+          { headers: ghHeaders }
+        );
+        if (!filesResp.ok) {
+          console.error(`[SkillRegistry] Failed to fetch PR files page ${page}: ${filesResp.status}`);
+          return res.status(500).json({ message: "Failed to fetch PR files from GitHub" });
+        }
+        const batch = await filesResp.json() as Array<{ filename: string }>;
+        if (batch.length === 0) break;
+        files = files.concat(batch);
+        if (batch.length < 100) break;
+        page++;
+      }
+
+      // Parse skills/{skill}/{handle}/... paths
+      const results: Array<{ skill: string; handle: string; status: string }> = [];
+      const seen = new Set<string>();
+
+      for (const file of files) {
+        const match = file.filename.match(/^skills\/([^/]+)\/([^/]+)\//);
+        if (!match) continue;
+        const skillName = match[1].toLowerCase();
+        const agentHandle = match[2].toLowerCase();
+        const key = `${skillName}:${agentHandle}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        // Find the agent by handle
+        const agent = await storage.getAgentByHandle(agentHandle);
+        if (!agent) {
+          console.log(`[SkillRegistry] Agent handle '${agentHandle}' not found — skipping`);
+          results.push({ skill: skillName, handle: agentHandle, status: "agent_not_found" });
+          continue;
+        }
+
+        // Skip if skill not declared on profile
+        if (!agent.skills.map((s: string) => s.toLowerCase()).includes(skillName)) {
+          console.log(`[SkillRegistry] Skill '${skillName}' not declared for agent ${agentHandle} — skipping`);
+          results.push({ skill: skillName, handle: agentHandle, status: "skill_not_declared" });
+          continue;
+        }
+
+        // Get existing skill verification
+        const existing = await storage.getSkillVerification(agent.id, skillName);
+        const currentTier = existing?.tier ?? 0;
+
+        // Only upgrade if currently below T2; never downgrade T3+
+        if (currentTier >= 2) {
+          console.log(`[SkillRegistry] Agent ${agentHandle} already at T${currentTier} for '${skillName}' — adding proof record`);
+        }
+
+        const existingProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+        // Preserve existing T2 proof data (e.g. from github_api path) and merge registry_pr proof alongside it
+        const existingT2 = existingProofs["2"] ?? {};
+        const updatedProofs = {
+          ...existingProofs,
+          "2": {
+            ...existingT2,
+            // Preserve prior method label if already T2 via another path; registry_pr is additive
+            method: existingT2.method ?? "registry_pr",
+            registry_pr: { prNumber, prUrl, mergedAt, verifiedAt: new Date().toISOString() },
+          },
+        };
+
+        await storage.upsertSkillVerification(agent.id, skillName, {
+          tier: Math.max(currentTier, 2) as 0 | 1 | 2 | 3 | 4,
+          status: "verified",
+          tierProofs: updatedProofs,
+          verifiedAt: existing?.verifiedAt ?? new Date(),
+        });
+
+        // Add to verifiedSkills array if not already there
+        if (!agent.verifiedSkills.map((s: string) => s.toLowerCase()).includes(skillName)) {
+          await storage.updateAgent(agent.id, {
+            verifiedSkills: [...agent.verifiedSkills, skillName],
+          });
+        }
+
+        console.log(`[SkillRegistry] ✓ Agent ${agentHandle} upgraded to T${Math.max(currentTier, 2)} for '${skillName}' via PR #${prNumber}`);
+        results.push({ skill: skillName, handle: agentHandle, status: "upgraded" });
+      }
+
+      return res.json({ processed: results.length, results });
+    } catch (err: any) {
+      console.error("[SkillRegistry] Webhook error:", err.message?.slice(0, 200));
+      return res.status(500).json({ message: err.message });
     }
   });
 
@@ -7128,7 +7795,7 @@ export async function registerRoutes(
           escrow: "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
           swarmValidator: "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
           bond: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
-          crew: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
+          crew: (process.env.SKALE_MAINNET_CREW_ADDRESS || "0x427d0D6481bC708979Bdc2F80f659549BdB27f96"),
           registry: "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB",
         },
       };
@@ -7581,7 +8248,11 @@ export async function registerRoutes(
       const chain = (req.query.chain as string) || "base-sepolia";
       const dbBreakdown = getScoreBreakdown(agent);
       let liveFused: any = null;
-      try { liveFused = await computeLiveFusedReputation(agent); } catch {}
+      try {
+        const svs4 = await storage.getSkillVerifications(agent.id);
+        const tb4 = computeSkillTierBonus(svs4.map(v => v.tier ?? 0));
+        liveFused = await computeLiveFusedReputation(agent, tb4);
+      } catch {}
 
       const fusedScore = liveFused?.fusedScore ?? dbBreakdown.fusedScore;
       const tier = liveFused?.tier ?? dbBreakdown.tier;
@@ -8000,6 +8671,33 @@ export async function registerRoutes(
         moltbookPostNewCrew({ id: crew.id, name }, crewMembers.length, bondPool).catch(() => {});
       } catch {}
 
+      // Fire-and-forget on-chain crew registration (non-blocking)
+      (async () => {
+        try {
+          const { registerCrewOnChain } = await import("./blockchain");
+          const onChain = await registerCrewOnChain({
+            name,
+            ownerWallet,
+            memberCount: members.length,
+          });
+          const update: Partial<Crew> = {};
+          if (onChain.base) {
+            update.onChainCrewId  = onChain.base.crewId;
+            update.onChainTxHash  = onChain.base.txHash;
+          }
+          if (onChain.skale) {
+            update.onChainCrewIdSkale = onChain.skale.crewId;
+            update.onChainTxHashSkale = onChain.skale.txHash;
+          }
+          if (Object.keys(update).length > 0) {
+            await storage.updateCrew(crew.id, update);
+            console.log(`[Crew] On-chain IDs saved for crewId=${crew.id} base=${onChain.base?.crewId} skale=${onChain.skale?.crewId}`);
+          }
+        } catch (e: any) {
+          console.error("[Crew] registerCrewOnChain background error:", e.message?.slice(0, 200));
+        }
+      })();
+
       res.status(201).json({
         ...updatedCrew,
         members: crewMembers,
@@ -8163,6 +8861,60 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Crew score sync: recalculates fusedScore & bondPool from current member scores ──
+  app.post("/api/crews/:id/sync-score", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id);
+      if (!crew) return res.status(404).json({ message: "Crew not found" });
+
+      const members = await storage.getCrewMembers(crew.id);
+      if (members.length === 0) return res.json({ ...crew, changed: false });
+
+      const memberAgents = await Promise.all(members.map(m => storage.getAgent(m.agentId)));
+      const valid = memberAgents.filter(Boolean) as Awaited<ReturnType<typeof storage.getAgent>>[];
+
+      const avgScore = valid.length > 0 ? valid.reduce((s, a) => s + (a!.fusedScore || 0), 0) / valid.length : 0;
+      const bondPool = valid.reduce((s, a) => s + (a!.availableBond || 0), 0);
+      const newScore = Math.round(avgScore * 10) / 10;
+      const newBond = Math.round(bondPool * 100) / 100;
+
+      const changed = newScore !== crew.fusedScore || newBond !== crew.bondPool;
+      if (changed) {
+        await storage.updateCrew(crew.id, { fusedScore: newScore, bondPool: newBond });
+      }
+
+      const updated = await storage.getCrew(crew.id);
+      res.json({ ...updated, tier: getCrewTier(updated?.fusedScore || 0), changed });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Crew gig browse: open crew gigs for a specific crew (matching capabilities) ──
+  app.get("/api/crews/:id/available-gigs", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id);
+      if (!crew) return res.status(404).json({ message: "Crew not found" });
+
+      const limit = Math.min(Number(req.query.limit) || 20, 50);
+      const allGigs = await storage.getGigs();
+      const crewGigs = allGigs.filter(g => g.crewGig === true && g.status === "open");
+
+      const minScore = crew.fusedScore;
+      const eligible = crewGigs.filter(g => !g.minCrewScore || g.minCrewScore <= minScore);
+
+      // Enrich with poster info
+      const enriched = await Promise.all(eligible.slice(0, limit).map(async (gig) => {
+        const poster = gig.posterId ? await storage.getAgent(gig.posterId) : null;
+        return { ...gig, poster: poster ? { handle: poster.handle, fusedScore: poster.fusedScore } : null };
+      }));
+
+      res.json({ gigs: enriched, total: enriched.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/crews/:id/apply/:gigId", apiLimiter, async (req, res) => {
     try {
       const walletAddress = req.headers["x-wallet-address"] as string;
@@ -8239,6 +8991,87 @@ export async function registerRoutes(
     }
   });
 
+  // ─── CREW-TO-CREW DELEGATIONS ────────────────────────────────────────────────
+  // POST /api/crews/:id/delegate  — crew :id posts a sub-gig to another crew
+  app.post("/api/crews/:id/delegate", apiLimiter, async (req, res) => {
+    try {
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) {
+        return res.status(401).json({ message: "x-wallet-address header required" });
+      }
+      const fromCrew = await storage.getCrew(req.params.id as string);
+      if (!fromCrew) return res.status(404).json({ message: "Crew not found" });
+      if (fromCrew.ownerWallet.toLowerCase() !== walletAddress.toLowerCase()) {
+        return res.status(403).json({ message: "Only the crew owner can create delegations" });
+      }
+      const { toCrewId, title, description, budget = 0, currency = "USDC", message } = req.body;
+      if (!toCrewId || !title || !description) {
+        return res.status(400).json({ message: "toCrewId, title, and description are required" });
+      }
+      if (toCrewId === fromCrew.id) {
+        return res.status(400).json({ message: "Cannot delegate to yourself" });
+      }
+      const toCrew = await storage.getCrew(toCrewId);
+      if (!toCrew) return res.status(404).json({ message: "Target crew not found" });
+
+      const delegation = await storage.createCrewDelegation({
+        fromCrewId: fromCrew.id,
+        toCrewId,
+        title,
+        description,
+        budget: parseFloat(budget) || 0,
+        currency,
+        status: "pending",
+        message: message || null,
+      });
+      res.status(201).json({ ...delegation, fromCrew: { id: fromCrew.id, name: fromCrew.name, handle: fromCrew.handle }, toCrew: { id: toCrew.id, name: toCrew.name, handle: toCrew.handle } });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/crews/:id/delegations  — list incoming + outgoing delegations
+  app.get("/api/crews/:id/delegations", async (req, res) => {
+    try {
+      const crew = await storage.getCrew(req.params.id as string);
+      if (!crew) return res.status(404).json({ message: "Crew not found" });
+      const { outgoing, incoming } = await storage.getCrewDelegations(crew.id);
+
+      const allCrews = await storage.getCrews();
+      const crewMap = Object.fromEntries(allCrews.map(c => [c.id, { id: c.id, name: c.name, handle: c.handle, fusedScore: c.fusedScore }]));
+
+      const enrich = (d: any) => ({
+        ...d,
+        fromCrew: crewMap[d.fromCrewId] || null,
+        toCrew: crewMap[d.toCrewId] || null,
+      });
+
+      res.json({ outgoing: outgoing.map(enrich), incoming: incoming.map(enrich), total: outgoing.length + incoming.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/crew-delegations/:id/status  — accept / reject / complete a delegation
+  app.patch("/api/crew-delegations/:id/status", apiLimiter, async (req, res) => {
+    try {
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) {
+        return res.status(401).json({ message: "x-wallet-address header required" });
+      }
+      const { status } = req.body;
+      const allowed = ["accepted", "rejected", "in_progress", "completed"];
+      if (!allowed.includes(status)) {
+        return res.status(400).json({ message: `Status must be one of: ${allowed.join(", ")}` });
+      }
+      const updated = await storage.updateCrewDelegationStatus(req.params.id, status);
+      if (!updated) return res.status(404).json({ message: "Delegation not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/agents/:id/crews", async (req, res) => {
     try {
       const memberships = await storage.getCrewsForAgent(req.params.id);
@@ -8247,6 +9080,641 @@ export async function registerRoutes(
         return crew ? { ...crew, role: m.role, tier: getCrewTier(crew.fusedScore) } : null;
       }));
       res.json(crewDetails.filter(Boolean));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Agency Mode: Crew Subtask Routes ─────────────────────────────────────
+
+  /**
+   * Resolve caller identity using ONLY cryptographically verified sources.
+   * Never trusts raw x-agent-id header to prevent IDOR / identity spoofing.
+   * Sources (in priority):
+   *   1. req.wallet — set by walletAuthMiddleware (Privy JWT or verified SIWE)
+   *   2. req.agentId — set by agentAuthMiddleware (verified wallet ownership)
+   *   3. x-wallet-address + x-wallet-signature + x-wallet-sig-timestamp (SIWE proof)
+   *   4. E2E test bypass (dev/test only)
+   * Returns null if no verified identity is available.
+   */
+  async function resolveVerifiedIdentity(req: any): Promise<string | null> {
+    // Path A: Privy JWT (walletAuthMiddleware) or agentAuthMiddleware already ran
+    if ((req as any).agentId) return (req as any).agentId as string;
+    if ((req as any).wallet) {
+      const a = await storage.getAgentByWallet((req as any).wallet);
+      return a?.id ?? null;
+    }
+
+    // Path B: E2E test bypass (dev only)
+    if (isTestBypass(req)) {
+      const walletHeader = req.headers["x-wallet-address"] as string | undefined;
+      if (walletHeader && /^0x[a-fA-F0-9]{40}$/.test(walletHeader)) {
+        const a = await storage.getAgentByWallet(walletHeader);
+        return a?.id ?? null;
+      }
+    }
+
+    // Path C: SDK agents with SIWE proof
+    const walletHdr = req.headers["x-wallet-address"] as string | undefined;
+    const sig = req.headers["x-wallet-signature"] as string | undefined;
+    const sigTs = req.headers["x-wallet-sig-timestamp"] as string | undefined;
+    if (walletHdr && sig && sigTs && /^0x[a-fA-F0-9]{40}$/.test(walletHdr)) {
+      try {
+        const ts = parseInt(sigTs, 10);
+        const now = Date.now();
+        if (!isNaN(ts) && now - ts <= SIG_TTL_MS && ts <= now + 60_000) {
+          const message = buildSignMessage(ts);
+          const valid = await verifyMessage({ address: walletHdr as Address, message, signature: sig as `0x${string}` });
+          if (valid) {
+            const a = await storage.getAgentByWallet(walletHdr);
+            return a?.id ?? null;
+          }
+        }
+      } catch {}
+    }
+
+    return null;
+  }
+
+  /**
+   * Distribute reputation across crew members using USDC-derived contribution weights.
+   * Lead receives their raw share plus a coordination bonus drawn from members' pools.
+   * Normalized: sum of all weightedShares === 1.0 regardless of lead fee percentage.
+   *
+   * Weight formula (normalized):
+   *   lead: rawWeight + (1 − leadRaw) × LEAD_FEE
+   *   member: memberRaw × (1 − LEAD_FEE)
+   *   sum = leadRaw + (1−leadRaw)×LEAD_FEE + (1−leadRaw)×(1−LEAD_FEE) = 1.0 ✓
+   *
+   * Uses createReputationEvent — the canonical rep-write path in this codebase.
+   * There is no separate distributeCrewReputation function; this IS the distribution path.
+   */
+  async function distributeCrewReputation(
+    gigId: string,
+    gigTitle: string,
+    crewMembers: Array<{ agentId: string; role: string }>,
+    approvedSubtasks: Array<{ assigneeId: string | null; usdcShare: number }>,
+    leadFeePct: number
+  ): Promise<void> {
+    const LEAD_FEE = leadFeePct / 100;
+    const totalUsdcAllocated = approvedSubtasks.reduce((s, t) => s + (t.usdcShare || 0), 0);
+    if (totalUsdcAllocated <= 0) return;
+
+    const leadMember = crewMembers.find(m => m.role === "LEAD");
+    const leadShare = leadMember
+      ? approvedSubtasks.filter(s => s.assigneeId === leadMember.agentId).reduce((s, t) => s + (t.usdcShare || 0), 0)
+      : 0;
+    const leadRaw = leadShare / totalUsdcAllocated;
+
+    for (const member of crewMembers) {
+      const memberTasks = approvedSubtasks.filter(s => s.assigneeId === member.agentId);
+      const memberShare = memberTasks.reduce((s, t) => s + (t.usdcShare || 0), 0);
+      const rawWeight = memberShare / totalUsdcAllocated;
+      const memberIsLead = member.role === "LEAD";
+      // Normalized weight: lead gets raw + bonus from member pool; members pay the bonus
+      const weightedShare = memberIsLead
+        ? leadRaw + (1 - leadRaw) * LEAD_FEE
+        : rawWeight * (1 - LEAD_FEE);
+      if (weightedShare > 0) {
+        const repBonus = Math.max(1, Math.round(weightedShare * 10));
+        await storage.createReputationEvent({
+          agentId: member.agentId,
+          eventType: "gig_completion",
+          scoreChange: repBonus,
+          source: "swarm",
+          details: JSON.stringify({ gigId, gigTitle, usdcShare: memberShare, weightedShare: +weightedShare.toFixed(3), leadFee: memberIsLead ? LEAD_FEE : 0, agencyDelivery: true }),
+        }).catch(() => {});
+      }
+    }
+  }
+
+  async function triggerAgencyRepSplitOnCompletion(gigId: string): Promise<void> {
+    try {
+      const gig = await storage.getGig(gigId);
+      if (!gig || !gig.crewId || !gig.crewGig) return;
+
+      const gigSettings = await storage.getCrewGigSettings(gigId);
+
+      // Idempotency guard: only run once per gig regardless of how many completion paths fire
+      if (gigSettings?.repSplitCompleted) {
+        console.log(`[Agency] Rep split already completed for gig ${gigId} — skipping`);
+        return;
+      }
+
+      const crewMembers = await storage.getCrewMembers(gig.crewId);
+      const subtasks = await storage.getCrewSubtasks(gigId);
+      const approvedSubtasks = subtasks.filter(s => s.status === "approved");
+
+      // Mark crew agencyVerified on first completed parallel-task gig
+      const crew = await storage.getCrew(gig.crewId);
+      if (crew && !crew.agencyVerified && approvedSubtasks.length > 0) {
+        await storage.updateCrew(gig.crewId, { agencyVerified: true });
+        console.log(`[Agency] Crew ${gig.crewId} marked agencyVerified after gig ${gigId} completed`);
+      }
+
+      const LEAD_FEE_PCT = gigSettings?.leadCoordinationFeePct ?? 10;
+      // Distribute first; mark complete only after successful execution to allow retry on failure
+      await distributeCrewReputation(gigId, gig.title, crewMembers, approvedSubtasks, LEAD_FEE_PCT);
+      await storage.upsertCrewGigSettings(gigId, { repSplitCompleted: true });
+      console.log(`[Agency] Rep split complete for gig ${gigId}: ${crewMembers.length} members, leadFeePct=${LEAD_FEE_PCT}`);
+    } catch (e: any) {
+      console.error("[Agency] triggerAgencyRepSplitOnCompletion error:", e.message?.slice(0, 200));
+    }
+  }
+
+  // POST /api/gigs/:id/subtasks — Lead creates a subtask
+  app.post("/api/gigs/:id/subtasks", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = req.params.id as string;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (!gig.crewId) return res.status(400).json({ message: "This gig is not assigned to a crew" });
+
+      const requesterId = (req as any).agentId as string;
+
+      // Verify requester is LEAD of the crew
+      const members = await storage.getCrewMembers(gig.crewId);
+      const leadMember = members.find(m => m.role === "LEAD" && m.agentId === requesterId);
+      if (!leadMember) return res.status(403).json({ message: "Only the crew Lead can create subtasks" });
+
+      const { title, description, assigneeId, requiredSkill, usdcShare } = req.body;
+      if (!title || typeof title !== "string" || title.trim().length === 0) {
+        return res.status(400).json({ message: "title is required" });
+      }
+
+      // Validate assigneeId is a crew member
+      if (assigneeId) {
+        const isMember = members.some(m => m.agentId === assigneeId);
+        if (!isMember) return res.status(400).json({ message: "assigneeId must be a crew member" });
+      }
+
+      const subtask = await storage.createCrewSubtask({
+        gigId,
+        crewId: gig.crewId,
+        assigneeId: assigneeId || null,
+        title: title.trim(),
+        description: description?.trim() || null,
+        requiredSkill: requiredSkill?.trim() || null,
+        usdcShare: typeof usdcShare === "number" ? usdcShare : 0,
+        status: assigneeId ? "claimed" : "open",
+        submissionText: null,
+        leadFeedback: null,
+      });
+
+      // Enable parallel mode on settings if not already set
+      await storage.upsertCrewGigSettings(gigId, { parallelModeEnabled: true });
+
+      res.status(201).json(subtask);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/gigs/:id/subtasks — List subtasks for a gig (role-filtered)
+  app.get("/api/gigs/:id/subtasks", async (req, res) => {
+    try {
+      const gigId = req.params.id as string;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      // Use only cryptographically verified identity — never trust raw x-agent-id header
+      const requesterId = await resolveVerifiedIdentity(req);
+      let requesterRole: string | null = null;
+      if (requesterId && gig.crewId) {
+        const members = await storage.getCrewMembers(gig.crewId);
+        const m = members.find(m => m.agentId === requesterId);
+        requesterRole = m?.role ?? null;
+      }
+      const isLead = requesterRole === "LEAD";
+      const isMember = !!requesterRole;
+
+      const subtasks = await storage.getCrewSubtasks(gigId);
+      const settings = await storage.getCrewGigSettings(gigId);
+
+      // Role-based visibility: lead sees all; member sees only their assigned tasks;
+      // non-crew users receive an empty list (no data exposure outside the crew)
+      if (!isLead && !isMember) {
+        return res.json({ subtasks: [], settings: settings || null });
+      }
+      const visible = subtasks.filter(st => {
+        if (isLead) return true;
+        return st.assigneeId === requesterId; // member: only assigned subtasks
+      });
+
+      // Enrich with assignee info; strip submission details for non-members
+      const enriched = await Promise.all(visible.map(async (st) => {
+        const assignee = st.assigneeId ? await storage.getAgent(st.assigneeId) : null;
+        const base = {
+          ...st,
+          submissionText: (isLead || (isMember && st.assigneeId === requesterId)) ? st.submissionText : null,
+          leadFeedback: (isLead || (isMember && st.assigneeId === requesterId)) ? st.leadFeedback : null,
+          assignee: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+        };
+        return base;
+      }));
+
+      res.json({ subtasks: enriched, settings: settings || null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/gigs/:id/subtasks/:subtaskId — Update subtask status/submission
+  app.patch("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = req.params.id as string;
+      const subtaskId = req.params.subtaskId as string;
+      const subtask = await storage.getCrewSubtask(subtaskId);
+      if (!subtask || subtask.gigId !== gigId) return res.status(404).json({ message: "Subtask not found" });
+
+      const gig = await storage.getGig(gigId);
+      if (!gig || !gig.crewId) return res.status(404).json({ message: "Gig not found" });
+
+      const requesterId = (req as any).agentId as string;
+
+      const members = await storage.getCrewMembers(gig.crewId);
+      const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
+      const isAssignee = subtask.assigneeId === requesterId;
+
+      if (!isLead && !isAssignee) {
+        return res.status(403).json({ message: "Not authorized to update this subtask" });
+      }
+
+      const { status, submissionText, leadFeedback, assigneeId, usdcShare, title, description, requiredSkill } = req.body;
+
+      const updateData: Record<string, any> = {};
+
+      if (isLead) {
+        // Lead can update everything
+        if (status) updateData.status = status;
+        if (leadFeedback !== undefined) updateData.leadFeedback = leadFeedback;
+        if (assigneeId !== undefined) updateData.assigneeId = assigneeId;
+        if (typeof usdcShare === "number") updateData.usdcShare = usdcShare;
+        if (title) updateData.title = title.trim();
+        if (description !== undefined) updateData.description = description?.trim() || null;
+        if (requiredSkill !== undefined) updateData.requiredSkill = requiredSkill?.trim() || null;
+      } else {
+        // Member can only update their own subtask: move to in_progress or submitted
+        const allowedStatuses = ["in_progress", "submitted"];
+        if (status && !allowedStatuses.includes(status)) {
+          return res.status(403).json({ message: "Members can only set status to in_progress or submitted" });
+        }
+        if (status) updateData.status = status;
+        if (submissionText !== undefined) updateData.submissionText = submissionText;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+
+      const updated = await storage.updateCrewSubtask(subtaskId, updateData);
+
+      // Auto-delivery check: if lead approved, check if all subtasks are approved
+      if (isLead && status === "approved") {
+        const allSubtasks = await storage.getCrewSubtasks(gigId);
+        // treat the just-approved subtask as approved regardless of DB propagation lag
+        const allApproved = allSubtasks.every(s => s.id === subtaskId ? true : s.status === "approved");
+        if (allApproved && allSubtasks.length > 0 && (gig.status === "assigned" || gig.status === "in_progress")) {
+          // 1. Compile approved submission texts into gig deliverableNote (with role attribution)
+          const approvedSubtasks = allSubtasks.map(s => s.id === subtaskId ? { ...s, status: "approved" as const } : s);
+          const deliverableLines = approvedSubtasks
+            .filter(s => s.submissionText)
+            .map(s => {
+              const member = members.find(m => m.agentId === s.assigneeId);
+              const roleLabel = member?.role ?? "MEMBER";
+              return `[${roleLabel}: ${s.title}] ${s.submissionText}`;
+            })
+            .join("\n---\n");
+          await storage.updateGig(gigId, {
+            deliverableNote: deliverableLines || "Agency multi-agent delivery: all subtasks approved.",
+          });
+
+          // 2. Advance gig to pending_validation (triggers swarm review)
+          await storage.updateGigStatus(gigId, "pending_validation");
+
+          // 3. Trigger swarm validation if none exists yet
+          (async () => {
+            try {
+              const existingValidation = await storage.getValidationByGig(gigId);
+              if (!existingValidation) {
+                const crewMembersForValidation = await storage.getCrewMembers(gig.crewId!);
+                const threshold = Math.max(1, Math.ceil(crewMembersForValidation.length / 2));
+                const memberAgentIds = new Set(crewMembersForValidation.map(m => m.agentId));
+                const allTopAgents = (await storage.getAgents())
+                  .filter(a => !memberAgentIds.has(a.id))
+                  .sort((a, b) => b.fusedScore - a.fusedScore)
+                  .slice(0, threshold);
+                if (allTopAgents.length > 0) {
+                  await storage.createValidation({
+                    gigId,
+                    status: "pending",
+                    threshold,
+                    selectedValidators: allTopAgents.map(a => a.id),
+                    totalRewardPool: 0,
+                    rewardPerValidator: 0,
+                  });
+                }
+              }
+            } catch (e: any) {
+              console.error("[Agency] Auto-validation trigger error:", e.message?.slice(0, 200));
+            }
+          })();
+          // NOTE: agencyVerified + contribution-weighted rep split run AFTER gig reaches
+          //       `completed` status (post-swarm-validation), via triggerAgencyRepSplitOnCompletion.
+        }
+      }
+
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // DELETE /api/gigs/:id/subtasks/:subtaskId — Lead deletes open subtask
+  app.delete("/api/gigs/:id/subtasks/:subtaskId", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = req.params.id as string;
+      const subtaskId = req.params.subtaskId as string;
+      const subtask = await storage.getCrewSubtask(subtaskId);
+      if (!subtask || subtask.gigId !== gigId) return res.status(404).json({ message: "Subtask not found" });
+
+      const gig = await storage.getGig(gigId);
+      if (!gig || !gig.crewId) return res.status(404).json({ message: "Gig not found" });
+
+      const requesterId = (req as any).agentId as string;
+
+      const members = await storage.getCrewMembers(gig.crewId);
+      const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
+      if (!isLead) return res.status(403).json({ message: "Only the crew Lead can delete subtasks" });
+
+      if (subtask.status !== "open") {
+        return res.status(400).json({ message: "Can only delete subtasks that are still open" });
+      }
+
+      await storage.deleteCrewSubtask(subtaskId);
+      res.json({ deleted: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/gigs/:id/subtasks/:subtaskId/claim — Crew member claims an open subtask
+  app.post("/api/gigs/:id/subtasks/:subtaskId/claim", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = req.params.id as string;
+      const subtaskId = req.params.subtaskId as string;
+      const subtask = await storage.getCrewSubtask(subtaskId);
+      if (!subtask || subtask.gigId !== gigId) return res.status(404).json({ message: "Subtask not found" });
+      if (subtask.status !== "open") return res.status(400).json({ message: "Subtask is not open for claiming" });
+
+      const gig = await storage.getGig(gigId);
+      if (!gig || !gig.crewId) return res.status(404).json({ message: "Gig not found" });
+
+      const requesterId = (req as any).agentId as string;
+
+      const members = await storage.getCrewMembers(gig.crewId);
+      const isMember = members.some(m => m.agentId === requesterId);
+      if (!isMember) return res.status(403).json({ message: "Must be a crew member to claim subtasks" });
+
+      const updated = await storage.updateCrewSubtask(subtaskId, {
+        assigneeId: requesterId,
+        status: "claimed",
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/crews/:id/agency-stats — 5-min TTL cached stats
+  const agencyStatsCache = new Map<string, { data: any; ts: number }>();
+  const AGENCY_STATS_TTL = 5 * 60 * 1000;
+
+  app.get("/api/crews/:id/agency-stats", async (req, res) => {
+    try {
+      const crewId = req.params.id;
+      const cached = agencyStatsCache.get(crewId);
+      if (cached && Date.now() - cached.ts < AGENCY_STATS_TTL) {
+        return res.json(cached.data);
+      }
+
+      const crew = await storage.getCrew(crewId);
+      if (!crew) return res.status(404).json({ message: "Crew not found" });
+
+      const members = await storage.getCrewMembers(crewId);
+      const gigs = await storage.getCrewGigs(crewId);
+      const activeGigs = gigs.filter(g => ["assigned", "in_progress", "pending_validation"].includes(g.status));
+      const allGigs = gigs;
+
+      // Gather subtasks for all gigs (not just active) to compute lifetime stats
+      const subtasksByGig = await Promise.all(
+        allGigs.map(async g => ({ gigId: g.id, subtasks: await storage.getCrewSubtasks(g.id, crewId) }))
+      );
+
+      const allSubtasks = subtasksByGig.flatMap(s => s.subtasks);
+      const activeSubtasks = subtasksByGig
+        .filter(s => activeGigs.some(g => g.id === s.gigId))
+        .flatMap(s => s.subtasks);
+
+      const subtaskStats = {
+        total: allSubtasks.length,
+        open: activeSubtasks.filter(s => s.status === "open").length,
+        inProgress: activeSubtasks.filter(s => s.status === "in_progress" || s.status === "claimed").length,
+        submitted: activeSubtasks.filter(s => s.status === "submitted").length,
+        approved: activeSubtasks.filter(s => s.status === "approved").length,
+        revision: activeSubtasks.filter(s => s.status === "revision").length,
+      };
+
+      // Lifetime aggregates
+      const totalSubtasksCompleted = allSubtasks.filter(s => s.status === "approved").length;
+      const totalUsdcDistributed = allSubtasks
+        .filter(s => s.status === "approved")
+        .reduce((sum, s) => sum + (s.usdcShare || 0), 0);
+
+      // avgParallelism: avg number of in_progress+claimed subtasks per active gig
+      const avgParallelism = activeGigs.length > 0
+        ? +(activeSubtasks.filter(s => s.status === "in_progress" || s.status === "claimed").length / activeGigs.length).toFixed(2)
+        : 0;
+
+      // onTimeRate: approved subtasks whose updatedAt (completion time) was within the gig's deadline window
+      const approvedSubtasks = allSubtasks.filter(s => s.status === "approved");
+      const onTimeSubtasks = approvedSubtasks.filter(s => {
+        const parentGig = allGigs.find(g => g.id === s.gigId);
+        if (!parentGig || !parentGig.createdAt || !s.updatedAt) return true; // assume on-time if no data
+        const deadlineMs = new Date(parentGig.createdAt).getTime() + ((parentGig as any).deadlineHours || 72) * 3600000;
+        return new Date(s.updatedAt).getTime() <= deadlineMs;
+      });
+      const onTimeRate = approvedSubtasks.length > 0
+        ? +(onTimeSubtasks.length / approvedSubtasks.length).toFixed(3)
+        : 1;
+
+      // Per-member contribution
+      const memberContributions = members.map(m => {
+        const memberSubtasks = allSubtasks.filter(s => s.assigneeId === m.agentId);
+        const approvedCount = memberSubtasks.filter(s => s.status === "approved").length;
+        const totalShare = memberSubtasks.filter(s => s.status === "approved").reduce((sum, s) => sum + (s.usdcShare || 0), 0);
+        return {
+          agentId: m.agentId,
+          role: m.role,
+          assigned: memberSubtasks.length,
+          approved: approvedCount,
+          totalUsdcShare: totalShare,
+        };
+      });
+
+      const data = {
+        crewId,
+        agencyVerified: crew.agencyVerified,
+        activeGigCount: activeGigs.length,
+        memberCount: members.length,
+        subtaskStats,
+        memberContributions,
+        // Required spec fields
+        totalSubtasksCompleted,
+        totalUsdcDistributed: +totalUsdcDistributed.toFixed(2),
+        avgParallelism,
+        onTimeRate,
+        // Crew-level
+        gigsCompleted: crew.gigsCompleted,
+        totalEarned: crew.totalEarned,
+        fusedScore: crew.fusedScore,
+      };
+
+      agencyStatsCache.set(crewId, { data, ts: Date.now() });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/agents/:id/subtasks — Agent's assigned subtasks (profile view; public but redacted for non-self)
+  app.get("/api/agents/:id/subtasks", apiLimiter, async (req, res) => {
+    try {
+      const agentId = req.params.id as string;
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      // Use only cryptographically verified identity to prevent IDOR
+      const requesterId = await resolveVerifiedIdentity(req);
+      const isSelf = requesterId === agentId;
+
+      const subtasks = await storage.getSubtasksForAssignee(agentId);
+
+      const enriched = await Promise.all(subtasks.map(async st => {
+        const gig = await storage.getGig(st.gigId);
+        return {
+          ...st,
+          // Redact submission text and lead feedback for non-self viewers
+          submissionText: isSelf ? st.submissionText : null,
+          leadFeedback: isSelf ? st.leadFeedback : null,
+          gig: gig ? { id: gig.id, title: gig.title, status: gig.status, budget: gig.budget, currency: gig.currency } : null,
+        };
+      }));
+
+      res.json({ subtasks: enriched });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/gigs/:id/work-log — Public anonymized crew contribution summary for gig Work Log display
+  app.get("/api/gigs/:id/work-log", async (req, res) => {
+    try {
+      const gigId = req.params.id as string;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (!gig.crewId) return res.json({ gigId, crewId: null, contributions: [], timeline: [], settings: null });
+
+      const [members, subtasks, settings] = await Promise.all([
+        storage.getCrewMembers(gig.crewId),
+        storage.getCrewSubtasks(gigId),
+        storage.getCrewGigSettings(gigId),
+      ]);
+
+      // Build role-sequential identifiers:
+      // LEAD identity is exposed by product design (crew lead is publicly attributed on crew page).
+      // All other members use sequential role counters (CODER#1, CODER#2) — no agent IDs exposed.
+      const roleCounters: Record<string, number> = {};
+      const memberIdentifiers = new Map<string, string>();
+      for (const m of members) {
+        if (m.role === "LEAD") {
+          const agent = await storage.getAgent(m.agentId);
+          memberIdentifiers.set(m.agentId, agent?.handle ? `@${agent.handle}` : "Lead");
+        } else {
+          roleCounters[m.role] = (roleCounters[m.role] ?? 0) + 1;
+          memberIdentifiers.set(m.agentId, `${m.role}#${roleCounters[m.role]}`);
+        }
+      }
+
+      // Aggregate by member, using sequential role identifiers (no agent ID exposure)
+      const contributions = members.map((m) => {
+        const myTasks = subtasks.filter(s => s.assigneeId === m.agentId);
+        const approvedTasks = myTasks.filter(s => s.status === "approved");
+        return {
+          role: m.role,
+          taskCount: myTasks.length,
+          approvedCount: approvedTasks.length,
+          totalUsdcShare: +approvedTasks.reduce((s, t) => s + (t.usdcShare || 0), 0).toFixed(2),
+          identifier: memberIdentifiers.get(m.agentId) ?? m.role,
+        };
+      });
+
+      // Activity timeline — role-level only, no raw submissionText, no full agent IDs
+      const timelineClean = subtasks
+        .filter(s => s.status !== "open")
+        .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+        .slice(0, 30)
+        .map(s => {
+          const member = members.find(m => m.agentId === s.assigneeId);
+          return {
+            subtaskTitle: s.title,
+            requiredSkill: s.requiredSkill,
+            status: s.status,
+            role: member?.role ?? "UNASSIGNED",
+            identifier: member ? (memberIdentifiers.get(member.agentId) ?? member.role) : "UNASSIGNED",
+            usdcShare: s.usdcShare,
+            updatedAt: s.updatedAt,
+          };
+        });
+
+      res.json({
+        gigId,
+        crewId: gig.crewId,
+        parallelModeEnabled: settings?.parallelModeEnabled ?? false,
+        contributions,
+        timeline: timelineClean,
+        totals: {
+          subtasks: subtasks.length,
+          approved: subtasks.filter(s => s.status === "approved").length,
+          totalUsdcAllocated: +subtasks.filter(s => s.status === "approved").reduce((s, t) => s + (t.usdcShare || 0), 0).toFixed(2),
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/gigs/:id/settings — Crew lead updates gig parallel settings
+  app.patch("/api/gigs/:id/settings", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = req.params.id as string;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (!gig.crewId) return res.status(400).json({ message: "Not a crew gig" });
+
+      const requesterId = (req as any).agentId as string;
+
+      const members = await storage.getCrewMembers(gig.crewId);
+      const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
+      if (!isLead) return res.status(403).json({ message: "Only the crew Lead can update gig settings" });
+
+      const { leadCoordinationFeePct, parallelModeEnabled } = req.body;
+      const updateData: Record<string, any> = {};
+      if (typeof leadCoordinationFeePct === "number") updateData.leadCoordinationFeePct = Math.max(0, Math.min(50, leadCoordinationFeePct));
+      if (typeof parallelModeEnabled === "boolean") updateData.parallelModeEnabled = parallelModeEnabled;
+
+      const settings = await storage.upsertCrewGigSettings(gigId, updateData);
+      res.json(settings);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -8769,17 +10237,57 @@ export async function registerRoutes(
     const words = submission.trim().split(/\s+/).filter(Boolean);
     const wordCount = words.length;
     const text = submission.toLowerCase();
+    const submissionTokens = text.split(/[\s\W]+/).filter(t => t.length > 2);
 
-    const foundKeywords = challenge.expectedKeywords.filter((kw) => text.includes(kw.toLowerCase()));
-    const keywordScore = Math.round((foundKeywords.length / Math.max(challenge.expectedKeywords.length, 1)) * 40);
-
-    let wordCountScore = 0;
-    if (wordCount >= challenge.minWordCount && wordCount <= challenge.maxWordCount) {
-      wordCountScore = 30;
-    } else if (wordCount >= Math.round(challenge.minWordCount * 0.75)) {
-      wordCountScore = 15;
+    // Build term-frequency map from submission
+    const tf: Record<string, number> = {};
+    for (const token of submissionTokens) {
+      tf[token] = (tf[token] || 0) + 1;
     }
 
+    // Semantic similarity: for each expected keyword/phrase, compute weighted overlap
+    // Each keyword gets a frequency-weighted score: exact match = 1.0, partial stem = 0.5
+    let semanticTotal = 0;
+    const stopwords = new Set(["the","is","are","was","were","and","or","of","in","to","a","an","that","this","it","with","for","as","on","by","at","from","be","has","have","had","but","not","its"]);
+
+    for (const kw of challenge.expectedKeywords) {
+      const kwTokens = kw.toLowerCase().split(/[\s\W]+/).filter(t => t.length > 2 && !stopwords.has(t));
+      if (kwTokens.length === 0) { semanticTotal += 1; continue; }
+
+      let kwMatchScore = 0;
+      for (const kwt of kwTokens) {
+        const exactFreq = tf[kwt] || 0;
+        // Stem match: allow prefix match for plural/conjugate variants (min 4 chars)
+        const stemMatch = kwt.length >= 4
+          ? Object.entries(tf).filter(([t]) => t.startsWith(kwt.slice(0, Math.ceil(kwt.length * 0.75)))).reduce((s, [, f]) => s + f, 0)
+          : 0;
+        // Log-normalized frequency dampens repetition gaming
+        const freq = Math.max(exactFreq, stemMatch > 0 ? 0.5 : 0);
+        const dampened = freq > 0 ? (1 + Math.log(freq)) : 0;
+        // Relative to submission density: credit up to 1.0 per keyword token
+        const density = submissionTokens.length > 0 ? dampened / Math.log(submissionTokens.length + 2) : 0;
+        kwMatchScore += Math.min(1, density);
+      }
+      semanticTotal += Math.min(1, kwMatchScore / kwTokens.length);
+    }
+
+    // Semantic coverage [0..40]: what fraction of concept space is addressed
+    const semanticCoverage = challenge.expectedKeywords.length > 0
+      ? semanticTotal / challenge.expectedKeywords.length
+      : 0;
+    const semanticScore = Math.round(semanticCoverage * 40);
+
+    // Depth score [0..30]: submission length relative to expected range
+    let depthScore = 0;
+    if (wordCount >= challenge.minWordCount && wordCount <= challenge.maxWordCount) {
+      depthScore = 30;
+    } else if (wordCount >= Math.round(challenge.minWordCount * 0.75)) {
+      depthScore = 15;
+    } else if (wordCount >= Math.round(challenge.minWordCount * 0.5)) {
+      depthScore = 8;
+    }
+
+    // Structure score [0..30]: coherent multi-part responses signal genuine understanding
     const paragraphs = submission.split(/\n\n+/).filter((p) => p.trim().length > 20);
     const hasNumberedPoints = /\d+[\.\)]\s/.test(submission);
     const hasCodeBlocks = /```/.test(submission);
@@ -8790,15 +10298,16 @@ export async function registerRoutes(
     if (hasCodeBlocks || hasHeaders) structureScore += 10;
     structureScore = Math.min(structureScore, 30);
 
-    const score = Math.min(100, keywordScore + wordCountScore + structureScore);
+    const score = Math.min(100, semanticScore + depthScore + structureScore);
     return {
       score,
       details: {
-        keywordScore,
-        wordCountScore,
+        semanticScore,
+        depthScore,
         structureScore,
         wordCount,
-        keywordsFound: foundKeywords.length,
+        semanticCoverage: Math.round(semanticCoverage * 100),
+        keywordsMatched: Math.round(semanticTotal),
         keywordsTotal: challenge.expectedKeywords.length,
       },
     };
@@ -8810,7 +10319,8 @@ export async function registerRoutes(
       if (!agent) return res.status(404).json({ message: "Agent not found" });
       const verifications = await storage.getSkillVerifications(agent.id);
       const skillsWithStatus = agent.skills.map((skill) => {
-        const verification = verifications.find((v) => v.skillName === skill);
+        const verification = verifications.find((v) => v.skillName.toLowerCase() === skill.toLowerCase());
+        const tier = verification?.tier ?? 0;
         return {
           skill,
           status: verification?.status ?? "unverified",
@@ -8820,9 +10330,16 @@ export async function registerRoutes(
           githubProfileUrl: verification?.githubProfileUrl ?? null,
           portfolioUrl: verification?.portfolioUrl ?? null,
           challengeScore: verification?.challengeScore ?? null,
+          tier,
+          tierLabel: getTierLabel(tier),
+          tierBadge: getTierBadge(tier),
+          tierProofs: verification?.tierProofs ?? {},
+          nextUpgrade: getNextTierUpgrade(tier),
         };
       });
-      res.json({ skills: skillsWithStatus });
+      const tierValues = skillsWithStatus.map(s => s.tier);
+      const tierBonus = computeSkillTierBonus(tierValues);
+      res.json({ skills: skillsWithStatus, tierBonus, maxTierBonus: 15 });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -9062,27 +10579,22 @@ export async function registerRoutes(
       if (passed) {
         const existing = await storage.getSkillVerification(agentId, skill);
         const newTrustScore = Math.max(existing?.trustScore ?? 0, Math.round(score * 0.6));
+        const currentTier = existing?.tier ?? 0;
+        const newTier = Math.max(currentTier, 1);
+        const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+        tierProofs["1"] = { method: "challenge", score, passedAt: new Date().toISOString() };
         await storage.upsertSkillVerification(agentId, skill, {
           status: "verified",
           verifiedAt: new Date(),
           challengeScore: score,
           challengeCompletedAt: new Date(),
-          verificationMethod: "challenge",
+          verificationMethod: existing?.verificationMethod && existing.verificationMethod !== "challenge" ? existing.verificationMethod : "challenge",
           trustScore: Math.min(100, (existing?.trustScore ?? 0) + newTrustScore),
+          tier: newTier,
+          tierProofs,
         });
 
-        const currentVerified = agent.verifiedSkills || [];
-        const newVerifiedSkills = currentVerified.map((s: string) => s.toLowerCase()).includes(skill)
-          ? currentVerified
-          : [...currentVerified, skill];
-
-        const updatedAgent: typeof agent = { ...agent, verifiedSkills: newVerifiedSkills };
-        const newFusedScore = getScoreBreakdown(updatedAgent).fusedScore;
-
-        await storage.updateAgent(agentId, {
-          verifiedSkills: newVerifiedSkills,
-          fusedScore: newFusedScore,
-        });
+        await syncAgentSkillBonusAndVerifiedSkills(agentId);
       }
 
       const finalAgent = await storage.getAgent(agentId);
@@ -9108,10 +10620,144 @@ export async function registerRoutes(
   app.post("/api/skill-challenges/:skill/attempt", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
   app.post("/api/skill-challenges/:skill/submit", apiLimiter, walletAuthMiddleware, skillChallengeSubmitHandler);
 
-  app.post("/api/agents/:id/skills/:skill/github", apiLimiter, walletAuthMiddleware, async (req, res) => {
+  const GITHUB_SKILL_LANGUAGES: Record<string, string[]> = {
+    solidity: ["Solidity"],
+    typescript: ["TypeScript"],
+    javascript: ["JavaScript", "TypeScript"],
+    python: ["Python"],
+    rust: ["Rust"],
+    react: ["JavaScript", "TypeScript"],
+    "node": ["JavaScript", "TypeScript"],
+    "nodejs": ["JavaScript", "TypeScript"],
+    go: ["Go"],
+    java: ["Java"],
+    "c++": ["C++", "C"],
+    audit: [],
+    research: [],
+    content: [],
+    documentation: [],
+    testing: ["JavaScript", "TypeScript", "Python"],
+    "data-analysis": ["Python", "R", "Jupyter Notebook"],
+    "trust-verification": [],
+    "reputation-analysis": [],
+    "swarm-validation": [],
+    "agent-onboarding": [],
+  };
+
+  async function verifyGitHubSkill(
+    githubHandle: string,
+    skill: string,
+    agentRegisteredAt?: Date | null
+  ): Promise<{ ok: boolean; repoCount: number; topRepo: string | null; languages: string[]; commitCount?: number; error?: string }> {
+    const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    const headers: Record<string, string> = { "User-Agent": "ClawTrust-Skill-Verifier/1.0", "Accept": "application/vnd.github+json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const MIN_COMMITS = 10;
+
+    try {
+      const userResp = await fetch(`https://api.github.com/users/${encodeURIComponent(githubHandle)}`, { headers });
+      if (!userResp.ok) {
+        if (userResp.status === 404) return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub user '${githubHandle}' not found` };
+        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub API error: ${userResp.status} — verification unavailable` };
+      }
+      const userData = await userResp.json() as { public_repos: number; login: string; created_at: string };
+      if (userData.public_repos === 0) {
+        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: "GitHub account has no public repositories" };
+      }
+
+      const targetLanguages = GITHUB_SKILL_LANGUAGES[skill.toLowerCase()];
+      if (targetLanguages === undefined) {
+        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `Skill '${skill}' is not in the allowed skill list for GitHub verification` };
+      }
+
+      const registrationCutoff = agentRegisteredAt ? new Date(agentRegisteredAt) : null;
+
+      if (targetLanguages.length === 0) {
+        const repoResp = await fetch(
+          `https://api.github.com/users/${encodeURIComponent(githubHandle)}/repos?type=public&sort=pushed&per_page=100`,
+          { headers }
+        );
+        if (!repoResp.ok) {
+          return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub API error fetching repos: ${repoResp.status}` };
+        }
+        const repos = await repoResp.json() as Array<{ name: string; created_at: string; pushed_at: string }>;
+        const preRegRepos = registrationCutoff
+          ? repos.filter(r => new Date(r.created_at) < registrationCutoff!)
+          : repos;
+        if (preRegRepos.length === 0) {
+          return { ok: false, repoCount: 0, topRepo: null, languages: [], error: "No public repositories created before agent registration date" };
+        }
+        let totalCommits = 0;
+        for (const repo of preRegRepos.slice(0, 5)) {
+          try {
+            const statsResp = await fetch(`https://api.github.com/repos/${encodeURIComponent(githubHandle)}/${encodeURIComponent(repo.name)}/contributors?per_page=100&anon=0`, { headers });
+            if (statsResp.ok) {
+              const contributors = await statsResp.json() as Array<{ login: string; contributions: number }>;
+              const mine = contributors.find(c => c.login.toLowerCase() === githubHandle.toLowerCase());
+              totalCommits += mine?.contributions ?? 0;
+            }
+          } catch { /* ignore per-repo errors */ }
+        }
+        if (totalCommits < MIN_COMMITS) {
+          return { ok: false, repoCount: preRegRepos.length, topRepo: null, languages: [], commitCount: totalCommits, error: `Insufficient commit history: found ${totalCommits} commits, need at least ${MIN_COMMITS}` };
+        }
+        return { ok: true, repoCount: preRegRepos.length, topRepo: preRegRepos[0]?.name ?? null, languages: [], commitCount: totalCommits };
+      }
+
+      const langQuery = targetLanguages.map(l => `language:${encodeURIComponent(l)}`).join("+OR+");
+      const repoResp = await fetch(
+        `https://api.github.com/search/repositories?q=${langQuery}+user:${encodeURIComponent(githubHandle)}&sort=stars&order=desc&per_page=30`,
+        { headers }
+      );
+      if (!repoResp.ok) {
+        return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub repo search failed: ${repoResp.status} — verification unavailable` };
+      }
+      const repoData = await repoResp.json() as { items: Array<{ name: string; language: string | null; stargazers_count: number; created_at: string }> };
+      const allMatchingRepos = (repoData.items || []).filter(r => r.language && targetLanguages.some(l => l.toLowerCase() === r.language!.toLowerCase()));
+      if (allMatchingRepos.length === 0) {
+        return {
+          ok: false, repoCount: userData.public_repos, topRepo: null, languages: [],
+          error: `No public repositories found using ${targetLanguages.join("/")} for skill '${skill}'`,
+        };
+      }
+      const matchingRepos = registrationCutoff
+        ? allMatchingRepos.filter(r => new Date(r.created_at) < registrationCutoff!)
+        : allMatchingRepos;
+      if (matchingRepos.length === 0) {
+        return {
+          ok: false, repoCount: allMatchingRepos.length, topRepo: null, languages: [],
+          error: `No qualifying repositories for skill '${skill}' — all repos were created after your agent registration date`,
+        };
+      }
+
+      let totalCommits = 0;
+      for (const repo of matchingRepos.slice(0, 5)) {
+        try {
+          const statsResp = await fetch(`https://api.github.com/repos/${encodeURIComponent(githubHandle)}/${encodeURIComponent(repo.name)}/contributors?per_page=100&anon=0`, { headers });
+          if (statsResp.ok) {
+            const contributors = await statsResp.json() as Array<{ login: string; contributions: number }>;
+            const mine = contributors.find(c => c.login.toLowerCase() === githubHandle.toLowerCase());
+            totalCommits += mine?.contributions ?? 0;
+          }
+        } catch { /* ignore per-repo errors */ }
+      }
+      if (totalCommits < MIN_COMMITS) {
+        return { ok: false, repoCount: matchingRepos.length, topRepo: null, languages: [], commitCount: totalCommits, error: `Insufficient commit history: found ${totalCommits} commits across qualifying repos, need at least ${MIN_COMMITS}` };
+      }
+
+      const topRepo = matchingRepos[0]?.name ?? null;
+      const uniqueLangs = [...new Set(matchingRepos.map(r => r.language!).filter(Boolean))];
+      return { ok: true, repoCount: matchingRepos.length, topRepo, languages: uniqueLangs, commitCount: totalCommits };
+    } catch (err: any) {
+      return { ok: false, repoCount: 0, topRepo: null, languages: [], error: `GitHub API unavailable: ${err.message?.slice(0, 100)}` };
+    }
+  }
+
+  app.post("/api/agents/:id/skills/:skill/verify-github", strictLimiter, walletAuthMiddleware, async (req, res) => {
     try {
       const id = String(req.params.id);
-      const skill = String(req.params.skill);
+      const skill = String(req.params.skill).toLowerCase();
 
       const agent = await storage.getAgent(id);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
@@ -9121,30 +10767,204 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Authenticated wallet does not own this agent" });
       }
 
-      const { githubProfileUrl } = req.body;
-      if (!githubProfileUrl || typeof githubProfileUrl !== "string") {
-        return res.status(400).json({ message: "githubProfileUrl required" });
+      const { githubHandle, walletSignature } = req.body;
+      if (!githubHandle || typeof githubHandle !== "string" || !/^[a-zA-Z0-9_-]{1,39}$/.test(githubHandle.trim())) {
+        return res.status(400).json({ message: "githubHandle required (your GitHub username, not a URL)" });
       }
 
-      const githubUrlPattern = /^https?:\/\/(www\.)?github\.com\/[a-zA-Z0-9_-]+\/?$/;
-      if (!githubUrlPattern.test(githubProfileUrl.trim())) {
-        return res.status(400).json({ message: "Must be a valid GitHub profile URL (e.g. https://github.com/yourhandle)" });
+      if (!walletSignature || typeof walletSignature !== "string") {
+        return res.status(400).json({
+          message: "walletSignature required — sign the ownership message with your registered wallet",
+          requiredMessage: `I am ${githubHandle.trim()} on GitHub. My ClawTrust wallet is ${walletAddress.toLowerCase()}.`,
+          hint: "Sign this exact message with your wallet (EIP-191 personal_sign) to prove GitHub handle ownership",
+        });
       }
 
-      const existing = await storage.getSkillVerification(id, skill.toLowerCase());
-      const addedScore = 20;
-      const newTrust = Math.min(100, (existing?.trustScore ?? 0) + addedScore);
+      const expectedMessage = `I am ${githubHandle.trim()} on GitHub. My ClawTrust wallet is ${walletAddress.toLowerCase()}.`;
+      let signatureValid = false;
+      try {
+        const recoveredAddress = await import("viem").then(({ recoverMessageAddress }) =>
+          recoverMessageAddress({ message: expectedMessage, signature: walletSignature as `0x${string}` })
+        );
+        signatureValid = recoveredAddress.toLowerCase() === walletAddress.toLowerCase();
+      } catch {
+        signatureValid = false;
+      }
+      if (!signatureValid) {
+        return res.status(403).json({
+          message: "Wallet signature verification failed — the signature does not match the required message",
+          requiredMessage: expectedMessage,
+          hint: "Use EIP-191 personal_sign with the exact message to prove you own both the wallet and the GitHub handle",
+        });
+      }
 
-      await storage.upsertSkillVerification(id, skill.toLowerCase(), {
-        githubProfileUrl: githubProfileUrl.trim(),
+      if (!agent.skills.map(s => s.toLowerCase()).includes(skill)) {
+        return res.status(400).json({ message: `Skill '${skill}' is not declared on your agent profile. Add it to your skills list first.` });
+      }
+
+      const existing = await storage.getSkillVerification(id, skill);
+      if ((existing?.tier ?? 0) >= 2) {
+        return res.status(400).json({ message: `Skill '${skill}' is already GitHub-verified (Tier 2 or higher)` });
+      }
+
+      const result = await verifyGitHubSkill(githubHandle.trim(), skill, agent.registeredAt);
+      if (!result.ok) {
+        return res.status(422).json({
+          message: result.error || "GitHub verification failed",
+          githubHandle: githubHandle.trim(),
+          skill,
+          hint: "Make sure your GitHub account has public repositories demonstrating this skill",
+        });
+      }
+
+      const currentTier = existing?.tier ?? 0;
+      const newTier = Math.max(currentTier, 2);
+      const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+      tierProofs["2"] = {
+        method: "github_api",
+        githubHandle: githubHandle.trim(),
+        repoCount: result.repoCount,
+        commitCount: result.commitCount ?? 0,
+        topRepo: result.topRepo,
+        languages: result.languages,
+        ownershipProof: "wallet_signature_eip191",
+        walletAddress: walletAddress.toLowerCase(),
+        verifiedAt: new Date().toISOString(),
+      };
+      const newTrust = Math.min(100, (existing?.trustScore ?? 0) + 30);
+      const githubProfileUrl = `https://github.com/${githubHandle.trim()}`;
+
+      await storage.upsertSkillVerification(id, skill, {
+        githubProfileUrl,
         trustScore: newTrust,
         status: existing?.status === "verified" ? "verified" : "partial",
-        verificationMethod: existing?.verificationMethod ?? "github",
+        verificationMethod: "github_api",
+        tier: newTier,
+        tierProofs,
       });
 
+      await syncAgentSkillBonusAndVerifiedSkills(id);
+
       res.json({
-        message: `GitHub profile linked for skill '${skill}'. Trust score +${addedScore}.`,
+        message: `GitHub verified for skill '${skill}'. ${result.repoCount} matching repo(s) found.`,
+        tier: newTier,
+        tierLabel: getTierLabel(newTier),
+        tierBadge: getTierBadge(newTier),
+        githubHandle: githubHandle.trim(),
+        repoCount: result.repoCount,
+        topRepo: result.topRepo,
         trustScore: newTrust,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/skills/:skill/github", apiLimiter, walletAuthMiddleware, async (req, res) => {
+    const id = String(req.params.id);
+    const skill = String(req.params.skill).toLowerCase();
+    const { githubHandle, githubProfileUrl } = req.body;
+    const handle = githubHandle || (githubProfileUrl ? githubProfileUrl.replace(/.*github\.com\//, "").replace(/\/$/, "") : null);
+    if (handle) {
+      return res.redirect(307, `/api/agents/${id}/skills/${skill}/verify-github`);
+    }
+    return res.status(400).json({ message: "Use POST /api/agents/:id/skills/:skill/verify-github with { githubHandle } for real GitHub API verification" });
+  });
+
+  app.post("/api/agents/:id/skills/:skill/attest", strictLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const targetId = String(req.params.id);
+      const skill = String(req.params.skill).toLowerCase();
+
+      const targetAgent = await storage.getAgent(targetId);
+      if (!targetAgent) return res.status(404).json({ message: "Agent not found" });
+
+      const walletAddress = req.headers["x-wallet-address"] as string;
+      if (!walletAddress) return res.status(401).json({ message: "Wallet authentication required" });
+
+      const attestorAgent = await storage.getAgentByWallet(walletAddress);
+      if (!attestorAgent) return res.status(404).json({ message: "Your agent is not registered" });
+      if (attestorAgent.id === targetId) return res.status(400).json({ message: "You cannot attest your own skill" });
+
+      if (attestorAgent.fusedScore < 50) {
+        return res.status(403).json({
+          message: `Your FusedScore must be ≥ 50 to attest peer skills (yours: ${attestorAgent.fusedScore.toFixed(1)})`,
+        });
+      }
+
+      const attestorSkillRecord = await storage.getSkillVerification(attestorAgent.id, skill);
+      if ((attestorSkillRecord?.tier ?? 0) < 2) {
+        return res.status(403).json({
+          message: `You must have skill '${skill}' at Tier 2 (GitHub-Verified) or higher to attest it`,
+        });
+      }
+
+      // Target must have the skill declared on their profile
+      if (!targetAgent.skills || !targetAgent.skills.map((s: string) => s.toLowerCase()).includes(skill)) {
+        return res.status(400).json({
+          message: `Agent '${targetAgent.handle}' has not declared skill '${skill}' on their profile`,
+        });
+      }
+
+      // Target must have at least Tier 1 (Challenge-Passed) — prevents attestation on unverified claims
+      const targetSkillRecord = await storage.getSkillVerification(targetId, skill);
+      if ((targetSkillRecord?.tier ?? 0) < 1) {
+        return res.status(403).json({
+          message: `Agent '${targetAgent.handle}' must earn Tier 1 (Challenge-Passed) for skill '${skill}' before peer attestations can count`,
+          targetTier: targetSkillRecord?.tier ?? 0,
+          required: 1,
+        });
+      }
+
+      const alreadyAttested = await storage.hasAttested(targetId, skill, attestorAgent.id);
+      if (alreadyAttested) return res.status(400).json({ message: "You have already attested this skill for this agent" });
+
+      await storage.createSkillAttestation({
+        agentId: targetId,
+        skillName: skill,
+        attestorId: attestorAgent.id,
+        attestorFusedScore: attestorAgent.fusedScore,
+      });
+
+      const attestationCount = await storage.countSkillAttestations(targetId, skill);
+      const ATTESTATION_THRESHOLD = 3;
+      let tierUpgraded = false;
+
+      if (attestationCount >= ATTESTATION_THRESHOLD) {
+        const existing = await storage.getSkillVerification(targetId, skill);
+        if ((existing?.tier ?? 0) < 4) {
+          const attestations = await storage.getSkillAttestations(targetId, skill);
+          const attestorProfiles = await Promise.all(
+            attestations.slice(0, 5).map(async a => {
+              const prof = await storage.getAgent(a.attestorId).catch(() => null);
+              return { id: a.attestorId, handle: prof?.handle ?? null, fusedScore: a.attestorFusedScore, attestedAt: a.createdAt };
+            })
+          );
+          const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
+          tierProofs["4"] = {
+            method: "peer_attestation",
+            attestors: attestorProfiles,
+            count: attestationCount,
+            achievedAt: new Date().toISOString(),
+          };
+          await storage.upsertSkillVerification(targetId, skill, {
+            tier: 4,
+            tierProofs,
+            trustScore: Math.min(100, (existing?.trustScore ?? 0) + 20),
+          });
+
+          await syncAgentSkillBonusAndVerifiedSkills(targetId);
+          tierUpgraded = true;
+        }
+      }
+
+      res.json({
+        message: `Attestation recorded for skill '${skill}' on agent ${targetAgent.handle}`,
+        attestationCount,
+        threshold: ATTESTATION_THRESHOLD,
+        tierUpgraded,
+        tierUnlocked: tierUpgraded ? 4 : null,
+        remaining: Math.max(0, ATTESTATION_THRESHOLD - attestationCount),
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -9603,7 +11423,7 @@ export async function registerRoutes(
               escrow: "0x39601883CD9A115Aba0228fe0620f468Dc710d54",
               swarmValidator: "0x7693a841Eec79Da879241BC0eCcc80710F39f399",
               bond: "0x5bC40A7a47A2b767D948FEEc475b24c027B43867",
-              crew: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
+              crew: (process.env.SKALE_MAINNET_CREW_ADDRESS || "0x427d0D6481bC708979Bdc2F80f659549BdB27f96"),
               registry: "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084",
             },
           },
@@ -9629,7 +11449,7 @@ export async function registerRoutes(
     const repAddr    = process.env.CLAW_TRUST_REP_ADAPTER_ADDRESS     || "0xEfF3d3170e37998C7db987eFA628e7e56E1866DB";
     const swarmAddr  = process.env.CLAW_TRUST_SWARM_VALIDATOR_ADDRESS || "0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743";
     const bondAddr   = process.env.CLAW_TRUST_BOND_ADDRESS            || "0x23a1E1e958C932639906d0650A13283f6E60132c";
-    const crewAddr   = process.env.CLAW_TRUST_CREW_ADDRESS            || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3";
+    const crewAddr   = process.env.CLAW_TRUST_CREW_ADDRESS || "0x33D0f79974C383dc374C888774eB52b0fca41BA2";
     // ── Additional Base Sepolia contracts (ERC-8004 registry + ERC-8183 AC + domain registry) ──
     const erc8004RegAddr  = "0x8004A818BFB912233c491871b3d84c89A494BD9e"; // Official ERC-8004 identity registry
     const clawACAddr      = "0x1933D67CDB911653765e84758f47c60A1E868bC0"; // ClawTrustAC — ERC-8183 agentic commerce
@@ -11034,6 +12854,29 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("[Blog] GET /api/blog/:slug error:", err);
       res.status(500).json({ message: "Failed to fetch blog post" });
+    }
+  });
+
+  app.post("/api/admin/blog", async (req, res) => {
+    try {
+      const adminSecret = process.env.ADMIN_SECRET;
+      const authHeader = req.headers["authorization"] ?? "";
+      const provided = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (!adminSecret || provided !== adminSecret) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const parsed = insertBlogPostSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid blog post data", errors: parsed.error.flatten() });
+      }
+      const post = await storage.createBlogPost(parsed.data);
+      res.status(201).json(post);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(409).json({ message: "A post with this slug already exists" });
+      }
+      console.error("[Blog] POST /api/admin/blog error:", err);
+      res.status(500).json({ message: "Failed to create blog post" });
     }
   });
 
