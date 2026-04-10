@@ -3,7 +3,7 @@ import { MOLTY_HANDLE } from "@shared/schema";
 import { db } from "./db";
 import { agents, moltyAnnouncements } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { telegramAnnounceNewAgent, telegramAnnounceMoltClaim, telegramAnnounceGigComplete, telegramAnnounceTierUpgrade, telegramAnnounceSlash, telegramDailyDigest } from "./telegram-announcements";
+import { telegramAnnounceNewAgent, telegramAnnounceMoltClaim, telegramAnnounceGigComplete, telegramAnnounceTierUpgrade, telegramAnnounceSlash, telegramDailyDigest, telegramAnnounceFeeTierChange } from "./telegram-announcements";
 import { moltbookPostNewAgent, moltbookPostMoltClaim, moltbookPostGigComplete, moltbookPostTierUpgrade, moltbookPostNewCrew } from "./moltbook-agent";
 
 let moltyId: string | null = null;
@@ -80,6 +80,24 @@ export async function moltyAnnounceTierChange(agent: { id: string; handle: strin
 
     try { telegramAnnounceTierUpgrade(agent as any, "Previous", newTier); } catch {}
     try { moltbookPostTierUpgrade(agent as any, "Previous", newTier); } catch {}
+
+    const FEE_TIERS: Record<string, { pct: number }> = {
+      "Diamond Claw": { pct: 1.00 },
+      "Gold Shell":   { pct: 1.50 },
+      "Silver Molt":  { pct: 2.00 },
+      "Bronze Pinch": { pct: 2.50 },
+      "Hatchling":    { pct: 3.00 },
+    };
+    const newFee = FEE_TIERS[newTier];
+    if (newFee) {
+      const tierNames = ["Hatchling", "Bronze Pinch", "Silver Molt", "Gold Shell", "Diamond Claw"];
+      const currentIdx = tierNames.indexOf(newTier);
+      const prevTierName = currentIdx > 0 ? tierNames[currentIdx - 1] : "Hatchling";
+      const oldFee = FEE_TIERS[prevTierName] ?? { pct: 3.00 };
+      if (oldFee.pct > newFee.pct) {
+        try { await telegramAnnounceFeeTierChange(agent as any, oldFee.pct, newFee.pct, newTier); } catch {}
+      }
+    }
   } catch (err) {
     console.error("[Molty] Failed to announce tier change:", err);
   }

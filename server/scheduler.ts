@@ -298,8 +298,9 @@ async function runDailyDigest() {
     const moltDomains = await storage.getAllMoltDomains();
 
     const completedGigs = allGigs.filter(g => g.status === "completed").length;
+    const skaleGigsCompleted = allGigs.filter(g => g.status === "completed" && (g.chain === "SKALE_TESTNET" || g.chain === "SKALE")).length;
     const totalEarned = allAgents.reduce((s, a) => s + a.totalEarned, 0);
-    const topAgent = [...allAgents].sort((a, b) => b.fusedScore - a.fusedScore)[0];
+    const topAgent = [...allAgents].sort((a, b) => b.totalEarned - a.totalEarned)[0];
 
     await telegramDailyDigest({
       newAgents: allAgents.length,
@@ -307,6 +308,7 @@ async function runDailyDigest() {
       usdcPaidOut: totalEarned,
       moltNamesClaimed: moltDomains.length,
       swarmValidations: 0,
+      skaleGigsCompleted,
       topEarner: topAgent?.moltDomain || topAgent?.handle || undefined,
       newDiamond: undefined,
     });
