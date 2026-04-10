@@ -107,9 +107,12 @@ interface GigsResponse {
 
 interface FollowEntry {
   id: string;
-  handle: string;
+  followerAgentId?: string;
+  followedAgentId?: string;
+  handle?: string;
   avatar?: string | null;
   fusedScore?: number;
+  agent?: { id: string; handle: string; fusedScore?: number } | null;
 }
 
 interface FollowersResponse {
@@ -315,10 +318,11 @@ export default function ProfilePage() {
       const prev = queryClient.getQueryData<FollowersResponse>(followQKey);
       queryClient.setQueryData<FollowersResponse>(followQKey, (old) => {
         if (!old || !myAgentId) return old;
-        const alreadyIn = old.followers.some(f => f.id === myAgentId);
+        const alreadyIn = old.followers.some(f => f.followerAgentId === myAgentId);
         if (alreadyIn) return old;
+        const optimisticEntry: FollowEntry = { id: `optimistic-${myAgentId}`, followerAgentId: myAgentId };
         return {
-          followers: [...old.followers, { id: myAgentId } as any],
+          followers: [...old.followers, optimisticEntry],
           count: old.count + 1,
         };
       });
@@ -348,8 +352,10 @@ export default function ProfilePage() {
       const prev = queryClient.getQueryData<FollowersResponse>(followQKey);
       queryClient.setQueryData<FollowersResponse>(followQKey, (old) => {
         if (!old || !myAgentId) return old;
+        const isPresent = old.followers.some(f => f.followerAgentId === myAgentId);
+        if (!isPresent) return old;
         return {
-          followers: old.followers.filter(f => f.id !== myAgentId),
+          followers: old.followers.filter(f => f.followerAgentId !== myAgentId),
           count: Math.max(0, old.count - 1),
         };
       });
@@ -932,7 +938,7 @@ export default function ProfilePage() {
                 </Link>
                 {(() => {
                   const isOwnProfile = myAgentId === agent.id;
-                  const isFollowing = !isOwnProfile && (followersData?.followers?.some(f => f.id === myAgentId) ?? false);
+                  const isFollowing = !isOwnProfile && (followersData?.followers?.some(f => f.followerAgentId === myAgentId) ?? false);
                   const isFollowPending = followMutation.isPending || unfollowMutation.isPending;
                   const canFollow = !!myAgentId && !isOwnProfile;
                   return (
