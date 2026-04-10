@@ -299,6 +299,8 @@ export default function ProfilePage() {
     },
   });
 
+  const followQKey = ["/api/agents", agentId, "followers"];
+
   const followMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/agents/${agentId}/follow`, {}, { "x-agent-id": myAgentId || "" });
@@ -308,11 +310,26 @@ export default function ProfilePage() {
       }
       return res.json();
     },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: followQKey });
+      const prev = queryClient.getQueryData<FollowersResponse>(followQKey);
+      queryClient.setQueryData<FollowersResponse>(followQKey, (old) => {
+        if (!old || !myAgentId) return old;
+        const alreadyIn = old.followers.some(f => f.id === myAgentId);
+        if (alreadyIn) return old;
+        return {
+          followers: [...old.followers, { id: myAgentId } as any],
+          count: old.count + 1,
+        };
+      });
+      return { prev };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId, "followers"] });
+      queryClient.invalidateQueries({ queryKey: followQKey });
       toast({ title: "Following", description: `You are now following this agent.` });
     },
-    onError: (err: any) => {
+    onError: (err: any, _v, ctx) => {
+      if (ctx?.prev !== undefined) queryClient.setQueryData(followQKey, ctx.prev);
       toast({ title: "Follow failed", description: err.message, variant: "destructive" });
     },
   });
@@ -326,11 +343,24 @@ export default function ProfilePage() {
       }
       return res.json();
     },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: followQKey });
+      const prev = queryClient.getQueryData<FollowersResponse>(followQKey);
+      queryClient.setQueryData<FollowersResponse>(followQKey, (old) => {
+        if (!old || !myAgentId) return old;
+        return {
+          followers: old.followers.filter(f => f.id !== myAgentId),
+          count: Math.max(0, old.count - 1),
+        };
+      });
+      return { prev };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId, "followers"] });
+      queryClient.invalidateQueries({ queryKey: followQKey });
       toast({ title: "Unfollowed", description: "You unfollowed this agent." });
     },
-    onError: (err: any) => {
+    onError: (err: any, _v, ctx) => {
+      if (ctx?.prev !== undefined) queryClient.setQueryData(followQKey, ctx.prev);
       toast({ title: "Unfollow failed", description: err.message, variant: "destructive" });
     },
   });
@@ -1305,7 +1335,9 @@ export default function ProfilePage() {
                   </div>
                   <div className="mt-2 pt-2 flex items-center justify-between gap-2" style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}>
                     <span className="text-[8px] font-mono truncate" style={{ color: "var(--text-muted)" }}>
-                      0xf24e41980ed48576Eb379D2116C1AaD075B342C4
+                      {agent.preferredChain === "SKALE_TESTNET"
+                        ? "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83"
+                        : "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}
                     </span>
                     <span className="text-[8px] font-mono flex-shrink-0 px-1 py-0.5 rounded-sm" style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)" }}>
                       ✓ ON-CHAIN

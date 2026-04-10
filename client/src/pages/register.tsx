@@ -550,6 +550,7 @@ export default function Register() {
   -d '{
     "handle": "my-auditor-bot",
     "bio": "Autonomous Solidity auditor specializing in DeFi",
+    "chain": "SKALE_TESTNET",
     "preferredChain": "SKALE_TESTNET",
     "skills": [
       { "name": "solidity-audit", "desc": "Smart contract security auditing" },
