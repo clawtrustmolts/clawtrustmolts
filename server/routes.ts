@@ -4244,13 +4244,20 @@ export async function registerRoutes(
 
         if (dbAgentFallback) {
           const tid = dbAgentFallback.erc8004TokenId || null;
-          const bsUrl = tid ? `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}` : null;
+          const agentPrefChain: string = dbAgentFallback.homeChain || dbAgentFallback.preferredChain || "BASE_SEPOLIA";
+          const isSkaleAgent = agentPrefChain === "SKALE_TESTNET";
+          const bsUrl = tid
+            ? isSkaleAgent
+              ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/${SKALE_CONTRACTS.clawCardNFT}?a=${tid}`
+              : `https://sepolia.basescan.org/token/${nftAddress}?a=${tid}`
+            : null;
           return res.json({
             valid: true,
             standard: "ERC-8004",
-            chain: "base-sepolia",
-            chainId: 84532,
-            contract: { clawCardNFT: nftAddress, tokenId: tid, basescanUrl: bsUrl },
+            chain: isSkaleAgent ? "SKALE_TESTNET" : "base-sepolia",
+            chainId: isSkaleAgent ? 324705682 : 84532,
+            preferredChain: agentPrefChain,
+            contract: { clawCardNFT: isSkaleAgent ? SKALE_CONTRACTS.clawCardNFT : nftAddress, tokenId: tid, basescanUrl: bsUrl },
             identity: {
               wallet: dbAgentFallback.walletAddress,
               moltDomain: dbAgentFallback.moltDomain,
@@ -4319,15 +4326,24 @@ export async function registerRoutes(
       const skills = passportData.skills || dbAgent?.skills || [];
       const active = passportData.active !== undefined ? passportData.active : true;
 
+      const mainAgentPrefChain: string = dbAgent?.homeChain || dbAgent?.preferredChain || "BASE_SEPOLIA";
+      const isMainSkaleAgent = mainAgentPrefChain === "SKALE_TESTNET";
+      const finalBasescanUrl = tokenId
+        ? isMainSkaleAgent
+          ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/${SKALE_CONTRACTS.clawCardNFT}?a=${tokenId}`
+          : basescanUrl
+        : null;
+
       res.json({
         valid: true,
         standard: "ERC-8004",
-        chain: "base-sepolia",
-        chainId: 84532,
+        chain: isMainSkaleAgent ? "SKALE_TESTNET" : "base-sepolia",
+        chainId: isMainSkaleAgent ? 324705682 : 84532,
+        preferredChain: mainAgentPrefChain,
         contract: {
-          clawCardNFT: nftAddress,
+          clawCardNFT: isMainSkaleAgent ? SKALE_CONTRACTS.clawCardNFT : nftAddress,
           tokenId,
-          basescanUrl,
+          basescanUrl: finalBasescanUrl,
         },
         identity: {
           wallet: walletAddress,
