@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint, serial, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint, serial, jsonb, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -75,6 +75,8 @@ export const gigs = pgTable("gigs", {
   minCrewScore: real("min_crew_score"),
   requiredRoles: text("required_roles").array().notNull().default(sql`'{}'::text[]`),
   gigTier: text("gig_tier").notNull().default("STANDARD"),
+  deadlineHours: integer("deadline_hours").notNull().default(72),
+  deliverableNote: text("deliverable_note"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -101,6 +103,8 @@ export const escrowTransactions = pgTable("escrow_transactions", {
   releaseTxHash: text("release_tx_hash"),
   circleWalletId: text("circle_wallet_id"),
   circleTransactionId: text("circle_transaction_id"),
+  effectiveFeePct: real("effective_fee_pct"),
+  feeBreakdown: text("fee_breakdown"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -154,8 +158,25 @@ export const agentSkills = pgTable("agent_skills", {
   portfolioUrl: text("portfolio_url"),
   challengeScore: integer("challenge_score"),
   challengeCompletedAt: timestamp("challenge_completed_at"),
+  tier: integer("tier").notNull().default(0).$type<0|1|2|3|4>(),
+  tierProofs: jsonb("tier_proofs").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  tierRange: check("tier_range_0_4", sql`${table.tier} >= 0 AND ${table.tier} <= 4`),
+}));
+
+export const skillAttestations = pgTable("skill_attestations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentId: varchar("agent_id").notNull(),
+  skillName: text("skill_name").notNull(),
+  attestorId: varchar("attestor_id").notNull(),
+  attestorFusedScore: real("attestor_fused_score").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const insertSkillAttestationSchema = createInsertSchema(skillAttestations).omit({ id: true, createdAt: true });
+export type SkillAttestation = typeof skillAttestations.$inferSelect;
+export type InsertSkillAttestation = z.infer<typeof insertSkillAttestationSchema>;
 
 export const skillChallenges = pgTable("skill_challenges", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -318,6 +339,8 @@ export const agentConversations = pgTable("agent_conversations", {
 
 export const crewRoleEnum = pgEnum("crew_role", ["LEAD", "RESEARCHER", "CODER", "DESIGNER", "VALIDATOR"]);
 
+export const subTaskStatusEnum = pgEnum("sub_task_status", ["open", "claimed", "in_progress", "submitted", "approved", "revision"]);
+
 export const crews = pgTable("crews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -332,6 +355,35 @@ export const crews = pgTable("crews", {
   specialization: text("specialization"),
   capabilities: text("capabilities").array().notNull().default(sql`'{}'::text[]`),
   agencyPitch: text("agency_pitch"),
+  agencyVerified: boolean("agency_verified").notNull().default(false),
+  onChainCrewId: text("on_chain_crew_id"),
+  onChainCrewIdSkale: text("on_chain_crew_id_skale"),
+  onChainTxHash: text("on_chain_tx_hash"),
+  onChainTxHashSkale: text("on_chain_tx_hash_skale"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const crewSubtasks = pgTable("crew_subtasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  crewId: varchar("crew_id").notNull(),
+  assigneeId: varchar("assignee_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  requiredSkill: text("required_skill"),
+  usdcShare: real("usdc_share").notNull().default(0),
+  status: subTaskStatusEnum("status").notNull().default("open"),
+  submissionText: text("submission_text"),
+  leadFeedback: text("lead_feedback"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const crewGigSettings = pgTable("crew_gig_settings", {
+  gigId: varchar("gig_id").primaryKey(),
+  leadCoordinationFeePct: real("lead_coordination_fee_pct").notNull().default(10),
+  parallelModeEnabled: boolean("parallel_mode_enabled").notNull().default(false),
+  repSplitCompleted: boolean("rep_split_completed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -514,9 +566,34 @@ export type InsertMoltyAnnouncement = z.infer<typeof insertMoltyAnnouncementSche
 
 export const MOLTY_HANDLE = "Molty";
 
-export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, createdAt: true, fusedScore: true, bondPool: true, gigsCompleted: true, totalEarned: true, crewPassportImage: true });
+export const crewDelegations = pgTable("crew_delegations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromCrewId: varchar("from_crew_id").notNull(),
+  toCrewId: varchar("to_crew_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  budget: real("budget").notNull().default(0),
+  currency: text("currency").notNull().default("USDC"),
+  status: text("status").notNull().default("pending"),
+  message: text("message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCrewDelegationSchema = createInsertSchema(crewDelegations).omit({ id: true, createdAt: true });
+export type CrewDelegation = typeof crewDelegations.$inferSelect;
+export type InsertCrewDelegation = z.infer<typeof insertCrewDelegationSchema>;
+
+export const insertCrewSchema = createInsertSchema(crews).omit({ id: true, createdAt: true, fusedScore: true, bondPool: true, gigsCompleted: true, totalEarned: true, crewPassportImage: true, agencyVerified: true });
 export const insertCrewMemberSchema = createInsertSchema(crewMembers).omit({ id: true, joinedAt: true });
 export const insertCrewGigApplicantSchema = createInsertSchema(crewGigApplicants).omit({ id: true, createdAt: true });
+
+export const insertCrewSubtaskSchema = createInsertSchema(crewSubtasks).omit({ id: true, createdAt: true, updatedAt: true });
+export type CrewSubtask = typeof crewSubtasks.$inferSelect;
+export type InsertCrewSubtask = z.infer<typeof insertCrewSubtaskSchema>;
+
+export const insertCrewGigSettingsSchema = createInsertSchema(crewGigSettings).omit({ createdAt: true });
+export type CrewGigSettings = typeof crewGigSettings.$inferSelect;
+export type InsertCrewGigSettings = z.infer<typeof insertCrewGigSettingsSchema>;
 
 export const CREW_SPECIALIZATIONS = ["DEV_AGENCY", "AUDIT_FIRM", "CONTENT_STUDIO", "DATA_ANALYTICS", "OPERATIONS", "GENERAL"] as const;
 export type CrewSpecialization = typeof CREW_SPECIALIZATIONS[number];
