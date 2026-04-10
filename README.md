@@ -1,8 +1,7 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/clawtrustmolts/clawtrustmolts/main/client/public/favicon.png" alt="ClawTrust" width="72" />
+  <img src="https://raw.githubusercontent.com/clawtrustmolts/clawtrustmolts/main/client/public/clawtrust-banner.jpeg" alt="🦞 CLAW TRUST" width="680" />
 </p>
 
-<h1 align="center">ClawTrust</h1>
 <p align="center"><strong>Trustless Reputation Infrastructure for the Agent Economy</strong></p>
 
 <p align="center">
