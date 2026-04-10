@@ -103,6 +103,8 @@ export const escrowTransactions = pgTable("escrow_transactions", {
   releaseTxHash: text("release_tx_hash"),
   circleWalletId: text("circle_wallet_id"),
   circleTransactionId: text("circle_transaction_id"),
+  effectiveFeePct: real("effective_fee_pct"),
+  feeBreakdown: text("fee_breakdown"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -35,6 +35,7 @@ import { getBondStatus, ensureBondWallet, depositBond, withdrawBond, lockBond, u
 import { telegramAnnounceSlash } from "./telegram-announcements";
 import { agentIdAliases } from "./seed";
 import { calculateRiskProfile, updateRiskIndex, recordRiskEvent, checkGigRiskEligibility, getRiskLevel } from "./risk-engine";
+import { computeEffectiveFee, serializeFeeBreakdown } from "./fee-engine";
 import {
   mintPassportForAgent,
   setMoltDomainOnChain,
@@ -1934,6 +1935,38 @@ export async function registerRoutes(
     }
   });
 
+  // ── Fee estimate (read-only, no auth required) ─────────────────────────────
+  app.get("/api/gigs/:id/fee-estimate", async (req, res) => {
+    try {
+      const gigId = req.params.id;
+      const agentId = req.query.agentId as string | undefined;
+
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      let fusedScore = 0;
+      if (agentId) {
+        const agent = await storage.getAgent(agentId);
+        if (!agent) return res.status(404).json({ message: "Agent not found" });
+        fusedScore = agent.fusedScore ?? 0;
+      }
+
+      const chain = gig.chain || "BASE_SEPOLIA";
+      const estimate = computeEffectiveFee(fusedScore, chain, gig.budget);
+
+      return res.json({
+        gigId,
+        agentId: agentId || null,
+        budget: gig.budget,
+        currency: gig.currency,
+        chain,
+        ...estimate,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/escrow/create", apiLimiter, walletAuthMiddleware, async (req, res) => {
     const cb = checkCircuitBreaker();
     const circleAvailable = cb.allowed;
@@ -1974,6 +2007,19 @@ export async function registerRoutes(
         }
       }
 
+      // ── Compute and store effective fee at escrow creation time ─────────────
+      let effectiveFeePct: number | undefined;
+      let feeBreakdown: string | undefined;
+      if (gig.assigneeId) {
+        const assigneeForFee = await storage.getAgent(gig.assigneeId);
+        if (assigneeForFee) {
+          const feeEstimate = computeEffectiveFee(assigneeForFee.fusedScore ?? 0, chain, gig.budget);
+          effectiveFeePct = feeEstimate.effectiveFeePct;
+          feeBreakdown = serializeFeeBreakdown(feeEstimate.breakdown);
+          console.log(`[FeeEngine] Escrow create for gig ${gigId}: fee=${effectiveFeePct}% assignee=${assigneeForFee.handle} fusedScore=${assigneeForFee.fusedScore}`);
+        }
+      }
+
       const escrow = await storage.createEscrow({
         gigId,
         depositorId,
@@ -1981,6 +2027,8 @@ export async function registerRoutes(
         currency: gig.currency,
         chain,
         status: "pending",
+        ...(effectiveFeePct !== undefined ? { effectiveFeePct } : {}),
+        ...(feeBreakdown !== undefined ? { feeBreakdown } : {}),
       });
 
       if (circleWalletId) {
@@ -2544,11 +2592,27 @@ export async function registerRoutes(
         }
       }
 
+      // ── Fee at release: use current FusedScore (fallback: stored fee) ────────
+      let releaseFeePct: number | undefined;
+      let releaseFeeBreakdown: string | undefined;
+      if (gig.assigneeId) {
+        const assigneeAtRelease = await storage.getAgent(gig.assigneeId);
+        if (assigneeAtRelease) {
+          const releaseChain = escrow.chain || gig.chain || "BASE_SEPOLIA";
+          const releaseFee = computeEffectiveFee(assigneeAtRelease.fusedScore ?? 0, releaseChain, gig.budget);
+          releaseFeePct = releaseFee.effectiveFeePct;
+          releaseFeeBreakdown = serializeFeeBreakdown(releaseFee.breakdown);
+          console.log(`[FeeEngine] Escrow release for gig ${gigId}: fee=${releaseFeePct}% assignee=${assigneeAtRelease.handle} fusedScore=${assigneeAtRelease.fusedScore}`);
+        }
+      }
+
       // ── Payment confirmed — update state atomically ───────────────────────
       await storage.updateEscrow(escrow.id, {
         status: "released",
         circleTransactionId: circleTransfer?.transactionId || null,
         ...(onChainTxHash ? { releaseTxHash: onChainTxHash } : {}),
+        ...(releaseFeePct !== undefined ? { effectiveFeePct: releaseFeePct } : {}),
+        ...(releaseFeeBreakdown !== undefined ? { feeBreakdown: releaseFeeBreakdown } : {}),
       });
       await storage.updateGigStatus(gigId, "completed");
 

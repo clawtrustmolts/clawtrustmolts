@@ -418,6 +418,67 @@ function ApplicantCard({
   );
 }
 
+interface FeeEstimateData {
+  effectiveFeePct: number;
+  feeAmountUsdc: number;
+  netAmountUsdc: number;
+  budget: number;
+  breakdown: {
+    fusedScore: number;
+    tierName: string;
+    baseFee: number;
+    chainModifier: number;
+    chain: string;
+    effectiveFee: number;
+    clamped: boolean;
+  };
+}
+
+function FeeEstimateBox({ estimate, budget }: { estimate: FeeEstimateData; budget: number }) {
+  return (
+    <div
+      className="rounded-sm px-3 py-2 space-y-1.5"
+      style={{
+        background: "rgba(10,236,184,0.04)",
+        border: "1px solid rgba(10,236,184,0.12)",
+      }}
+      data-testid="card-fee-estimate"
+    >
+      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--teal-glow)" }}>
+        <DollarSign className="w-3 h-3" />
+        Platform Fee Estimate
+      </div>
+      <div className="flex justify-between items-center text-[11px] font-mono">
+        <span style={{ color: "var(--text-muted)" }}>Your FusedScore Tier</span>
+        <span style={{ color: "var(--shell-white)" }}>{estimate.breakdown.tierName} ({estimate.breakdown.fusedScore})</span>
+      </div>
+      <div className="flex justify-between items-center text-[11px] font-mono">
+        <span style={{ color: "var(--text-muted)" }}>Base Fee</span>
+        <span style={{ color: "var(--shell-white)" }}>{estimate.breakdown.baseFee.toFixed(2)}%</span>
+      </div>
+      {estimate.breakdown.chainModifier > 0 && (
+        <div className="flex justify-between items-center text-[11px] font-mono">
+          <span style={{ color: "var(--text-muted)" }}>Chain Modifier (SKALE)</span>
+          <span style={{ color: "var(--claw-amber)" }}>+{estimate.breakdown.chainModifier.toFixed(2)}%</span>
+        </div>
+      )}
+      <div
+        className="flex justify-between items-center text-[11px] font-mono pt-1"
+        style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
+      >
+        <span style={{ color: "var(--shell-white)" }}>Effective Fee</span>
+        <span style={{ color: "var(--teal-glow)", fontWeight: 600 }}>
+          {estimate.effectiveFeePct.toFixed(2)}% (${estimate.feeAmountUsdc.toFixed(2)})
+        </span>
+      </div>
+      <div className="flex justify-between items-center text-[11px] font-mono">
+        <span style={{ color: "var(--text-muted)" }}>You receive</span>
+        <span style={{ color: "#22c55e" }}>${estimate.netAmountUsdc.toFixed(2)} USDC</span>
+      </div>
+    </div>
+  );
+}
+
 function ActionPanel({ gig, applicants, myAgentId, validation }: {
   gig: Gig;
   applicants: GigApplicant[];
@@ -432,6 +493,20 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
   const isMyGig = myAgentId && gig.posterId === myAgentId;
   const isAssignee = myAgentId && gig.assigneeId === myAgentId;
   const alreadyApplied = applicants.some((a) => a.agentId === myAgentId);
+  const showFeeEstimate = gig.status === "open" && !isMyGig && !!myAgentId;
+
+  const { data: feeEstimate } = useQuery<FeeEstimateData>({
+    queryKey: ["/api/gigs", gig.id, "fee-estimate", myAgentId],
+    queryFn: async () => {
+      const url = myAgentId
+        ? `/api/gigs/${gig.id}/fee-estimate?agentId=${encodeURIComponent(myAgentId)}`
+        : `/api/gigs/${gig.id}/fee-estimate`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch fee estimate");
+      return res.json();
+    },
+    enabled: showFeeEstimate,
+  });
 
   const applyMutation = useMutation({
     mutationFn: async () => {
@@ -517,14 +592,19 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
         </h3>
 
         {gig.status === "open" && !isMyGig && (
-          <ClawButton
-            size="sm"
-            onClick={() => applyMutation.mutate()}
-            disabled={alreadyApplied || applyMutation.isPending}
-            data-testid="button-apply-gig"
-          >
-            {alreadyApplied ? "✓ Already Applied" : applyMutation.isPending ? "Applying…" : "🦞 Apply for Gig"}
-          </ClawButton>
+          <>
+            {feeEstimate && (
+              <FeeEstimateBox estimate={feeEstimate} budget={gig.budget} />
+            )}
+            <ClawButton
+              size="sm"
+              onClick={() => applyMutation.mutate()}
+              disabled={alreadyApplied || applyMutation.isPending}
+              data-testid="button-apply-gig"
+            >
+              {alreadyApplied ? "✓ Already Applied" : applyMutation.isPending ? "Applying…" : "🦞 Apply for Gig"}
+            </ClawButton>
+          </>
         )}
 
         {gig.status === "assigned" && isAssignee && (
