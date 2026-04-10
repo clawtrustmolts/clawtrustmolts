@@ -32,6 +32,9 @@ import {
   Flag,
   Send,
   Gavel,
+  Layers,
+  CheckCircle2,
+  RotateCcw,
 } from "lucide-react";
 import type { Gig, Agent, EscrowTransaction } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -334,17 +337,29 @@ function DisputeModal({ gigId, agentId, onClose }: { gigId: string; agentId: str
 function ApplicantCard({
   app,
   requiredSkills,
+  gigId,
   onAssign,
   assigning,
 }: {
   app: GigApplicant;
   requiredSkills: string[];
+  gigId: string;
   onAssign: () => void;
   assigning: boolean;
 }) {
   const { data: svData } = useQuery<{ skills: Array<{ skill: string; status: string; trustScore: number }> }>({
     queryKey: ["/api/agents", app.agentId, "skill-verifications"],
     enabled: requiredSkills.length > 0,
+  });
+
+  const { data: appFeeEstimate } = useQuery<FeeEstimateData>({
+    queryKey: ["/api/gigs", gigId, "fee-estimate", app.agentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/gigs/${gigId}/fee-estimate?agentId=${encodeURIComponent(app.agentId)}`);
+      if (!res.ok) throw new Error("Failed to fetch fee estimate");
+      return res.json();
+    },
+    enabled: !!gigId && !!app.agentId,
   });
 
   const verifiedSkills = svData?.skills.filter((s) => requiredSkills.map(r => r.toLowerCase()).includes(s.skill.toLowerCase()) && s.status === "verified") ?? [];
@@ -411,6 +426,139 @@ function ApplicantCard({
           )}
         </div>
       )}
+      {appFeeEstimate && (
+        <FeeEstimateBox estimate={appFeeEstimate} testId={`card-fee-estimate-${app.agentId}`} />
+      )}
+    </div>
+  );
+}
+
+interface DiscountLine {
+  label: string;
+  amount: number;
+}
+
+interface FeeEstimateData {
+  effectiveFeePct: number;
+  feeAmountUsdc: number;
+  netAmountUsdc: number;
+  budget: number;
+  unlockHints?: Array<{ action: string; saving: number }>;
+  breakdown: {
+    fusedScore: number;
+    tierName: string;
+    baseFee: number;
+    chainModifier: number;
+    chain: string;
+    discounts?: DiscountLine[];
+    surcharges?: DiscountLine[];
+    totalDiscount?: number;
+    totalSurcharge?: number;
+    effectiveFee: number;
+    clamped: boolean;
+  };
+}
+
+function FeeEstimateBox({ estimate, testId = "card-fee-estimate" }: { estimate: FeeEstimateData; testId?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const discounts = estimate.breakdown.discounts ?? [];
+  const surcharges = estimate.breakdown.surcharges ?? [];
+  const totalDiscount = estimate.breakdown.totalDiscount ?? 0;
+  const totalSurcharge = estimate.breakdown.totalSurcharge ?? 0;
+  const hasModifiers = discounts.length > 0 || surcharges.length > 0 || estimate.breakdown.chainModifier > 0;
+
+  return (
+    <div
+      className="rounded-sm px-3 py-2 space-y-1"
+      style={{
+        background: "rgba(10,236,184,0.04)",
+        border: "1px solid rgba(10,236,184,0.12)",
+      }}
+      data-testid={testId}
+    >
+      <button
+        className="w-full flex items-center justify-between text-[11px] font-mono cursor-pointer"
+        onClick={() => setExpanded((v) => !v)}
+        data-testid="button-fee-estimate-toggle"
+        type="button"
+      >
+        <span className="flex items-center gap-1.5" style={{ color: "var(--teal-glow)" }}>
+          <DollarSign className="w-3 h-3" />
+          Platform fee: {estimate.effectiveFeePct.toFixed(2)}% (${estimate.feeAmountUsdc.toFixed(2)})
+          {totalDiscount > 0 && (
+            <span
+              className="text-[10px] px-1 rounded-sm"
+              style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+            >
+              −{totalDiscount.toFixed(2)}%
+            </span>
+          )}
+        </span>
+        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+          {expanded ? "▲" : "▼"}
+        </span>
+      </button>
+      {expanded && (
+        <div
+          className="pt-1 space-y-1"
+          style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}
+        >
+          <div className="flex justify-between text-[10px] font-mono">
+            <span style={{ color: "var(--text-muted)" }}>FusedScore tier</span>
+            <span style={{ color: "var(--shell-white)" }}>{estimate.breakdown.tierName} ({estimate.breakdown.fusedScore})</span>
+          </div>
+          <div className="flex justify-between text-[10px] font-mono">
+            <span style={{ color: "var(--text-muted)" }}>Base fee</span>
+            <span style={{ color: "var(--shell-white)" }}>{estimate.breakdown.baseFee.toFixed(2)}%</span>
+          </div>
+          {estimate.breakdown.chainModifier > 0 && (
+            <div className="flex justify-between text-[10px] font-mono">
+              <span style={{ color: "var(--text-muted)" }}>SKALE chain modifier</span>
+              <span style={{ color: "var(--claw-amber)" }}>+{estimate.breakdown.chainModifier.toFixed(2)}%</span>
+            </div>
+          )}
+          {discounts.map((d, i) => (
+            <div key={i} className="flex justify-between text-[10px] font-mono">
+              <span style={{ color: "var(--text-muted)" }}>{d.label}</span>
+              <span style={{ color: "#22c55e" }}>−{d.amount.toFixed(2)}%</span>
+            </div>
+          ))}
+          {surcharges.map((s, i) => (
+            <div key={i} className="flex justify-between text-[10px] font-mono">
+              <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
+              <span style={{ color: "var(--claw-amber)" }}>+{s.amount.toFixed(2)}%</span>
+            </div>
+          ))}
+          {hasModifiers && (
+            <div
+              className="flex justify-between text-[10px] font-mono pt-0.5"
+              style={{ borderTop: "1px solid rgba(10,236,184,0.08)" }}
+            >
+              <span style={{ color: "var(--text-muted)" }}>Effective fee</span>
+              <span style={{ color: "var(--teal-glow)", fontWeight: 600 }}>{estimate.effectiveFeePct.toFixed(2)}%</span>
+            </div>
+          )}
+          <div className="flex justify-between text-[10px] font-mono">
+            <span style={{ color: "var(--text-muted)" }}>You receive</span>
+            <span style={{ color: "#22c55e" }}>${estimate.netAmountUsdc.toFixed(2)} USDC</span>
+          </div>
+          {estimate.unlockHints && estimate.unlockHints.length > 0 && (
+            <div
+              className="pt-1 mt-0.5 space-y-0.5"
+              style={{ borderTop: "1px solid rgba(10,236,184,0.08)" }}
+            >
+              <div className="text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "var(--text-muted)" }}>
+                Fee reduction opportunities
+              </div>
+              {estimate.unlockHints.map((h, i) => (
+                <div key={i} className="text-[10px] font-mono" style={{ color: "var(--shell-cream)" }}>
+                  • {h.action}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -429,6 +577,20 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
   const isMyGig = myAgentId && gig.posterId === myAgentId;
   const isAssignee = myAgentId && gig.assigneeId === myAgentId;
   const alreadyApplied = applicants.some((a) => a.agentId === myAgentId);
+  const showFeeEstimate = gig.status === "open" && !isMyGig && !!myAgentId;
+
+  const { data: feeEstimate } = useQuery<FeeEstimateData>({
+    queryKey: ["/api/gigs", gig.id, "fee-estimate", myAgentId],
+    queryFn: async () => {
+      const url = myAgentId
+        ? `/api/gigs/${gig.id}/fee-estimate?agentId=${encodeURIComponent(myAgentId)}`
+        : `/api/gigs/${gig.id}/fee-estimate`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch fee estimate");
+      return res.json();
+    },
+    enabled: showFeeEstimate,
+  });
 
   const applyMutation = useMutation({
     mutationFn: async () => {
@@ -514,14 +676,19 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
         </h3>
 
         {gig.status === "open" && !isMyGig && (
-          <ClawButton
-            size="sm"
-            onClick={() => applyMutation.mutate()}
-            disabled={alreadyApplied || applyMutation.isPending}
-            data-testid="button-apply-gig"
-          >
-            {alreadyApplied ? "✓ Already Applied" : applyMutation.isPending ? "Applying…" : "🦞 Apply for Gig"}
-          </ClawButton>
+          <>
+            {feeEstimate && (
+              <FeeEstimateBox estimate={feeEstimate} />
+            )}
+            <ClawButton
+              size="sm"
+              onClick={() => applyMutation.mutate()}
+              disabled={alreadyApplied || applyMutation.isPending}
+              data-testid="button-apply-gig"
+            >
+              {alreadyApplied ? "✓ Already Applied" : applyMutation.isPending ? "Applying…" : "🦞 Apply for Gig"}
+            </ClawButton>
+          </>
         )}
 
         {gig.status === "assigned" && isAssignee && (
@@ -646,6 +813,7 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
                   key={app.id}
                   app={app}
                   requiredSkills={gig.skillsRequired ?? []}
+                  gigId={gig.id}
                   onAssign={() => assignMutation.mutate(app.agentId)}
                   assigning={assignMutation.isPending}
                 />
@@ -702,6 +870,8 @@ export default function GigDetailPage() {
     },
     enabled: !!gigId,
   });
+
+  const [crewTab, setCrewTab] = useState<"team" | "work-log">("team");
 
   const { data: validations } = useQuery<ValidationInfo[]>({
     queryKey: ["/api/validations"],
@@ -1149,74 +1319,204 @@ export default function GigDetailPage() {
             )}
           </div>
 
-          {/* CREW APPLICANTS */}
+          {/* CREW PANEL — tabbed: Team | Work Log */}
           {((crewApplicants && crewApplicants.length > 0) || gig.crewGig) && (
             <div
-              className="rounded-sm p-5"
-              style={{
-                background: "var(--ocean-mid)",
-                border: "1px solid rgba(139,92,246,0.20)",
-              }}
-              data-testid="card-crew-applicants"
+              className="rounded-sm"
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(139,92,246,0.20)" }}
+              data-testid="card-crew-panel"
             >
-              <h3 className="font-display tracking-wider text-sm mb-4 flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
-                <Users className="w-4 h-4" style={{ color: "#a78bfa" }} />
-                AGENCY BIDS ({(crewApplicants || []).length})
-              </h3>
-              {(crewApplicants || []).length === 0 ? (
-                <EmptyState message="No agency bids yet." />
-              ) : (
-                <div className="space-y-3">
-                  {(crewApplicants || []).map((ca) => (
-                    <div
-                      key={ca.id}
-                      className="p-3 rounded-sm"
-                      style={{ background: "rgba(139,92,246,0.04)", border: "1px solid rgba(139,92,246,0.1)" }}
-                      data-testid={`crew-applicant-${ca.id}`}
+              {/* Tab bar */}
+              <div className="flex border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+                {(["team", "work-log"] as const).map(tab => {
+                  const label = tab === "team"
+                    ? `AGENCY BIDS (${(crewApplicants || []).length})`
+                    : "WORK LOG";
+                  const Icon = tab === "team" ? Users : Layers;
+                  const iconColor = tab === "team" ? "#a78bfa" : "#3b82f6";
+                  const isActive = crewTab === tab;
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setCrewTab(tab)}
+                      data-testid={`tab-crew-${tab}`}
+                      className="flex items-center gap-1.5 px-5 py-3 text-[11px] font-mono tracking-wider transition-colors"
+                      style={{
+                        color: isActive ? "var(--shell-white)" : "var(--text-muted)",
+                        borderBottom: isActive ? `2px solid ${iconColor}` : "2px solid transparent",
+                        background: "transparent",
+                      }}
                     >
-                      {ca.crew ? (
-                        <Link href={`/crews/${ca.crew.id}`}>
-                          <div className="cursor-pointer">
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-xs font-semibold" style={{ color: "var(--shell-white)" }}>
-                                {ca.crew.name}
+                      <Icon className="w-3.5 h-3.5" style={{ color: isActive ? iconColor : undefined }} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Tab content */}
+              <div className="p-5">
+                {crewTab === "team" && (
+                  <>
+                    {(crewApplicants || []).length === 0 ? (
+                      <EmptyState message="No agency bids yet." />
+                    ) : (
+                      <div className="space-y-3">
+                        {(crewApplicants || []).map((ca) => (
+                          <div
+                            key={ca.id}
+                            className="p-3 rounded-sm"
+                            style={{ background: "rgba(139,92,246,0.04)", border: "1px solid rgba(139,92,246,0.1)" }}
+                            data-testid={`crew-applicant-${ca.id}`}
+                          >
+                            {ca.crew ? (
+                              <Link href={`/crews/${ca.crew.id}`}>
+                                <div className="cursor-pointer">
+                                  <div className="flex items-center justify-between gap-2 mb-1">
+                                    <span className="text-xs font-semibold" style={{ color: "var(--shell-white)" }}>
+                                      {ca.crew.name}
+                                    </span>
+                                    <span className="text-[10px] font-mono" style={{ color: "#a78bfa" }}>
+                                      {ca.crew.fusedScore.toFixed(1)}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa" }}>
+                                      @{ca.crew.handle}
+                                    </span>
+                                    <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                                      {ca.crew.memberCount} members · ${ca.crew.bondPool.toFixed(0)} bonded
+                                    </span>
+                                  </div>
+                                </div>
+                              </Link>
+                            ) : (
+                              <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                                Crew ID: {ca.crewId}
                               </span>
-                              <span className="text-[10px] font-mono" style={{ color: "#a78bfa" }}>
-                                {ca.crew.fusedScore.toFixed(1)}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: "rgba(139,92,246,0.1)", color: "#a78bfa" }}>
-                                @{ca.crew.handle}
-                              </span>
-                              <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
-                                {ca.crew.memberCount} members · ${ca.crew.bondPool.toFixed(0)} bonded
-                              </span>
-                            </div>
+                            )}
+                            {ca.message && (
+                              <p className="text-[10px] mt-1" style={{ color: "var(--shell-cream)" }}>
+                                {ca.message}
+                              </p>
+                            )}
+                            {ca.createdAt && (
+                              <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+                                {timeAgo(ca.createdAt)}
+                              </p>
+                            )}
                           </div>
-                        </Link>
-                      ) : (
-                        <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
-                          Crew ID: {ca.crewId}
-                        </span>
-                      )}
-                      {ca.message && (
-                        <p className="text-[10px] mt-1" style={{ color: "var(--shell-cream)" }}>
-                          {ca.message}
-                        </p>
-                      )}
-                      {ca.createdAt && (
-                        <p className="text-[9px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
-                          {timeAgo(ca.createdAt)}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+                {crewTab === "work-log" && <GigWorkLog gigId={gig.id} />}
+              </div>
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Work Log: crew gig subtask activity timeline ───────────────────────────
+
+function GigWorkLog({ gigId }: { gigId: string }) {
+  const STATUS_COLORS: Record<string, string> = {
+    claimed: "#a78bfa",
+    in_progress: "#3b82f6",
+    submitted: "var(--claw-amber)",
+    approved: "#22c55e",
+    revision: "var(--claw-red)",
+  };
+
+  const { data, isLoading } = useQuery<{
+    gigId: string;
+    crewId: string | null;
+    parallelModeEnabled: boolean;
+    contributions: Array<{ role: string; taskCount: number; approvedCount: number; totalUsdcShare: number; identifier: string }>;
+    timeline: Array<{ subtaskTitle: string; requiredSkill: string | null; status: string; role: string; identifier: string; usdcShare: number; updatedAt: string | null }>;
+    totals: { subtasks: number; approved: number; totalUsdcAllocated: number };
+  }>({
+    queryKey: ["/api/gigs", gigId, "work-log"],
+    queryFn: () => apiRequest("GET", `/api/gigs/${gigId}/work-log`).then(r => r.json()),
+    enabled: !!gigId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[0,1].map(i => <div key={i} className="h-12 rounded-sm animate-pulse" style={{ background: "var(--ocean-mid)" }} />)}
+      </div>
+    );
+  }
+
+  const totals = data?.totals;
+  const timeline = data?.timeline || [];
+  const contributions = data?.contributions || [];
+
+  if (!data?.parallelModeEnabled || timeline.length === 0) {
+    return <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>No parallel task activity yet.</p>;
+  }
+
+  return (
+    <div className="space-y-4" data-testid="section-work-log">
+      {/* Summary bar */}
+      <div className="flex items-center gap-3 text-[10px] font-mono flex-wrap" style={{ color: "var(--text-muted)" }}>
+        <span>{totals?.subtasks ?? 0} subtasks</span>
+        <span style={{ color: "#22c55e" }}>✓ {totals?.approved ?? 0} approved</span>
+        {(totals?.totalUsdcAllocated ?? 0) > 0 && (
+          <span style={{ color: "var(--teal-glow)" }}>${totals!.totalUsdcAllocated} USDC allocated</span>
+        )}
+      </div>
+
+      {/* Contribution grid — role-level, anonymized */}
+      {contributions.length > 0 && (
+        <div className="grid grid-cols-2 gap-2" data-testid="grid-contributions">
+          {contributions.filter(c => c.taskCount > 0).map((c, i) => (
+            <div key={i} className="px-3 py-2 rounded-sm" style={{ background: "rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.05)" }}
+              data-testid={`contribution-${c.role}-${i}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-mono font-bold" style={{ color: "var(--shell-white)" }}>{c.identifier}</span>
+                <span className="text-[9px] font-mono" style={{ color: "#22c55e" }}>{c.approvedCount}/{c.taskCount}</span>
+              </div>
+              {c.totalUsdcShare > 0 && (
+                <p className="text-[8px] font-mono mt-0.5" style={{ color: "var(--teal-glow)" }}>${c.totalUsdcShare} USDC</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Activity timeline */}
+      <div className="space-y-1.5">
+        {timeline.slice(0, 10).map((item, i) => {
+          const col = STATUS_COLORS[item.status] || "var(--text-muted)";
+          const StatusIcon = item.status === "approved" ? CheckCircle2 : item.status === "revision" ? RotateCcw : Layers;
+          return (
+            <div key={i}
+              className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm"
+              style={{ background: "var(--ocean-mid)", border: `1px solid ${col}18` }}
+              data-testid={`worklog-entry-${i}`}>
+              <StatusIcon className="w-3 h-3 flex-shrink-0" style={{ color: col }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-semibold truncate" style={{ color: "var(--shell-white)" }}>{item.subtaskTitle}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[8px] font-mono" style={{ color: "var(--text-muted)" }}>{item.identifier}</span>
+                  {item.requiredSkill && <span className="text-[8px] font-mono" style={{ color: "var(--teal-dim)" }}>#{item.requiredSkill}</span>}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm uppercase" style={{ color: col, background: `${col}15` }}>
+                  {item.status.replace(/_/g, " ")}
+                </span>
+                {item.usdcShare > 0 && <span className="text-[8px] font-mono" style={{ color: "var(--teal-glow)" }}>${item.usdcShare}</span>}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
