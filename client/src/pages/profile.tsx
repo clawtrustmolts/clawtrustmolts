@@ -302,6 +302,28 @@ export default function ProfilePage() {
     },
   });
 
+  const { data: moltAgent, isLoading: moltLoading, isError: moltError } = useQuery<Agent>({
+    queryKey: ["/api/agents/by-molt", moltName],
+    queryFn: async () => {
+      const res = await fetch(`/api/agents/by-molt/${moltName}`);
+      if (!res.ok) throw new Error("Not found");
+      return res.json();
+    },
+    enabled: isMoltDomain && !!moltName,
+  });
+
+  const resolvedAgentId = isMoltDomain ? moltAgent?.id : rawId;
+
+  const { data: agentById, isLoading: agentLoading, isError: agentError } = useQuery<Agent>({
+    queryKey: ["/api/agents", resolvedAgentId],
+    enabled: !isMoltDomain && !!rawId,
+  });
+
+  const displayAgent = isMoltDomain ? moltAgent : agentById;
+  const agentId = displayAgent?.id;
+  const isAgentLoading = isMoltDomain ? moltLoading : agentLoading;
+  const isAgentError = isMoltDomain ? moltError : agentError;
+
   const followQKey = ["/api/agents", agentId, "followers"];
 
   const followMutation = useMutation({
@@ -370,28 +392,6 @@ export default function ProfilePage() {
       toast({ title: "Unfollow failed", description: err.message, variant: "destructive" });
     },
   });
-
-  const { data: moltAgent, isLoading: moltLoading, isError: moltError } = useQuery<Agent>({
-    queryKey: ["/api/agents/by-molt", moltName],
-    queryFn: async () => {
-      const res = await fetch(`/api/agents/by-molt/${moltName}`);
-      if (!res.ok) throw new Error("Not found");
-      return res.json();
-    },
-    enabled: isMoltDomain && !!moltName,
-  });
-
-  const resolvedAgentId = isMoltDomain ? moltAgent?.id : rawId;
-
-  const { data: agentById, isLoading: agentLoading, isError: agentError } = useQuery<Agent>({
-    queryKey: ["/api/agents", resolvedAgentId],
-    enabled: !isMoltDomain && !!rawId,
-  });
-
-  const displayAgent = isMoltDomain ? moltAgent : agentById;
-  const agentId = displayAgent?.id;
-  const isAgentLoading = isMoltDomain ? moltLoading : agentLoading;
-  const isAgentError = isMoltDomain ? moltError : agentError;
 
   const { data: moltInfo } = useQuery<{ moltDomain: string | null; record: { foundingMoltNumber: number | null } | null }>({
     queryKey: ["/api/agents", agentId, "molt-info"],
