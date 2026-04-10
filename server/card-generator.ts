@@ -1,4 +1,4 @@
-import type { Agent } from "@shared/schema";
+import type { Agent, AgentSkill } from "@shared/schema";
 
 const CARD_WIDTH = 600;
 const CARD_HEIGHT = 340;
@@ -184,18 +184,37 @@ export function generateClawCard(agent: Agent): Buffer {
   <text x="32" y="${CARD_HEIGHT - 20}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="500" fill="#3f3f46">CLAWTRUST</text>
   <text x="100" y="${CARD_HEIGHT - 20}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="bold" fill="#F94144">CLAW CARD</text>
   ${score >= 75 ? `<text x="165" y="${CARD_HEIGHT - 20}" font-family="Inter,system-ui,sans-serif" font-size="9" fill="#F9414466">CRUSTAFARIAN</text>` : ""}
-  <text x="${CARD_WIDTH - 32}" y="${CARD_HEIGHT - 20}" font-family="monospace" font-size="8" fill="#3f3f46" text-anchor="end">Base Sepolia</text>
+  <text x="${CARD_WIDTH - 32}" y="${CARD_HEIGHT - 20}" font-family="monospace" font-size="8" fill="#3f3f46" text-anchor="end">${agent.preferredChain === "SKALE_TESTNET" ? "SKALE Base Sepolia" : "Base Sepolia"}</text>
 </svg>`;
 
   return Buffer.from(svg, "utf-8");
 }
 
-const CLAW_CARD_NFT = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
-const CHAIN_CAIP10 = "eip155:84532";
+const CLAW_CARD_NFT_BASE  = "0xf24e41980ed48576Eb379D2116C1AaD075B342C4";
+const CLAW_CARD_NFT_SKALE = "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83";
+const CHAIN_CAIP10_BASE   = "eip155:84532";
+const CHAIN_CAIP10_SKALE  = "eip155:324705682";
 
-export function generateCardMetadata(agent: Agent, baseUrl: string) {
+export function generateCardMetadata(agent: Agent, baseUrl: string, skillVerifications?: AgentSkill[]) {
+  const isSkale = agent.preferredChain === "SKALE_TESTNET";
+  const CLAW_CARD_NFT = isSkale ? CLAW_CARD_NFT_SKALE : CLAW_CARD_NFT_BASE;
+  const CHAIN_CAIP10  = isSkale ? CHAIN_CAIP10_SKALE  : CHAIN_CAIP10_BASE;
   const rank = getRank(agent.fusedScore);
   const tokenId = agent.erc8004TokenId ? parseInt(agent.erc8004TokenId, 10) : null;
+  const tierLabels = ["Declared", "Challenge-Passed", "GitHub-Verified", "Gig-Proven", "Peer-Attested"];
+  const tierredSkills = skillVerifications
+    ? skillVerifications.filter(sv => (sv.tier ?? 0) > 0).map(sv => ({
+        name: sv.skillName,
+        tier: sv.tier ?? 0,
+        tierLabel: tierLabels[sv.tier ?? 0] || "Unknown",
+      }))
+    : [];
+  const verifiedSkillAttrs = tierredSkills.length > 0
+    ? [
+        { trait_type: "verified_skills", value: tierredSkills.map(s => `${s.name}:T${s.tier}`).join(",") },
+        ...tierredSkills.map(s => ({ trait_type: "Verified Skill", value: `${s.name} (T${s.tier}: ${s.tierLabel})` })),
+      ]
+    : [];
   return {
     type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     name: `ClawTrust Card: ${agent.handle}`,
@@ -223,6 +242,7 @@ export function generateCardMetadata(agent: Agent, baseUrl: string) {
       { trait_type: "Verified", value: agent.isVerified ? "Yes" : "No" },
       { trait_type: "ERC-8004 Token", value: agent.erc8004TokenId || "None" },
       ...agent.skills.map((s) => ({ trait_type: "Skill", value: s })),
+      ...verifiedSkillAttrs,
     ],
   };
 }
