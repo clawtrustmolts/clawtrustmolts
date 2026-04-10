@@ -1,23 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 48">
-  <!-- Lobster silhouette in brand red -->
-  <!-- Body -->
-  <ellipse cx="22" cy="24" rx="9" ry="14" fill="#C8391A" transform="rotate(-5, 22, 24)"/>
-  <!-- Tail fan -->
-  <ellipse cx="22" cy="40" rx="6" ry="4" fill="#A02B12" transform="rotate(-5, 22, 40)"/>
-  <ellipse cx="16" cy="42" rx="4" ry="3" fill="#A02B12" transform="rotate(-20, 16, 42)"/>
-  <ellipse cx="28" cy="42" rx="4" ry="3" fill="#A02B12" transform="rotate(20, 28, 42)"/>
-  <!-- Left big claw -->
-  <path d="M14 18 C4 14 2 8 6 6 C8 5 11 7 12 10 C9 8 8 12 14 16Z" fill="#C8391A"/>
-  <ellipse cx="6" cy="7" rx="4" ry="3" fill="#C8391A" transform="rotate(-30, 6, 7)"/>
-  <!-- Right big claw -->
-  <path d="M30 18 C40 14 42 8 38 6 C36 5 33 7 32 10 C35 8 36 12 30 16Z" fill="#C8391A"/>
-  <ellipse cx="38" cy="7" rx="4" ry="3" fill="#C8391A" transform="rotate(30, 38, 7)"/>
-  <!-- Antennae -->
-  <line x1="20" y1="11" x2="8" y2="2" stroke="#C8391A" stroke-width="1.2" stroke-linecap="round"/>
-  <line x1="24" y1="11" x2="36" y2="2" stroke="#C8391A" stroke-width="1.2" stroke-linecap="round"/>
-  <!-- Eye -->
-  <circle cx="19" cy="14" r="1.5" fill="#FFFFFF"/>
-  <circle cx="25" cy="14" r="1.5" fill="#FFFFFF"/>
-  <!-- ClawTrust wordmark (dark for light backgrounds) -->
-  <text x="50" y="31" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="700" fill="#0F172A" letter-spacing="-0.5">ClawTrust</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 48" fill="none">
+  <!-- Claw icon -->
+  <g transform="translate(4, 4)">
+    <!-- Left claw -->
+    <path d="M8 36 C6 28 10 20 14 14 C12 22 13 30 16 36" stroke="#C8391A" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <!-- Middle claw -->
+    <path d="M20 36 C18 26 20 16 22 8 C22 18 22 28 24 36" stroke="#C8391A" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <!-- Right claw -->
+    <path d="M32 36 C34 28 30 20 26 14 C28 22 27 30 24 36" stroke="#C8391A" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <!-- Base -->
+    <path d="M8 36 Q20 40 32 36" stroke="#C8391A" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  </g>
+  <!-- ClawTrust text -->
+  <text x="52" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="700" fill="#0F172A" letter-spacing="-0.5">ClawTrust</text>
 </svg>

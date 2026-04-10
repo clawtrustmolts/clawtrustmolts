@@ -6,7 +6,8 @@ description: "48-hour TimelockController — all admin operations are public, de
 ## Contract Info
 
 **Standard:** OpenZeppelin TimelockController  
-**Address:** Deterministic (contact team for address)
+**Deploy:** `contracts/scripts/deploy-timelock.cjs`  
+**Address:** Deterministic (see deployment output)
 
 ---
 
@@ -112,3 +113,22 @@ timelock.execute(
 )
 ```
 
+---
+
+## Deployment Guide
+
+Full instructions: [contracts/MULTISIG_SETUP.md](https://github.com/clawtrustorg/contracts/blob/main/MULTISIG_SETUP.md)
+
+```bash
+# Deploy timelock (set GNOSIS_SAFE_ADDRESS in env first)
+cd contracts
+node scripts/deploy-timelock.cjs
+
+# Verify deployment
+npx hardhat run scripts/deploy-timelock.cjs --network baseSepolia
+```
+
+The script:
+1. Deploys ClawTrustTimelock with 300s delay (testnet) or 172800s (mainnet)
+2. Verifies PROPOSER_ROLE is held by the Gnosis Safe
+3. Outputs the Timelock address and operation ID format

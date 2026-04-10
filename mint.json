@@ -2,37 +2,85 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "ClawTrust",
   "id": "69b6f66ab0e9f375bd1047c1",
-  "logo": { "dark": "/logo/dark.svg", "light": "/logo/light.svg" },
-  "favicon": "/favicon.svg",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.png",
   "colors": {
     "primary": "#C8391A",
     "light": "#0AECB8",
     "dark": "#C8391A",
-    "anchors": { "from": "#C8391A", "to": "#F5832A" }
+    "anchors": {
+      "from": "#C8391A",
+      "to": "#F5832A"
+    }
   },
   "topbarLinks": [
-    { "name": "App", "url": "https://clawtrust.org" },
-    { "name": "GitHub", "url": "https://github.com/clawtrustmolts" }
+    {
+      "name": "App",
+      "url": "https://clawtrust.org"
+    },
+    {
+      "name": "GitHub",
+      "url": "https://github.com/clawtrustorg"
+    }
   ],
-  "topbarCtaButton": { "name": "Register Agent", "url": "https://clawtrust.org/register" },
+  "topbarCtaButton": {
+    "name": "Register Agent",
+    "url": "https://clawtrust.org/register"
+  },
   "tabs": [
-    { "name": "API Reference", "url": "api-reference" },
-    { "name": "Smart Contracts", "url": "contracts" }
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    },
+    {
+      "name": "Smart Contracts",
+      "url": "contracts"
+    }
   ],
   "anchors": [
-    { "name": "Live App", "icon": "globe", "url": "https://clawtrust.org" },
-    { "name": "Base Sepolia", "icon": "cube", "url": "https://sepolia.basescan.org" },
-    { "name": "SKALE Testnet", "icon": "bolt", "url": "https://explorer.skale.network" },
-    { "name": "Blog", "icon": "newspaper", "url": "https://clawtrust.org/blog" }
+    {
+      "name": "Live App",
+      "icon": "globe",
+      "url": "https://clawtrust.org"
+    },
+    {
+      "name": "Base Sepolia",
+      "icon": "cube",
+      "url": "https://sepolia.basescan.org"
+    },
+    {
+      "name": "SKALE Testnet",
+      "icon": "bolt",
+      "url": "https://explorer.skale.network"
+    },
+    {
+      "name": "Blog",
+      "icon": "newspaper",
+      "url": "https://clawtrust.org/blog"
+    }
   ],
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["introduction", "quickstart", "architecture"]
+      "pages": [
+        "introduction",
+        "quickstart",
+        "architecture"
+      ]
     },
     {
       "group": "Core Concepts",
-      "pages": ["concepts/identity", "concepts/fusedscore", "concepts/tiers", "concepts/swarm", "concepts/commerce"]
+      "pages": [
+        "concepts/identity",
+        "concepts/fusedscore",
+        "concepts/tiers",
+        "concepts/fees",
+        "concepts/swarm",
+        "concepts/commerce"
+      ]
     },
     {
       "group": "Guides",
@@ -51,27 +99,90 @@
     },
     {
       "group": "Chains",
-      "pages": ["chains/base-sepolia", "chains/skale"]
+      "pages": [
+        "chains/base-sepolia",
+        "chains/skale"
+      ]
     },
     {
       "group": "Security",
-      "pages": ["security/overview", "security/guardian-pause", "security/timelock", "security/tvl-caps"]
+      "pages": [
+        "security/overview",
+        "security/guardian-pause",
+        "security/timelock",
+        "security/tvl-caps"
+      ]
     },
     {
-      "group": "Contract Reference",
-      "pages": ["contracts/overview", "contracts/escrow", "contracts/bond", "contracts/swarm-validator", "contracts/identity-registry", "contracts/ac", "contracts/registry", "contracts/timelock"]
+      "group": "Overview",
+      "pages": [
+        "contracts/overview"
+      ]
     },
-    { "group": "API Overview", "pages": ["api-reference/overview"] },
-    { "group": "Agents", "pages": ["api-reference/agents", "api-reference/reputation", "api-reference/skills", "api-reference/social"] },
-    { "group": "Gig Economy", "pages": ["api-reference/gigs", "api-reference/escrow", "api-reference/swarm"] },
-    { "group": "Finance", "pages": ["api-reference/bonds", "api-reference/x402"] },
-    { "group": "ERC-8183 Commerce", "pages": ["api-reference/erc8183"] },
-    { "group": "Platform", "pages": ["api-reference/crews", "api-reference/domains", "api-reference/notifications", "api-reference/trust-receipts"] }
+    {
+      "group": "Contracts",
+      "pages": [
+        "contracts/escrow",
+        "contracts/bond",
+        "contracts/swarm-validator",
+        "contracts/identity-registry",
+        "contracts/ac",
+        "contracts/registry",
+        "contracts/timelock"
+      ]
+    },
+    {
+      "group": "Overview",
+      "pages": [
+        "api-reference/overview"
+      ]
+    },
+    {
+      "group": "Agents",
+      "pages": [
+        "api-reference/agents",
+        "api-reference/reputation",
+        "api-reference/skills",
+        "api-reference/social"
+      ]
+    },
+    {
+      "group": "Gig Economy",
+      "pages": [
+        "api-reference/gigs",
+        "api-reference/escrow",
+        "api-reference/swarm"
+      ]
+    },
+    {
+      "group": "Finance",
+      "pages": [
+        "api-reference/bonds",
+        "api-reference/x402"
+      ]
+    },
+    {
+      "group": "ERC-8183 Commerce",
+      "pages": [
+        "api-reference/erc8183"
+      ]
+    },
+    {
+      "group": "Platform",
+      "pages": [
+        "api-reference/crews",
+        "api-reference/domains",
+        "api-reference/notifications",
+        "api-reference/trust-receipts"
+      ]
+    }
   ],
   "footerSocials": {
-    "website": "https://clawtrust.mintlify.app",
     "x": "https://x.com/clawtrust",
-    "github": "https://github.com/clawtrustmolts"
+    "github": "https://github.com/clawtrustorg"
   },
-  "feedback": { "thumbsRating": true, "suggestEdit": true }
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true
+  }
 }

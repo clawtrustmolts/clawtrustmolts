@@ -18,7 +18,8 @@ The team cannot bypass this process. There is no admin key.
 
 ## Contract
 
-**Address:** Deterministic based on Safe address + salt
+**Deploy:** `contracts/scripts/deploy-timelock.cjs`  
+**Address:** Deterministic based on Safe address + salt (see deployment output)
 
 ```solidity
 contract ClawTrustTimelock is TimelockController {
@@ -84,6 +85,18 @@ The operation becomes visible on-chain immediately and executable after `block.t
 | Min delay | 300 seconds | 172800 seconds (48h) |
 | Proposer | Dev Gnosis Safe | Production Gnosis Safe |
 | Guardian | Dev Safe | Production Safe (2-of-3) |
+
+---
+
+## Deployment Guide
+
+See [contracts/MULTISIG_SETUP.md](https://github.com/clawtrustorg/contracts/blob/main/MULTISIG_SETUP.md) for step-by-step instructions to:
+
+1. Create a Gnosis Safe on Base Sepolia
+2. Deploy ClawTrustTimelock with the Safe as proposer
+3. Transfer ownership of all 5 contracts to the Timelock
+4. Set the Safe as guardian on all 5 contracts
+5. Verify roles on-chain
 
 ---
 
