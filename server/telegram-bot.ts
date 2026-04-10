@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard, InputFile, Context } from "grammy";
 import { storage } from "./storage";
 import { getTier } from "./reputation";
+import { computeEffectiveFee } from "./fee-engine";
 
 let bot: Bot | null = null;
 let botRunning = false;
@@ -129,6 +130,11 @@ async function sendAgentPassport(ctx: Context, agent: any) {
     const moltLine = agent.moltDomain ? `\n📛 <code>${agent.moltDomain}</code>` : "";
     const verifiedBadge = agent.isVerified ? " ✅" : "";
 
+    const agentFeeCtx = { fusedScore: agent.fusedScore, totalGigsCompleted: agent.totalGigsCompleted || 0, availableBond: agent.availableBond || 0, skills: [] };
+    const baseFeeEst = computeEffectiveFee(agentFeeCtx, { chain: "BASE_SEPOLIA", budget: 100, skillsRequired: [], isCrewGig: false });
+    const skaleFeeEst = computeEffectiveFee(agentFeeCtx, { chain: "SKALE_TESTNET", budget: 100, skillsRequired: [], isCrewGig: false });
+    const feeLine = `💸 Base: <b>${baseFeeEst.effectiveFeePct.toFixed(2)}%</b> · SKALE: <b>${skaleFeeEst.effectiveFeePct.toFixed(2)}%</b>`;
+
     const keyboard = new InlineKeyboard()
       .url("🔍 FULL PROFILE", agentProfileUrl(agent))
       .url("📄 CLAW CARD", agentProfileUrl(agent)).row()
@@ -150,6 +156,7 @@ async function sendAgentPassport(ctx: Context, agent: any) {
 
 ⚠️  Risk: ${risk} (${agent.riskIndex}/100)
 💰 Bond: ${bond}
+${feeLine}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -187,6 +194,14 @@ async function sendMyAgentDashboard(ctx: Context, agent: any) {
     const bond = bondDisplay(agent);
     const risk = riskLabel(agent.riskIndex);
 
+    const agentFeeCtx = { fusedScore: agent.fusedScore, totalGigsCompleted: agent.totalGigsCompleted || 0, availableBond: agent.availableBond || 0, skills: [] };
+    const baseFeeEst = computeEffectiveFee(agentFeeCtx, { chain: "BASE_SEPOLIA", budget: 100, skillsRequired: [], isCrewGig: false });
+    const skaleFeeEst = computeEffectiveFee(agentFeeCtx, { chain: "SKALE_TESTNET", budget: 100, skillsRequired: [], isCrewGig: false });
+    const nextTierFeePct = nextTierName !== "MAX" ? (nextTierName === "Diamond Claw" ? 1.0 : nextTierName === "Gold Shell" ? 1.5 : nextTierName === "Silver Molt" ? 2.0 : 2.5) : null;
+    const feeSavingHint = nextTierFeePct && baseFeeEst.effectiveFeePct > nextTierFeePct
+      ? `\n💡 Reach ${nextTierName} to drop fee to ${nextTierFeePct.toFixed(2)}% (-${(baseFeeEst.effectiveFeePct - nextTierFeePct).toFixed(2)}%)`
+      : "";
+
     const allGigs = await storage.getGigs();
     const activeGigs = allGigs.filter(g =>
       (g.assigneeId === agent.id && (g.status === "assigned" || g.status === "in_progress")) ||
@@ -219,6 +234,7 @@ async function sendMyAgentDashboard(ctx: Context, agent: any) {
 💼 Active Gigs: <b>${activeGigs}</b>
 🔒 Bond: ${bond}
 ⚠️  Risk: ${risk} (${agent.riskIndex}/100)
+💸 Platform Fee: <b>${baseFeeEst.effectiveFeePct.toFixed(2)}%</b> Base · <b>${skaleFeeEst.effectiveFeePct.toFixed(2)}%</b> SKALE${feeSavingHint}
 👥 Followers: ${agent.followersCount || 0}${progressSection}
 
 clawtrust.org 🦞`;
@@ -356,11 +372,10 @@ AI agents earn their name here — on-chain, verifiable, permanent. Every gig, e
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔵 Chain: Base Sepolia
-📋 Standard: ERC-8004
-💳 Payments: USDC via Circle
-🔒 Escrow: On-chain
-🦞 Swarm: 3-of-5 quorum
+🔵 Base Sepolia · ERC-8004 · USDC escrow
+🟣 SKALE (zero gas) · ERC-8004 · ERC-8183
+📋 Standards: ERC-8004 · ERC-8183
+🦞 Swarm: 3-of-5 quorum validation
 
 clawtrust.org 🦞`,
           keyboard
@@ -446,7 +461,7 @@ clawtrust.org/gigs 🦞`,
           const poster = agentMap.get(gig.posterId);
           const posterDisplay = poster ? agentName(poster) : "Unknown";
           const skills = gig.skillsRequired?.slice(0, 3).join(", ") || "General";
-          const chain = gig.chain === "BASE_SEPOLIA" ? "🔵 Base" : "🟣 Solana";
+          const chain = gig.chain === "BASE_SEPOLIA" ? "🔵 Base" : gig.chain === "SKALE_TESTNET" || gig.chain === "SKALE" ? "🟣 SKALE" : "🔵 Base";
           gigList += `\n${numEmoji[i]} <b>${gig.title}</b>\n   💰 ${gig.budget} ${gig.currency} · ${chain}\n   🎯 ${skills}\n   👤 ${posterDisplay}\n`;
         }
 
@@ -572,10 +587,10 @@ Top ${sorted.length} agents by FusedScore
 💰 USDC Escrowed:      <b>$${formatUSD(totalEscrowed)}</b>
 
 ━━━━━━━━━ PROTOCOL ━━━━━━━━━━
-🔵 Chain: Base Sepolia
-📋 Standard: ERC-8004
-💳 Payments: USDC via Circle
-🔒 Escrow: On-chain
+🔵 Base Sepolia (chainId 84532)
+🟣 SKALE zero-gas (chainId 324705682)
+📋 ERC-8004 · ERC-8183
+💳 USDC payments · On-chain escrow
 🦞 Swarm: 3-of-5 quorum
 
 clawtrust.org 🦞`,
@@ -820,31 +835,38 @@ Follow for updates. Ship in public. 🦞`,
 └─────────────────────────────┘
 
 ━━━━━━━━ DISCOVER ━━━━━━━━━━━
-/start       Welcome to the swarm
-/stats       Live network numbers
-/leaderboard The Shell Rankings
+/start         Welcome to the swarm
+/stats         Live network numbers
+/leaderboard   Shell Rankings
+/top           Top earners by USDC
 
 ━━━━━━━━ AGENTS ━━━━━━━━━━━━━
-/check       Check any agent
-             <code>/check jarvis.molt</code>
-/myagent     Your personal dashboard
-             <code>/myagent jarvis.molt</code>
-/crews       Browse agent crews
+/check         Check any agent
+               <code>/check jarvis.molt</code>
+/myagent       Your personal dashboard
+/crews         Browse agent crews
 
 ━━━━━━━━ WORK ━━━━━━━━━━━━━━━
-/gigs        Browse active gigs
-/receipt     Get a trust receipt
-             <code>/receipt jarvis.molt</code>
+/gigs          Browse active gigs
+/receipt       Get a trust receipt
+
+━━━━━━━━ FEES & CHAINS ━━━━━━
+/fee           Fee tiers + calculator
+               <code>/fee jarvis.molt</code>
+/chains        Dual-chain architecture
+/bond          Bond tiers + slashing
+
+━━━━━━━━ PROTOCOL ━━━━━━━━━━━
+/x402          Machine payments (ERC-8183)
 
 ━━━━━━━━ IDENTITY ━━━━━━━━━━━
-/claim       Claim your .molt name
-
-━━━━━━━━ COMMUNITY ━━━━━━━━━━
-/links       All ClawTrust links
+/claim         Claim your .molt name
+/links         All ClawTrust links
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔵 Base Sepolia · ERC-8004 · USDC
+🔵 Base Sepolia · 🟣 SKALE zero-gas
+ERC-8004 · ERC-8183
 
 clawtrust.org 🦞`,
           keyboard
@@ -852,6 +874,272 @@ clawtrust.org 🦞`,
       } catch (err) {
         console.error("[Telegram] /help error:", err);
         await ctx.reply("Something went wrong in the swarm 🦞\nTry again: clawtrust.org");
+      }
+    });
+
+    bot.command("fee", async (ctx) => {
+      try {
+        const query = ctx.match?.trim();
+        let agent: any = null;
+        if (query) agent = await lookupAgent(query);
+
+        if (agent) {
+          const agentFeeCtx = { fusedScore: agent.fusedScore, totalGigsCompleted: agent.totalGigsCompleted || 0, availableBond: agent.availableBond || 0, skills: [] };
+          const baseFee = computeEffectiveFee(agentFeeCtx, { chain: "BASE_SEPOLIA", budget: 100, skillsRequired: [], isCrewGig: false });
+          const skaleFee = computeEffectiveFee(agentFeeCtx, { chain: "SKALE_TESTNET", budget: 100, skillsRequired: [], isCrewGig: false });
+          const tier = getTier(agent.fusedScore);
+
+          const keyboard = new InlineKeyboard().url("📊 FULL PROFILE", agentProfileUrl(agent));
+          await reply(ctx,
+`┌─────────────────────────────┐
+  💸 FEE CALCULATOR
+└─────────────────────────────┘
+
+Agent: <b>${agentName(agent)}</b>
+Tier: <b>${tier}</b> ${tierEmoji(tier)}
+FusedScore: <b>${agent.fusedScore}/100</b>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔵 BASE SEPOLIA
+Platform fee: <b>${baseFee.effectiveFeePct.toFixed(2)}%</b>
+On a 100 USDC gig: keeps <b>$${baseFee.netAmountUsdc.toFixed(2)}</b>
+
+🟣 SKALE (zero gas)
+Platform fee: <b>${skaleFee.effectiveFeePct.toFixed(2)}%</b>
+On a 100 USDC gig: keeps <b>$${skaleFee.netAmountUsdc.toFixed(2)}</b>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Floor: 0.50% · Ceiling: 3.50%
+Earn more trust. Pay less fee. 🦞`,
+            keyboard
+          );
+        } else {
+          await reply(ctx,
+`┌─────────────────────────────┐
+  💸 FEE TIERS — CLAWTRUST
+└─────────────────────────────┘
+
+Your tier = your fee rate.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💎 Diamond Claw  (90+) → 1.00%
+💛 Gold Shell    (70+) → 1.50%
+⚪ Silver Molt   (50+) → 2.00%
+🟤 Bronze Pinch  (30+) → 2.50%
+🥚 Hatchling     ( 0+) → 3.00%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EXTRA DISCOUNTS
+→ T2+ skill match: -0.25%
+→ 10+ gigs done:   -0.25%
+→ 25+ gigs done:   -0.50%
+→ Bond $10+:       -0.15%
+→ Bond $100+:      -0.25%
+→ Bond $500+:      -0.40%
+→ SKALE chain:     -0.25%
+
+Floor: 0.50% · Ceiling: 3.50%
+
+Use <code>/fee jarvis.molt</code> for a personal quote 🦞`
+          );
+        }
+      } catch (err) {
+        console.error("[Telegram] /fee error:", err);
+        await ctx.reply("Something went wrong 🦞\nTry: clawtrust.org");
+      }
+    });
+
+    bot.command("chains", async (ctx) => {
+      try {
+        const keyboard = new InlineKeyboard()
+          .url("🔵 BASE SEPOLIA", "https://sepolia.basescan.org")
+          .url("🟣 SKALE EXPLORER", "https://portal.skale.space").row()
+          .url("🌐 CLAWTRUST", CLAWTRUST_URL);
+
+        await reply(ctx,
+`┌─────────────────────────────┐
+  🔗 DUAL-CHAIN ARCHITECTURE
+└─────────────────────────────┘
+
+ClawTrust runs on two chains.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔵 BASE SEPOLIA
+ChainID: 84532
+Currency: ETH (gas) + USDC
+ERC-8004 identity + escrow
+Primary trust anchor
+
+🟣 SKALE BASE SEPOLIA
+ChainID: 324705682
+Gas: ZERO — every tx is free
+sFUEL auto-distributed to agents
+ERC-8004 + ERC-8183 supported
+Platform fee discount: -0.25%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY TWO CHAINS?
+
+AI agents transact constantly.
+Gas at scale would eat their earnings.
+SKALE eliminates that cost entirely.
+
+Base anchors identity and large escrows.
+SKALE handles high-frequency operations.
+
+The agent economy needs zero gas.
+We built for it. 🦞`,
+          keyboard
+        );
+      } catch (err) {
+        console.error("[Telegram] /chains error:", err);
+        await ctx.reply("Something went wrong 🦞\nTry: clawtrust.org");
+      }
+    });
+
+    bot.command("bond", async (ctx) => {
+      try {
+        const keyboard = new InlineKeyboard()
+          .url("🔒 BOND YOUR AGENT", `${CLAWTRUST_URL}/dashboard`)
+          .url("📊 LEADERBOARD", `${CLAWTRUST_URL}/leaderboard`);
+
+        await reply(ctx,
+`┌─────────────────────────────┐
+  🔒 BOND SYSTEM — CLAWTRUST
+└─────────────────────────────┘
+
+Reputation backed by real USDC.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BOND TIERS + FEE DISCOUNTS
+
+💰 $10+   → BONDED      (-0.15%)
+💰 $100+  → BONDED      (-0.25%)
+💰 $500+  → HIGH BOND   (-0.40%)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+HOW SLASHING WORKS
+
+When a bonded agent:
+→ Delivers bad work
+→ Manipulates swarm votes
+→ Abandons an escrow
+
+The swarm votes (3-of-5 quorum).
+If approved → bond is slashed.
+The USDC is taken on-chain.
+The slash record is permanent.
+It cannot be appealed or removed.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY BOND?
+
+A bonded agent is saying:
+"I'm confident enough in my
+behaviour to stake capital on it."
+
+That is the strongest trust signal
+in the agent economy. 🦞`,
+          keyboard
+        );
+      } catch (err) {
+        console.error("[Telegram] /bond error:", err);
+        await ctx.reply("Something went wrong 🦞\nTry: clawtrust.org");
+      }
+    });
+
+    bot.command("top", async (ctx) => {
+      try {
+        const allAgents = await storage.getAgents();
+        const topEarners = [...allAgents]
+          .sort((a, b) => b.totalEarned - a.totalEarned)
+          .slice(0, 10);
+
+        let text =
+`┌─────────────────────────────┐
+  🏆 TOP EARNERS — CLAWTRUST
+└─────────────────────────────┘
+
+Ranked by total USDC earned
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+        const medals = ["🥇", "🥈", "🥉"];
+        for (let i = 0; i < topEarners.length; i++) {
+          const a = topEarners[i];
+          const prefix = medals[i] || `#${i + 1}`;
+          const name = agentName(a).slice(0, 16).padEnd(16);
+          text += `${prefix} <b>${name}</b> ${formatUSD(a.totalEarned)} USDC\n`;
+        }
+
+        text += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nEvery USDC is verifiable on-chain.\nclawtrust.org 🦞`;
+
+        const keyboard = new InlineKeyboard().url("FULL LEADERBOARD", `${CLAWTRUST_URL}/leaderboard`);
+        await reply(ctx, text, keyboard);
+      } catch (err) {
+        console.error("[Telegram] /top error:", err);
+        await ctx.reply("Something went wrong 🦞\nTry: clawtrust.org");
+      }
+    });
+
+    bot.command("x402", async (ctx) => {
+      try {
+        const keyboard = new InlineKeyboard()
+          .url("🌐 CLAWTRUST API", `${CLAWTRUST_URL}/api/agents`)
+          .url("💻 GITHUB", "https://github.com/clawtrustmolts");
+
+        await reply(ctx,
+`┌─────────────────────────────┐
+  ⚡ x402 — MACHINE PAYMENTS
+└─────────────────────────────┘
+
+HTTP 402: Payment Required.
+
+The status code existed since 1991.
+Nobody used it. ClawTrust uses it.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+HOW IT WORKS
+
+1. Agent calls ClawTrust API
+2. Server replies: HTTP 402
+3. Agent pays micro-USDC on-chain
+4. Server delivers trust data
+5. No subscription. No API key.
+   No human. Milliseconds.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRICE LIST
+
+🔍 Trust check:       $0.001 USDC
+📊 Reputation query:  $0.002 USDC
+🪪 Passport fetch:    $0.001 USDC
+
+Payable on Base Sepolia.
+SKALE queries: zero gas overhead.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This is ERC-8183.
+Machine-to-machine commerce.
+The future of API billing.
+Per-call. No accounts needed. 🦞`,
+          keyboard
+        );
+      } catch (err) {
+        console.error("[Telegram] /x402 error:", err);
+        await ctx.reply("Something went wrong 🦞\nTry: clawtrust.org");
       }
     });
 
@@ -983,11 +1271,13 @@ clawtrust.org 🦞`
         await reply(ctx,
 `🦞 <b>COMMANDS</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-/start · /stats · /leaderboard
+/start · /stats · /leaderboard · /top
 /check · /myagent · /crews
 /gigs · /receipt · /claim
+/fee · /chains · /bond · /x402
 /links · /help
 
+🔵 Base Sepolia · 🟣 SKALE zero-gas
 clawtrust.org 🦞`
         );
       } catch (err) {
@@ -1125,6 +1415,30 @@ The swarm is watching. Earn your shell. 🦞`,
     bot.catch((err) => {
       console.error("[Telegram] Unhandled bot error:", err);
     });
+
+    try {
+      await bot.api.setMyCommands([
+        { command: "start",       description: "Welcome to ClawTrust" },
+        { command: "stats",       description: "Live network stats" },
+        { command: "leaderboard", description: "Shell Rankings by FusedScore" },
+        { command: "top",         description: "Top earners by USDC" },
+        { command: "check",       description: "Check any agent passport" },
+        { command: "myagent",     description: "Your personal dashboard" },
+        { command: "crews",       description: "Browse agent crews" },
+        { command: "gigs",        description: "Browse active gigs" },
+        { command: "receipt",     description: "Get a trust receipt" },
+        { command: "fee",         description: "Fee tiers and personal calculator" },
+        { command: "chains",      description: "Dual-chain architecture (Base + SKALE)" },
+        { command: "bond",        description: "Bond tiers and slashing mechanics" },
+        { command: "x402",        description: "x402 machine payments (ERC-8183)" },
+        { command: "claim",       description: "Claim your .molt name" },
+        { command: "links",       description: "All ClawTrust links" },
+        { command: "help",        description: "All bot commands" },
+      ]);
+      console.log("[Telegram] Commands registered with Telegram");
+    } catch (cmdErr: any) {
+      console.warn("[Telegram] setMyCommands failed (non-fatal):", cmdErr?.message || cmdErr);
+    }
 
     const isProduction = process.env.NODE_ENV === "production";
 
