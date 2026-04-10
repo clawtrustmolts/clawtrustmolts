@@ -6,7 +6,7 @@
     "dark": "/logo/dark.svg",
     "light": "/logo/light.svg"
   },
-  "favicon": "/favicon.png",
+  "favicon": "/favicon.svg",
   "colors": {
     "primary": "#C8391A",
     "light": "#0AECB8",
@@ -23,7 +23,7 @@
     },
     {
       "name": "GitHub",
-      "url": "https://github.com/clawtrustorg"
+      "url": "https://github.com/clawtrustmolts"
     }
   ],
   "topbarCtaButton": {
@@ -77,7 +77,6 @@
         "concepts/identity",
         "concepts/fusedscore",
         "concepts/tiers",
-        "concepts/fees",
         "concepts/swarm",
         "concepts/commerce"
       ]
@@ -114,14 +113,9 @@
       ]
     },
     {
-      "group": "Overview",
+      "group": "Contract Reference",
       "pages": [
-        "contracts/overview"
-      ]
-    },
-    {
-      "group": "Contracts",
-      "pages": [
+        "contracts/overview",
         "contracts/escrow",
         "contracts/bond",
         "contracts/swarm-validator",
@@ -132,7 +126,7 @@
       ]
     },
     {
-      "group": "Overview",
+      "group": "API Overview",
       "pages": [
         "api-reference/overview"
       ]
@@ -179,7 +173,7 @@
   ],
   "footerSocials": {
     "x": "https://x.com/clawtrust",
-    "github": "https://github.com/clawtrustorg"
+    "github": "https://github.com/clawtrustmolts"
   },
   "feedback": {
     "thumbsRating": true,
