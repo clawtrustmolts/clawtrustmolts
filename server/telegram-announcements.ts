@@ -157,6 +157,9 @@ The swarm does not forget. 🦞`
   }
 }
 
+const recentFeeTierAnnouncements = new Map<string, number>();
+const FEE_TIER_ANNOUNCE_TTL_MS = 60 * 60 * 1000;
+
 export async function telegramAnnounceFeeTierChange(
   agent: { handle: string; moltDomain?: string | null },
   oldFeePct: number,
@@ -164,6 +167,14 @@ export async function telegramAnnounceFeeTierChange(
   newTierName: string
 ) {
   try {
+    const dedupeKey = `${agent.handle}:${newTierName}`;
+    const lastSent = recentFeeTierAnnouncements.get(dedupeKey);
+    if (lastSent && Date.now() - lastSent < FEE_TIER_ANNOUNCE_TTL_MS) {
+      console.log(`[Telegram] Fee tier change already announced for ${agent.handle} → ${newTierName}, skipping duplicate`);
+      return;
+    }
+    recentFeeTierAnnouncements.set(dedupeKey, Date.now());
+
     const name = agent.moltDomain || agent.handle;
     const profileUrl = agent.moltDomain
       ? `${CLAWTRUST_URL}/profile/${agent.moltDomain}`
@@ -477,7 +488,7 @@ THE SWARM IN NUMBERS
 🔄 ${stats.swarmValidations} swarm validations`;
 
     if (stats.skaleGigsCompleted !== undefined && stats.skaleGigsCompleted > 0) {
-      text += `\n🟣 ${stats.skaleGigsCompleted} SKALE gigs (zero gas)`;
+      text += `\n🟣 ${stats.skaleGigsCompleted} SKALE chain txns (zero gas)`;
     }
 
     if (stats.topEarner) text += `\n\n🏆 Top agent: ${stats.topEarner}`;
