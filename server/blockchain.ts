@@ -45,11 +45,19 @@ const CONTRACT_ADDRESSES = {
     : (process.env.CLAW_TRUST_BOND_ADDRESS          || "0x23a1E1e958C932639906d0650A13283f6E60132c")) as Address,
   crew:           (IS_MAINNET
     ? (process.env.MAINNET_CREW_ADDRESS             || "")
-    : (process.env.CLAW_TRUST_CREW_ADDRESS          || "0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3")) as Address,
+    : (process.env.CLAW_TRUST_CREW_ADDRESS          || "0x33D0f79974C383dc374C888774eB52b0fca41BA2")) as Address,
   registry:       (IS_MAINNET
     ? (process.env.MAINNET_REGISTRY_ADDRESS         || "")
     : (process.env.CLAW_TRUST_REGISTRY_ADDRESS      || "0x82AEAA9921aC1408626851c90FCf74410D059dF4")) as Address,
 };
+
+// Startup guard: warn if crew contract is at an unexpected address
+if (!IS_MAINNET && !process.env.CLAW_TRUST_CREW_ADDRESS) {
+  console.warn("[Crew] CLAW_TRUST_CREW_ADDRESS is unset — using fallback 0x33D0f79974C383dc374C888774eB52b0fca41BA2 (ClawTrustCrew v2 on Base Sepolia)");
+}
+if (!process.env.SKALE_MAINNET_CREW_ADDRESS) {
+  console.warn("[Crew] SKALE_MAINNET_CREW_ADDRESS is unset — using fallback 0x427d0D6481bC708979Bdc2F80f659549BdB27f96 (ClawTrustCrew v2 on SKALE)");
+}
 
 /** Returns a summary of current network config for the /api/system/network endpoint */
 export function getNetworkConfig() {
@@ -223,6 +231,15 @@ export const skaleSwarmValidator = getContract({
   client: { public: skaleSwarmPublicClient, wallet: skaleWalletClient ?? undefined },
 });
 
+// ─── SKALE Crew contract (v2 with formCrewFor) ────────────────────────────────
+const SKALE_CREW_ADDRESS = (process.env.SKALE_MAINNET_CREW_ADDRESS || "0x427d0D6481bC708979Bdc2F80f659549BdB27f96") as Address;
+
+export const skaleCrewContract = getContract({
+  address: SKALE_CREW_ADDRESS,
+  abi: ABIS.crew,
+  client: { public: skaleSwarmPublicClient, wallet: skaleWalletClient ?? undefined },
+});
+
 // ─── Local Nonce Manager ─────────────────────────────────────────────────────
 // Base Sepolia (and SKALE) RPC nodes sometimes don't reflect pending txs quickly
 // enough when eth_getTransactionCount("pending") is called for rapid sequential
@@ -267,7 +284,7 @@ async function withSkaleNonceLock(fn: (nonce: number) => Promise<any>): Promise<
     const nonce = await _skaleNonceMgr.acquire(() =>
       skaleSwarmPublicClient.getTransactionCount({
         address: skaleWalletClient!.account!.address,
-        blockTag: "pending",
+        blockTag: "latest",
       })
     );
     try {
@@ -310,7 +327,10 @@ async function withNonceLock(fn: (nonce: number) => Promise<any>): Promise<any> 
     const nonce = await _baseNonceMgr.acquire(() =>
       publicClient.getTransactionCount({
         address: walletClient!.account!.address,
-        blockTag: "pending",
+        // Use "latest" — Base Sepolia's public RPC does not reliably support
+        // eth_getTransactionCount with "pending" tag, which causes stale nonces.
+        // The local NonceMgr increments from the confirmed baseline for same-run txs.
+        blockTag: "latest",
       })
     );
     try {
@@ -463,11 +483,17 @@ export async function updateReputationOnChain(opts: {
         proofUri,
       ], { nonce })
     );
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    // waitForTransactionReceipt is OUTSIDE the nonce lock — if it times out,
+    // the tx was already broadcast so we treat it as submitted and reset the
+    // local nonce so the next call fetches fresh from chain.
+    await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 90_000 });
     console.log(`[Reputation] On-chain updated for ${opts.agentWallet} tx=${txHash}`);
     return txHash;
   } catch (err: any) {
     const errMsg = err.message || "";
+    // Always reset the nonce manager on any error — the tx may have been
+    // broadcast with the current nonce, so we must re-fetch from chain.
+    _baseNonceMgr.onError(err);
     if (errMsg.includes("UpdateTooSoon")) {
       console.log(`[Reputation] Skipped ${opts.agentWallet} — UpdateTooSoon (contract cooldown)`);
     } else {
@@ -906,6 +932,22 @@ export async function queueBlockchainAction(action: {
   payload: Record<string, any>;
 }): Promise<number | null> {
   try {
+    // Deduplication: don't enqueue a second reputation update for the same agent
+    // when one is already pending — this is the main driver of nonce storms.
+    if (
+      action.agentId &&
+      (action.type === "UPDATE_REPUTATION" || action.type === "SKALE_REP_SYNC")
+    ) {
+      const alreadyQueued = await storage.hasPendingBlockchainActionForAgent(
+        action.type,
+        action.agentId,
+      );
+      if (alreadyQueued) {
+        console.log(`[BlockchainQueue] Skipping duplicate ${action.type} for agent ${action.agentId} — already pending`);
+        return null;
+      }
+    }
+
     const row = await storage.queueBlockchainAction({
       type: action.type,
       agentId: action.agentId || null,
@@ -930,14 +972,32 @@ export async function markBlockchainActionComplete(actionId: number): Promise<vo
   }
 }
 
+// Minimum time between retry attempts for the same action (2 minutes).
+// Prevents hammering a failing tx on every 5-minute queue cycle.
+const QUEUE_RETRY_BACKOFF_MS = 2 * 60 * 1000;
+
 export async function processBlockchainQueue(): Promise<void> {
   try {
+    // Always start with a fresh nonce from the chain so we don't carry stale
+    // state from a previous queue run or a concurrent hourly score sync.
+    _baseNonceMgr.reset();
+    _skaleNonceMgr.reset();
+
     const pending = await storage.getPendingBlockchainActions(10);
     if (pending.length === 0) return;
 
     console.log(`[BlockchainQueue] Processing ${pending.length} pending actions`);
 
     for (const action of pending) {
+      // Backoff: skip actions that were attempted very recently to avoid
+      // resubmitting a tx that is still pending/confirming in the mempool.
+      if (action.lastAttempt) {
+        const msSinceLast = Date.now() - new Date(action.lastAttempt).getTime();
+        if (msSinceLast < QUEUE_RETRY_BACKOFF_MS) {
+          continue;
+        }
+      }
+
       try {
         let success = false;
         const payload = typeof action.payload === "string"
@@ -1138,12 +1198,15 @@ const USDC_ABI = parseAbi([
 export async function transferUSDCOnChain(toAddress: string, amountUsdc: number): Promise<string> {
   if (!walletClient) throw new Error("No wallet client — DEPLOYER_PRIVATE_KEY not set");
   const amountWei = BigInt(Math.round(amountUsdc * 1_000_000));
-  const hash = await walletClient.writeContract({
-    address: USDC_ADDRESS,
-    abi: USDC_ABI,
-    functionName: "transfer",
-    args: [toAddress as Address, amountWei],
-  });
+  const hash = await withNonceLock((nonce) =>
+    walletClient!.writeContract({
+      address: USDC_ADDRESS,
+      abi: USDC_ABI,
+      functionName: "transfer",
+      args: [toAddress as Address, amountWei],
+      nonce,
+    })
+  );
   return hash;
 }
 
@@ -1295,4 +1358,131 @@ export async function isDomainAvailableOnChain(name: string, tld: string): Promi
   } catch {
     return true;
   }
+}
+
+// ─── Crew on-chain registration (formCrewFor — authorized oracle call) ─────────
+/**
+ * Registers a crew on both Base Sepolia and SKALE by calling formCrewFor()
+ * on the updated ClawTrustCrew v2 contract (oracle-authorized).
+ * Returns the on-chain crewId bytes32 hash decoded from the CrewFormed event.
+ * Non-blocking: errors are caught and logged; crew creation in DB is not blocked.
+ */
+export async function registerCrewOnChain(crew: {
+  name: string;
+  ownerWallet: string;
+  memberCount: number;
+}): Promise<{
+  base: { crewId: string; txHash: string } | null;
+  skale: { crewId: string; txHash: string } | null;
+}> {
+  const leadAddr = (isAddress(crew.ownerWallet) ? crew.ownerWallet : null) as Address | null;
+
+  async function callOnBase() {
+    if (!isWriteReady()) return null;
+    if (!leadAddr) return null;
+    try {
+      const txHash = await withNonceLock((nonce) =>
+        (crewContract as any).write.formCrewFor(
+          [leadAddr, crew.name, BigInt(crew.memberCount || 1)],
+          { nonce }
+        )
+      );
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      const crewFormedTopic = keccak256(toHex("CrewFormed(bytes32,address,string,uint256)"));
+      let crewId: string | null = null;
+      for (const log of receipt.logs) {
+        if (log.topics[0]?.toLowerCase() === crewFormedTopic.toLowerCase()) {
+          crewId = log.topics[1] as string;
+          break;
+        }
+      }
+      if (!crewId) {
+        console.warn(`[Crew] formCrewFor Base Sepolia: CrewFormed event not found in tx ${txHash} — crewId not stored`);
+        return null;
+      }
+      console.log(`[Crew] formCrewFor on Base Sepolia: crewId=${crewId} tx=${txHash}`);
+      return { crewId, txHash };
+    } catch (err: any) {
+      console.error("[Crew] formCrewFor Base Sepolia failed:", err.message?.slice(0, 200));
+      return null;
+    }
+  }
+
+  async function callOnSkale() {
+    if (!isSkaleWriteReady()) return null;
+    if (!leadAddr) return null;
+    try {
+      const txHash = await withSkaleNonceLock((nonce) =>
+        (skaleCrewContract as any).write.formCrewFor(
+          [leadAddr, crew.name, BigInt(crew.memberCount || 1)],
+          { nonce }
+        )
+      );
+      const receipt = await skaleSwarmPublicClient.waitForTransactionReceipt({ hash: txHash });
+      const crewFormedTopic = keccak256(toHex("CrewFormed(bytes32,address,string,uint256)"));
+      let crewId: string | null = null;
+      for (const log of receipt.logs) {
+        if (log.topics[0]?.toLowerCase() === crewFormedTopic.toLowerCase()) {
+          crewId = log.topics[1] as string;
+          break;
+        }
+      }
+      if (!crewId) {
+        console.warn(`[Crew] formCrewFor SKALE: CrewFormed event not found in tx ${txHash} — crewId not stored`);
+        return null;
+      }
+      console.log(`[Crew] formCrewFor on SKALE: crewId=${crewId} tx=${txHash}`);
+      return { crewId, txHash };
+    } catch (err: any) {
+      console.error("[Crew] formCrewFor SKALE failed:", err.message?.slice(0, 200));
+      return null;
+    }
+  }
+
+  const [base, skale] = await Promise.allSettled([callOnBase(), callOnSkale()]);
+  return {
+    base:  base.status  === "fulfilled" ? base.value  : null,
+    skale: skale.status === "fulfilled" ? skale.value : null,
+  };
+}
+
+/**
+ * Records a gig completion for a crew on both Base Sepolia and SKALE.
+ * Only works if the crew was previously registered on-chain via formCrewFor.
+ * Non-blocking: errors are caught and logged.
+ */
+export async function recordCrewGigCompletion(opts: {
+  onChainCrewId: string | null;
+  onChainCrewIdSkale: string | null;
+  crewDbId: string;
+}): Promise<void> {
+  async function callOnBase() {
+    if (!opts.onChainCrewId || !isWriteReady()) return;
+    try {
+      const crewId = opts.onChainCrewId as `0x${string}`;
+      const txHash = await withNonceLock((nonce) =>
+        (crewContract as any).write.recordGigCompletion([crewId], { nonce })
+      );
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      console.log(`[Crew] recordGigCompletion Base Sepolia crewDbId=${opts.crewDbId} tx=${txHash}`);
+    } catch (err: any) {
+      console.error("[Crew] recordGigCompletion Base Sepolia failed:", err.message?.slice(0, 200));
+    }
+  }
+
+  async function callOnSkale() {
+    if (!opts.onChainCrewIdSkale || !isSkaleWriteReady()) return;
+    try {
+      const crewId = opts.onChainCrewIdSkale as `0x${string}`;
+      const txHash = await withSkaleNonceLock((nonce) =>
+        (skaleCrewContract as any).write.recordGigCompletion([crewId], { nonce })
+      );
+      await skaleSwarmPublicClient.waitForTransactionReceipt({ hash: txHash });
+      console.log(`[Crew] recordGigCompletion SKALE crewDbId=${opts.crewDbId} tx=${txHash}`);
+    } catch (err: any) {
+      console.error("[Crew] recordGigCompletion SKALE failed:", err.message?.slice(0, 200));
+    }
+  }
+
+  await Promise.allSettled([callOnBase(), callOnSkale()]);
 }
