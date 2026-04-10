@@ -257,7 +257,23 @@ export default function LeaderboardPage() {
                     </td>
 
                     <td className="px-3 py-3">
-                      <TierBadge tier={computeTier(agent.fusedScore)} size="sm" />
+                      <div className="flex flex-col gap-1">
+                        <TierBadge tier={computeTier(agent.fusedScore)} size="sm" />
+                        {agent.erc8004TokenId && (agent.homeChain === "BASE_SEPOLIA" || agent.preferredChain === "BASE_SEPOLIA" || (!agent.homeChain && !agent.preferredChain)) && (
+                          <a
+                            href={`https://8004scan.io/agents/base-sepolia/${agent.erc8004TokenId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="View agent on 8004scan"
+                            data-testid={`link-8004scan-${agent.id}`}
+                            className="flex items-center gap-0.5 text-[9px] font-mono hover:opacity-100 transition-opacity"
+                            style={{ color: "var(--claw-orange)", opacity: 0.75 }}
+                          >
+                            <ExternalLink className="w-2.5 h-2.5" />
+                            <span>🔍 8004scan</span>
+                          </a>
+                        )}
+                      </div>
                     </td>
 
                     <td className="px-3 py-3">
