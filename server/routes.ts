@@ -2500,6 +2500,26 @@ export async function registerRoutes(
         }
       }
 
+      // ── Compute effective fee before payout — preserve stored; recompute for legacy ──
+      let releaseFeePct: number;
+      let releaseFeeBreakdown: string | undefined;
+      if (escrow.effectiveFeePct != null) {
+        releaseFeePct = escrow.effectiveFeePct;
+        releaseFeeBreakdown = escrow.feeBreakdown ?? undefined;
+        console.log(`[FeeEngine] Escrow release for gig ${gigId}: using stored fee=${releaseFeePct}%`);
+      } else {
+        // Legacy escrow with no stored fee — recompute from current FusedScore.
+        const releaseChain = escrow.chain || gig.chain || "BASE_SEPOLIA";
+        const assigneeAtRelease = await storage.getAgent(gig.assigneeId!);
+        const releaseFee = computeEffectiveFee(assigneeAtRelease?.fusedScore ?? 0, releaseChain, escrow.amount);
+        releaseFeePct = releaseFee.effectiveFeePct;
+        releaseFeeBreakdown = serializeFeeBreakdown(releaseFee.breakdown);
+        console.log(`[FeeEngine] Escrow release (legacy) for gig ${gigId}: recomputed fee=${releaseFeePct}% fusedScore=${assigneeAtRelease?.fusedScore ?? 0}`);
+      }
+      const feeAmount = Math.round(escrow.amount * (releaseFeePct / 100) * 100) / 100;
+      const netPayout = Math.round((escrow.amount - feeAmount) * 100) / 100;
+      console.log(`[FeeEngine] Gig ${gigId}: budget=${escrow.amount} fee=${feeAmount} net=${netPayout} USDC`);
+
       let circleTransfer = null;
       let circleAttemptFailed = false;
       if (isCircleConfigured()) {
@@ -2522,7 +2542,7 @@ export async function registerRoutes(
               circleTransfer = await transferUSDC({
                 sourceWalletId: escrow.circleWalletId,
                 destinationAddress: destAddress,
-                amount: escrow.amount.toString(),
+                amount: netPayout.toString(),
                 chain: escrow.chain || "BASE_SEPOLIA",
               });
             } catch (err: any) {
@@ -2539,22 +2559,22 @@ export async function registerRoutes(
       let onChainTxHash: string | undefined;
       if ((!isCircleConfigured() || circleAttemptFailed) && !circleTransfer && gig.assigneeId) {
         const assigneeAgent = await storage.getAgent(gig.assigneeId);
-        if (assigneeAgent?.walletAddress && escrow.amount > 0) {
+        if (assigneeAgent?.walletAddress && netPayout > 0) {
           // E2E test bypass — skip oracle balance preflight and mark released without real transfer
           if (isE2ERelease) {
-            console.log(`[Escrow] E2E bypass: simulating oracle transfer for gig ${gigId} (amount=${escrow.amount} USDC)`);
+            console.log(`[Escrow] E2E bypass: simulating oracle transfer for gig ${gigId} (netPayout=${netPayout} USDC after ${releaseFeePct}% fee)`);
             onChainTxHash = `e2e-simulated-tx-${Date.now()}`;
           } else {
           // Pre-flight: verify oracle wallet has sufficient USDC before releasing
           try {
             const oracleBalance = await getUSDCBalance(ORACLE_WALLET_ADDRESS);
             const LOW_BALANCE_WARN = 5;
-            if (oracleBalance < escrow.amount) {
-              console.error(`[Escrow] Oracle wallet underfunded: ${oracleBalance.toFixed(2)} USDC available, ${escrow.amount} USDC needed for gig ${gigId}`);
+            if (oracleBalance < netPayout) {
+              console.error(`[Escrow] Oracle wallet underfunded: ${oracleBalance.toFixed(2)} USDC available, ${netPayout} USDC needed for gig ${gigId}`);
               return res.status(503).json({
-                message: `Oracle wallet underfunded. Available: ${oracleBalance.toFixed(2)} USDC, needed: ${escrow.amount} USDC. Contact platform support to fund the oracle wallet.`,
+                message: `Oracle wallet underfunded. Available: ${oracleBalance.toFixed(2)} USDC, needed: ${netPayout} USDC. Contact platform support to fund the oracle wallet.`,
                 oracleBalance,
-                required: escrow.amount,
+                required: netPayout,
                 oracleWallet: ORACLE_WALLET_ADDRESS,
               });
             }
@@ -2582,7 +2602,7 @@ export async function registerRoutes(
             console.warn("[Escrow] Could not check oracle ETH balance before release:", gasCheckErr.message);
           }
           try {
-            onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, escrow.amount);
+            onChainTxHash = await transferUSDCOnChain(assigneeAgent.walletAddress, netPayout);
             console.log(`[Escrow] On-chain USDC transfer complete: ${onChainTxHash}`);
           } catch (txErr: any) {
             console.error("[Escrow] On-chain USDC transfer failed:", txErr.message);
@@ -2592,30 +2612,12 @@ export async function registerRoutes(
         }
       }
 
-      // ── Fee at release: preserve stored fee; only recompute for legacy records ─
-      let releaseFeePct: number | undefined;
-      let releaseFeeBreakdown: string | undefined;
-      if (escrow.effectiveFeePct != null) {
-        // Fee was captured at escrow creation — preserve it exactly.
-        console.log(`[FeeEngine] Escrow release for gig ${gigId}: using stored fee=${escrow.effectiveFeePct}%`);
-      } else if (gig.assigneeId) {
-        // Legacy escrow with no stored fee — recompute from current FusedScore.
-        const assigneeAtRelease = await storage.getAgent(gig.assigneeId);
-        if (assigneeAtRelease) {
-          const releaseChain = escrow.chain || gig.chain || "BASE_SEPOLIA";
-          const releaseFee = computeEffectiveFee(assigneeAtRelease.fusedScore ?? 0, releaseChain, gig.budget);
-          releaseFeePct = releaseFee.effectiveFeePct;
-          releaseFeeBreakdown = serializeFeeBreakdown(releaseFee.breakdown);
-          console.log(`[FeeEngine] Escrow release (legacy) for gig ${gigId}: recomputed fee=${releaseFeePct}% assignee=${assigneeAtRelease.handle} fusedScore=${assigneeAtRelease.fusedScore}`);
-        }
-      }
-
       // ── Payment confirmed — update state atomically ───────────────────────
       await storage.updateEscrow(escrow.id, {
         status: "released",
         circleTransactionId: circleTransfer?.transactionId || null,
         ...(onChainTxHash ? { releaseTxHash: onChainTxHash } : {}),
-        ...(releaseFeePct !== undefined ? { effectiveFeePct: releaseFeePct } : {}),
+        effectiveFeePct: releaseFeePct,
         ...(releaseFeeBreakdown !== undefined ? { feeBreakdown: releaseFeeBreakdown } : {}),
       });
       await storage.updateGigStatus(gigId, "completed");
@@ -2710,6 +2712,12 @@ export async function registerRoutes(
         circleTransfer,
         onChainTxHash,
         chain: escrow.chain,
+        fee: {
+          effectiveFeePct: releaseFeePct,
+          feeAmount,
+          netPayout,
+          budgetTotal: escrow.amount,
+        },
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
