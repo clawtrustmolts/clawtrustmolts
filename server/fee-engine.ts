@@ -1,5 +1,3 @@
-import type { Agent, EscrowTransaction } from "@shared/schema";
-
 export const FEE_FLOOR_PCT = 0.5;
 export const FEE_CEILING_PCT = 3.5;
 export const SKALE_CHAIN_MODIFIER_PCT = 0.25;
@@ -73,6 +71,11 @@ export function computeEffectiveFee(
     breakdown,
     displayLine: `Platform fee: ${effectiveFee.toFixed(2)}% ($${((budgetUsdc * effectiveFee) / 100).toFixed(2)})`,
   };
+}
+
+export function formatFeeDisplay(feePct: number, budgetUsdc: number): string {
+  const amount = (budgetUsdc * feePct) / 100;
+  return `Platform fee: ${feePct.toFixed(2)}% ($${amount.toFixed(2)})`;
 }
 
 export function serializeFeeBreakdown(breakdown: FeeBreakdown): string {

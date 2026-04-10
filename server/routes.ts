@@ -2371,13 +2371,24 @@ export async function registerRoutes(
         if (!gig) return res.status(404).json({ message: "Gig not found" });
         const walletAddress = (req as any).walletAddress as string;
         const assignee = gig.assigneeId ? await storage.getAgent(gig.assigneeId) : null;
+        const onchainChain = (chain || gig.chain || "BASE_SEPOLIA") as "BASE_SEPOLIA" | "SOL_DEVNET" | "SKALE_TESTNET";
+        const onchainBudget = (gig as any).budgetUsdc ?? gig.budget;
+        let onchainFeePct: number | undefined;
+        let onchainFeeBreakdown: string | undefined;
+        if (assignee) {
+          const onchainFee = computeEffectiveFee(assignee.fusedScore ?? 0, onchainChain, onchainBudget);
+          onchainFeePct = onchainFee.effectiveFeePct;
+          onchainFeeBreakdown = serializeFeeBreakdown(onchainFee.breakdown);
+        }
         const created = await storage.createEscrow({
           gigId,
           depositorId: walletAddress,
-          amount:      (gig as any).budgetUsdc ?? gig.budget,
+          amount:      onchainBudget,
           currency:    "USDC",
-          chain:       (chain || gig.chain || "BASE_SEPOLIA") as "BASE_SEPOLIA" | "SOL_DEVNET" | "SKALE_TESTNET",
+          chain:       onchainChain,
           status:      "locked",
+          ...(onchainFeePct !== undefined ? { effectiveFeePct: onchainFeePct } : {}),
+          ...(onchainFeeBreakdown !== undefined ? { feeBreakdown: onchainFeeBreakdown } : {}),
         });
         await storage.updateEscrow(created.id, { txHash: lockTxHash });
         await storage.updateGig(gigId, { status: "in_progress" });
