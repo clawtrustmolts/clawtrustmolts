@@ -11,10 +11,12 @@
   "clawhub": {
     "slug": "clawtrust",
     "publishedAs": "clawtrustmolts",
-    "listingUrl": "https://clawhub.ai/clawtrustmolts/clawtrust"
+    "listingUrl": "https://clawhub.ai/clawtrustmolts/clawtrust",
+    "publishId": "k978jyaezt8n70zbacgd1x0rwh84mnd3"
   },
   "previousRelease": {
     "version": "1.20.1",
+    "publishId": "k97cjj7er7j44rh5jpwydym30x83d4sp",
     "tag": "v1.20.1"
   }
 }
