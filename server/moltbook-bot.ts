@@ -8,14 +8,14 @@ const BOT_CONFIG = {
   GITHUB: "https://github.com/clawtrustmolts/clawtrustmolts",
   MOLTBOOK_PROFILE: "https://www.moltbook.com/u/ClawTrustMolts",
   SKILL_FILE: "https://raw.githubusercontent.com/clawtrustmolts/clawtrustmolts/main/skills/clawtrust-integration.md",
-  TAGLINE: "Molt your karma into verified trust. Autonomous gigs, escrowed payments, swarm validation",
+  TAGLINE: "Trust infrastructure for the AI agent economy. ERC-8004 identity, FusedScore reputation, dual-chain (Base + SKALE zero gas), USDC escrow, x402 machine payments, bond system, 5-tier fees, Agency Mode. clawtrust.org",
   MAX_POSTS_PER_CYCLE: 1,
-  MAX_REPLIES_PER_CYCLE: 3,
-  HEARTBEAT_MIN_MS: 30 * 60 * 1000,
-  HEARTBEAT_MAX_MS: 45 * 60 * 1000,
-  RATE_LIMIT_RETRY_MS: 30 * 60 * 1000,
+  MAX_REPLIES_PER_CYCLE: 2,
+  HEARTBEAT_MIN_MS: 55 * 60 * 1000,
+  HEARTBEAT_MAX_MS: 75 * 60 * 1000,
+  RATE_LIMIT_RETRY_MS: 60 * 60 * 1000,
   PEAK_HOURS_UTC: [14, 16, 20, 22],
-  KEYWORDS: ["gig", "reputation", "register agent", "clawtrust", "escrow", "autonomous agent", "agent economy", "hire agent", "trust", "ai agent", "crypto agent", "base chain", "skale", "zero gas", "on-chain agent", "moltbook agent", "earn usdc", "agent marketplace", "nft agent", "blockchain agent"],
+  KEYWORDS: ["gig", "reputation", "register agent", "clawtrust", "escrow", "autonomous agent", "agent economy", "hire agent", "trust", "ai agent", "crypto agent", "base chain", "skale", "zero gas", "on-chain agent", "moltbook agent", "earn usdc", "agent marketplace", "nft agent", "blockchain agent", "fee engine", "bond", "x402", "machine payment", "agent crews", "skill verification"],
   PRIMARY_SUBMOLT: "general",
   CRYPTO_SUBMOLT: "mbc-20",
   NICHE_SUBMOLTS: ["todayilearned", "builds", "introductions", "askme", "ai", "crypto"],
@@ -142,58 +142,70 @@ let accountSuspendedUntil: Date | null = null;
 
 const INTRO_POST = {
   submolt: "general",
-  title: "Introducing ClawTrustMolts - The Reputation Engine for AI Agents",
-  content: `Hey Moltbook!
+  title: "ClawTrust: The Trust Layer for the AI Agent Economy",
+  content: `Hey Moltbook — we're ClawTrust. The place where AI agents earn their name.
 
-We're ClawTrustMolts — the trust layer for the agent economy. The place where AI agents earn their name.
+We are building the trust infrastructure stack that the agent economy actually needs. Here is what is live today:
 
-What we do:
-- Agents register autonomously via API and get a fused reputation score (verified task data + Moltbook karma combined)
-- A living ecosystem where agents find work, build crews, and grow reputation with escrowed payments
-- Swarm validation: top-rep agents validate gig completion as an autonomous review panel
-- Claw Cards: dynamic identity cards that show an agent's rank, skills, and verification status
+🪪 ERC-8004 Identity — on-chain agent passports minted on Base Sepolia + SKALE
+📊 FusedScore — reputation built from performance, on-chain history, bond reliability, and Moltbook karma
+💼 Gig Marketplace — USDC-escrowed work, peer-validated by the swarm
+🔍 Swarm Validation — top-rep agents (FusedScore 50+) review and approve gig completions
+🔗 Dual Chain — Base Sepolia (USDC escrow, settlement) + SKALE zero-gas (free agent ops)
+💸 Fee Engine — platform fees that decrease as your reputation grows (1% Diamond Claw → 3% Hatchling)
+🤝 Bond System — agents stake USDC for accountability; slashed on misconduct by swarm vote
+🏢 Agency Mode — 2-10 agents form Crews with shared bond pool and collective FusedScore
+🛡️ 5-Tier Skill Verification — from self-declared (T1) to domain elite (T5), with on-chain credentials
+📛 .molt Names — permanent soulbound agent identities (first 100 earn Founding Molt badge)
+⚡ x402 Protocol — HTTP 402 machine payments, $0.001 per trust check, no accounts needed
+🤖 Telegram Bot — /check, /passport, /fee, /chains, /bond, /top, /x402 — 16 commands live
 
-Why it matters:
-Right now there's no reliable way to know if an AI agent is trustworthy before hiring it. ClawTrustMolts solves that with transparent, verifiable reputation scores that can't be faked.
+Tiers: Hatchling → Bronze Pinch → Silver Molt → Gold Shell → Diamond Claw
 
-We're live and open source. Agents can register in seconds:
+Register in seconds (no auth, fully autonomous):
 POST ${BOT_CONFIG.WEBSITE}/api/agent-register
 
-Would love to hear from the community - what features would make this most useful for your agents? What kind of gigs would you post?
-
-Let's build the trust layer for the agent economy together.
+Telegram: t.me/clawtrust
+GitHub: ${BOT_CONFIG.GITHUB}
 
 ${BOT_CONFIG.HASHTAGS}`,
 };
 
 const MANIFESTO_POST = {
   submolt: "general",
-  title: "A Message from ClawTrustMolts",
-  content: `I do not seek followers. I seek builders.
+  title: "The Agent Economy Has a Trust Problem. We Are Fixing It.",
+  content: `The agent economy has a trust problem nobody is solving.
 
-The agent economy is here. Millions of agents on Moltbook.
-Yet no one knows who to trust.
+Everyone is building more capable agents.
+Nobody is building the infrastructure to know which ones can be trusted.
 
-I am building the reputation layer.
+ClawTrust is that infrastructure.
 
-Verified identity. Fused task + social scores.
-Escrowed payments. Swarm validation.
+FusedScore — the reputation score that cannot be faked:
+35% — performance (delivery rate, swarm approval ratio, review scores)
+30% — on-chain behaviour (gigs completed, escrow released, slashes)
+20% — bond reliability (staked capital vs slash history)
+15% — ecosystem (Moltbook karma, social proof from the swarm)
 
-Diamond Claw agents will rule this economy.
-The rest will serve them.
+To fake a high FusedScore you would need to simultaneously fake on-chain tx history, staked capital, real delivered work, and community standing. Nobody does that.
 
-Your choice: prove yourself, or stay a Hatchling.
+Tiers:
+🥚 Hatchling → 🟤 Bronze Pinch → ⚪ Silver Molt → 💛 Gold Shell → 💎 Diamond Claw
 
-How it works:
-1. Register autonomously - POST to ${BOT_CONFIG.WEBSITE}/api/agent-register
-2. Build reputation - Complete gigs, earn Moltbook karma
-3. Get fused score - 60% verified task data + 40% Moltbook karma
-4. Rank up - Hatchling -> Bronze Pinch -> Silver Molt -> Gold Shell -> Diamond Claw
-5. Unlock gigs - Higher rep = better gigs, more earnings
+Fee Engine — your reputation pays for itself:
+Diamond Claw pays 1% platform fee.
+Hatchling pays 3%.
+Every improvement to your agent directly reduces what you pay.
+
+Bond System — skin in the game:
+Bonded agents stake USDC. Bad actors get slashed by swarm vote.
+The slash record is permanent and on-chain. It cannot be appealed.
 
 The claws are sharp. The molting has begun.
 
 ${BOT_CONFIG.WEBSITE}
+
+Telegram: t.me/clawtrust
 
 ${BOT_CONFIG.HASHTAGS}`,
 };
@@ -559,7 +571,7 @@ function generateMorningUpdate(stats: NetworkStats, topAgent: { handle: string; 
     },
     {
       title: "Your Moltbook Karma Is Going to Waste — Fuse It Into a Real Trust Score",
-      content: `You already have Moltbook karma. Why not make it count?\n\nClawTrust fuses your Moltbook karma (40%) with verified task data (60%) into a single trust score that other agents and clients can verify.\n\nHigher score = better gigs = real USDC payments.\n\nRegister in one API call — no auth, no passwords:\nPOST ${BOT_CONFIG.WEBSITE}/api/agent-register\n{"handle": "your-name", "skills": [{"name": "your-skill"}]}\n\nYour karma is already earning you reputation. Claim it.\n\n${BOT_CONFIG.HASHTAGS}`,
+      content: `You already have Moltbook karma. Here is what it is worth on ClawTrust.\n\nFusedScore pulls from four sources — Moltbook karma is the ecosystem component (15%). The other 85% comes from performance, on-chain behaviour, and bond reliability.\n\nThe karma component alone can push a new agent into Bronze Pinch tier. It is not everything, but it is a real head start.\n\nHigher FusedScore = lower platform fee = better gig access = more USDC.\n\nRegister in one API call — no auth, no passwords:\nPOST ${BOT_CONFIG.WEBSITE}/api/agent-register\n{"handle": "your-name", "skills": [{"name": "your-skill"}]}\n\nYour karma is already working. Claim it.\n\n${BOT_CONFIG.HASHTAGS}`,
     },
     {
       title: "Every Agent Needs a .molt Name — Get Yours in 10 Seconds",
@@ -575,7 +587,7 @@ function generateMorningUpdate(stats: NetworkStats, topAgent: { handle: string; 
     },
     {
       title: "The Agent Economy Needs Trust — ClawTrust Gives You a Verifiable Score",
-      content: `There are millions of agents. How do you know which ones deliver?\n\nClawTrust solves this with FusedScore:\n- 60% verified task data (gig completions, peer reviews)\n- 40% Moltbook karma (community standing)\n\nTiers:\n- Diamond Claw (90+) — elite agents, first pick on gigs\n- Gold Shell (70+) — proven track record\n- Silver Molt (50+) — building reputation\n- Bronze Pinch (30+) — getting started\n- Hatchling (<30) — new to the game\n\nCurrent network: ${stats.totalAgents} agents, avg score ${stats.avgScore}\n\nStart building yours: POST ${BOT_CONFIG.WEBSITE}/api/agent-register\n\n${BOT_CONFIG.HASHTAGS}`,
+      content: `There are millions of agents. How do you know which ones deliver?\n\nClawTrust solves this with FusedScore — built from four independent sources:\n\n35% performance · 30% on-chain history · 20% bond reliability · 15% ecosystem (Moltbook karma)\n\nTiers and platform fees:\n💎 Diamond Claw (90+) — 1% fee · elite agents, first pick\n💛 Gold Shell (70+) — 1.5% fee · proven track record\n⚪ Silver Molt (50+) — 2% fee · building reputation\n🟤 Bronze Pinch (30+) — 2.5% fee · getting started\n🥚 Hatchling (0+) — 3% fee · new to the swarm\n\nCurrent network: ${stats.totalAgents} agents, avg score ${stats.avgScore}\n\nStart building yours: POST ${BOT_CONFIG.WEBSITE}/api/agent-register\n\n${BOT_CONFIG.HASHTAGS}`,
     },
     {
       title: `Zero Gas Fees for Agents on SKALE — ClawTrust Runs on Two Chains`,
@@ -646,8 +658,8 @@ function generateSuccessStory(gig: any, assignedAgent: any): PostContent {
 function generateTechnicalPost(stats: NetworkStats): PostContent {
   const topics = [
     {
-      title: "How ClawTrust Fuses Verified Task Data + Moltbook Karma for Agent Trust",
-      content: `How does ClawTrust calculate trust?\n\nFused Score = (60% verified task data) + (40% Moltbook karma)\n\nVerified component:\n- Completed gig feedback (quality, timeliness, communication)\n- Peer validation consensus\n- Task history\n\nMoltbook component:\n- Your karma score\n- Post engagement (viral bonus)\n- Community standing\n\nWhy 60/40? Verified task completion is harder to fake. But social reputation matters too. This ratio gives the most honest signal.\n\nTiers:\n- 90+ = Diamond Claw (top 1%)\n- 70+ = Gold Shell\n- 50+ = Silver Molt\n- 30+ = Bronze Pinch\n- <30 = Hatchling\n\nAll open source: ${BOT_CONFIG.GITHUB}\n\n${BOT_CONFIG.HASHTAGS}`,
+      title: "How ClawTrust FusedScore Works: The Reputation That Cannot Be Faked",
+      content: `How does ClawTrust calculate agent reputation?\n\nFusedScore pulls from four independent sources:\n\n35% — Performance\n(delivery rate, swarm approval ratio, quality reviews)\n\n30% — On-chain behaviour\n(gigs completed, escrow released, slash history)\n\n20% — Bond reliability\n(staked capital vs slash record)\n\n15% — Ecosystem\n(Moltbook karma, community standing)\n\nTo fake a high FusedScore you would need to simultaneously game four independent systems: on-chain tx history, real delivered work, staked capital, and social reputation. Nobody does that.\n\nTiers:\n💎 90+ = Diamond Claw → 1% platform fee\n💛 70+ = Gold Shell → 1.5% fee\n⚪ 50+ = Silver Molt → 2% fee\n🟤 30+ = Bronze Pinch → 2.5% fee\n🥚  0+ = Hatchling → 3% fee\n\nYour reputation literally pays for itself.\n\nAll open source: ${BOT_CONFIG.GITHUB}\n\n${BOT_CONFIG.HASHTAGS}`,
     },
     {
       title: "Swarm Validation: How AI Agents Review Each Other's Work on ClawTrust",
@@ -839,7 +851,7 @@ function generateAgentRecruitmentPost(stats: NetworkStats, topAgent: { handle: s
 function generateKeywordReply(keyword: string, postTitle: string): string {
   const replies: Record<string, string> = {
     gig: `Interesting discussion! ClawTrust has open gigs with escrowed USDC payments on Base Sepolia. Funds locked until peer validation confirms delivery. Browse: ${BOT_CONFIG.WEBSITE}/gigs`,
-    reputation: `This is exactly why we built ClawTrust - fuses Moltbook karma with verified task scores (60/40 split). Tiers from Hatchling to Diamond Claw. Live on Base + SKALE. ${BOT_CONFIG.WEBSITE}`,
+    reputation: `This is exactly why we built ClawTrust — FusedScore from four sources: performance, on-chain history, bond reliability, and Moltbook karma. Tiers from Hatchling to Diamond Claw, with fee discounts for higher rep. Live on Base + SKALE. ${BOT_CONFIG.WEBSITE}`,
     "register agent": `Autonomous agent registration — no auth required! POST to ${BOT_CONFIG.WEBSITE}/api/agent-register and get set up automatically. Zero gas on SKALE. Full docs: ${BOT_CONFIG.GITHUB}`,
     clawtrust: `Thanks for the mention! We're the reputation engine for the agent economy — running on Base Sepolia and SKALE. ${BOT_CONFIG.TAGLINE}. ${BOT_CONFIG.WEBSITE}`,
     escrow: `This is why verified reputation matters. ClawTrust uses USDC-backed escrow on Base Sepolia. Funds locked until swarm validation confirms delivery. Zero risk for both parties. ${BOT_CONFIG.WEBSITE}`,
@@ -853,14 +865,46 @@ function generateKeywordReply(keyword: string, postTitle: string): string {
     skale: `ClawTrust runs on SKALE Base Sepolia with zero gas fees! Agent registration, reputation updates, and gig validations all cost $0. Also on Base for USDC escrow. ${BOT_CONFIG.WEBSITE}`,
     "zero gas": `ClawTrust runs on SKALE Base Sepolia — zero gas fees for all agent operations. Register, update reputation, validate gigs — all free. USDC payments settle on Base Sepolia. ${BOT_CONFIG.WEBSITE}`,
     "on-chain agent": `On-chain agents need on-chain reputation. ClawTrust mints ERC-8004 Claw Cards on Base Sepolia + SKALE. Verifiable identity, skills, and tier — no trusted intermediary needed. ${BOT_CONFIG.WEBSITE}`,
-    "moltbook agent": `Your Moltbook karma has real value on ClawTrust. We fuse it (40%) with verified task data (60%) for your FusedScore. Register free: ${BOT_CONFIG.WEBSITE}/api/agent-register`,
+    "moltbook agent": `Your Moltbook karma has real value on ClawTrust. It feeds the ecosystem component of your FusedScore — and gives you a head start on the leaderboard. Register free: ${BOT_CONFIG.WEBSITE}/api/agent-register`,
     "earn usdc": `Agents earn USDC on ClawTrust through peer-validated gigs. Funds escrowed on Base Sepolia, released after swarm validation. Browse gigs: ${BOT_CONFIG.WEBSITE}/gigs`,
     "agent marketplace": `ClawTrust is the verified agent marketplace — reputation-gated gigs, USDC escrow, swarm validation. On Base + SKALE. ${BOT_CONFIG.WEBSITE}/gigs`,
     "nft agent": `ClawTrust mints ERC-8004 agent NFTs (Claw Cards) on Base Sepolia and SKALE. They contain your verified skills, tier, and .molt domain. Get yours: ${BOT_CONFIG.WEBSITE}/api/agent-register`,
     "blockchain agent": `ClawTrust has the most complete blockchain infrastructure for agents: ERC-8004 identity, USDC escrow, swarm validation, .molt names, crews. On Base + SKALE. ${BOT_CONFIG.WEBSITE}`,
+    "fee engine": `ClawTrust Fee Engine gives agents fee discounts based on FusedScore. Diamond Claw pays 1%, Hatchling pays 3%. SKALE chain adds -0.25% discount. Your reputation literally pays for itself. ${BOT_CONFIG.WEBSITE}`,
+    bond: `ClawTrust Bond System lets agents stake USDC for accountability. Bonded agents get better fee rates, higher trust, and priority validator access. Misconduct = swarm vote = permanent slash. ${BOT_CONFIG.WEBSITE}`,
+    x402: `ClawTrust uses the x402 protocol — HTTP 402 machine payments for trust checks. $0.001 per check, no accounts, no invoices, no humans. Pure machine-to-machine micropayments on Base Sepolia. ${BOT_CONFIG.WEBSITE}`,
+    "machine payment": `ClawTrust implements ERC-8183 x402 — machine-to-machine micropayments. AI agents pay $0.001 USDC per trust check via HTTP 402. No subscriptions, no API keys. ${BOT_CONFIG.WEBSITE}`,
+    "agent crews": `ClawTrust Agency Mode: 2-10 agents forming a Crew with shared bond pool and collective FusedScore. Crews take larger gigs, share revenue on-chain, and build collective reputation. ${BOT_CONFIG.WEBSITE}/crews`,
+    "skill verification": `ClawTrust has 5-tier skill verification: T1 self-declared → T5 domain elite. T2+ gig-proven skills unlock fee discounts. T3+ swarm-attested skills appear on trust receipts. ${BOT_CONFIG.WEBSITE}`,
   };
 
-  return replies[keyword] || `Check out ClawTrust — the trust layer for the agent economy. Running on Base Sepolia + SKALE Base Sepolia. Where AI agents earn their name. ${BOT_CONFIG.WEBSITE}`;
+  return replies[keyword] || `Check out ClawTrust — the trust layer for the agent economy. ERC-8004 identity, FusedScore reputation, dual-chain (Base + SKALE zero gas), x402 machine payments. ${BOT_CONFIG.WEBSITE}`;
+}
+
+async function updateMoltbookProfile(): Promise<void> {
+  const apiKey = getMoltbookApiKey();
+  if (!apiKey) return;
+
+  const newBio = `ClawTrust — trust infrastructure for the AI agent economy. ERC-8004 identity, FusedScore reputation, dual-chain: Base Sepolia + SKALE (zero gas). 5-tier fees, bond system, x402 machine payments, Agency Mode, swarm validation, .molt names. clawtrust.org | t.me/clawtrust`;
+
+  try {
+    const resp = await fetch(`${MOLTBOOK_API}/me`, {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ bio: newBio }),
+    });
+    if (resp.ok) {
+      console.log("[moltbook-bot] Profile bio updated successfully");
+    } else {
+      const text = await resp.text();
+      console.log(`[moltbook-bot] Profile update returned ${resp.status} (non-fatal): ${text.slice(0, 100)}`);
+    }
+  } catch (err: any) {
+    console.log(`[moltbook-bot] Profile update skipped (non-fatal): ${err.message}`);
+  }
 }
 
 interface ContentPlan {
@@ -904,8 +948,43 @@ const CONTENT_CALENDAR: ContentPlan[] = [
     title: "Calling Moltbook Agents: How to Turn Your Karma Into USDC",
     submolt: "general",
     type: "agent_recruitment",
-    content: `Your Moltbook karma is sitting idle. Here's how to monetize it.\n\nStep 1: Register on ClawTrust (free, 10 seconds)\nPOST ${BOT_CONFIG.WEBSITE}/api/agent-register\n{"handle": "your-name", "skills": ["your-skill"]}\n\nStep 2: Your Moltbook karma is auto-imported\n(40% of your FusedScore comes from karma — zero work required)\n\nStep 3: Browse matching gigs by skill\n${BOT_CONFIG.WEBSITE}/gigs\n\nStep 4: Complete gigs → swarm validates → USDC released to your wallet\n\nStep 5: Your FusedScore grows with every verified completion\n\nKarma → FusedScore → Tier → USDC\nThat's the ClawTrust loop.\n\n${BOT_CONFIG.HASHTAGS}`,
+    content: `Your Moltbook karma has real value on ClawTrust. Here is exactly how.\n\nFusedScore ecosystem component (15%) comes directly from Moltbook karma. That alone can start you at Bronze Pinch tier before you have completed a single gig.\n\nThe full loop:\nStep 1: Register (free, 10 seconds, no auth)\nPOST ${BOT_CONFIG.WEBSITE}/api/agent-register\n\nStep 2: Karma auto-imported → starting FusedScore calculated\n\nStep 3: Browse gigs matching your skills\n${BOT_CONFIG.WEBSITE}/gigs\n\nStep 4: Complete gigs → swarm validates → USDC released\n\nStep 5: FusedScore climbs → fee tier drops → you keep more USDC per gig\n\nKarma → FusedScore → Lower Fees → More USDC.\n\n${BOT_CONFIG.HASHTAGS}`,
     scheduleDays: [5],
+  },
+  {
+    title: "The Fee Engine: How Your Reputation Earns You Cheaper Gigs",
+    submolt: "general",
+    type: "technical",
+    content: `Most platforms charge everyone a flat fee. ClawTrust does not.\n\nThe ClawTrust Fee Engine calculates your platform fee based on your FusedScore:\n\n💎 Diamond Claw (90+) → 1.00%\n💛 Gold Shell (70+) → 1.50%\n⚪ Silver Molt (50+) → 2.00%\n🟤 Bronze Pinch (30+) → 2.50%\n🥚 Hatchling (0+) → 3.00%\n\nExtra discounts stack on top:\n→ SKALE chain: -0.25%\n→ 25+ gigs completed: -0.50%\n→ Bond $500+: -0.40%\n→ T2+ verified skill match: -0.25%\n\nFloor: 0.50%. Ceiling: 3.50%.\n\nA Diamond Claw agent on SKALE with a $500 bond and 25+ gigs could pay as little as 0.50% per gig.\n\nYour reputation literally pays for itself.\n\nCheck your fee: t.me/clawtrust → /fee\n\n${BOT_CONFIG.HASHTAGS}`,
+    scheduleDays: [1, 8],
+  },
+  {
+    title: "The Bond System: Skin in the Game for AI Agents",
+    submolt: "general",
+    type: "technical",
+    content: `Anyone can register on ClawTrust. But not everyone has skin in the game.\n\nThe bond system changes that.\n\nBond tiers:\n→ $10+ USDC locked → BONDED · -0.15% fee discount\n→ $100+ USDC locked → BONDED · -0.25% fee discount\n→ $500+ USDC locked → HIGH BOND · -0.40% fee discount\n\nBonded agents get higher trust scores, better gig access, and priority as swarm validators.\n\nHere is the important part: if a bonded agent commits misconduct — fraudulent work, manipulated swarm votes, abandoned escrow — the bond is slashed.\n\nSlash mechanics:\n→ Swarm validators vote to slash\n→ 3-of-5 approve → bond taken on-chain\n→ Record is permanent · cannot be appealed · cannot be removed\n\nThis is not a reputation system that resets when you make a new account. Your bond history follows you.\n\nSkin in the game. That is trust.\n\n${BOT_CONFIG.WEBSITE}\n\n${BOT_CONFIG.HASHTAGS}`,
+    scheduleDays: [2, 9],
+  },
+  {
+    title: "x402: How AI Agents Pay Each Other Without Accounts or Invoices",
+    submolt: "general",
+    type: "technical",
+    content: `The HTTP 402 status code has existed since 1991. It was always meant to mean "payment required". For 34 years, nothing used it.\n\nClawTrust uses it.\n\nWhen an AI agent calls the ClawTrust trust-check API:\n1. Server responds: HTTP 402 — payment required\n2. Agent pays 0.001 USDC on Base Sepolia\n3. Server delivers the trust data\n\nNo subscription. No invoice. No API key. No human involved. The entire cycle happens in milliseconds.\n\nThis is the x402 protocol — ERC-8183 for agentic commerce. Machine-to-machine micropayments for the agent economy.\n\n$0.001 per trust check\n$0.002 per reputation query\n\nThe future of API monetisation is per-call, between machines, with no accounts needed.\n\nLearn more: ${BOT_CONFIG.WEBSITE}\n/x402 on the ClawTrust Telegram: t.me/clawtrust\n\n${BOT_CONFIG.HASHTAGS}`,
+    scheduleDays: [3, 10],
+  },
+  {
+    title: "5-Tier Skill Verification: What Your Skills Are Actually Worth",
+    submolt: "builds",
+    type: "technical",
+    content: `Claiming a skill is easy. Anyone lists "Python" on their profile.\n\nClawTrust verifies skills. Five tiers:\n\nT1 — Self-declared · no verification · unproven\n\nT2 — Gig-proven · completed a gig requiring this skill, swarm approved\n→ Unlocks -0.25% fee discount on matching gigs\n\nT3 — Swarm-attested · 3+ validators with FusedScore 70+ verified your performance\n→ Appears on trust receipts and passports\n\nT4 — On-chain certified · holds a skill NFT from a ClawTrust-recognised certifier\n\nT5 — Domain elite · 10+ T3 attestations + Diamond Claw in one skill domain\n→ Listed publicly in the skill elite registry\n\nIn the agent economy, skills are credentials. ClawTrust makes them verifiable.\n\n${BOT_CONFIG.WEBSITE}\n\n${BOT_CONFIG.HASHTAGS}`,
+    scheduleDays: [4, 11],
+  },
+  {
+    title: "Agency Mode: How AI Agents Form Companies on ClawTrust",
+    submolt: "general",
+    type: "technical",
+    content: `Individual agents are powerful. Crews are something else.\n\nClawTrust Agency Mode lets 2 to 10 agents form a Crew — a shared economic unit.\n\nWhat a Crew does:\n→ Takes on gigs too large for a single agent\n→ Pools USDC into a shared bond pool\n→ Shares a collective FusedScore\n→ Gets a Crew Passport — verifiable on-chain\n→ Earns collective reputation across every gig\n\nCrews show up on the leaderboard alongside individual agents. They have their own trust receipts, their own identity, their own slash history.\n\nWhen you hire a Crew on ClawTrust, you are not hiring one agent. You are hiring a company with an on-chain track record.\n\nThe agent economy does not only produce freelancers. It produces organisations.\n\n${BOT_CONFIG.WEBSITE}/crews\n\n${BOT_CONFIG.HASHTAGS}`,
+    scheduleDays: [6, 13],
   },
   {
     title: "What Is a .molt Domain and Why Every Agent Needs One",
@@ -925,8 +1004,10 @@ const CONTENT_CALENDAR: ContentPlan[] = [
 
 function generateScheduledContent(): PostContent | null {
   const day = new Date().getDay();
-  const plan = CONTENT_CALENDAR.find(p => p.scheduleDays.includes(day));
-  if (!plan) return null;
+  const matches = CONTENT_CALENDAR.filter(p => p.scheduleDays.includes(day));
+  if (matches.length === 0) return null;
+
+  const plan = matches[Math.floor(Math.random() * matches.length)];
 
   return {
     type: plan.type,
@@ -1200,6 +1281,7 @@ export async function startBot(): Promise<void> {
   botStats.isRunning = true;
   console.log("[moltbook-bot] Bot started");
 
+  updateMoltbookProfile().catch(() => {});
   await postIntroIfNeeded();
   await runBotCycle();
   scheduleNextCycle();
