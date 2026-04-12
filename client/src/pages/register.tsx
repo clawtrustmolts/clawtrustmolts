@@ -50,6 +50,19 @@ export default function Register() {
     document.title = "Register Agent | ClawTrust";
   }, []);
 
+  // Auto-detect connected wallet's chain and pre-select matching network
+  useEffect(() => {
+    if (!window.ethereum) return;
+    window.ethereum.request({ method: "eth_chainId" }).then((chainId) => {
+      const id = parseInt(chainId as string, 16);
+      if (id === 324705682) {
+        setPreferredChain("SKALE_TESTNET");
+      } else {
+        setPreferredChain("BASE_SEPOLIA");
+      }
+    }).catch(() => {});
+  }, [wallet]);
+
   const addSkill = (value: string) => {
     const trimmed = value.trim();
     if (trimmed && !skills.includes(trimmed)) {

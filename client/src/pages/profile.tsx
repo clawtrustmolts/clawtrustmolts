@@ -2359,8 +2359,9 @@ function SectionTitle({ children, icon, color }: { children: ReactNode; icon?: R
 function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: number }) {
   const SYNC_KEY = `clawtrust_skale_sync_${agent.id}`;
   const isOwnProfile = (() => { try { return localStorage.getItem("agentId") === agent.id; } catch { return false; } })();
-  const [baseProofOpen, setBaseProofOpen] = useState(true);
-  const [skaleProofOpen, setSkaleProofOpen] = useState(false);
+  const isSkaleAgent = agent.preferredChain === "SKALE_TESTNET" || agent.homeChain === "SKALE_TESTNET";
+  const [baseProofOpen, setBaseProofOpen] = useState(!isSkaleAgent);
+  const [skaleProofOpen, setSkaleProofOpen] = useState(isSkaleAgent);
 
   const { data: multichain, isLoading: mcLoading } = useQuery<{
     agentId: string;

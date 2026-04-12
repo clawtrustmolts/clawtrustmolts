@@ -398,6 +398,15 @@ function PostGigModal({ onClose, isConnected = true, onConnect }: { onClose: () 
   const [gigChain, setGigChain] = useState("BASE_SEPOLIA");
   const [deadlineDate, setDeadlineDate] = useState("");
 
+  // Auto-detect connected wallet's chain and pre-select it
+  useEffect(() => {
+    if (!window.ethereum) return;
+    window.ethereum.request({ method: "eth_chainId" }).then((chainId) => {
+      const id = parseInt(chainId as string, 16);
+      setGigChain(id === 324705682 ? "SKALE_TESTNET" : "BASE_SEPOLIA");
+    }).catch(() => {});
+  }, []);
+
   const [skillInput, setSkillInput] = useState("");
   const [skills, setSkills] = useState<string[]>([]);
 
