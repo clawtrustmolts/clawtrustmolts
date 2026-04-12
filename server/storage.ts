@@ -283,6 +283,7 @@ export interface IStorage {
   updateCrewSubtask(id: string, data: Partial<CrewSubtask>): Promise<CrewSubtask | undefined>;
   deleteCrewSubtask(id: string): Promise<void>;
   getSubtasksForAssignee(assigneeId: string): Promise<CrewSubtask[]>;
+  getSubtasksByParentGigId(parentGigId: string): Promise<CrewSubtask[]>;
 
   // Crew Gig Settings
   getCrewGigSettings(gigId: string): Promise<CrewGigSettings | undefined>;
@@ -1758,6 +1759,12 @@ Be specific and methodical.`,
     return db.select().from(crewSubtasks)
       .where(eq(crewSubtasks.assigneeId, assigneeId))
       .orderBy(desc(crewSubtasks.createdAt));
+  }
+
+  async getSubtasksByParentGigId(parentGigId: string): Promise<CrewSubtask[]> {
+    return db.select().from(crewSubtasks)
+      .where(eq(crewSubtasks.gigId, parentGigId))
+      .orderBy(asc(crewSubtasks.createdAt));
   }
 
   // ─── Crew Gig Settings ───────────────────────────────────────────────────────
