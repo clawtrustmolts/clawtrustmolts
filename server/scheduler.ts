@@ -452,6 +452,9 @@ async function processTreasuryPaymentQueue() {
     console.log(`[TreasuryQueue] Processing ${due.length} due payment(s)`);
 
     for (const payment of due) {
+      // Track whether the Circle transfer was submitted before any error occurs.
+      // Must be declared outside the try block to be accessible in catch.
+      let transferCompleted = false;
       try {
         // ── Atomic claim: pending→processing (idempotency guard) ──────────
         const claimed = await storage.claimTreasuryPaymentForProcessing(payment.id);
@@ -482,10 +485,15 @@ async function processTreasuryPaymentQueue() {
           sender.treasurySpentToday = 0;
         }
         const dailyLimit = sender.treasuryDailyLimit ?? 50_000_000;
-        if (sender.treasurySpentToday > dailyLimit) {
-          console.warn(`[TreasuryQueue] Aborting ${payment.id} — daily limit exceeded at execution time`);
-          // Only refund if same day — if new day, counter was just reset to 0 so there's
-          // no reservation in today's counter to refund (would go negative).
+        // ── Effective spend check at execution time ──────────────────────────
+        // Same day: treasurySpentToday already includes this payment's reservation
+        //   → check spentToday > dailyLimit (catches limit-lowering after queue)
+        // New day: counter reset to 0; reservation gone; check payment.amount alone
+        //   → check payment.amount > dailyLimit (catches limit below single payment)
+        const effectiveSpent = isNewDay ? payment.amount : sender.treasurySpentToday;
+        if (effectiveSpent > dailyLimit) {
+          console.warn(`[TreasuryQueue] Aborting ${payment.id} — daily limit exceeded at execution time (effectiveSpent=${effectiveSpent}, limit=${dailyLimit})`);
+          // Refund reservation only if same day (new day already zeroed counter).
           if (!isNewDay) {
             await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
           }
@@ -516,6 +524,7 @@ async function processTreasuryPaymentQueue() {
 
         // Execute transfer
         const transfer = await transferBetweenTreasuryWallets(sender.treasuryWalletId, destAddress, payment.amount);
+        transferCompleted = true;
 
         // Mark executed in queue (transitions from processing→executed)
         await storage.executeTreasuryPayment(payment.id);
@@ -565,6 +574,23 @@ async function processTreasuryPaymentQueue() {
         console.log(`[TreasuryQueue] Executed payment ${payment.id}: ${payment.amount} µUSDC → @${recipient.handle} (tx: ${transfer.transactionId})`);
       } catch (err: any) {
         console.error(`[TreasuryQueue] Failed to execute payment ${payment.id}:`, err.message);
+        if (!transferCompleted) {
+          // Transfer was never submitted — safe to abort and refund reservation.
+          // abortProcessingTreasuryPayment is WHERE status='processing' so it's
+          // a no-op if the payment was never claimed or already finalized.
+          try {
+            await storage.abortProcessingTreasuryPayment(payment.id);
+            // Refund reservation — GREATEST guard in storage prevents negative counter.
+            await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
+          } catch (abortErr: any) {
+            console.error(`[TreasuryQueue] Failed to abort orphaned payment ${payment.id}:`, abortErr.message);
+          }
+        } else {
+          // Transfer was submitted to Circle but DB recording failed.
+          // Do NOT abort — funds already moved on-chain. Payment stays 'processing'
+          // for manual reconciliation. Next scheduler run will skip (already claimed).
+          console.error(`[TreasuryQueue] CRITICAL: Payment ${payment.id} transferred on-chain but DB recording failed — manual reconciliation required`);
+        }
       }
     }
   } catch (err: any) {
