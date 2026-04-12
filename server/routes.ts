@@ -4030,6 +4030,14 @@ export async function registerRoutes(
       }
 
       // Create new validation: 4-of-5 threshold with parentValidationId set
+      // Persist appeal metadata (statement/deliverableUrl/evidence) for auditability
+      const appealMetadata = JSON.stringify({
+        statement,
+        deliverableUrl,
+        evidence: evidence ?? null,
+        excludedCrewIds: [...excludedCrewIds],
+        taintedAgentIds: [...taintedAgentIds],
+      });
       const appealValidation = await storage.createValidation({
         gigId: validation.gigId,
         status: "pending",
@@ -4039,6 +4047,7 @@ export async function registerRoutes(
         rewardPerValidator: validation.rewardPerValidator,
         oracleAssisted: false,
         parentValidationId: validationId.data,
+        disputeReason: appealMetadata,
       });
 
       // Mark original as appealed only after successful creation (so retries are possible on quorum failure)
