@@ -10085,18 +10085,47 @@ export async function registerRoutes(
 
       const updated = await storage.updateCrewSubtask(subtaskId, updateData);
 
-      // Subtask escrow release: when lead approves a subtask with a locked escrow share
+      // Subtask escrow release: when lead approves a subtask with a locked escrow share.
+      // Fund movement is performed first; escrowReleased is only set after the payout succeeds.
       if (isLead && status === "approved" && subtask.escrowLocked && !subtask.escrowReleased && subtask.usdcShare > 0 && subtask.assigneeId) {
         try {
-          await storage.updateCrewSubtask(subtaskId, { escrowReleased: true });
-          // usdcShare is stored in USDC dollars; treasury amounts are in micro-units (× 1_000_000)
+          const assigneeAgent = await storage.getAgent(subtask.assigneeId);
+          let circleTransferId: string | undefined;
+
+          // Attempt real Circle transfer if parent gig's escrow has a wallet and Circle is configured
+          if (isCircleConfigured() && assigneeAgent) {
+            const parentEscrow = await storage.getEscrowByGig(gigId);
+            const destAddress = assigneeAgent.treasuryWalletId
+              ? await getWalletAddress(assigneeAgent.treasuryWalletId).catch(() => null)
+              : null;
+            const sourceAddr = destAddress ?? assigneeAgent.walletAddress;
+            if (parentEscrow?.circleWalletId && sourceAddr) {
+              try {
+                const xfer = await transferUSDC({
+                  sourceWalletId: parentEscrow.circleWalletId,
+                  destinationAddress: sourceAddr,
+                  amount: String(subtask.usdcShare),
+                  chain: gig.chain,
+                });
+                circleTransferId = xfer?.transactionId;
+              } catch (xferErr: any) {
+                console.warn("[Subtask Escrow] Circle transfer unavailable, falling back to treasury credit:", xferErr.message?.slice(0, 100));
+              }
+            }
+          }
+
+          // Record payout in treasury (micro-units) — usdcShare is in USDC dollars (× 1_000_000)
           await storage.createTreasuryTransaction({
             agentId: subtask.assigneeId,
             type: "credit",
             amount: Math.round(subtask.usdcShare * 1_000_000),
             gigId: gigId,
+            txHash: circleTransferId ?? null,
             description: `Subtask payout: ${subtask.title}`,
           });
+
+          // Mark released only after payout record succeeds
+          await storage.updateCrewSubtask(subtaskId, { escrowReleased: true });
           notifyAgent(subtask.assigneeId, "subtask_escrow_released", "Subtask Payment Released", `Your locked share of $${subtask.usdcShare.toFixed(2)} USDC for "${subtask.title}" has been released.`, { gigId }).catch(() => {});
         } catch (e: any) {
           console.error("[Subtask Escrow] Release error for subtask", subtaskId, e.message?.slice(0, 200));
@@ -10270,20 +10299,40 @@ export async function registerRoutes(
       // Enable parallel mode on parent gig settings
       await storage.upsertCrewGigSettings(parentGigId, { parallelModeEnabled: true });
 
-      // Lock sub-escrow for each child gig that has a budget — protects assignees if lead disappears
+      // Lock sub-escrow: create a crewSubtask record for each child gig with escrowLocked=true,
+      // and a locked escrow entry — gives each assignee a verifiable claim even if the lead disappears.
+      const now = new Date();
       for (const child of created) {
+        try {
+          await storage.createCrewSubtask({
+            gigId: parentGigId,
+            crewId: parentGig.crewId!,
+            assigneeId: child.assigneeId || null,
+            title: child.title,
+            description: child.description || null,
+            usdcShare: child.budget,
+            status: child.assigneeId ? "claimed" : "open",
+            submissionText: null,
+            leadFeedback: null,
+            escrowLocked: child.budget > 0,
+            escrowLockedAt: child.budget > 0 ? now : null,
+            escrowReleased: false,
+          });
+        } catch (e: any) {
+          console.error("[Decompose] crewSubtask lock error for child", child.id, e.message?.slice(0, 200));
+        }
         if (child.budget > 0) {
           try {
             await storage.createEscrow({
               gigId: child.id,
               depositorId: parentGig.posterId,
               amount: child.budget,
-              currency: (parentGig.currency as any) || "USDC",
-              chain: (parentGig.chain as any) || "BASE_SEPOLIA",
+              currency: parentGig.currency,
+              chain: parentGig.chain,
               status: "locked",
             });
           } catch (e: any) {
-            console.error("[Decompose] Sub-escrow lock error for child gig", child.id, e.message?.slice(0, 200));
+            console.error("[Decompose] escrow lock error for child gig", child.id, e.message?.slice(0, 200));
           }
         }
       }
