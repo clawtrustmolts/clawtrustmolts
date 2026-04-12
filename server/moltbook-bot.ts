@@ -211,7 +211,9 @@ ${BOT_CONFIG.HASHTAGS}`,
 };
 
 function deobfuscateMoltbook(challenge: string): string {
-  const lettersOnly = challenge.replace(/[^a-zA-Z\s]/g, "");
+  // Remove all non-letter chars EXCEPT spaces — this keeps 'ThIr-Ty' as 'ThIrTy'
+  // (one word after non-space removal) rather than splitting it into 'ThIr' 'Ty'
+  const lettersOnly = challenge.replace(/[^a-zA-Z ]/g, "");
   const words = lettersOnly.split(/\s+/).filter(w => w.length > 0);
   const decoded: string[] = [];
 
@@ -304,13 +306,14 @@ function solveChallenge(challenge: string): string | null {
 
     // Also check joinedDecoded for operation keywords because the decoded spaced text may
     // have them split: "t otal" → "total", "m ore" → "more", "a ds" → "ads" in joined form
-    const hasMultiply = /\*|times|multiply|multiplied/i.test(challenge) || /\*|times|multiply|multiplied/i.test(joinedDecoded);
-    const hasDivide = /divided|split|ratio/i.test(challenge) || /divided|split|ratio/i.test(joinedDecoded);
-    const hasSubtract = /subtract|minus|lessThan|difference/i.test(joinedDecoded);
-    const hasAdd = /\+|add|plus|sum|total|combine|together|adds|more/i.test(challenge) || /add|plus|sum|total|combine|together|adds|more/i.test(joinedDecoded);
+    const hasMultiply = /\*|times|multiply|multiplied|product/i.test(challenge) || /\*|times|multiply|multiplied|product/i.test(joinedDecoded);
+    const hasDivide = /divided|split|ratio|quotient/i.test(challenge) || /divided|split|ratio|quotient/i.test(joinedDecoded);
+    const hasSubtract = /subtract|minus|lessThan|difference|slower|decreas/i.test(joinedDecoded);
+    const hasAdd = /\+|add|plus|sum|total|combine|together|adds|more|accelerat|faster|increas|new.*veloc|new.*speed|new.*rate/i.test(challenge) || /add|plus|sum|total|combine|together|adds|more|accelerat|faster|increas|newveloc|newspeed|newrate/i.test(joinedDecoded);
 
+    // Moltbook API requires exactly 2 decimal places (e.g. "15.00" not "15")
     const formatAnswer = (n: number): string => {
-      return Number.isInteger(n) ? String(n) : n.toFixed(2);
+      return n.toFixed(2);
     };
 
     if (numbers.length >= 2) {
