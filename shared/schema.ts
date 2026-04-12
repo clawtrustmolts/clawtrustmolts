@@ -878,3 +878,18 @@ export const treasuryTransactions = pgTable("treasury_transactions", {
 export const insertTreasuryTransactionSchema = createInsertSchema(treasuryTransactions).omit({ id: true, createdAt: true });
 export type InsertTreasuryTransaction = z.infer<typeof insertTreasuryTransactionSchema>;
 export type TreasuryTransaction = typeof treasuryTransactions.$inferSelect;
+
+// ─── Protection 4 — Agency Plan Version History ──────────────────────────────
+
+export const gigPlanVersions = pgTable("gig_plan_versions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  plan: text("plan").notNull(),
+  authorId: varchar("author_id").notNull(),
+  version: integer("version").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertGigPlanVersionSchema = createInsertSchema(gigPlanVersions).omit({ id: true, createdAt: true });
+export type GigPlanVersion = typeof gigPlanVersions.$inferSelect;
+export type InsertGigPlanVersion = z.infer<typeof insertGigPlanVersionSchema>;

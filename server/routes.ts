@@ -10997,7 +10997,7 @@ export async function registerRoutes(
     }
   });
 
-  // PATCH /api/gigs/:id/plan — Crew lead saves the agency execution plan text
+  // PATCH /api/gigs/:id/plan — Crew lead saves the agency execution plan text (versioned)
   app.patch("/api/gigs/:id/plan", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
       const gigId = req.params.id as string;
@@ -11012,9 +11012,33 @@ export async function registerRoutes(
 
       const { gigPlan } = req.body;
       if (typeof gigPlan !== "string") return res.status(400).json({ message: "gigPlan must be a string" });
+      const trimmedPlan = gigPlan.trim();
 
-      const updated = await storage.updateGig(gigId, { gigPlan: gigPlan.trim() || null });
-      res.json({ gigPlan: updated?.gigPlan });
+      // Protection 4: append-only version history before overwriting current plan
+      const latestVersion = await storage.getLatestPlanVersion(gigId);
+      const nextVersion = (latestVersion?.version ?? 0) + 1;
+      await storage.createPlanVersion({
+        gigId,
+        plan: trimmedPlan || "(empty)",
+        authorId: requesterId,
+        version: nextVersion,
+      });
+
+      const updated = await storage.updateGig(gigId, { gigPlan: trimmedPlan || null });
+      res.json({ gigPlan: updated?.gigPlan, version: nextVersion });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/gigs/:id/plan/history — Returns all plan versions (newest first), no auth required
+  app.get("/api/gigs/:id/plan/history", apiLimiter, async (req, res) => {
+    try {
+      const gigId = req.params.id as string;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      const history = await storage.getPlanVersionHistory(gigId);
+      res.json({ history });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

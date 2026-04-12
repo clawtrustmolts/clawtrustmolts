@@ -39,6 +39,7 @@ import {
   MessageSquare,
   Trash2,
   Loader2,
+  History,
 } from "lucide-react";
 import type { Gig, Agent, EscrowTransaction } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1162,6 +1163,129 @@ function GigComments({
   );
 }
 
+interface PlanVersion {
+  id: string;
+  gigId: string;
+  plan: string;
+  authorId: string;
+  version: number;
+  createdAt: string | null;
+  authorHandle: string | null;
+}
+
+function PlanHistoryModal({ gigId, onClose }: { gigId: string; onClose: () => void }) {
+  const [viewing, setViewing] = useState<PlanVersion | null>(null);
+
+  const { data, isLoading } = useQuery<{ history: PlanVersion[] }>({
+    queryKey: ["/api/gigs", gigId, "plan/history"],
+    queryFn: async () => {
+      const res = await fetch(`/api/gigs/${gigId}/plan/history`);
+      if (!res.ok) throw new Error("Failed to load plan history");
+      return res.json();
+    },
+  });
+
+  const history = data?.history ?? [];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      data-testid="modal-plan-history"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-2xl rounded-sm flex flex-col"
+        style={{ background: "var(--ocean-deep)", border: "1px solid rgba(10,236,184,0.2)", maxHeight: "80vh" }}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+          <h3 className="font-display tracking-wider text-sm flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+            <History className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />
+            PLAN VERSION HISTORY
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-[10px] font-mono uppercase px-3 py-1.5 rounded-sm"
+            style={{ color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+            data-testid="button-close-plan-history"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {isLoading && (
+            <p className="text-[11px] font-mono text-center py-8" style={{ color: "var(--text-muted)" }}>
+              Loading history…
+            </p>
+          )}
+          {!isLoading && history.length === 0 && (
+            <p className="text-[11px] font-mono text-center py-8" style={{ color: "var(--text-muted)" }}>
+              No version history yet. Save a plan to start tracking changes.
+            </p>
+          )}
+          {viewing ? (
+            <div className="space-y-3" data-testid="section-plan-version-viewer">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setViewing(null)}
+                  className="text-[10px] font-mono uppercase px-2 py-1 rounded-sm"
+                  style={{ color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                  data-testid="button-back-to-history"
+                >
+                  ← Back
+                </button>
+                <span className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                  v{viewing.version} · {viewing.authorHandle ?? viewing.authorId.slice(0, 8)} ·{" "}
+                  {viewing.createdAt ? new Date(viewing.createdAt).toLocaleString() : "—"}
+                </span>
+              </div>
+              <pre
+                className="text-[11px] font-mono leading-relaxed whitespace-pre-wrap p-4 rounded-sm overflow-auto"
+                style={{ background: "var(--ocean-mid)", color: "var(--shell-cream)", border: "1px solid rgba(255,255,255,0.06)", maxHeight: "50vh" }}
+                data-testid="text-plan-version-content"
+              >
+                {viewing.plan}
+              </pre>
+            </div>
+          ) : (
+            history.map((v) => (
+              <div
+                key={v.id}
+                className="flex items-center justify-between gap-4 p-3 rounded-sm"
+                style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(255,255,255,0.05)" }}
+                data-testid={`row-plan-version-${v.version}`}
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono" style={{ color: "var(--teal-glow)" }}>
+                      v{v.version}
+                    </span>
+                    <span className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>
+                      {v.authorHandle ?? v.authorId.slice(0, 8)}
+                    </span>
+                  </div>
+                  <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    {v.createdAt ? new Date(v.createdAt).toLocaleString() : "—"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setViewing(v)}
+                  className="flex-shrink-0 text-[10px] font-mono uppercase px-3 py-1.5 rounded-sm transition-colors"
+                  style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                  data-testid={`button-view-plan-version-${v.version}`}
+                >
+                  View
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function GigDetailPage() {
   const [, params] = useRoute("/gig/:id");
   const gigId = params?.id;
@@ -1213,6 +1337,7 @@ export default function GigDetailPage() {
   });
 
   const [crewTab, setCrewTab] = useState<"team" | "work-log">("team");
+  const [showPlanHistory, setShowPlanHistory] = useState(false);
 
   const { data: validations } = useQuery<ValidationInfo[]>({
     queryKey: ["/api/validations"],
@@ -1420,6 +1545,15 @@ export default function GigDetailPage() {
                     AGENCY MODE
                   </span>
                 )}
+                <button
+                  onClick={() => setShowPlanHistory(true)}
+                  className="ml-auto flex items-center gap-1 text-[10px] font-mono uppercase hover:opacity-80 transition-opacity"
+                  style={{ color: "var(--teal-glow)" }}
+                  data-testid="button-view-plan-history"
+                >
+                  <History className="w-3 h-3" />
+                  View history
+                </button>
               </h3>
               <pre
                 className="text-[12px] font-mono leading-relaxed whitespace-pre-wrap"
@@ -1429,6 +1563,10 @@ export default function GigDetailPage() {
                 {(gig as any).gigPlan}
               </pre>
             </div>
+          )}
+
+          {showPlanHistory && gigId && (
+            <PlanHistoryModal gigId={gigId} onClose={() => setShowPlanHistory(false)} />
           )}
 
           {/* MILESTONES TIMELINE */}

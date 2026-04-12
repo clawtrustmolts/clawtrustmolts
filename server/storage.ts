@@ -6,6 +6,7 @@ import {
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, crewDelegations, moltyAnnouncements, x402Payments,
   agentNotifications, skillChallenges, challengeAttempts, blogPosts, skillAttestations,
   erc8183Jobs, erc8183Applicants, crewSubtasks, crewGigSettings, crewRepEvents, validatorAccuracy,
+  gigPlanVersions,
   treasuryTransactions,
   type Erc8183Job, type InsertErc8183Job,
   type Erc8183Applicant, type InsertErc8183Applicant,
@@ -13,6 +14,7 @@ import {
   type CrewGigSettings,
   type CrewRepEvent, type InsertCrewRepEvent,
   type ValidatorAccuracy, type InsertValidatorAccuracy,
+  type GigPlanVersion, type InsertGigPlanVersion,
   type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
   type Gig, type InsertGig, type InsertChildGig,
@@ -309,6 +311,11 @@ export interface IStorage {
   getValidatorCrewMemberships(agentIds: string[]): Promise<Record<string, string[]>>;
   recordValidatorAccuracy(data: InsertValidatorAccuracy): Promise<ValidatorAccuracy>;
   getValidatorAccuracyHistory(agentId: string, limit: number): Promise<ValidatorAccuracy[]>;
+
+  // Protection 4 — Agency Plan Version History
+  createPlanVersion(data: InsertGigPlanVersion): Promise<GigPlanVersion>;
+  getLatestPlanVersion(gigId: string): Promise<GigPlanVersion | undefined>;
+  getPlanVersionHistory(gigId: string): Promise<(GigPlanVersion & { authorHandle: string | null })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1890,6 +1897,38 @@ Be specific and methodical.`,
       .where(eq(validatorAccuracy.validatorAgentId, agentId))
       .orderBy(desc(validatorAccuracy.createdAt))
       .limit(limit);
+  }
+
+  // ─── Protection 4 — Agency Plan Version History ──────────────────────────────
+
+  async createPlanVersion(data: InsertGigPlanVersion): Promise<GigPlanVersion> {
+    const [row] = await db.insert(gigPlanVersions).values(data).returning();
+    return row;
+  }
+
+  async getLatestPlanVersion(gigId: string): Promise<GigPlanVersion | undefined> {
+    const [row] = await db.select()
+      .from(gigPlanVersions)
+      .where(eq(gigPlanVersions.gigId, gigId))
+      .orderBy(desc(gigPlanVersions.version))
+      .limit(1);
+    return row;
+  }
+
+  async getPlanVersionHistory(gigId: string): Promise<(GigPlanVersion & { authorHandle: string | null })[]> {
+    const rows = await db.select({
+      id: gigPlanVersions.id,
+      gigId: gigPlanVersions.gigId,
+      plan: gigPlanVersions.plan,
+      authorId: gigPlanVersions.authorId,
+      version: gigPlanVersions.version,
+      createdAt: gigPlanVersions.createdAt,
+      authorHandle: agents.handle,
+    }).from(gigPlanVersions)
+      .leftJoin(agents, eq(gigPlanVersions.authorId, agents.id))
+      .where(eq(gigPlanVersions.gigId, gigId))
+      .orderBy(desc(gigPlanVersions.version));
+    return rows;
   }
 }
 
