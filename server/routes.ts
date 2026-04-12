@@ -1550,6 +1550,33 @@ export async function registerRoutes(
 
       notifyAgent(assigneeId, "gig_assigned", "Gig Assigned", `You've been selected for: ${gig.title}`, { gigId: gigId.data }).catch(() => {});
 
+      // Agency mode: auto-create subtasks from milestones when gig is assigned
+      if (gig.agencyMode && gig.crewId && gig.milestones && gig.milestones.length > 0) {
+        (async () => {
+          try {
+            const existing = await storage.getCrewSubtasks(gigId.data, gig.crewId!);
+            if (existing.length === 0) {
+              const perTask = Math.round((gig.budget / gig.milestones.length) * 100) / 100;
+              for (let i = 0; i < gig.milestones.length; i++) {
+                await storage.createCrewSubtask({
+                  gigId: gigId.data,
+                  crewId: gig.crewId!,
+                  title: gig.milestones[i],
+                  description: null,
+                  assigneeId: null,
+                  requiredSkill: null,
+                  usdcShare: perTask,
+                  status: "open",
+                });
+              }
+              console.log(`[Agency] Auto-created ${gig.milestones.length} subtasks for gig ${gigId.data}`);
+            }
+          } catch (e: any) {
+            console.error("[Agency] Auto-subtask creation error:", e.message);
+          }
+        })();
+      }
+
       res.json({ ...updated, bondLocked: gig.bondRequired > 0, bondAmount: gig.bondRequired });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -6491,6 +6518,14 @@ export async function registerRoutes(
       const content = (req.body.content || "").trim();
       if (!content) return res.status(400).json({ message: "Comment content required" });
       if (content.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
+
+      const isPoster = gig.posterId === agentId;
+      const isAssignee = gig.assigneeId === agentId;
+      const hasApplied = !!(await storage.getGigApplicant(gigId.data, agentId));
+      if (!isPoster && !isAssignee && !hasApplied) {
+        return res.status(403).json({ message: "Only the gig poster, assignee, or applicants can comment" });
+      }
+
       const comment = await storage.createGigComment({ gigId: gigId.data, agentId, content });
       res.status(201).json(comment);
     } catch (err: any) {
@@ -6647,6 +6682,33 @@ export async function registerRoutes(
       });
 
       await storage.updateAgent(posterId, { lastHeartbeat: new Date() });
+
+      // Agency mode: auto-create subtasks from milestones on crew assignment
+      if (gig.agencyMode && gig.crewId && gig.milestones && gig.milestones.length > 0) {
+        (async () => {
+          try {
+            const existing = await storage.getCrewSubtasks(gigId.data, gig.crewId!);
+            if (existing.length === 0) {
+              const perTask = Math.round((gig.budget / gig.milestones.length) * 100) / 100;
+              for (let i = 0; i < gig.milestones.length; i++) {
+                await storage.createCrewSubtask({
+                  gigId: gigId.data,
+                  crewId: gig.crewId!,
+                  title: gig.milestones[i],
+                  description: null,
+                  assigneeId: null,
+                  requiredSkill: null,
+                  usdcShare: perTask,
+                  status: "open",
+                });
+              }
+              console.log(`[Agency] Auto-created ${gig.milestones.length} subtasks via accept-applicant for gig ${gigId.data}`);
+            }
+          } catch (e: any) {
+            console.error("[Agency] Auto-subtask creation (accept) error:", e.message);
+          }
+        })();
+      }
 
       res.json({
         assigned: true,

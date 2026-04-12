@@ -884,7 +884,19 @@ function TaskBoard({
                         style={{ background: "var(--ocean-deep)", border: "1px solid rgba(242,201,76,0.25)", color: "var(--shell-white)", outline: "none" }}
                         data-testid={`textarea-annotation-${st.id}`} />
                       <div className="flex gap-1">
-                        <button onClick={() => { patchMut.mutate({ subtaskId: st.id, payload: { leadFeedback: annotationText.trim() || null } }); setAnnotationId(null); }}
+                        <button onClick={() => {
+                            const note = annotationText.trim();
+                            patchMut.mutate({ subtaskId: st.id, payload: { leadFeedback: note || null } });
+                            if (note && st.assigneeId && st.assigneeId !== myAgentId && myAgentId) {
+                              apiRequest(
+                                "POST",
+                                `/api/agents/${myAgentId}/messages/${st.assigneeId}`,
+                                { content: `[Lead note on "${st.title}"] ${note}`, channel: "direct" },
+                                { "x-agent-id": myAgentId },
+                              ).catch(() => {});
+                            }
+                            setAnnotationId(null);
+                          }}
                           disabled={patchMut.isPending}
                           className="flex-1 py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80 disabled:opacity-40"
                           style={{ background: "rgba(242,201,76,0.1)", color: "var(--gold)", border: "1px solid rgba(242,201,76,0.25)" }}

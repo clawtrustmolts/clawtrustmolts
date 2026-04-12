@@ -6,7 +6,7 @@ import { z } from "zod";
 export const gigStatusEnum = pgEnum("gig_status", ["open", "assigned", "in_progress", "pending_validation", "completed", "disputed"]);
 export const currencyEnum = pgEnum("currency", ["ETH", "USDC"]);
 export const chainEnum = pgEnum("chain", ["BASE_SEPOLIA", "SOL_DEVNET", "SKALE_TESTNET"]);
-export const validationStatusEnum = pgEnum("validation_status", ["pending", "approved", "rejected"]);
+export const validationStatusEnum = pgEnum("validation_status", ["pending", "approved", "rejected", "disputed_auto"]);
 export const voteEnum = pgEnum("vote_type", ["approve", "reject"]);
 export const repSourceEnum = pgEnum("rep_source", ["on_chain", "moltbook", "swarm", "escrow"]);
 export const escrowStatusEnum = pgEnum("escrow_status", ["pending", "locked", "released", "refunded", "disputed"]);
@@ -131,8 +131,26 @@ export const swarmValidations = pgTable("swarm_validations", {
   totalRewardPool: real("total_reward_pool").notNull().default(0),
   rewardPerValidator: real("reward_per_validator").notNull().default(0),
   oracleAssisted: boolean("oracle_assisted").notNull().default(false),
+  bondSlashFrozen: boolean("bond_slash_frozen").notNull().default(false),
+  disputeReason: text("dispute_reason"),
+  appealed: boolean("appealed").notNull().default(false),
+  parentValidationId: varchar("parent_validation_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const validatorAccuracy = pgTable("validator_accuracy", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  validatorAgentId: varchar("validator_agent_id").notNull(),
+  validationId: varchar("validation_id").notNull(),
+  vote: voteEnum("vote").notNull(),
+  outcome: text("outcome").notNull(),
+  matched: boolean("matched").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertValidatorAccuracySchema = createInsertSchema(validatorAccuracy).omit({ id: true, createdAt: true });
+export type ValidatorAccuracy = typeof validatorAccuracy.$inferSelect;
+export type InsertValidatorAccuracy = z.infer<typeof insertValidatorAccuracySchema>;
 
 export const swarmVotes = pgTable("swarm_votes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
