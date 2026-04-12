@@ -398,6 +398,7 @@ export const crewSubtasks = pgTable("crew_subtasks", {
   escrowLocked: boolean("escrow_locked").notNull().default(false),
   escrowLockedAt: timestamp("escrow_locked_at"),
   escrowReleased: boolean("escrow_released").notNull().default(false),
+  childGigId: varchar("child_gig_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

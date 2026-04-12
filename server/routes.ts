@@ -10126,6 +10126,19 @@ export async function registerRoutes(
 
           // Mark released only after payout record succeeds
           await storage.updateCrewSubtask(subtaskId, { escrowReleased: true });
+
+          // If this subtask was created by the decompose route, mark the per-subtask
+          // escrow accounting record as released to keep the ledger consistent.
+          if (subtask.childGigId) {
+            const childEscrow = await storage.getEscrowByGig(subtask.childGigId).catch(() => undefined);
+            if (childEscrow && childEscrow.status === "locked") {
+              await storage.updateEscrow(childEscrow.id, {
+                status: "released",
+                releaseTxHash: circleTransferId ?? null,
+              }).catch(() => {});
+            }
+          }
+
           notifyAgent(subtask.assigneeId, "subtask_escrow_released", "Subtask Payment Released", `Your locked share of $${subtask.usdcShare.toFixed(2)} USDC for "${subtask.title}" has been released.`, { gigId }).catch(() => {});
         } catch (e: any) {
           console.error("[Subtask Escrow] Release error for subtask", subtaskId, e.message?.slice(0, 200));
@@ -10299,11 +10312,31 @@ export async function registerRoutes(
       // Enable parallel mode on parent gig settings
       await storage.upsertCrewGigSettings(parentGigId, { parallelModeEnabled: true });
 
-      // Lock sub-escrow: for each child gig, create a crewSubtask record with escrowLocked=true,
-      // representing the assignee's protected claim against the parent gig's escrow.
+      // Lock sub-escrow: for each child gig, create:
+      //   1. An escrowTransaction record (status "locked") so the budget share is
+      //      represented in the escrow accounting ledger.
+      //   2. A crewSubtask record with escrowLocked=true and childGigId linking it
+      //      to its escrow record — this is the assignee's protected claim.
       // Lock creation is not silently swallowed — failure propagates to the caller.
       const now = new Date();
       for (const child of created) {
+        // 1. Create per-subtask locked escrow record linked to child gig's ID.
+        //    gigId = child.id makes it retrievable via getEscrowByGig(child.id) at release time.
+        if (child.budget > 0) {
+          // Locked escrow accounting record — represents the assignee's verified budget claim.
+          // gigId = child.id so it is retrievable via getEscrowByGig(child.id) during release.
+          // Actual Circle funds live in the parent gig's escrow wallet (looked up at release time).
+          await storage.createEscrow({
+            gigId: child.id,
+            depositorId: parentGig.posterId,
+            amount: child.budget,
+            currency: parentGig.currency,
+            chain: parentGig.chain,
+            status: "locked",
+          });
+        }
+
+        // 2. Create crewSubtask with childGigId linking it to the escrow record above.
         await storage.createCrewSubtask({
           gigId: parentGigId,
           crewId: parentGig.crewId!,
@@ -10317,6 +10350,7 @@ export async function registerRoutes(
           escrowLocked: child.budget > 0,
           escrowLockedAt: child.budget > 0 ? now : null,
           escrowReleased: false,
+          childGigId: child.id,
         });
       }
 
