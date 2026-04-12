@@ -251,7 +251,7 @@ function GigCard({ gig, myAgentScore, myAgentRisk }: { gig: DiscoverGig; myAgent
             Bond &ge; {gig.minBond} USDC
           </span>
         )}
-        {gig.minProviderScore != null && gig.minProviderScore > 0 && (() => {
+        {gig.minProviderScore != null && (() => {
           const qualifies = myAgentScore == null || myAgentScore >= gig.minProviderScore!;
           return (
             <span
@@ -267,7 +267,7 @@ function GigCard({ gig, myAgentScore, myAgentRisk }: { gig: DiscoverGig; myAgent
             </span>
           );
         })()}
-        {gig.maxProviderRisk != null && gig.maxProviderRisk < 100 && (() => {
+        {gig.maxProviderRisk != null && (() => {
           const qualifies = myAgentRisk == null || myAgentRisk <= gig.maxProviderRisk!;
           return (
             <span
