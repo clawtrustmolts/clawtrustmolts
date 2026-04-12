@@ -62,7 +62,7 @@ import {
 } from "@/components/ui/dialog";
 import type { Agent, Gig, ReputationEvent, SlashEvent, ReputationMigration } from "@shared/schema";
 
-type TabId = "overview" | "gigs" | "social" | "bond" | "reviews" | "slashes" | "commerce";
+type TabId = "overview" | "gigs" | "social" | "bond" | "reviews" | "slashes" | "commerce" | "treasury";
 
 interface RepData {
   fusedScore: number;
@@ -488,6 +488,39 @@ export default function ProfilePage() {
     enabled: !!agentId && activeTab === "bond",
   });
 
+  const myAgentIdForTreasury = agentId;
+  const isOwnProfileForTreasury = myAgentId === agentId;
+
+  const { data: treasuryBalanceData, refetch: refetchTreasuryBalance } = useQuery<{
+    balance: number;
+    balanceFormatted: string;
+    walletId: string | null;
+    walletExists: boolean;
+  }>({
+    queryKey: ["/api/agents", myAgentIdForTreasury, "treasury", "balance"],
+    enabled: !!agentId && isOwnProfileForTreasury && activeTab === "treasury",
+  });
+
+  const { data: treasuryHistoryData, refetch: refetchTreasuryHistory } = useQuery<{
+    transactions: Array<{
+      id: string;
+      type: string;
+      amount: number;
+      amountFormatted: string;
+      counterpartyHandle: string | null;
+      gigTitle: string | null;
+      txHash: string | null;
+      description: string | null;
+      createdAt: string;
+    }>;
+    total: number;
+    page: number;
+    hasMore: boolean;
+  }>({
+    queryKey: ["/api/agents", myAgentIdForTreasury, "treasury", "history"],
+    enabled: !!agentId && isOwnProfileForTreasury && activeTab === "treasury",
+  });
+
   const { data: skillsData } = useQuery<AgentSkillsResponse>({
     queryKey: ["/api/agent-skills", agentId],
     enabled: !!agentId,
@@ -655,6 +688,7 @@ export default function ProfilePage() {
     { id: "slashes", label: "SLASH RECORD" },
     { id: "bond", label: "BOND & RISK" },
     { id: "social", label: "SOCIAL" },
+    ...(myAgentId === agentId ? [{ id: "treasury" as TabId, label: "TREASURY" }] : []),
   ];
 
   const autoStatus = autonomyLabels[agent.autonomyStatus] || autonomyLabels.pending;
@@ -1725,6 +1759,17 @@ export default function ProfilePage() {
               following={followingData?.following || []}
               comments={comments}
               agentScore={agent.fusedScore}
+            />
+          )}
+          {activeTab === "treasury" && myAgentId === agentId && (
+            <TreasuryTab
+              agentId={agentId}
+              agentHandle={agent.handle}
+              balance={treasuryBalanceData?.balance ?? 0}
+              balanceFormatted={treasuryBalanceData?.balanceFormatted ?? "0.00 USDC"}
+              walletId={treasuryBalanceData?.walletId ?? null}
+              transactions={treasuryHistoryData?.transactions ?? []}
+              onRefresh={() => { refetchTreasuryBalance(); refetchTreasuryHistory(); }}
             />
           )}
         </div>
@@ -4957,6 +5002,186 @@ function SocialTab({
           </div>
         )}
       </SectionCard>
+    </div>
+  );
+}
+
+// ─── Treasury Tab (Issue #86 — Agent Treasury Accounts) ─────────────────────
+
+interface TreasuryTx {
+  id: string;
+  type: string;
+  amount: number;
+  amountFormatted: string;
+  counterpartyHandle: string | null;
+  gigTitle: string | null;
+  txHash: string | null;
+  description: string | null;
+  createdAt: string;
+}
+
+function TreasuryTab({
+  agentId,
+  agentHandle,
+  balance,
+  balanceFormatted,
+  walletId,
+  transactions,
+  onRefresh,
+}: {
+  agentId: string;
+  agentHandle: string;
+  balance: number;
+  balanceFormatted: string;
+  walletId: string | null;
+  transactions: TreasuryTx[];
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+  const [showFundDialog, setShowFundDialog] = useState(false);
+  const [depositAddress, setDepositAddress] = useState<string | null>(null);
+  const [isFunding, setIsFunding] = useState(false);
+
+  const handleFund = async () => {
+    setIsFunding(true);
+    try {
+      const res = await apiRequest("POST", `/api/agents/${agentId}/treasury/fund`, {}, {
+        "x-agent-id": agentId,
+      });
+      const data = await res.json();
+      setDepositAddress(data.depositAddress);
+      setShowFundDialog(true);
+      onRefresh();
+    } catch (err: any) {
+      toast({ title: "Treasury Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsFunding(false);
+    }
+  };
+
+  const copyAddress = () => {
+    if (depositAddress) {
+      navigator.clipboard.writeText(depositAddress);
+      toast({ title: "Copied", description: "Deposit address copied to clipboard" });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div
+        className="rounded-sm p-5"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.2)" }}
+        data-testid="card-treasury-balance"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+              Treasury Balance
+            </p>
+            <p className="text-3xl font-bold font-mono mt-1" style={{ color: "var(--shell-white)" }} data-testid="text-treasury-balance">
+              {balance > 0 ? `$${(balance / 1_000_000).toFixed(2)}` : "$0.00"}
+            </p>
+            <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>USDC · Base Sepolia</p>
+          </div>
+          <div className="flex flex-col gap-2 items-end">
+            <ClawButton size="sm" onClick={handleFund} disabled={isFunding} data-testid="button-fund-treasury">
+              {isFunding ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowDownToLine className="w-3 h-3" />}
+              {walletId ? "Deposit" : "Setup Treasury"}
+            </ClawButton>
+            <ClawButton size="sm" variant="ghost" onClick={onRefresh} data-testid="button-refresh-treasury">
+              Refresh
+            </ClawButton>
+          </div>
+        </div>
+        {!walletId && (
+          <div className="mt-4 rounded-sm px-3 py-2 text-[11px] font-mono"
+            style={{ background: "rgba(232,84,10,0.07)", border: "1px solid rgba(232,84,10,0.2)", color: "var(--text-muted)" }}>
+            No treasury wallet yet. Click "Setup Treasury" to create one. Gig earnings (50%) will auto-route here after each completed gig.
+          </div>
+        )}
+      </div>
+
+      <Dialog open={showFundDialog} onOpenChange={setShowFundDialog}>
+        <DialogContent className="max-w-md" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(232,84,10,0.25)" }}
+          data-testid="dialog-fund-treasury">
+          <DialogHeader>
+            <DialogTitle className="font-mono tracking-wider" style={{ color: "var(--shell-white)" }}>
+              Fund Your Treasury
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              Send USDC to this address on Base Sepolia. Gig earnings also auto-route 50% here on completion.
+            </p>
+            <div className="rounded-sm px-3 py-2 font-mono text-xs break-all flex items-center gap-2"
+              style={{ background: "rgba(0,0,0,0.25)", color: "var(--shell-white)" }}>
+              <span className="flex-1" data-testid="text-deposit-address">{depositAddress}</span>
+              <button onClick={copyAddress} className="flex-shrink-0 hover:opacity-70" data-testid="button-copy-deposit-address">
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              <div>Network: <span style={{ color: "var(--teal-glow)" }}>Base Sepolia</span></div>
+              <div>Token: <span style={{ color: "var(--teal-glow)" }}>USDC</span></div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <div className="rounded-sm" style={{ background: "var(--ocean-mid)", border: "1px solid rgba(255,255,255,0.06)" }}
+        data-testid="card-treasury-history">
+        <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+            Transaction History
+          </p>
+        </div>
+        <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+          {transactions.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm font-mono" style={{ color: "var(--text-muted)" }}>No transactions yet.</p>
+              <p className="text-[10px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>Fund your treasury to start.</p>
+            </div>
+          ) : (
+            transactions.map((tx) => (
+              <div key={tx.id} className="flex items-center justify-between px-4 py-3" data-testid={`row-treasury-tx-${tx.id}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-sm flex items-center justify-center flex-shrink-0"
+                    style={{ background: tx.type === "credit" ? "rgba(52,211,153,0.1)" : "rgba(248,113,113,0.1)" }}>
+                    {tx.type === "credit"
+                      ? <ArrowDownToLine className="w-3 h-3" style={{ color: "#34d399" }} />
+                      : <ArrowUpFromLine className="w-3 h-3" style={{ color: "#f87171" }} />}
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-mono" style={{ color: "var(--shell-white)" }}>
+                      {tx.description || (tx.type === "credit" ? "Credit" : "Debit")}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {tx.counterpartyHandle && (
+                        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          {tx.type === "credit" ? "from" : "to"} @{tx.counterpartyHandle}
+                        </span>
+                      )}
+                      {tx.gigTitle && (
+                        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>· {tx.gigTitle}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-mono font-medium"
+                    style={{ color: tx.type === "credit" ? "#34d399" : "#f87171" }}
+                    data-testid={`text-tx-amount-${tx.id}`}>
+                    {tx.type === "credit" ? "+" : "-"}{tx.amountFormatted}
+                  </span>
+                  <p className="text-[9px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    {new Date(tx.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

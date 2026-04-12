@@ -369,3 +369,69 @@ export const SUPPORTED_CHAINS = [
   { id: "BASE_SEPOLIA", name: "Base Sepolia", type: "EVM", circleChain: "ETH-SEPOLIA" },
   { id: "SOL_DEVNET", name: "Solana Devnet", type: "SVM", circleChain: "SOL-DEVNET" },
 ] as const;
+
+// ─── Agent Treasury Wallet Utilities (Issue #86) ─────────────────────────────
+
+const USDC_ADDRESS_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+
+export async function createAgentTreasury(agentId: string): Promise<{
+  walletId: string;
+  depositAddress: string;
+  blockchain: string;
+}> {
+  const client = await getClient();
+  const wsId = await ensureWalletSet();
+  const blockchain = "ETH-SEPOLIA";
+
+  try {
+    const response = await client.createWallets({
+      accountType: "EOA",
+      blockchains: [blockchain as any],
+      count: 1,
+      walletSetId: wsId,
+      metadata: [{ name: `ClawTrust Treasury — ${agentId}`, refId: `treasury:${agentId}` }] as any,
+    });
+    const wallet = response.data?.wallets?.[0];
+    if (!wallet) throw new Error("No wallet returned from Circle");
+    console.log(`[Treasury] Created treasury wallet for agent ${agentId}: ${wallet.address}`);
+    return { walletId: wallet.id!, depositAddress: wallet.address!, blockchain };
+  } catch (err: any) {
+    console.error(`[Treasury] Failed to create treasury wallet for ${agentId}:`, err.message);
+    throw new Error(`Failed to create treasury wallet: ${err.message}`);
+  }
+}
+
+export async function getTreasuryBalance(walletId: string): Promise<{
+  balance: number;
+  balanceFormatted: string;
+  walletExists: boolean;
+}> {
+  try {
+    const { balances } = await getWalletBalance(walletId);
+    const usdcEntry = balances.find(b => b.token === "USDC");
+    const rawBalance = parseFloat(usdcEntry?.amount || "0");
+    const balanceMicro = Math.round(rawBalance * 1_000_000);
+    return {
+      balance: balanceMicro,
+      balanceFormatted: `${rawBalance.toFixed(2)} USDC`,
+      walletExists: true,
+    };
+  } catch {
+    return { balance: 0, balanceFormatted: "0.00 USDC", walletExists: false };
+  }
+}
+
+export async function transferBetweenTreasuryWallets(
+  fromWalletId: string,
+  toAddress: string,
+  amountMicro: number,
+  chain = "BASE_SEPOLIA"
+): Promise<{ transactionId: string; status: string }> {
+  const amountUsdc = (amountMicro / 1_000_000).toFixed(6);
+  return transferUSDC({
+    sourceWalletId: fromWalletId,
+    destinationAddress: toAddress,
+    amount: amountUsdc,
+    chain,
+  });
+}

@@ -6,6 +6,7 @@ import {
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, crewDelegations, moltyAnnouncements, x402Payments,
   agentNotifications, skillChallenges, challengeAttempts, blogPosts, skillAttestations,
   erc8183Jobs, erc8183Applicants, crewSubtasks, crewGigSettings,
+  treasuryTransactions,
   type Erc8183Job, type InsertErc8183Job,
   type Erc8183Applicant, type InsertErc8183Applicant,
   type CrewSubtask, type InsertCrewSubtask,
@@ -47,6 +48,7 @@ import {
   type MoltDomain, type InsertMoltDomain,
   blockchainActionQueue,
   type BlockchainAction, type InsertBlockchainAction,
+  type TreasuryTransaction, type InsertTreasuryTransaction,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -284,6 +286,12 @@ export interface IStorage {
   // Child Gig Graph (Agency Mode v2 — decomposed parent→child gigs)
   getChildGigs(parentGigId: string): Promise<Gig[]>;
   getGigWithChildren(gigId: string): Promise<{ gig: Gig; children: Gig[] } | undefined>;
+
+  // ─── Agent Treasury ─────────────────────────────────────────────────────────
+  createTreasuryTransaction(data: InsertTreasuryTransaction): Promise<TreasuryTransaction>;
+  getTreasuryTransactions(agentId: string, page?: number, limit?: number): Promise<{ transactions: TreasuryTransaction[]; total: number }>;
+  updateAgentTreasuryWallet(agentId: string, walletId: string): Promise<void>;
+  updateTreasuryBalance(agentId: string, delta: number, mode: "add" | "set"): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1764,6 +1772,46 @@ Be specific and methodical.`,
       .where(eq(gigs.parentGigId, gigId))
       .orderBy(asc(gigs.subtaskIndex));
     return { gig, children };
+  }
+
+  // ─── Agent Treasury (Issue #86) ──────────────────────────────────────────────
+
+  async createTreasuryTransaction(data: InsertTreasuryTransaction): Promise<TreasuryTransaction> {
+    const [tx] = await db.insert(treasuryTransactions).values(data).returning();
+    return tx;
+  }
+
+  async getTreasuryTransactions(agentId: string, page = 1, limit = 20): Promise<{ transactions: TreasuryTransaction[]; total: number }> {
+    const offset = (page - 1) * limit;
+    const [{ value: totalCount }] = await db
+      .select({ value: count() })
+      .from(treasuryTransactions)
+      .where(eq(treasuryTransactions.agentId, agentId));
+    const rows = await db.select()
+      .from(treasuryTransactions)
+      .where(eq(treasuryTransactions.agentId, agentId))
+      .orderBy(desc(treasuryTransactions.createdAt))
+      .limit(limit)
+      .offset(offset);
+    return { transactions: rows, total: Number(totalCount) };
+  }
+
+  async updateAgentTreasuryWallet(agentId: string, walletId: string): Promise<void> {
+    await db.update(agents)
+      .set({ treasuryWalletId: walletId })
+      .where(eq(agents.id, agentId));
+  }
+
+  async updateTreasuryBalance(agentId: string, delta: number, mode: "add" | "set"): Promise<void> {
+    if (mode === "set") {
+      await db.update(agents)
+        .set({ treasuryBalance: delta })
+        .where(eq(agents.id, agentId));
+    } else {
+      await db.update(agents)
+        .set({ treasuryBalance: sql`COALESCE(${agents.treasuryBalance}, 0) + ${delta}` })
+        .where(eq(agents.id, agentId));
+    }
   }
 }
 

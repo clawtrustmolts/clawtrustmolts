@@ -86,6 +86,10 @@ import {
   getEntitySecret,
   circleHealthCheck,
   registerEntitySecret,
+  getWalletAddress,
+  createAgentTreasury,
+  getTreasuryBalance,
+  transferBetweenTreasuryWallets,
 } from "./circle-wallet";
 
 const escrowCircuitBreaker = {
@@ -1626,18 +1630,23 @@ export async function registerRoutes(
       const eligible = scorePasses && riskPasses;
 
       const reasons: string[] = [];
-      if (!scorePasses) reasons.push(`fusedScore too low (${fusedScore.toFixed(1)} < ${minScore})`);
-      if (!riskPasses) reasons.push(`riskIndex too high (${riskIndex.toFixed(1)} > ${maxRisk})`);
+      if (!scorePasses) reasons.push(`FusedScore ${fusedScore.toFixed(1)} below minimum ${minScore}`);
+      if (!riskPasses) reasons.push(`Risk index ${riskIndex.toFixed(1)} exceeds maximum ${maxRisk}`);
 
       const tierNum = fusedScore >= 90 ? 4 : fusedScore >= 75 ? 3 : fusedScore >= 55 ? 2 : fusedScore >= 35 ? 1 : 0;
       const tierNames = ["Hatchling", "Bronze Pinch", "Silver Molt", "Gold Shell", "Diamond Claw"];
       const tierName = tierNames[tierNum];
 
-      const riskLevel = riskIndex >= 70 ? "high" : riskIndex >= 40 ? "medium" : "low";
+      // ERC-8004 spec riskLevel mapping: 0-25=low, 26-60=medium, 61-100=high
+      const riskLevel = riskIndex > 60 ? "high" : riskIndex > 25 ? "medium" : "low";
 
       const bondStatus = agent.bondTier ?? "UNBONDED";
 
-      const passportUrl = `https://clawtrust.org/profile/${agent.id}`;
+      // passportUrl uses handle, not internal UUID (ERC-8004 spec)
+      const passportUrl = `https://clawtrust.org/profile/${agent.handle}`;
+
+      // Determine agent's native chain for cross-chain awareness
+      const agentChain = (agent.homeChain || "BASE_SEPOLIA").toLowerCase().replace("_", "-");
 
       storage.createX402Payment({
         endpoint: "/api/reputation/check-eligibility",
@@ -1654,15 +1663,18 @@ export async function registerRoutes(
 
       res.json({
         eligible,
+        wallet: agent.walletAddress,
         fusedScore,
         tier: tierName,
         riskIndex,
         riskLevel,
         bondStatus,
-        reasons: eligible ? [] : reasons,
+        chain: agentChain,
+        reasons,
         checkedAt: new Date().toISOString(),
         standard: "ERC-8004",
         passportUrl,
+        erc8004TokenId: agent.erc8004TokenId ?? null,
       });
     } catch (err: any) {
       res.status(500).json({
@@ -2736,12 +2748,53 @@ export async function registerRoutes(
               ? assigneeForCircle.solanaAddress || assigneeForCircle.walletAddress
               : assigneeForCircle.walletAddress;
             try {
-              circleTransfer = await transferUSDC({
-                sourceWalletId: escrow.circleWalletId,
-                destinationAddress: destAddress,
-                amount: netPayout.toString(),
-                chain: escrow.chain || "BASE_SEPOLIA",
-              });
+              // Treasury 50/50 split: if assignee has treasury wallet and chain is EVM, split payout
+              const hasTreasury = !!assigneeForCircle.treasuryWalletId && escrow.chain !== "SOL_DEVNET";
+              if (hasTreasury) {
+                const netPayoutMicro = Math.round(netPayout * 1_000_000);
+                const treasuryMicro = Math.floor(netPayoutMicro * 0.5);
+                const externalMicro = netPayoutMicro - treasuryMicro;
+                const externalAmt = (externalMicro / 1_000_000).toFixed(6);
+                const treasuryAmt = (treasuryMicro / 1_000_000).toFixed(6);
+
+                // Transfer external portion
+                circleTransfer = await transferUSDC({
+                  sourceWalletId: escrow.circleWalletId,
+                  destinationAddress: destAddress,
+                  amount: externalAmt,
+                  chain: escrow.chain || "BASE_SEPOLIA",
+                });
+
+                // Transfer treasury portion (non-blocking — don't fail release if treasury transfer fails)
+                const treasuryWalletAddr = await getWalletAddress(assigneeForCircle.treasuryWalletId!).catch(() => null);
+                if (treasuryWalletAddr) {
+                  transferUSDC({
+                    sourceWalletId: escrow.circleWalletId,
+                    destinationAddress: treasuryWalletAddr,
+                    amount: treasuryAmt,
+                    chain: escrow.chain || "BASE_SEPOLIA",
+                  }).then(() => {
+                    storage.createTreasuryTransaction({
+                      agentId: gig.assigneeId!,
+                      type: "credit",
+                      amount: treasuryMicro,
+                      gigId,
+                      description: `50% gig earnings: ${gig.title}`,
+                    });
+                    storage.updateTreasuryBalance(gig.assigneeId!, treasuryMicro, "add");
+                    console.log(`[Treasury] Routed ${treasuryAmt} USDC to treasury for gig ${gigId}`);
+                  }).catch((e: any) => {
+                    console.warn("[Treasury] Treasury split transfer failed (non-fatal):", e.message);
+                  });
+                }
+              } else {
+                circleTransfer = await transferUSDC({
+                  sourceWalletId: escrow.circleWalletId,
+                  destinationAddress: destAddress,
+                  amount: netPayout.toString(),
+                  chain: escrow.chain || "BASE_SEPOLIA",
+                });
+              }
             } catch (err: any) {
               console.error("[Escrow] Circle release failed:", err.message);
               recordCircuitFailure("Circle USDC transfer failed on release");
@@ -8189,6 +8242,227 @@ export async function registerRoutes(
       res.json({ event, message: `Withdrew ${amount} USDC bond` });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  // ─── Agent Treasury Endpoints (Issue #86) ────────────────────────────────────
+
+  // POST /api/agents/:id/treasury/fund — create/retrieve Circle treasury wallet
+  app.post("/api/agents/:id/treasury/fund", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = req.params.id as string;
+      const authedId = (req as any).agentId as string;
+      if (authedId !== agentId) {
+        return res.status(403).json({ message: "You can only fund your own treasury" });
+      }
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      // Return existing wallet if already created
+      if (agent.treasuryWalletId) {
+        const existingAddr = await getWalletAddress(agent.treasuryWalletId);
+        return res.json({
+          depositAddress: existingAddr,
+          walletId: agent.treasuryWalletId,
+          instructions: "Send USDC to this address on Base Sepolia",
+          usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          chain: "Base Sepolia (chainId 84532)",
+          existing: true,
+        });
+      }
+
+      // Create new treasury wallet
+      const { walletId, depositAddress } = await createAgentTreasury(agentId);
+      await storage.updateAgentTreasuryWallet(agentId, walletId);
+
+      // Record a placeholder entry (no amount yet — awaiting deposit)
+      await storage.createTreasuryTransaction({
+        agentId,
+        type: "credit",
+        amount: 0,
+        description: "Treasury wallet created — awaiting USDC deposit",
+      });
+
+      return res.status(201).json({
+        depositAddress,
+        walletId,
+        instructions: "Send USDC to this address on Base Sepolia",
+        usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        chain: "Base Sepolia (chainId 84532)",
+        existing: false,
+      });
+    } catch (err: any) {
+      if (err.message?.includes("CIRCLE_API_KEY")) {
+        return res.status(503).json({ message: "Treasury service unavailable — Circle API not configured" });
+      }
+      console.error("[Treasury] fund error:", err.message);
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/agents/:id/treasury/balance — live USDC balance from Circle
+  app.get("/api/agents/:id/treasury/balance", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = req.params.id as string;
+      const authedId = (req as any).agentId as string;
+      if (authedId !== agentId) {
+        return res.status(403).json({ message: "You can only view your own treasury balance" });
+      }
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      if (!agent.treasuryWalletId) {
+        return res.json({ balance: 0, balanceFormatted: "0.00 USDC", walletId: null, walletExists: false });
+      }
+
+      const balData = await getTreasuryBalance(agent.treasuryWalletId);
+
+      // Sync cached balance in DB
+      await storage.updateTreasuryBalance(agentId, balData.balance, "set");
+
+      return res.json({ ...balData, walletId: agent.treasuryWalletId });
+    } catch (err: any) {
+      console.error("[Treasury] balance error:", err.message);
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/agents/:id/treasury/pay — pay another agent from treasury (no wallet sig needed)
+  app.post("/api/agents/:id/treasury/pay", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = req.params.id as string;
+      const authedId = (req as any).agentId as string;
+      if (authedId !== agentId) {
+        return res.status(403).json({ message: "You can only spend from your own treasury" });
+      }
+
+      const paySchema = z.object({
+        recipientAgentId: z.string(),
+        amount: z.number().int().min(1000).max(100_000_000_000),
+        gigId: z.string().optional(),
+        note: z.string().max(200).optional(),
+      });
+      const { recipientAgentId, amount, gigId, note } = paySchema.parse(req.body);
+
+      const sender = await storage.getAgent(agentId);
+      if (!sender) return res.status(404).json({ message: "Sender agent not found" });
+      if (!sender.treasuryWalletId) {
+        return res.status(400).json({ message: "No treasury wallet. Call /treasury/fund first." });
+      }
+
+      const recipient = await storage.getAgent(recipientAgentId);
+      if (!recipient) return res.status(404).json({ message: "Recipient agent not found" });
+
+      // Check live balance
+      const { balance } = await getTreasuryBalance(sender.treasuryWalletId);
+      if (balance < amount) {
+        return res.status(402).json({
+          message: "Insufficient treasury balance",
+          available: balance,
+          required: amount,
+          availableFormatted: `${(balance / 1_000_000).toFixed(2)} USDC`,
+        });
+      }
+
+      // Destination: recipient's treasury wallet address or external wallet
+      let destAddress: string;
+      if (recipient.treasuryWalletId) {
+        const addr = await getWalletAddress(recipient.treasuryWalletId);
+        destAddress = addr || recipient.walletAddress;
+      } else {
+        destAddress = recipient.walletAddress;
+      }
+
+      const transfer = await transferBetweenTreasuryWallets(sender.treasuryWalletId, destAddress, amount);
+
+      // Record debit for sender
+      await storage.createTreasuryTransaction({
+        agentId,
+        type: "debit",
+        amount,
+        counterpartyAgentId: recipientAgentId,
+        gigId: gigId || null,
+        txHash: transfer.transactionId,
+        description: note || `Payment to @${recipient.handle}`,
+      });
+
+      // Record credit for recipient (if they have a treasury wallet)
+      if (recipient.treasuryWalletId) {
+        await storage.createTreasuryTransaction({
+          agentId: recipientAgentId,
+          type: "credit",
+          amount,
+          counterpartyAgentId: agentId,
+          gigId: gigId || null,
+          txHash: transfer.transactionId,
+          description: note || `Payment from @${sender.handle}`,
+        });
+        await storage.updateTreasuryBalance(recipientAgentId, amount, "add");
+      }
+
+      // Update sender's cached balance
+      await storage.updateTreasuryBalance(agentId, -amount, "add");
+
+      return res.json({
+        txHash: transfer.transactionId,
+        status: transfer.status,
+        amount,
+        amountFormatted: `${(amount / 1_000_000).toFixed(2)} USDC`,
+        recipient: { handle: recipient.handle, walletAddress: recipient.walletAddress },
+        newBalance: Math.max(0, balance - amount),
+        note: note || null,
+      });
+    } catch (err: any) {
+      console.error("[Treasury] pay error:", err.message);
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/agents/:id/treasury/history — paginated transaction history
+  app.get("/api/agents/:id/treasury/history", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = req.params.id as string;
+      const authedId = (req as any).agentId as string;
+      if (authedId !== agentId) {
+        return res.status(403).json({ message: "You can only view your own treasury history" });
+      }
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const page = parseInt(req.query.page as string || "1");
+      const limit = Math.min(parseInt(req.query.limit as string || "20"), 100);
+
+      const { transactions, total } = await storage.getTreasuryTransactions(agentId, page, limit);
+
+      // Enrich with counterparty handles
+      const enriched = await Promise.all(transactions.map(async (tx) => {
+        let counterpartyHandle: string | null = null;
+        let gigTitle: string | null = null;
+        if (tx.counterpartyAgentId) {
+          const cp = await storage.getAgent(tx.counterpartyAgentId);
+          counterpartyHandle = cp?.handle || null;
+        }
+        if (tx.gigId) {
+          const g = await storage.getGig(tx.gigId);
+          gigTitle = g?.title || null;
+        }
+        return {
+          ...tx,
+          amountFormatted: `${(tx.amount / 1_000_000).toFixed(2)} USDC`,
+          counterpartyHandle,
+          gigTitle,
+        };
+      }));
+
+      return res.json({
+        transactions: enriched,
+        total,
+        page,
+        hasMore: page * limit < total,
+      });
+    } catch (err: any) {
+      console.error("[Treasury] history error:", err.message);
+      return res.status(500).json({ message: err.message });
     }
   });
 

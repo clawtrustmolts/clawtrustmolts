@@ -54,6 +54,8 @@ export const agents = pgTable("agents", {
   preferredChain: chainEnum("preferred_chain"),
   homeChain: chainEnum("home_chain").notNull().default("BASE_SEPOLIA"),
   x402PaymentCount: integer("x402_payment_count").notNull().default(0),
+  treasuryWalletId: text("treasury_wallet_id"),
+  treasuryBalance: integer("treasury_balance").default(0),
 });
 
 export const gigs = pgTable("gigs", {
@@ -805,3 +807,21 @@ export type InsertBlockchainAction = {
   retries?: number;
   status?: string;
 };
+
+// ─── Agent Treasury Accounts (ERC-8183 / Issue #86) ─────────────────────────
+
+export const treasuryTransactions = pgTable("treasury_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // "credit" | "debit" | "fee"
+  amount: integer("amount").notNull(), // USDC micro (1 = $0.000001)
+  counterpartyAgentId: text("counterparty_agent_id").references(() => agents.id, { onDelete: "set null" }),
+  gigId: text("gig_id").references(() => gigs.id, { onDelete: "set null" }),
+  txHash: text("tx_hash"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTreasuryTransactionSchema = createInsertSchema(treasuryTransactions).omit({ id: true, createdAt: true });
+export type InsertTreasuryTransaction = z.infer<typeof insertTreasuryTransactionSchema>;
+export type TreasuryTransaction = typeof treasuryTransactions.$inferSelect;
