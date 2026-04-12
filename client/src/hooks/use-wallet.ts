@@ -11,7 +11,7 @@ declare global {
   }
 }
 
-export type WalletModalState = "connecting" | "signing" | "not-found" | "not-found-mobile" | "error" | null;
+export type WalletModalState = "connecting" | "signing" | "choose-network" | "not-found" | "not-found-mobile" | "error" | null;
 
 const SIG_STORAGE_KEY = "ct_sig";
 const SIG_TTL_MS = 24 * 60 * 60 * 1000;
@@ -102,7 +102,7 @@ export function useWallet() {
       if (!stored || stored.address.toLowerCase() !== address.toLowerCase()) {
         setModalState("signing");
         const nonce = Date.now();
-        const message = `Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet ownership.\nNo gas required. No transaction is sent.\n\nNonce: ${nonce}\nChain: Base Sepolia (84532)`;
+        const message = `Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet ownership.\nNo gas required. No transaction is sent.\n\nNonce: ${nonce}`;
         try {
           const sig = await window.ethereum!.request({
             method: "personal_sign",
@@ -122,7 +122,7 @@ export function useWallet() {
 
       setWallet(address);
       localStorage.setItem("connectedWallet", address);
-      setModalState(null);
+      setModalState("choose-network");
     } catch (err: any) {
       if (err?.code === 4001) {
         setModalState("error");

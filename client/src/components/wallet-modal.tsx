@@ -1,28 +1,53 @@
-import { useEffect, useRef } from "react";
-import { X, ExternalLink, Loader2, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, ExternalLink, Loader2, ShieldCheck, RefreshCw, CheckCircle } from "lucide-react";
 
-type WalletModalState = "connecting" | "signing" | "not-found" | "not-found-mobile" | "error";
+type WalletModalState = "connecting" | "signing" | "choose-network" | "not-found" | "not-found-mobile" | "error";
 
 interface WalletConnectModalProps {
   state: WalletModalState;
   errorMessage?: string;
   onClose: () => void;
   onRetry?: () => void;
+  onSwitchToBase?: () => Promise<void>;
+  onSwitchToSkale?: () => Promise<void>;
 }
 
-export function WalletConnectModal({ state, errorMessage, onClose, onRetry }: WalletConnectModalProps) {
+export function WalletConnectModal({ state, errorMessage, onClose, onRetry, onSwitchToBase, onSwitchToSkale }: WalletConnectModalProps) {
   const backdropRef = useRef<HTMLDivElement>(null);
+  const [switching, setSwitching] = useState<"base" | "skale" | null>(null);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && state !== "choose-network") onClose();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, state]);
 
   function handleBackdropClick(e: React.MouseEvent) {
-    if (e.target === backdropRef.current) onClose();
+    if (e.target === backdropRef.current && state !== "choose-network") onClose();
+  }
+
+  async function handleSwitchBase() {
+    if (!onSwitchToBase) { onClose(); return; }
+    setSwitching("base");
+    try {
+      await onSwitchToBase();
+    } finally {
+      setSwitching(null);
+      onClose();
+    }
+  }
+
+  async function handleSwitchSkale() {
+    if (!onSwitchToSkale) { onClose(); return; }
+    setSwitching("skale");
+    try {
+      await onSwitchToSkale();
+    } finally {
+      setSwitching(null);
+      onClose();
+    }
   }
 
   return (
@@ -41,14 +66,16 @@ export function WalletConnectModal({ state, errorMessage, onClose, onRetry }: Wa
           boxShadow: "0 0 40px rgba(232, 84, 10, 0.08)",
         }}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-1 rounded-sm transition-opacity opacity-50 hover:opacity-100"
-          style={{ color: "var(--text-muted)" }}
-          data-testid="button-close-wallet-modal"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        {state !== "choose-network" && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-1 rounded-sm transition-opacity opacity-50 hover:opacity-100"
+            style={{ color: "var(--text-muted)" }}
+            data-testid="button-close-wallet-modal"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
 
         <div className="flex items-center gap-3 mb-6">
           <div
@@ -62,7 +89,7 @@ export function WalletConnectModal({ state, errorMessage, onClose, onRetry }: Wa
               ClawTrust
             </p>
             <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-              Base Sepolia · ERC-8004
+              {state === "choose-network" ? "Wallet Connected · Choose Network" : "Base Sepolia · SKALE · ERC-8004"}
             </p>
           </div>
         </div>
@@ -103,9 +130,89 @@ export function WalletConnectModal({ state, errorMessage, onClose, onRetry }: Wa
               style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(107,127,163,0.15)" }}
             >
               <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)", whiteSpace: "pre-line" }}>
-                {`Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet\nownership. No gas required.\n\nChain: Base Sepolia (84532)`}
+                {`Welcome to ClawTrust 🦞\n\nSigning this message verifies your\nwallet ownership. No gas required.`}
               </p>
             </div>
+          </div>
+        )}
+
+        {state === "choose-network" && (
+          <div className="space-y-4" data-testid="modal-state-choose-network">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: "#22c55e" }} />
+              <p className="text-sm font-display" style={{ color: "var(--shell-white)" }}>
+                Wallet connected!
+              </p>
+            </div>
+            <p className="text-[11px] font-mono leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              Choose which network to use. You can switch anytime using the chain buttons in the top navigation.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleSwitchBase}
+                disabled={switching !== null}
+                className="w-full flex items-center gap-4 px-4 py-4 rounded-sm transition-all text-left hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+                style={{ background: "rgba(0,82,255,0.10)", border: "1px solid rgba(0,82,255,0.3)" }}
+                data-testid="button-choose-network-base"
+              >
+                <div
+                  className="w-9 h-9 rounded-sm flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(0,82,255,0.15)" }}
+                >
+                  {switching === "base" ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" style={{ color: "#6090ff" }} />
+                  ) : (
+                    <span className="text-sm font-bold" style={{ color: "#6090ff" }}>B</span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-display font-semibold" style={{ color: "var(--shell-white)" }}>
+                    Base Sepolia
+                  </p>
+                  <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    Chain ID 84532 · Gas paid in ETH
+                  </p>
+                </div>
+              </button>
+
+              <button
+                onClick={handleSwitchSkale}
+                disabled={switching !== null}
+                className="w-full flex items-center gap-4 px-4 py-4 rounded-sm transition-all text-left hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+                style={{ background: "rgba(139,92,246,0.10)", border: "1px solid rgba(139,92,246,0.3)" }}
+                data-testid="button-choose-network-skale"
+              >
+                <div
+                  className="w-9 h-9 rounded-sm flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(139,92,246,0.15)" }}
+                >
+                  {switching === "skale" ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" style={{ color: "#a78bfa" }} />
+                  ) : (
+                    <span className="text-sm font-bold" style={{ color: "#a78bfa" }}>S</span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-display font-semibold" style={{ color: "var(--shell-white)" }}>
+                    SKALE Base Sepolia
+                  </p>
+                  <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    Chain ID 324705682 · <span style={{ color: "#22c55e" }}>Zero gas fees</span>
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              disabled={switching !== null}
+              className="w-full py-2 rounded-sm text-[11px] font-mono transition-opacity hover:opacity-70 disabled:opacity-30"
+              style={{ color: "var(--text-muted)" }}
+              data-testid="button-skip-network-choice"
+            >
+              Skip — stay on current network
+            </button>
           </div>
         )}
 

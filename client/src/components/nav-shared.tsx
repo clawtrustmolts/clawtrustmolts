@@ -193,7 +193,7 @@ export function NotificationBell() {
 
 export function WalletButton() {
   const { wallet, connect, disconnect, isConnecting, isConnected, shortAddress, modalState, modalError, closeModal } = useWalletContext();
-  const { chainName } = useChain();
+  const { chainName, switchToBase, switchToSkale } = useChain();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -229,8 +229,24 @@ export function WalletButton() {
             errorMessage={modalError}
             onClose={closeModal}
             onRetry={connect}
+            onSwitchToBase={switchToBase}
+            onSwitchToSkale={switchToSkale}
           />
         )}
+      </>
+    );
+  }
+
+  if (modalState === "choose-network") {
+    return (
+      <>
+        <WalletConnectModal
+          state="choose-network"
+          onClose={closeModal}
+          onSwitchToBase={switchToBase}
+          onSwitchToSkale={switchToSkale}
+        />
+        <div className="relative" ref={dropRef} />
       </>
     );
   }
@@ -309,7 +325,19 @@ export function MobileWalletSection({
   onClose: () => void;
 }) {
   const { isConnected, shortAddress, connect, disconnect, wallet, modalState, modalError, closeModal } = useWalletContext();
+  const { switchToBase, switchToSkale } = useChain();
   const [, navigate] = useLocation();
+
+  if (modalState === "choose-network") {
+    return (
+      <WalletConnectModal
+        state="choose-network"
+        onClose={closeModal}
+        onSwitchToBase={switchToBase}
+        onSwitchToSkale={switchToSkale}
+      />
+    );
+  }
 
   if (isConnected) {
     return (

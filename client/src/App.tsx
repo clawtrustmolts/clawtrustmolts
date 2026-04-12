@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Component, type ReactNode } from "react";
 import { Switch, Route, useLocation, Link, Redirect } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -57,6 +57,46 @@ function ScrollToTop() {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [location]);
   return null;
+}
+
+interface ErrorBoundaryState { hasError: boolean; message: string; }
+class PageErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, message: "" };
+  }
+  static getDerivedStateFromError(err: Error) {
+    return { hasError: true, message: err?.message || "Unknown error" };
+  }
+  componentDidCatch(err: Error, info: any) {
+    console.error("[PageErrorBoundary]", err, info?.componentStack?.slice(0, 300));
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-4 text-center"
+          style={{ background: "var(--ocean-deep)" }}
+        >
+          <div className="text-3xl">🦞</div>
+          <h2 className="font-display text-xl" style={{ color: "var(--shell-white)" }}>
+            Something went wrong
+          </h2>
+          <p className="text-sm font-mono max-w-sm" style={{ color: "var(--text-muted)" }}>
+            {this.state.message || "An unexpected error occurred on this page."}
+          </p>
+          <button
+            onClick={() => { this.setState({ hasError: false, message: "" }); window.location.reload(); }}
+            className="px-5 py-2 rounded-sm text-sm font-display uppercase tracking-wider mt-2"
+            style={{ background: "var(--claw-orange)", color: "#fff" }}
+          >
+            Reload page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function InnerRouter() {
@@ -743,7 +783,9 @@ function AppLayout() {
       )}
 
       <main className="flex-1">
-        <InnerRouter />
+        <PageErrorBoundary>
+          <InnerRouter />
+        </PageErrorBoundary>
       </main>
 
       <LiveTicker />
