@@ -266,7 +266,9 @@ class NonceMgr {
       msg.includes("nonce") ||
       msg.includes("already known") ||
       msg.includes("replacement transaction underpriced") ||
-      msg.includes("timed out")
+      msg.includes("timed out") ||
+      msg.includes("missing or invalid") ||
+      msg.includes("invalid parameters")
     ) {
       this.next = null; // force re-fetch from chain on next tx
     }
@@ -978,10 +980,12 @@ const QUEUE_RETRY_BACKOFF_MS = 2 * 60 * 1000;
 
 export async function processBlockchainQueue(): Promise<void> {
   try {
-    // Always start with a fresh nonce from the chain so we don't carry stale
-    // state from a previous queue run or a concurrent hourly score sync.
-    _baseNonceMgr.reset();
-    _skaleNonceMgr.reset();
+    // NOTE: Do NOT reset the nonce managers here. All on-chain writes (score
+    // sync + queue) go through withNonceLock / withSkaleNonceLock which chain
+    // sequentially on a single promise. Resetting mid-flight causes the queue
+    // processor to fetch a stale "latest" nonce while the score-sync's pending
+    // txs haven't yet confirmed — producing "nonce too low" collisions.
+    // Resets happen automatically via NonceMgr.onError() on any nonce error.
 
     const pending = await storage.getPendingBlockchainActions(10);
     if (pending.length === 0) return;

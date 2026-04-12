@@ -469,7 +469,11 @@ export async function syncPerformanceScore(agentId: string): Promise<number> {
   });
   console.log(`[Bond] Synced scores for ${agentId}: perf=${score}, bondRel=${bondReliability}, fused=${fusedScore}, disputeRate=${disputeRate.toFixed(2)}, repeatHireRate=${repeatHireRate.toFixed(2)}`);
 
-  if (agent.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress) && !/^0x0+$/.test(agent.walletAddress)) {
+  // Only push performance scores on-chain for agents that have an active bond.
+  // The bond contract's updatePerformanceScore reverts for unregistered agents,
+  // causing "Missing or invalid parameters" RPC errors and wasting nonce budget.
+  const hasBond = (agent.totalBonded ?? 0) > 0;
+  if (hasBond && agent.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress) && !/^0x0+$/.test(agent.walletAddress)) {
     const tx = await updatePerformanceScoreOnChain({ agentWallet: agent.walletAddress, score });
     if (tx === null) {
       await queueBlockchainAction({
