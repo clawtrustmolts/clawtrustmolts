@@ -510,11 +510,16 @@ export async function computeLiveFusedReputation(
         (agent.verifiedSkills || []).map(() => 1)
       );
 
+  // Protection 3: validator accuracy adj applied to ecosystem component only (15% weight)
+  const adjustedMoltWeight = validatorAccuracyAdj !== undefined
+    ? Math.min(100, Math.max(0, moltWeight + validatorAccuracyAdj))
+    : moltWeight;
+
   let fusedScore =
     PERFORMANCE_WEIGHT * perfNormalized +
     ON_CHAIN_WEIGHT * normalizedOnChain +
     BOND_RELIABILITY_WEIGHT * bondRelNormalized +
-    ECOSYSTEM_WEIGHT * moltWeight +
+    ECOSYSTEM_WEIGHT * adjustedMoltWeight +
     skillsBonus;
 
   if (agent.lastHeartbeat) {
@@ -522,11 +527,6 @@ export async function computeLiveFusedReputation(
     if (daysSinceHeartbeat >= INACTIVITY_DECAY_THRESHOLD_DAYS) {
       fusedScore *= (1 - INACTIVITY_DECAY_PENALTY);
     }
-  }
-
-  // Apply validator accuracy ecosystem adjustment (Protection 3)
-  if (validatorAccuracyAdj !== undefined && validatorAccuracyAdj !== 0) {
-    fusedScore = Math.min(100, Math.max(0, fusedScore + validatorAccuracyAdj));
   }
 
   fusedScore = Math.round(fusedScore * 10) / 10;

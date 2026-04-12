@@ -3845,7 +3845,7 @@ export async function registerRoutes(
                   : `New account cluster: ${newAccountIds.length} validators have accounts < 48h old — Sybil signal`;
 
                 updated = await storage.updateValidation(validationId, {
-                  status: "disputed_auto" as any,
+                  status: "disputed_auto",
                   bondSlashFrozen: true,
                   disputeReason: freezeReason,
                 }) ?? updated;
@@ -3890,7 +3890,7 @@ export async function registerRoutes(
 
       // ── Protection 3: Record validator accuracy for all resolved validations ─
       if (newStatus !== "pending") {
-        const resolvedStatus = (updated as any)?.status ?? newStatus;
+        const resolvedStatus = updated?.status ?? newStatus;
         if (resolvedStatus === "approved" || resolvedStatus === "rejected") {
           (async () => {
             try {
@@ -3899,12 +3899,14 @@ export async function registerRoutes(
                 if (vid.startsWith("PLATFORM_ORACLE")) continue;
                 const voteRow = allVotes.find(v => v.voterId === vid);
                 if (!voteRow) continue;
+                // Map vote enum to outcome: "approve"→"approved", "reject"→"rejected"
+                const voteAsOutcome = voteRow.vote === "approve" ? "approved" : "rejected";
                 await storage.recordValidatorAccuracy({
                   validatorAgentId: vid,
                   validationId,
                   vote: voteRow.vote,
                   outcome: resolvedStatus,
-                  matched: voteRow.vote === resolvedStatus,
+                  matched: voteAsOutcome === resolvedStatus,
                 });
               }
             } catch (accErr: any) {
@@ -3918,8 +3920,8 @@ export async function registerRoutes(
         validation: updated,
         vote: { voterId, vote, rewardAmount },
         resolution: newStatus !== "pending" ? {
-          status: (updated as any)?.status ?? newStatus,
-          slashFrozen: (updated as any)?.bondSlashFrozen ?? false,
+          status: updated?.status ?? newStatus,
+          slashFrozen: updated?.bondSlashFrozen ?? false,
           escrowRelease,
           rewardsDistributed,
         } : null,
@@ -3938,10 +3940,22 @@ export async function registerRoutes(
   });
 
   // ── Protection 3: Appeal endpoint ─────────────────────────────────────────
+  const appealBodySchema = z.object({
+    statement: z.string().min(10, "Statement must be at least 10 characters").max(2000),
+    deliverableUrl: z.string().url("deliverableUrl must be a valid URL"),
+    evidence: z.string().max(2000).optional(),
+  });
+
   app.post("/api/validations/:id/appeal", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
       const validationId = safeId.safeParse(req.params.id);
       if (!validationId.success) return res.status(400).json({ message: "Invalid validation ID" });
+
+      const bodyParsed = appealBodySchema.safeParse(req.body);
+      if (!bodyParsed.success) {
+        return res.status(400).json({ message: "Invalid appeal body", errors: bodyParsed.error.errors });
+      }
+      const { statement, deliverableUrl, evidence } = bodyParsed.data;
 
       const agentId = (req as any).agentId as string;
 
@@ -3992,7 +4006,7 @@ export async function registerRoutes(
         for (const m of members) taintedAgentIds.add(m.agentId);
       }
 
-      // Select 5 eligible validators not in tainted set
+      // Select up to 5 eligible validators not in tainted set
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const candidatePool = await storage.getTopAgentsByFusedScore(50, [...taintedAgentIds]);
       const newValidators: string[] = [];
@@ -4005,23 +4019,24 @@ export async function registerRoutes(
         newValidators.push(candidate.id);
       }
 
-      if (newValidators.length === 0) {
-        return res.status(503).json({ message: "No eligible validators found for appeal — try again later" });
+      // Strict 4/5 quorum: require at least 4 eligible validators
+      if (newValidators.length < 4) {
+        return res.status(503).json({
+          message: `Insufficient eligible validators for appeal: found ${newValidators.length}, need at least 4. Try again later.`,
+        });
       }
 
-      // Create new validation with threshold 4/5 and parentValidationId set
+      // Create new validation: 4-of-5 threshold with parentValidationId set
       const appealValidation = await storage.createValidation({
         gigId: validation.gigId,
         status: "pending",
-        votesFor: 0,
-        votesAgainst: 0,
-        threshold: Math.min(4, newValidators.length),
+        threshold: 4,
         selectedValidators: newValidators,
         totalRewardPool: validation.totalRewardPool,
         rewardPerValidator: validation.rewardPerValidator,
         oracleAssisted: false,
         parentValidationId: validationId.data,
-      } as any);
+      });
 
       // Notify poster that an appeal has been filed
       if (gig.posterId) {
@@ -4029,7 +4044,7 @@ export async function registerRoutes(
           gig.posterId,
           "validation_appeal",
           "Gig Appeal Filed",
-          `Assignee has appealed the swarm rejection of "${gig.title}". A new validation (ID: ${appealValidation.id}) has been created with ${newValidators.length} fresh validators.`,
+          `Assignee has appealed the swarm rejection of "${gig.title}" (statement: "${statement.slice(0, 120)}…"). A new 4/5 validation (ID: ${appealValidation.id}) has been created with ${newValidators.length} fresh validators.`,
           { gigId: gig.id, validationId: appealValidation.id }
         ).catch(() => {});
       }
@@ -4038,8 +4053,11 @@ export async function registerRoutes(
         appeal: appealValidation,
         parentValidationId: validationId.data,
         newValidators: newValidators.length,
-        threshold: appealValidation.threshold,
-        message: "Appeal filed. A new validation round has started with fresh validators.",
+        threshold: 4,
+        statement,
+        deliverableUrl,
+        evidence: evidence ?? null,
+        message: "Appeal filed. A new 4/5 validation round has started with fresh validators.",
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
