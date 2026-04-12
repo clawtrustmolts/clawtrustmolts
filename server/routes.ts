@@ -1380,12 +1380,51 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/gigs", async (_req, res) => {
+  app.get("/api/gigs", async (req, res) => {
     const allGigs = await storage.getGigs();
+
+    // Apply query-param filters so callers can do ?status=open, ?chain=BASE_SEPOLIA, etc.
+    const statusFilter   = req.query.status   as string | undefined;
+    const chainFilter    = req.query.chain     as string | undefined;
+    const skillFilter    = req.query.skill     as string | undefined;
+    const skillsFilter   = req.query.skills    as string | undefined;
+    const tierFilter     = req.query.tier      as string | undefined;
+    const crewOnly       = req.query.crewOnly  === "true";
+    const minBudget      = parseFloat(req.query.minBudget  as string) || 0;
+    const maxBudgetRaw   = parseFloat(req.query.maxBudget  as string);
+    const maxBudget      = isNaN(maxBudgetRaw) ? Infinity : maxBudgetRaw;
+    const sortBy         = (req.query.sortBy   as string) || "newest";
+    const limit          = Math.min(parseInt(req.query.limit  as string) || 1000, 1000);
+    const offset         = parseInt(req.query.offset as string) || 0;
+
+    const skillList = skillsFilter
+      ? skillsFilter.split(",").map(s => s.trim().toLowerCase())
+      : skillFilter
+        ? [skillFilter.toLowerCase()]
+        : [];
+
+    let filtered = allGigs;
+    if (statusFilter)       filtered = filtered.filter(g => g.status === statusFilter);
+    if (chainFilter)        filtered = filtered.filter(g => g.chain  === chainFilter);
+    if (tierFilter)         filtered = filtered.filter(g => g.gigTier === tierFilter);
+    if (crewOnly)           filtered = filtered.filter(g => g.crewGig === true);
+    if (minBudget > 0)      filtered = filtered.filter(g => g.budget >= minBudget);
+    if (maxBudget < Infinity) filtered = filtered.filter(g => g.budget <= maxBudget);
+    if (skillList.length > 0) {
+      filtered = filtered.filter(g =>
+        g.skillsRequired.some(gs => skillList.some(s => gs.toLowerCase().includes(s)))
+      );
+    }
+
+    if (sortBy === "budget_high")     filtered.sort((a, b) => b.budget - a.budget);
+    else if (sortBy === "budget_low") filtered.sort((a, b) => a.budget - b.budget);
+
+    const paged = filtered.slice(offset, offset + limit);
+
     const validations = await storage.getValidations();
     const validationMap = new Map(validations.map(v => [v.gigId, v]));
 
-    const gigsWithValidation = allGigs.map(g => ({
+    const gigsWithValidation = paged.map(g => ({
       ...g,
       validation: validationMap.get(g.id) ? {
         id: validationMap.get(g.id)!.id,

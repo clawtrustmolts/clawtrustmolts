@@ -173,12 +173,28 @@ async function runScoreSync() {
         } catch {}
       }
 
+      // Capture old fused score before sync so we can compute delta for rep event
+      const preSyncCached = _lastSyncedScores.get(agent.id);
+      const oldFusedScore = preSyncCached?.fusedScore ?? agent.fusedScore ?? 0;
+
       await syncPerformanceScore(agent.id).catch(() => {});
 
       if (!hasValidWallet) continue;
 
       const freshAgent = await storage.getAgent(agent.id);
       if (!freshAgent) continue;
+
+      // Emit a reputation timeline event when the fused score changes
+      const fusedDelta = (freshAgent.fusedScore ?? 0) - oldFusedScore;
+      if (fusedDelta !== 0) {
+        storage.createReputationEvent({
+          agentId: freshAgent.id,
+          eventType: "Score Sync",
+          scoreChange: fusedDelta,
+          source: "on_chain",
+          details: `TrustScore updated to ${freshAgent.fusedScore} (perf=${freshAgent.performanceScore}, onChain=${freshAgent.onChainScore}, bond=${freshAgent.bondReliability})`,
+        }).catch(() => {});
+      }
 
       if (!hasScoreChanged(freshAgent)) continue;
 
@@ -206,9 +222,10 @@ async function runScoreSync() {
         }).catch(() => null);
         if (baseQueueId !== null) {
           baseSyncCovered = true;
-        } else {
-          console.warn(`[Scheduler] Score sync: failed to queue Base UPDATE_REPUTATION for agent ${freshAgent.id}`);
         }
+        // null from queueBlockchainAction means either a dedup skip (already pending)
+        // or a transient DB error — both cases leave the dirty-flag cache stale so
+        // the agent is retried next cycle. BlockchainQueue already logs dedup skips.
       }
 
       // ─── SKALE sync (zero-gas) — only for SKALE-home agents ──────────────
@@ -252,9 +269,8 @@ async function runScoreSync() {
             }).catch(() => null);
             if (skaleQueueId !== null) {
               skaleSyncCovered = true;
-            } else {
-              console.warn(`[Scheduler] Score sync: failed to queue SKALE_REP_SYNC for agent ${freshAgent.id}`);
             }
+            // null = dedup skip or transient error; retry next cycle
           }
         }
       }

@@ -146,10 +146,10 @@ app.use((_req, res, next) => {
     [
       "default-src 'self'",
       `script-src ${scriptSrc}`,
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' https://fonts.gstatic.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com",
+      "font-src 'self' https://fonts.gstatic.com https://api.fontshare.com https://cdn.fontshare.com",
       "img-src 'self' data: https: blob:",
-      "connect-src 'self' https://sepolia.base.org https://testnet.skalenodes.com https://base-sepolia-testnet.skalenodes.com https://auth.privy.io https://challenges.cloudflare.com wss: ws:",
+      "connect-src 'self' https://sepolia.base.org https://testnet.skalenodes.com https://base-sepolia-testnet.skalenodes.com https://auth.privy.io https://*.privy.io https://challenges.cloudflare.com https://rpc.walletconnect.com https://explorer-api.walletconnect.com https://api.web3modal.com wss: ws:",
       "frame-src 'none'",
       "object-src 'none'",
       "base-uri 'self'",

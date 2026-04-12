@@ -74,6 +74,7 @@ function InnerRouter() {
       <Route path="/trust-receipt/:id" component={TrustReceiptPage} />
       <Route path="/swarm" component={SwarmPage} />
       <Route path="/protocol" component={ContractsPage} />
+      <Route path="/contracts"><Redirect to="/protocol" /></Route>
       <Route path="/register" component={RegisterPage} />
       <Route path="/docs/:section" component={DocsPage} />
       <Route path="/docs" component={DocsPage} />
@@ -89,6 +90,7 @@ function InnerRouter() {
       <Route path="/admin/tokens" component={AdminTokensPage} />
       <Route path="/mainnet" component={MainnetPage} />
       <Route path="/skale" component={SkaleGrantPage} />
+      <Route path="/skale-grant"><Redirect to="/skale" /></Route>
       <Route path="/commerce"><Redirect to="/gigs?tab=commerce" /></Route>
       <Route component={NotFound} />
     </Switch>

@@ -792,11 +792,21 @@ function NetworkStatsBar() {
   const total = stats?.totalGigs ?? 0;
   const rate = total > 0 ? Math.round(((stats?.completedGigs ?? 0) / total) * 100) : 0;
 
+  const rawAgents    = stats?.totalAgents   ?? 0;
+  const rawEscrow    = stats?.totalEscrowUSD ?? 0;
+  const rawCompleted = stats?.completedGigs  ?? 0;
+
+  // When not yet in view the count-up hook returns 0 — fall back to the real
+  // raw value so the stats are always readable (and testable).
+  const displayAgents    = inView ? agents    : rawAgents;
+  const displayEscrow    = inView ? escrow    : rawEscrow;
+  const displayCompleted = inView ? completed : rawCompleted;
+
   const stats2 = [
-    { value: agents.toLocaleString(), label: "Agents Registered", accent: "var(--teal-glow)", testid: "stat-agents" },
-    { value: `$${escrow.toLocaleString()}`, label: "USDC In Escrow", accent: "var(--claw-orange)", testid: "stat-usdc-escrowed" },
-    { value: completed.toLocaleString(), label: "Gigs Completed", accent: "var(--gold)", testid: "stat-gigs-completed" },
-    { value: `${rate}%`, label: "Success Rate", accent: "#a78bfa", testid: "stat-completion-rate" },
+    { display: displayAgents.toLocaleString(),      raw: rawAgents,    label: "Agents Registered", accent: "var(--teal-glow)",   testid: "stat-agents" },
+    { display: `$${displayEscrow.toLocaleString()}`, raw: rawEscrow,   label: "USDC In Escrow",    accent: "var(--claw-orange)", testid: "stat-usdc-escrowed" },
+    { display: displayCompleted.toLocaleString(),   raw: rawCompleted, label: "Gigs Completed",    accent: "var(--gold)",        testid: "stat-gigs-completed" },
+    { display: `${rate}%`,                           raw: rate,         label: "Success Rate",      accent: "#a78bfa",            testid: "stat-completion-rate" },
   ];
 
   return (
@@ -820,9 +830,10 @@ function NetworkStatsBar() {
               transition={{ delay: i * 0.1, duration: 0.5 }}
               className="text-center"
               data-testid={s.testid}
+              data-value={s.raw}
             >
               <div className="font-display text-3xl sm:text-4xl mb-1" style={{ color: s.accent }}>
-                {s.value}
+                {s.display}
               </div>
               <div className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--text-muted)" }}>
                 {s.label}
