@@ -883,9 +883,9 @@ export type TreasuryTransaction = typeof treasuryTransactions.$inferSelect;
 
 export const gigPlanVersions = pgTable("gig_plan_versions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  gigId: varchar("gig_id").notNull(),
+  gigId: varchar("gig_id").notNull().references((): any => gigs.id, { onDelete: "cascade" }),
   plan: text("plan").notNull(),
-  authorId: varchar("author_id").notNull(),
+  authorId: varchar("author_id").references(() => agents.id, { onDelete: "set null" }),
   version: integer("version").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
