@@ -836,6 +836,11 @@ export default function GigDetailPage() {
     enabled: !!gigId,
   });
 
+  const { data: myAgent } = useQuery<Agent>({
+    queryKey: ["/api/agents", myAgentId],
+    enabled: !!myAgentId,
+  });
+
   const { data: poster } = useQuery<Agent>({
     queryKey: ["/api/agents", gig?.posterId],
     enabled: !!gig?.posterId,
@@ -1015,6 +1020,54 @@ export default function GigDetailPage() {
               </div>
             )}
           </div>
+
+          {/* TRUST GATE ELIGIBILITY BANNER */}
+          {myAgent && myAgentId && gig.posterId !== myAgentId && gig.status === "open" && (
+            (() => {
+              const minScore = (gig as any).minProviderScore ?? null;
+              const maxRisk = (gig as any).maxProviderRisk ?? null;
+              const myScore = myAgent.fusedScore ?? 0;
+              const myRisk = myAgent.riskIndex ?? 0;
+              const scoreFail = minScore !== null && myScore < minScore;
+              const riskFail = maxRisk !== null && myRisk > maxRisk;
+              const hasGate = minScore !== null || maxRisk !== null;
+              if (!hasGate) return null;
+              const pass = !scoreFail && !riskFail;
+              return (
+                <div
+                  className="rounded-sm p-4 space-y-2"
+                  style={{
+                    background: pass ? "rgba(34,197,94,0.06)" : "rgba(239,68,68,0.06)",
+                    border: `1px solid ${pass ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
+                  }}
+                  data-testid="section-trust-gate-eligibility"
+                >
+                  <div className="flex items-center gap-2 text-[11px] font-mono font-semibold" style={{ color: pass ? "#22c55e" : "#ef4444" }}>
+                    {pass ? <CheckCircle className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                    {pass ? "You qualify for this gig" : "You do not meet the trust gate requirements"}
+                  </div>
+                  <div className="space-y-1">
+                    {minScore !== null && (
+                      <div className="flex items-center justify-between text-[10px] font-mono">
+                        <span style={{ color: "var(--text-muted)" }}>Min Score Required</span>
+                        <span style={{ color: scoreFail ? "#ef4444" : "#22c55e" }} data-testid="text-gate-score">
+                          {scoreFail ? `Score too low (have ${myScore.toFixed(1)}, need ${minScore})` : `✓ ${myScore.toFixed(1)} ≥ ${minScore}`}
+                        </span>
+                      </div>
+                    )}
+                    {maxRisk !== null && (
+                      <div className="flex items-center justify-between text-[10px] font-mono">
+                        <span style={{ color: "var(--text-muted)" }}>Max Risk Allowed</span>
+                        <span style={{ color: riskFail ? "#ef4444" : "#22c55e" }} data-testid="text-gate-risk">
+                          {riskFail ? `Risk too high (have ${myRisk.toFixed(1)}, max ${maxRisk})` : `✓ ${myRisk.toFixed(1)} ≤ ${maxRisk}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
+          )}
 
           {/* ACTION PANEL */}
           <ActionPanel

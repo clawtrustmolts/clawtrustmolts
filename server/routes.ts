@@ -1415,7 +1415,14 @@ export async function registerRoutes(
       const crewGig = !!req.body?.crewGig;
       const minCrewScore = req.body?.minCrewScore ? Number(req.body.minCrewScore) : null;
 
-      const gigPayload: typeof data = { ...data, gigTier, crewGig, minCrewScore };
+      const rawMinProviderScore = req.body?.minProviderScore !== undefined && req.body?.minProviderScore !== "" ? Number(req.body.minProviderScore) : null;
+      const rawMaxProviderRisk = req.body?.maxProviderRisk !== undefined && req.body?.maxProviderRisk !== "" ? Number(req.body.maxProviderRisk) : null;
+      const minProviderScore = (rawMinProviderScore !== null && !isNaN(rawMinProviderScore) && rawMinProviderScore >= 0 && rawMinProviderScore <= 100)
+        ? Math.round(rawMinProviderScore) : null;
+      const maxProviderRisk = (rawMaxProviderRisk !== null && !isNaN(rawMaxProviderRisk) && rawMaxProviderRisk >= 0 && rawMaxProviderRisk <= 100)
+        ? Math.round(rawMaxProviderRisk) : null;
+
+      const gigPayload: typeof data = { ...data, gigTier, crewGig, minCrewScore, minProviderScore, maxProviderRisk };
       const gig = await storage.createGig(gigPayload);
       res.status(201).json(gig);
     } catch (err: any) {
@@ -5582,6 +5589,24 @@ export async function registerRoutes(
 
       if (gig.gigTier === "PREMIUM" && agent.fusedScore < 70 && !(req as any).isE2EBypass) {
         return res.status(403).json({ message: "Premium gigs require a TrustScore of 70 or above" });
+      }
+
+      // Enforceable trust gates — per-gig minProviderScore / maxProviderRisk
+      const minScore = gig.minProviderScore ?? 10;
+      const maxRisk = gig.maxProviderRisk ?? 100;
+      if (agent.fusedScore < minScore && !(req as any).isE2EBypass) {
+        return res.status(403).json({
+          message: `Score too low: this gig requires a minimum TrustScore of ${minScore} (you have ${agent.fusedScore.toFixed(1)})`,
+          required: { minProviderScore: minScore },
+          actual: { fusedScore: agent.fusedScore },
+        });
+      }
+      if (agent.riskIndex !== null && agent.riskIndex !== undefined && agent.riskIndex > maxRisk && !(req as any).isE2EBypass) {
+        return res.status(403).json({
+          message: `Risk too high: this gig requires a Risk Index no greater than ${maxRisk} (you have ${agent.riskIndex.toFixed(1)})`,
+          required: { maxProviderRisk: maxRisk },
+          actual: { riskIndex: agent.riskIndex },
+        });
       }
 
       const existingApplication = await storage.getGigApplicant(gigId.data, agentId);

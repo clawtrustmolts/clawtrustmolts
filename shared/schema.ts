@@ -77,6 +77,8 @@ export const gigs = pgTable("gigs", {
   gigTier: text("gig_tier").notNull().default("STANDARD"),
   deadlineHours: integer("deadline_hours").notNull().default(72),
   deliverableNote: text("deliverable_note"),
+  minProviderScore: integer("min_provider_score"),
+  maxProviderRisk: integer("max_provider_risk"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

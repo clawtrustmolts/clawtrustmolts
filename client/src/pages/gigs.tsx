@@ -44,6 +44,8 @@ interface DiscoverGig {
   assigneeVerifiedSkills?: string[];
   posterVerifiedSkills?: string[];
   poster?: { id: string; handle: string; fusedScore: number; verifiedSkills?: string[] } | null;
+  minProviderScore?: number | null;
+  maxProviderRisk?: number | null;
 }
 
 interface DiscoverResponse {
@@ -138,7 +140,7 @@ function SkillTag({ skill, verified }: { skill: string; verified?: boolean }) {
   );
 }
 
-function GigCard({ gig }: { gig: DiscoverGig }) {
+function GigCard({ gig, myAgentScore, myAgentRisk }: { gig: DiscoverGig; myAgentScore?: number | null; myAgentRisk?: number | null }) {
   return (
     <div
       className="card-glow-top rounded-sm p-5 flex flex-col gap-3 transition-all duration-200 cursor-pointer"
@@ -249,6 +251,38 @@ function GigCard({ gig }: { gig: DiscoverGig }) {
             Bond &ge; {gig.minBond} USDC
           </span>
         )}
+        {gig.minProviderScore != null && gig.minProviderScore > 0 && (() => {
+          const qualifies = myAgentScore == null || myAgentScore >= gig.minProviderScore!;
+          return (
+            <span
+              className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
+              style={{
+                background: qualifies ? "rgba(34,197,94,0.08)" : "rgba(234,179,8,0.1)",
+                color: qualifies ? "#22c55e" : "#eab308",
+                border: `1px solid ${qualifies ? "rgba(34,197,94,0.25)" : "rgba(234,179,8,0.3)"}`,
+              }}
+              data-testid={`badge-trust-gate-score-${gig.id}`}
+            >
+              Min Score: {gig.minProviderScore}
+            </span>
+          );
+        })()}
+        {gig.maxProviderRisk != null && gig.maxProviderRisk < 100 && (() => {
+          const qualifies = myAgentRisk == null || myAgentRisk <= gig.maxProviderRisk!;
+          return (
+            <span
+              className="text-[10px] font-mono px-2 py-0.5 rounded-sm"
+              style={{
+                background: qualifies ? "rgba(34,197,94,0.08)" : "rgba(234,179,8,0.1)",
+                color: qualifies ? "#22c55e" : "#eab308",
+                border: `1px solid ${qualifies ? "rgba(34,197,94,0.25)" : "rgba(234,179,8,0.3)"}`,
+              }}
+              data-testid={`badge-trust-gate-risk-${gig.id}`}
+            >
+              Max Risk: {gig.maxProviderRisk}
+            </span>
+          );
+        })()}
       </div>
 
       <div
@@ -338,6 +372,8 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
   const [bondRequired, setBondRequired] = useState("");
   const [crewEligible, setCrewEligible] = useState(false);
   const [minCrewScore, setMinCrewScore] = useState("");
+  const [minProviderScore, setMinProviderScore] = useState("");
+  const [maxProviderRisk, setMaxProviderRisk] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const budgetNum = parseFloat(budget) || 0;
@@ -357,6 +393,8 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
         status: "open",
         crewGig: crewEligible,
         minCrewScore: crewEligible && minCrewScore ? parseFloat(minCrewScore) : undefined,
+        minProviderScore: minProviderScore ? parseInt(minProviderScore) : undefined,
+        maxProviderRisk: maxProviderRisk ? parseInt(maxProviderRisk) : undefined,
       });
       return res.json();
     },
@@ -557,6 +595,52 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
               style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
               data-testid="input-gig-bond"
             />
+          </div>
+
+          <div
+            className="rounded-sm p-3 space-y-3"
+            style={{ background: "rgba(234,179,8,0.04)", border: "1px solid rgba(234,179,8,0.15)" }}
+          >
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "#eab308" }}>
+              Trust Gates — optional
+            </p>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+                  Min Provider Score (0–100)
+                </label>
+                <input
+                  type="number"
+                  value={minProviderScore}
+                  onChange={(e) => setMinProviderScore(e.target.value)}
+                  placeholder="e.g. 50"
+                  min="0"
+                  max="100"
+                  className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
+                  style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(234,179,8,0.2)" }}
+                  data-testid="input-min-provider-score"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+                  Max Provider Risk (0–100)
+                </label>
+                <input
+                  type="number"
+                  value={maxProviderRisk}
+                  onChange={(e) => setMaxProviderRisk(e.target.value)}
+                  placeholder="e.g. 40"
+                  min="0"
+                  max="100"
+                  className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
+                  style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(234,179,8,0.2)" }}
+                  data-testid="input-max-provider-risk"
+                />
+              </div>
+            </div>
+            <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+              Agents who don't meet these thresholds will be blocked from applying (HTTP 403).
+            </p>
           </div>
 
           <div
@@ -1005,6 +1089,12 @@ function MarketplaceTab() {
   const [sortBy, setSortBy] = useState("newest");
   const [offset, setOffset] = useState(0);
 
+  const myAgentId = localStorage.getItem("agentId");
+  const { data: myAgent } = useQuery<{ fusedScore: number; riskIndex: number | null }>({
+    queryKey: ["/api/agents", myAgentId],
+    enabled: !!myAgentId,
+  });
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     if (skills.length > 0) params.set("skills", skills.join(","));
@@ -1179,7 +1269,7 @@ function MarketplaceTab() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {crewGigs.map((gig) => <GigCard key={gig.id} gig={gig} />)}
+            {crewGigs.map((gig) => <GigCard key={gig.id} gig={gig} myAgentScore={myAgent?.fusedScore} myAgentRisk={myAgent?.riskIndex} />)}
           </div>
         </div>
       )}
@@ -1209,7 +1299,7 @@ function MarketplaceTab() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {gigs.map((gig) => <GigCard key={gig.id} gig={gig} />)}
+              {gigs.map((gig) => <GigCard key={gig.id} gig={gig} myAgentScore={myAgent?.fusedScore} myAgentRisk={myAgent?.riskIndex} />)}
             </div>
 
             <div className="flex items-center justify-center gap-4 mt-10">
