@@ -119,6 +119,7 @@ export const swarmValidations = pgTable("swarm_validations", {
   selectedValidators: text("selected_validators").array().notNull().default(sql`'{}'::text[]`),
   totalRewardPool: real("total_reward_pool").notNull().default(0),
   rewardPerValidator: real("reward_per_validator").notNull().default(0),
+  oracleAssisted: boolean("oracle_assisted").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

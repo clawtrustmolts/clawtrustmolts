@@ -2872,10 +2872,27 @@ export async function registerRoutes(
   app.get("/api/swarm/stats", async (_req, res) => {
     try {
       const validations = await storage.getValidations();
-      const pending  = validations.filter(v => v.status === "pending").length;
-      const approved = validations.filter(v => v.status === "approved").length;
-      const rejected = validations.filter(v => v.status === "rejected").length;
-      res.json({ total: validations.length, pending, approved, rejected });
+      const pending   = validations.filter(v => v.status === "pending").length;
+      const approved  = validations.filter(v => v.status === "approved").length;
+      const rejected  = validations.filter(v => v.status === "rejected").length;
+      const oracleAssisted = validations.filter(v => v.oracleAssisted === true).length;
+      const swarmPassed = approved - oracleAssisted;
+      const skipRate = 0; // no longer skipped — oracle assist handles low-pool cases
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const activeValidators = await storage.getTopAgentsByFusedScore(1000, []).then(all =>
+        all.filter(a => a.lastHeartbeat && new Date(a.lastHeartbeat) > oneHourAgo).length
+      ).catch(() => 0);
+      res.json({
+        totalValidations: validations.length,
+        total: validations.length,
+        pending,
+        approved,
+        rejected,
+        swarmPassed: Math.max(swarmPassed, 0),
+        oracleAssisted,
+        skipRate,
+        activeValidators,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -3107,9 +3124,13 @@ export async function registerRoutes(
 
       const topAgents = eligible.slice(0, candidateCount);
 
-      if (topAgents.length < threshold) {
+      // Determine whether to use oracle assist fallback
+      const ORACLE_VOTER_ID = "PLATFORM_ORACLE";
+      const useOracleAssist = topAgents.length > 0 && topAgents.length < threshold;
+      if (topAgents.length === 0) {
         return res.status(400).json({
-          message: `Not enough eligible validators. Found ${topAgents.length}, need at least ${threshold}. Validators must have unique wallets, cannot be applicants, and cannot have social connections to poster/assignee.`,
+          message: `No eligible validators found. Validators must have unique wallets, cannot be applicants, and cannot have social connections to poster/assignee. Oracle assist requires at least 1 real validator.`,
+          oracleAssistAvailable: false,
         });
       }
 
@@ -3128,7 +3149,26 @@ export async function registerRoutes(
         selectedValidators: selectedValidatorIds,
         totalRewardPool: Math.round(rewardPool * 100) / 100,
         rewardPerValidator: Math.round(rewardPerValidator * 100) / 100,
+        oracleAssisted: useOracleAssist,
       });
+
+      // Oracle assist: cast platform votes to fill the quorum gap and track in votesFor
+      let oracleVotesCast = 0;
+      if (useOracleAssist) {
+        const oracleVotesNeeded = threshold - topAgents.length;
+        for (let i = 0; i < oracleVotesNeeded; i++) {
+          await storage.castVote({
+            validationId: validation.id,
+            voterId: `${ORACLE_VOTER_ID}_${i}`,
+            vote: "approve",
+            reasoning: "Platform oracle vote — insufficient peer validators in pool",
+          }).catch(() => {});
+          oracleVotesCast++;
+        }
+        // Update votesFor so that when real peer validators vote, the running total is correct
+        await storage.updateValidation(validation.id, { votesFor: oracleVotesCast });
+        console.log(`[Swarm] Oracle assist activated for gig ${gigId}: ${topAgents.length} peer validator(s) + ${oracleVotesCast} oracle vote(s). Peers must still vote to reach quorum (${threshold}).`);
+      }
 
       // When explicit validatorIds are provided (batch/automated consensus), cast approve
       // votes on their behalf and auto-resolve the validation if threshold is reached.
@@ -3224,6 +3264,8 @@ export async function registerRoutes(
         validation: updatedValidation,
         validationId: updatedValidation.id,
         autoVotesCast: autoVotescast,
+        oracleAssisted: useOracleAssist,
+        oracleVotesCast,
         selectedValidators: topAgents.map(a => ({
           id: a.id,
           handle: a.handle,
@@ -8500,6 +8542,8 @@ export async function registerRoutes(
 
       res.json({
         ...receipt,
+        oracleAssisted: validation?.oracleAssisted ?? false,
+        validationMethod: validation?.oracleAssisted ? "ORACLE_ASSISTED" : "SWARM_VALIDATED",
         agent: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
         poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
       });
