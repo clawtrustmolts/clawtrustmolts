@@ -9833,16 +9833,29 @@ export async function registerRoutes(
         console.log(`[Agency] Crew ${gig.crewId} marked agencyVerified after gig ${gigId} completed`);
       }
 
-      // Compute the Protection-2 budget-proportional rep split (10% captain bonus + 90% work share)
+      // Compute the Protection-2 budget-proportional rep split (10% captain bonus + 90% work share).
+      // Captains emit two entries (captain_bonus + subtask_work/none); other members emit one each.
       const splitEntries = computeCrewRepSplit(gig.budget, subtasks, crewMembers);
 
+      // Apply all rep awards and write audit rows before marking the split complete.
+      // Any failure here propagates to the outer catch, leaving repSplitCompleted=false
+      // so the split can be retried on next completion signal.
       for (const entry of splitEntries) {
-        // Write canonical reputation event for every member (even 0-rep entries for audit trail)
+        // crew_rep_events: audit row for every entry (including repAwarded=0 reason='none')
+        await storage.createCrewRepEvent({
+          crewId: gig.crewId!,
+          gigId,
+          agentId: entry.agentId,
+          repAwarded: entry.repAwarded,
+          reason: entry.reason,
+        });
+
         if (entry.repAwarded > 0) {
-          await storage.createReputationEvent({
+          // Canonical reputation event (non-critical for split idempotency, soft-fail only)
+          storage.createReputationEvent({
             agentId: entry.agentId,
             eventType: "gig_completion",
-            scoreChange: entry.repAwarded,
+            scoreChange: Math.max(1, Math.round(entry.repAwarded)),
             source: "swarm",
             details: JSON.stringify({
               gigId,
@@ -9851,28 +9864,22 @@ export async function registerRoutes(
               reason: entry.reason,
               formula: "protection2_crew_rep_split",
             }),
-          }).catch(() => {});
+          }).catch((e: Error) => {
+            console.warn(`[Agency] Non-fatal: rep event write failed for ${entry.agentId}: ${e.message}`);
+          });
 
-          // Increment performanceScore (capped at 100)
+          // Increment performanceScore (capped at 100) — fail-fast so split is retried on error
           const agent = await storage.getAgent(entry.agentId);
           if (agent) {
             const newPerf = Math.min(100, (agent.performanceScore ?? 0) + entry.repAwarded);
-            await storage.updateAgent(entry.agentId, { performanceScore: newPerf }).catch(() => {});
+            await storage.updateAgent(entry.agentId, { performanceScore: newPerf });
           }
         }
-
-        // Write crew_rep_events row for every member regardless of repAwarded amount
-        await storage.createCrewRepEvent({
-          crewId: gig.crewId!,
-          gigId,
-          agentId: entry.agentId,
-          repAwarded: entry.repAwarded,
-          reason: entry.reason,
-        }).catch(() => {});
       }
 
+      // Only mark complete after ALL crew_rep_events rows and performanceScore updates succeed
       await storage.upsertCrewGigSettings(gigId, { repSplitCompleted: true });
-      console.log(`[Agency] Protection-2 rep split complete for gig ${gigId}: ${splitEntries.length} members, budget=${gig.budget} USDC`);
+      console.log(`[Agency] Protection-2 rep split complete for gig ${gigId}: ${splitEntries.length} entries, ${crewMembers.length} members, budget=${gig.budget} USDC`);
     } catch (e: any) {
       console.error("[Agency] triggerAgencyRepSplitOnCompletion error:", e.message?.slice(0, 200));
     }

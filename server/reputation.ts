@@ -576,12 +576,15 @@ export interface CrewRepSplitEntry {
  *
  * Formula:
  *  - Captain (LEAD) always receives 10% of BASE_CREW_REP_POOL as a flat bonus
- *    regardless of their personal subtask delivery.
+ *    regardless of their personal subtask delivery (reason: "captain_bonus").
  *  - The remaining 90% is distributed proportionally among ALL members (including
  *    the captain) based on their approved subtask usdcShare vs the total gig budget.
- *  - Members with no approved subtasks receive zero from the work pool.
+ *    Values are stored as exact decimals (not rounded) to preserve proportionality.
+ *  - Members with no approved subtasks receive zero from the work pool (reason: "none").
  *
- * Returns one entry per crew member with repAwarded and reason for audit logging.
+ * Returns one entry per reward component — captains emit up to two entries
+ * (one "captain_bonus" + one "subtask_work"/"none") for clean per-reason audit fidelity.
+ * Other members emit exactly one entry.
  */
 export function computeCrewRepSplit(
   gigBudget: number,
@@ -589,33 +592,47 @@ export function computeCrewRepSplit(
   crewMembers: Array<{ agentId: string; role: string }>
 ): CrewRepSplitEntry[] {
   const approvedSubtasks = subtasks.filter(s => s.status === "approved");
-  const captainBonusRep = Math.round(BASE_CREW_REP_POOL * CAPTAIN_BONUS_FRACTION);
+  const captainBonusRep = BASE_CREW_REP_POOL * CAPTAIN_BONUS_FRACTION;
   const memberPoolRep = BASE_CREW_REP_POOL * (1 - CAPTAIN_BONUS_FRACTION);
 
-  return crewMembers.map(member => {
+  const results: CrewRepSplitEntry[] = [];
+
+  for (const member of crewMembers) {
     const isCaptain = member.role === "LEAD";
     const memberApprovedTasks = approvedSubtasks.filter(s => s.assigneeId === member.agentId);
     const workUsdcShare = memberApprovedTasks.reduce((sum, t) => sum + (t.usdcShare || 0), 0);
 
-    let workRep = 0;
-    if (gigBudget > 0 && workUsdcShare > 0) {
-      workRep = Math.round((workUsdcShare / gigBudget) * memberPoolRep);
-    }
-
-    let repAwarded: number;
-    let reason: "captain_bonus" | "subtask_work" | "none";
+    const workRep = (gigBudget > 0 && workUsdcShare > 0)
+      ? parseFloat(((workUsdcShare / gigBudget) * memberPoolRep).toFixed(4))
+      : 0;
 
     if (isCaptain) {
-      repAwarded = captainBonusRep + workRep;
-      reason = "captain_bonus";
-    } else if (workRep > 0) {
-      repAwarded = workRep;
-      reason = "subtask_work";
+      // Always emit a distinct captain_bonus entry for the flat 10% bonus
+      results.push({
+        agentId: member.agentId,
+        role: member.role,
+        repAwarded: captainBonusRep,
+        reason: "captain_bonus",
+        workUsdcShare: 0,
+      });
+      // Emit a separate work-share entry (subtask_work or none) for the captain's task delivery
+      results.push({
+        agentId: member.agentId,
+        role: member.role,
+        repAwarded: workRep,
+        reason: workRep > 0 ? "subtask_work" : "none",
+        workUsdcShare,
+      });
     } else {
-      repAwarded = 0;
-      reason = "none";
+      results.push({
+        agentId: member.agentId,
+        role: member.role,
+        repAwarded: workRep,
+        reason: workRep > 0 ? "subtask_work" : "none",
+        workUsdcShare,
+      });
     }
+  }
 
-    return { agentId: member.agentId, role: member.role, repAwarded, reason, workUsdcShare };
-  });
+  return results;
 }
