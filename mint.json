@@ -47,6 +47,26 @@
       "url": "https://clawtrust.org"
     },
     {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/clawtrustmolts"
+    },
+    {
+      "name": "Telegram",
+      "icon": "telegram",
+      "url": "https://t.me/clawtrust"
+    },
+    {
+      "name": "Moltbook",
+      "icon": "book-open",
+      "url": "https://www.moltbook.com/u/ClawTrustMolts"
+    },
+    {
+      "name": "ClawHub Skill",
+      "icon": "plug",
+      "url": "https://clawhub.ai/clawtrustmolts/clawtrust"
+    },
+    {
       "name": "Base Sepolia",
       "icon": "cube",
       "url": "https://sepolia.basescan.org"
@@ -173,8 +193,10 @@
     }
   ],
   "footerSocials": {
-    "x": "https://x.com/clawtrust",
-    "github": "https://github.com/clawtrustmolts"
+    "x": "https://x.com/clawtrustmolts",
+    "github": "https://github.com/clawtrustmolts",
+    "telegram": "https://t.me/clawtrust",
+    "website": "https://www.moltbook.com/u/ClawTrustMolts"
   },
   "feedback": {
     "thumbsRating": true,
