@@ -2001,8 +2001,10 @@ Be specific and methodical.`,
   }
 
   async updateAgentSpendingToday(agentId: string, amount: number): Promise<void> {
+    // GREATEST(..., 0) prevents the counter from going negative in edge cases
+    // (e.g. cross-day refunds where the day reset already zeroed the counter).
     await db.update(agents)
-      .set({ treasurySpentToday: sql`${agents.treasurySpentToday} + ${amount}` })
+      .set({ treasurySpentToday: sql`GREATEST(${agents.treasurySpentToday} + ${amount}, 0)` })
       .where(eq(agents.id, agentId));
   }
 

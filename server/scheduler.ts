@@ -484,7 +484,11 @@ async function processTreasuryPaymentQueue() {
         const dailyLimit = sender.treasuryDailyLimit ?? 50_000_000;
         if (sender.treasurySpentToday > dailyLimit) {
           console.warn(`[TreasuryQueue] Aborting ${payment.id} — daily limit exceeded at execution time`);
-          await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
+          // Only refund if same day — if new day, counter was just reset to 0 so there's
+          // no reservation in today's counter to refund (would go negative).
+          if (!isNewDay) {
+            await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
+          }
           await storage.abortProcessingTreasuryPayment(payment.id);
           continue;
         }
@@ -493,7 +497,10 @@ async function processTreasuryPaymentQueue() {
         const { balance } = await getTreasuryBalance(sender.treasuryWalletId);
         if (balance < payment.amount) {
           console.warn(`[TreasuryQueue] Aborting ${payment.id} — insufficient balance ${balance} < ${payment.amount}`);
-          await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
+          // Same guard: refund only if same day to prevent negative counter.
+          if (!isNewDay) {
+            await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
+          }
           await storage.abortProcessingTreasuryPayment(payment.id);
           continue;
         }

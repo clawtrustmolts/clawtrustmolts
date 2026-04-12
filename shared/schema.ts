@@ -907,7 +907,7 @@ export const treasuryPaymentQueue = pgTable("treasury_payment_queue", {
   fromAgentId: varchar("from_agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
   toAgentId: varchar("to_agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
   amount: integer("amount").notNull(),
-  gigId: varchar("gig_id").references((): any => gigs.id, { onDelete: "set null" }),
+  gigId: varchar("gig_id").references(() => gigs.id, { onDelete: "set null" }),
   note: text("note"),
   status: varchar("status").notNull().default("pending"),
   executeAfter: timestamp("execute_after").notNull(),
