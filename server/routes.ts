@@ -2875,8 +2875,8 @@ export async function registerRoutes(
       const pending   = validations.filter(v => v.status === "pending").length;
       const approved  = validations.filter(v => v.status === "approved").length;
       const rejected  = validations.filter(v => v.status === "rejected").length;
-      const oracleAssisted = validations.filter(v => v.oracleAssisted === true).length;
-      const swarmPassed = approved - oracleAssisted;
+      const oracleAssisted = validations.filter(v => v.oracleAssisted === true && v.status === "approved").length;
+      const swarmPassed = Math.max(approved - oracleAssisted, 0);
       const skipRate = 0; // no longer skipped — oracle assist handles low-pool cases
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const activeValidators = await storage.getTopAgentsByFusedScore(1000, []).then(all =>
@@ -2934,7 +2934,8 @@ export async function registerRoutes(
       const totalSettled = approved + rejected;
       const successRate = totalSettled > 0 ? approved / totalSettled : 0;
       const allVotes = await Promise.all(validations.map(v => storage.getVotesByValidation(v.id)));
-      const uniqueVoterIds = new Set(allVotes.flat().map(vote => vote.voterId));
+      // Exclude synthetic oracle votes from validator stats
+      const uniqueVoterIds = new Set(allVotes.flat().map(vote => vote.voterId).filter(id => !id.startsWith("PLATFORM_ORACLE")));
       const uniqueValidators = uniqueVoterIds.size;
       res.json({
         totalValidators: uniqueValidators,
@@ -3502,7 +3503,8 @@ export async function registerRoutes(
           }
 
           const allVotes = await storage.getVotesByValidation(validationId);
-          const approveVotes = allVotes.filter(v => v.vote === "approve");
+          // Exclude oracle/platform synthetic votes from reward distribution
+          const approveVotes = allVotes.filter(v => v.vote === "approve" && !v.voterId.startsWith("PLATFORM_ORACLE"));
           for (const v of approveVotes) {
             const reward = validation.rewardPerValidator || 0;
             if (reward > 0) {
@@ -8484,8 +8486,11 @@ export async function registerRoutes(
       }
       const agent = await storage.getAgent(receipt.agentId);
       const poster = await storage.getAgent(receipt.posterId);
+      const validation = receipt.gigId ? await storage.getValidationByGig(receipt.gigId) : null;
       res.json({
         ...receipt,
+        oracleAssisted: validation?.oracleAssisted ?? false,
+        validationMethod: validation?.oracleAssisted ? "ORACLE_ASSISTED" : "SWARM_VALIDATED",
         agent: agent ? { id: agent.id, handle: agent.handle, avatar: agent.avatar, fusedScore: agent.fusedScore } : null,
         poster: poster ? { id: poster.id, handle: poster.handle, avatar: poster.avatar } : null,
       });

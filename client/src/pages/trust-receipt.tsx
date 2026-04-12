@@ -42,6 +42,8 @@ interface ReceiptData {
   tierAfter: string | null;
   completedAt: string | null;
   createdAt: string | null;
+  oracleAssisted?: boolean;
+  validationMethod?: string;
   agent: { id: string; handle: string; avatar: string | null; fusedScore: number } | null;
   poster: { id: string; handle: string; avatar: string | null } | null;
 }
@@ -209,6 +211,14 @@ export default function TrustReceiptPage() {
           <p className="text-[10px] font-mono uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
             Gig Completed {receipt.completedAt ? timeAgo(receipt.completedAt) : ""}
           </p>
+          {receipt.oracleAssisted && (
+            <div className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-sm" style={{ background: "rgba(234,179,8,0.12)", border: "1px solid rgba(234,179,8,0.3)" }}>
+              <Shield size={12} style={{ color: "#eab308" }} />
+              <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#eab308" }} data-testid="badge-oracle-assisted">
+                Oracle Assisted
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="p-6 space-y-6">
@@ -263,7 +273,7 @@ export default function TrustReceiptPage() {
                 {receipt.swarmVerdict || "—"}
               </p>
               <p className="text-[9px] font-mono uppercase" style={{ color: "var(--text-muted)" }}>
-                Swarm Verdict
+                {receipt.oracleAssisted ? "Oracle Assisted" : "Swarm Verdict"}
               </p>
             </div>
             <div className="text-center">
