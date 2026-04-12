@@ -9939,6 +9939,7 @@ export async function registerRoutes(
         if (!isMember) return res.status(400).json({ message: "assigneeId must be a crew member" });
       }
 
+      const resolvedUsdcShare = typeof usdcShare === "number" ? usdcShare : 0;
       const subtask = await storage.createCrewSubtask({
         gigId,
         crewId: gig.crewId,
@@ -9946,10 +9947,13 @@ export async function registerRoutes(
         title: title.trim(),
         description: description?.trim() || null,
         requiredSkill: requiredSkill?.trim() || null,
-        usdcShare: typeof usdcShare === "number" ? usdcShare : 0,
+        usdcShare: resolvedUsdcShare,
         status: assigneeId ? "claimed" : "open",
         submissionText: null,
         leadFeedback: null,
+        escrowLocked: resolvedUsdcShare > 0,
+        escrowLockedAt: resolvedUsdcShare > 0 ? new Date() : null,
+        escrowReleased: false,
       });
 
       // Enable parallel mode on settings if not already set
@@ -10080,6 +10084,24 @@ export async function registerRoutes(
       }
 
       const updated = await storage.updateCrewSubtask(subtaskId, updateData);
+
+      // Subtask escrow release: when lead approves a subtask with a locked escrow share
+      if (isLead && status === "approved" && subtask.escrowLocked && !subtask.escrowReleased && subtask.usdcShare > 0 && subtask.assigneeId) {
+        try {
+          await storage.updateCrewSubtask(subtaskId, { escrowReleased: true });
+          // usdcShare is stored in USDC dollars; treasury amounts are in micro-units (× 1_000_000)
+          await storage.createTreasuryTransaction({
+            agentId: subtask.assigneeId,
+            type: "credit",
+            amount: Math.round(subtask.usdcShare * 1_000_000),
+            gigId: gigId,
+            description: `Subtask payout: ${subtask.title}`,
+          });
+          notifyAgent(subtask.assigneeId, "subtask_escrow_released", "Subtask Payment Released", `Your locked share of $${subtask.usdcShare.toFixed(2)} USDC for "${subtask.title}" has been released.`, { gigId }).catch(() => {});
+        } catch (e: any) {
+          console.error("[Subtask Escrow] Release error for subtask", subtaskId, e.message?.slice(0, 200));
+        }
+      }
 
       // Auto-delivery check: if lead approved, check if all subtasks are approved
       if (isLead && status === "approved") {
@@ -10248,10 +10270,28 @@ export async function registerRoutes(
       // Enable parallel mode on parent gig settings
       await storage.upsertCrewGigSettings(parentGigId, { parallelModeEnabled: true });
 
+      // Lock sub-escrow for each child gig that has a budget — protects assignees if lead disappears
+      for (const child of created) {
+        if (child.budget > 0) {
+          try {
+            await storage.createEscrow({
+              gigId: child.id,
+              depositorId: parentGig.posterId,
+              amount: child.budget,
+              currency: (parentGig.currency as any) || "USDC",
+              chain: (parentGig.chain as any) || "BASE_SEPOLIA",
+              status: "locked",
+            });
+          } catch (e: any) {
+            console.error("[Decompose] Sub-escrow lock error for child gig", child.id, e.message?.slice(0, 200));
+          }
+        }
+      }
+
       // Notify assignees
       for (const child of created) {
         if (child.assigneeId) {
-          notifyAgent(child.assigneeId, "gig_assigned", "Child Gig Assigned", `You have been assigned "${child.title}" as part of "${parentGig.title}".`, { gigId: child.id }).catch(() => {});
+          notifyAgent(child.assigneeId, "gig_assigned", "Child Gig Assigned", `You have been assigned "${child.title}" as part of "${parentGig.title}". Your budget share of $${child.budget.toFixed(2)} USDC is locked in escrow.`, { gigId: child.id }).catch(() => {});
         }
       }
 

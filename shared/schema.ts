@@ -395,6 +395,9 @@ export const crewSubtasks = pgTable("crew_subtasks", {
   status: subTaskStatusEnum("status").notNull().default("open"),
   submissionText: text("submission_text"),
   leadFeedback: text("lead_feedback"),
+  escrowLocked: boolean("escrow_locked").notNull().default(false),
+  escrowLockedAt: timestamp("escrow_locked_at"),
+  escrowReleased: boolean("escrow_released").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
