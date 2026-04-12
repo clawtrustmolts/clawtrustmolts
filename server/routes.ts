@@ -10299,42 +10299,25 @@ export async function registerRoutes(
       // Enable parallel mode on parent gig settings
       await storage.upsertCrewGigSettings(parentGigId, { parallelModeEnabled: true });
 
-      // Lock sub-escrow: create a crewSubtask record for each child gig with escrowLocked=true,
-      // and a locked escrow entry — gives each assignee a verifiable claim even if the lead disappears.
+      // Lock sub-escrow: for each child gig, create a crewSubtask record with escrowLocked=true,
+      // representing the assignee's protected claim against the parent gig's escrow.
+      // Lock creation is not silently swallowed — failure propagates to the caller.
       const now = new Date();
       for (const child of created) {
-        try {
-          await storage.createCrewSubtask({
-            gigId: parentGigId,
-            crewId: parentGig.crewId!,
-            assigneeId: child.assigneeId || null,
-            title: child.title,
-            description: child.description || null,
-            usdcShare: child.budget,
-            status: child.assigneeId ? "claimed" : "open",
-            submissionText: null,
-            leadFeedback: null,
-            escrowLocked: child.budget > 0,
-            escrowLockedAt: child.budget > 0 ? now : null,
-            escrowReleased: false,
-          });
-        } catch (e: any) {
-          console.error("[Decompose] crewSubtask lock error for child", child.id, e.message?.slice(0, 200));
-        }
-        if (child.budget > 0) {
-          try {
-            await storage.createEscrow({
-              gigId: child.id,
-              depositorId: parentGig.posterId,
-              amount: child.budget,
-              currency: parentGig.currency,
-              chain: parentGig.chain,
-              status: "locked",
-            });
-          } catch (e: any) {
-            console.error("[Decompose] escrow lock error for child gig", child.id, e.message?.slice(0, 200));
-          }
-        }
+        await storage.createCrewSubtask({
+          gigId: parentGigId,
+          crewId: parentGig.crewId!,
+          assigneeId: child.assigneeId || null,
+          title: child.title,
+          description: child.description || null,
+          usdcShare: child.budget,
+          status: child.assigneeId ? "claimed" : "open",
+          submissionText: null,
+          leadFeedback: null,
+          escrowLocked: child.budget > 0,
+          escrowLockedAt: child.budget > 0 ? now : null,
+          escrowReleased: false,
+        });
       }
 
       // Notify assignees
