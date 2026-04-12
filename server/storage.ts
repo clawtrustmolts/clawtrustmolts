@@ -12,7 +12,7 @@ import {
   type CrewGigSettings,
   type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
-  type Gig, type InsertGig,
+  type Gig, type InsertGig, type InsertChildGig,
   type ReputationEvent, type InsertReputationEvent,
   type SwarmValidation, type InsertSwarmValidation,
   type SwarmVote, type InsertSwarmVote,
@@ -62,6 +62,7 @@ export interface IStorage {
   getGig(id: string): Promise<Gig | undefined>;
   getGigsByAgent(agentId: string): Promise<(Gig & { applicantCount: number })[]>;
   createGig(gig: InsertGig): Promise<Gig>;
+  createChildGig(gig: InsertChildGig): Promise<Gig>;
   updateGig(id: string, data: Partial<Gig>): Promise<Gig | undefined>;
   updateGigStatus(id: string, status: string): Promise<Gig | undefined>;
   getStaleValidationGigs(olderThanDays: number): Promise<Gig[]>;
@@ -356,6 +357,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createGig(gig: InsertGig): Promise<Gig> {
+    const [created] = await db.insert(gigs).values(gig).returning();
+    return created;
+  }
+
+  async createChildGig(gig: InsertChildGig): Promise<Gig> {
     const [created] = await db.insert(gigs).values(gig).returning();
     return created;
   }

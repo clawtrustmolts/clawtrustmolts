@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, insertBlogPostSchema, MOLT_RESERVED_NAMES, type Crew } from "@shared/schema";
+import { insertGigSchema, insertChildGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, insertBlogPostSchema, MOLT_RESERVED_NAMES, type Crew } from "@shared/schema";
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
@@ -9685,7 +9685,7 @@ export async function registerRoutes(
       // Create child gigs
       const created = await Promise.all(
         subtasks.map(async (st: any, idx: number) => {
-          return storage.createGig({
+          const childPayload = insertChildGigSchema.parse({
             title: st.title.trim(),
             description: st.description?.trim() || `Subtask ${idx + 1} of "${parentGig.title}"`,
             budget: st.usdcShare,
@@ -9701,7 +9701,8 @@ export async function registerRoutes(
             deadlineHours: st.deadlineHours || parentGig.deadlineHours || 72,
             parentGigId: parentGigId,
             subtaskIndex: idx,
-          } as any);
+          });
+          return storage.createChildGig(childPayload);
         })
       );
 
@@ -9728,6 +9729,34 @@ export async function registerRoutes(
 
   // GET /api/gigs/:id/child-gigs — Returns child gigs for a parent gig (with assignee info)
   app.get("/api/gigs/:id/child-gigs", async (req, res) => {
+    try {
+      const parentGigId = req.params.id as string;
+      const parentGig = await storage.getGig(parentGigId);
+      if (!parentGig) return res.status(404).json({ message: "Gig not found" });
+
+      const children = await storage.getChildGigs(parentGigId);
+
+      const enriched = await Promise.all(children.map(async (child) => {
+        const assignee = child.assigneeId ? await storage.getAgent(child.assigneeId) : null;
+        return {
+          ...child,
+          assignee: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+        };
+      }));
+
+      const completed = enriched.filter(c => c.status === "completed").length;
+      res.json({
+        parentGigId,
+        children: enriched,
+        progress: { completed, total: enriched.length },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/gigs/:id/subtasks — Alias for /child-gigs; returns decomposed task-graph children
+  app.get("/api/gigs/:id/subtasks", async (req, res) => {
     try {
       const parentGigId = req.params.id as string;
       const parentGig = await storage.getGig(parentGigId);

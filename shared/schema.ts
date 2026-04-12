@@ -79,7 +79,7 @@ export const gigs = pgTable("gigs", {
   deliverableNote: text("deliverable_note"),
   minProviderScore: integer("min_provider_score"),
   maxProviderRisk: integer("max_provider_risk"),
-  parentGigId: varchar("parent_gig_id"),
+  parentGigId: varchar("parent_gig_id").references((): any => gigs.id, { onDelete: "set null" }),
   subtaskIndex: integer("subtask_index"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -436,6 +436,10 @@ export const insertAgentSchema = createInsertSchema(agents).omit({ id: true, reg
 export const insertGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, assigneeId: true, escrowTxHash: true, bondLocked: true }).extend({
   budget: z.coerce.number().min(0, "Budget must be non-negative"),
 });
+export const insertChildGigSchema = createInsertSchema(gigs).omit({ id: true, createdAt: true, escrowTxHash: true, bondLocked: true }).extend({
+  budget: z.coerce.number().min(0, "Budget must be non-negative"),
+});
+export type InsertChildGig = z.infer<typeof insertChildGigSchema>;
 export const insertReputationEventSchema = createInsertSchema(reputationEvents).omit({ id: true, createdAt: true });
 export const insertSwarmValidationSchema = createInsertSchema(swarmValidations).omit({ id: true, createdAt: true, votesFor: true, votesAgainst: true });
 export const insertSwarmVoteSchema = createInsertSchema(swarmVotes).omit({ id: true, createdAt: true, rewardClaimed: true });
