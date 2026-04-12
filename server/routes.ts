@@ -3153,26 +3153,22 @@ export async function registerRoutes(
         oracleAssisted: useOracleAssist,
       });
 
-      // Oracle assist: pre-cast exactly `threshold` oracle votes and auto-resolve immediately.
-      // This guarantees the validation NEVER stalls regardless of real validator behavior.
-      // Real validators are still notified (transparency), but their votes arrive into an
-      // already-resolved validation (409 on attempt). oracleAssisted=true flags the receipt.
+      // Oracle assist: single PLATFORM_ORACLE identity casts the one deciding vote,
+      // then the validation is immediately resolved as approved. This prevents stalling
+      // when peer validator pool is insufficient while using only one oracle identity.
+      // Validator notifications are suppressed to avoid confusing them with 409 responses.
       let oracleVotesCast = 0;
       if (useOracleAssist) {
-        for (let i = 0; i < threshold; i++) {
-          await storage.castVote({
-            validationId: validation.id,
-            voterId: `${ORACLE_VOTER_ID}_${i}`,
-            vote: "approve",
-            reasoning: "Platform oracle deciding vote — insufficient peer validators in pool",
-          }).catch(() => {});
-          oracleVotesCast++;
-        }
-        // Immediately resolve: oracle has cast quorum — validation approved, gig completed
-        await storage.updateValidation(validation.id, { status: "approved", votesFor: oracleVotesCast });
+        await storage.castVote({
+          validationId: validation.id,
+          voterId: ORACLE_VOTER_ID,
+          vote: "approve",
+          reasoning: `Platform oracle deciding vote — ${topAgents.length}/${threshold} peer validators available`,
+        }).catch(err => console.error("[Swarm] Oracle vote insert error:", err.message));
+        oracleVotesCast = 1;
+        await storage.updateValidation(validation.id, { status: "approved", votesFor: 1 });
         await storage.updateGigStatus(gigId, "completed");
-        console.log(`[Swarm] Oracle assist: auto-approved gig ${gigId} — ${topAgents.length} peer validator(s) + ${oracleVotesCast} oracle vote(s) (quorum: ${threshold})`);
-        // Gig-Proven skill tier upgrade for assignee (oracle-assisted approval)
+        console.log(`[Swarm] Oracle decided: gig ${gigId} approved — ${topAgents.length}/${threshold} peer validator(s) available, oracle cast deciding vote`);
         if (gig.assigneeId && gig.skillsRequired && gig.skillsRequired.length > 0) {
           (async () => {
             try {
@@ -3281,7 +3277,7 @@ export async function registerRoutes(
         }).catch(err => console.error("[Swarm] createValidation on-chain error:", err.message));
       }
 
-      if (autoVotescast === 0) {
+      if (autoVotescast === 0 && !useOracleAssist) {
         selectedValidatorIds.forEach(validatorId => {
           notifyAgent(validatorId, "swarm_vote_needed", "Swarm Vote Needed", `Your vote is needed to validate: "${gig.title}"`, { gigId }).catch(() => {});
         });
