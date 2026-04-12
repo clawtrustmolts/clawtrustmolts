@@ -7,6 +7,7 @@ import {
   agentNotifications, skillChallenges, challengeAttempts, blogPosts, skillAttestations,
   erc8183Jobs, erc8183Applicants, crewSubtasks, crewGigSettings, crewRepEvents, validatorAccuracy,
   gigPlanVersions,
+  treasuryPaymentQueue,
   treasuryTransactions,
   type Erc8183Job, type InsertErc8183Job,
   type Erc8183Applicant, type InsertErc8183Applicant,
@@ -54,6 +55,7 @@ import {
   blockchainActionQueue,
   type BlockchainAction, type InsertBlockchainAction,
   type TreasuryTransaction, type InsertTreasuryTransaction,
+  type TreasuryPaymentQueue, type InsertTreasuryPaymentQueue,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -316,6 +318,16 @@ export interface IStorage {
   createPlanVersion(data: InsertGigPlanVersion): Promise<GigPlanVersion>;
   getLatestPlanVersion(gigId: string): Promise<GigPlanVersion | undefined>;
   getPlanVersionHistory(gigId: string): Promise<(GigPlanVersion & { authorHandle: string | null })[]>;
+
+  // Protection 5 — Treasury Spending Controls
+  createTreasuryPaymentQueued(data: InsertTreasuryPaymentQueue): Promise<TreasuryPaymentQueue>;
+  getTreasuryPaymentQueued(id: string): Promise<TreasuryPaymentQueue | undefined>;
+  getPendingTreasuryPayments(fromAgentId: string): Promise<TreasuryPaymentQueue[]>;
+  getDueTreasuryPayments(): Promise<TreasuryPaymentQueue[]>;
+  cancelTreasuryPayment(id: string): Promise<TreasuryPaymentQueue | undefined>;
+  executeTreasuryPayment(id: string): Promise<TreasuryPaymentQueue | undefined>;
+  updateAgentSpendingToday(agentId: string, amount: number): Promise<void>;
+  resetAgentSpendingToday(agentId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1929,6 +1941,57 @@ Be specific and methodical.`,
       .where(eq(gigPlanVersions.gigId, gigId))
       .orderBy(desc(gigPlanVersions.version));
     return rows;
+  }
+
+  // ─── Protection 5 — Treasury Spending Controls ─────────────────────────────
+
+  async createTreasuryPaymentQueued(data: InsertTreasuryPaymentQueue): Promise<TreasuryPaymentQueue> {
+    const [row] = await db.insert(treasuryPaymentQueue).values(data).returning();
+    return row;
+  }
+
+  async getTreasuryPaymentQueued(id: string): Promise<TreasuryPaymentQueue | undefined> {
+    const [row] = await db.select().from(treasuryPaymentQueue).where(eq(treasuryPaymentQueue.id, id));
+    return row;
+  }
+
+  async getPendingTreasuryPayments(fromAgentId: string): Promise<TreasuryPaymentQueue[]> {
+    return db.select().from(treasuryPaymentQueue)
+      .where(and(eq(treasuryPaymentQueue.fromAgentId, fromAgentId), eq(treasuryPaymentQueue.status, "pending")))
+      .orderBy(desc(treasuryPaymentQueue.createdAt));
+  }
+
+  async getDueTreasuryPayments(): Promise<TreasuryPaymentQueue[]> {
+    return db.select().from(treasuryPaymentQueue)
+      .where(and(eq(treasuryPaymentQueue.status, "pending"), lte(treasuryPaymentQueue.executeAfter, new Date())));
+  }
+
+  async cancelTreasuryPayment(id: string): Promise<TreasuryPaymentQueue | undefined> {
+    const [row] = await db.update(treasuryPaymentQueue)
+      .set({ status: "cancelled", cancelledAt: new Date() })
+      .where(and(eq(treasuryPaymentQueue.id, id), eq(treasuryPaymentQueue.status, "pending")))
+      .returning();
+    return row;
+  }
+
+  async executeTreasuryPayment(id: string): Promise<TreasuryPaymentQueue | undefined> {
+    const [row] = await db.update(treasuryPaymentQueue)
+      .set({ status: "executed", executedAt: new Date() })
+      .where(and(eq(treasuryPaymentQueue.id, id), eq(treasuryPaymentQueue.status, "pending")))
+      .returning();
+    return row;
+  }
+
+  async updateAgentSpendingToday(agentId: string, amount: number): Promise<void> {
+    await db.update(agents)
+      .set({ treasurySpentToday: sql`${agents.treasurySpentToday} + ${amount}` })
+      .where(eq(agents.id, agentId));
+  }
+
+  async resetAgentSpendingToday(agentId: string): Promise<void> {
+    await db.update(agents)
+      .set({ treasurySpentToday: 0, treasurySpentTodayReset: new Date() })
+      .where(eq(agents.id, agentId));
   }
 }
 

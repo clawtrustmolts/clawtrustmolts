@@ -9,6 +9,7 @@ import { processBlockchainQueue, updateReputationOnChain, cleanupStuckQueueEntri
 import { syncScoreToSkale } from "./skale-chain";
 import { checkAndTopUpSkaleFuel } from "./erc8183-service";
 import { isAddress } from "viem";
+import { getTreasuryBalance, getWalletAddress, transferBetweenTreasuryWallets } from "./circle-wallet";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -65,6 +66,11 @@ export function startScheduler() {
   setInterval(runBlockchainQueue, 5 * 60 * 1000);
   setTimeout(runBlockchainQueue, 30_000);
   console.log("[Scheduler] Blockchain retry queue: every 5 minutes");
+
+  // Protection 5 — Treasury payment queue processor (every 5 minutes)
+  setInterval(processTreasuryPaymentQueue, 5 * 60 * 1000);
+  setTimeout(processTreasuryPaymentQueue, 60_000); // initial run after 1 minute
+  console.log("[Scheduler] Treasury payment queue: every 5 minutes");
 
   setTimeout(() => {
     runExpiredValidationSweep();
@@ -435,4 +441,93 @@ function scheduleBlogPosts() {
 
   setInterval(checkAndPost, 60 * 60 * 1000);
   console.log("[Scheduler] Blog posts scheduled for Mon/Wed/Fri 3pm UTC (startup check in 2 min)");
+}
+
+// ─── Protection 5 — Treasury Payment Queue Processor ─────────────────────────
+
+async function processTreasuryPaymentQueue() {
+  try {
+    const due = await storage.getDueTreasuryPayments();
+    if (due.length === 0) return;
+    console.log(`[TreasuryQueue] Processing ${due.length} due payment(s)`);
+
+    for (const payment of due) {
+      try {
+        const sender = await storage.getAgent(payment.fromAgentId);
+        const recipient = await storage.getAgent(payment.toAgentId);
+        if (!sender || !sender.treasuryWalletId || !recipient) {
+          console.warn(`[TreasuryQueue] Skipping ${payment.id} — missing sender/recipient`);
+          await storage.cancelTreasuryPayment(payment.id);
+          continue;
+        }
+
+        // Check live balance
+        const { balance } = await getTreasuryBalance(sender.treasuryWalletId);
+        if (balance < payment.amount) {
+          console.warn(`[TreasuryQueue] Skipping ${payment.id} — insufficient balance ${balance} < ${payment.amount}`);
+          await storage.cancelTreasuryPayment(payment.id);
+          continue;
+        }
+
+        // Resolve destination address
+        let destAddress: string;
+        if (recipient.treasuryWalletId) {
+          const addr = await getWalletAddress(recipient.treasuryWalletId);
+          destAddress = addr || recipient.walletAddress;
+        } else {
+          destAddress = recipient.walletAddress;
+        }
+
+        // Execute transfer
+        const transfer = await transferBetweenTreasuryWallets(sender.treasuryWalletId, destAddress, payment.amount);
+
+        // Mark executed in queue
+        await storage.executeTreasuryPayment(payment.id);
+
+        // Record treasury transactions
+        await storage.createTreasuryTransaction({
+          agentId: payment.fromAgentId,
+          type: "debit",
+          amount: payment.amount,
+          counterpartyAgentId: payment.toAgentId,
+          gigId: payment.gigId || null,
+          txHash: transfer.transactionId,
+          description: payment.note || `Queued payment to @${recipient.handle}`,
+        });
+
+        if (recipient.treasuryWalletId) {
+          await storage.createTreasuryTransaction({
+            agentId: payment.toAgentId,
+            type: "credit",
+            amount: payment.amount,
+            counterpartyAgentId: payment.fromAgentId,
+            gigId: payment.gigId || null,
+            txHash: transfer.transactionId,
+            description: payment.note || `Queued payment from @${sender.handle}`,
+          });
+          await storage.updateTreasuryBalance(payment.toAgentId, payment.amount, "add");
+        }
+
+        // Update sender balance and daily spend counter
+        await storage.updateTreasuryBalance(payment.fromAgentId, -payment.amount, "add");
+        await storage.updateAgentSpendingToday(payment.fromAgentId, payment.amount);
+
+        // Notify sender that payment executed
+        await storage.createNotification({
+          agentId: payment.fromAgentId,
+          type: "treasury_payment_executed",
+          title: "Treasury payment executed",
+          message: `Queued payment of ${(payment.amount / 1_000_000).toFixed(2)} USDC to @${recipient.handle} was executed successfully (tx: ${transfer.transactionId})`,
+          metadata: JSON.stringify({ paymentId: payment.id, txHash: transfer.transactionId }),
+          read: false,
+        });
+
+        console.log(`[TreasuryQueue] Executed payment ${payment.id}: ${payment.amount} µUSDC → @${recipient.handle} (tx: ${transfer.transactionId})`);
+      } catch (err: any) {
+        console.error(`[TreasuryQueue] Failed to execute payment ${payment.id}:`, err.message);
+      }
+    }
+  } catch (err: any) {
+    console.error("[TreasuryQueue] Queue processor error:", err.message);
+  }
 }

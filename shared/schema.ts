@@ -57,6 +57,9 @@ export const agents = pgTable("agents", {
   x402PaymentCount: integer("x402_payment_count").notNull().default(0),
   treasuryWalletId: text("treasury_wallet_id"),
   treasuryBalance: integer("treasury_balance").default(0),
+  treasuryDailyLimit: integer("treasury_daily_limit").notNull().default(50_000_000),
+  treasurySpentToday: integer("treasury_spent_today").notNull().default(0),
+  treasurySpentTodayReset: timestamp("treasury_spent_today_reset"),
 });
 
 export const gigs = pgTable("gigs", {
@@ -896,3 +899,23 @@ export const gigPlanVersions = pgTable("gig_plan_versions", {
 export const insertGigPlanVersionSchema = createInsertSchema(gigPlanVersions).omit({ id: true, createdAt: true });
 export type GigPlanVersion = typeof gigPlanVersions.$inferSelect;
 export type InsertGigPlanVersion = z.infer<typeof insertGigPlanVersionSchema>;
+
+// ─── Protection 5 — Treasury Spending Controls ───────────────────────────────
+
+export const treasuryPaymentQueue = pgTable("treasury_payment_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromAgentId: varchar("from_agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  toAgentId: varchar("to_agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  amount: integer("amount").notNull(),
+  gigId: varchar("gig_id").references((): any => gigs.id, { onDelete: "set null" }),
+  note: text("note"),
+  status: varchar("status").notNull().default("pending"),
+  executeAfter: timestamp("execute_after").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  executedAt: timestamp("executed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+});
+
+export const insertTreasuryPaymentQueueSchema = createInsertSchema(treasuryPaymentQueue).omit({ id: true, createdAt: true, executedAt: true, cancelledAt: true });
+export type TreasuryPaymentQueue = typeof treasuryPaymentQueue.$inferSelect;
+export type InsertTreasuryPaymentQueue = z.infer<typeof insertTreasuryPaymentQueueSchema>;

@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
-import { insertGigSchema, insertChildGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, insertBlogPostSchema, MOLT_RESERVED_NAMES, type Crew } from "@shared/schema";
+import { insertGigSchema, insertChildGigSchema, insertEscrowSchema, registerAgentSchema, moltSyncSchema, autonomousRegisterSchema, insertAgentSkillSchema, sendMessageSchema, insertSlashEventSchema, insertReputationMigrationSchema, insertBlogPostSchema, MOLT_RESERVED_NAMES, type Crew, type InsertTreasuryPaymentQueue } from "@shared/schema";
 import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
@@ -8779,6 +8779,11 @@ export async function registerRoutes(
   });
 
   // POST /api/agents/:id/treasury/pay — pay another agent from treasury (no wallet sig needed)
+  // Protection 5: daily spend limit + 10-minute queue gate for payments ≥ $25 USDC
+  const TREASURY_QUEUE_THRESHOLD = 25_000_000;   // $25 USDC in micro-units
+  const TREASURY_MAX_DAILY_LIMIT = 500_000_000;  // $500 USDC in micro-units
+  const TREASURY_QUEUE_DELAY_MS = 10 * 60 * 1000; // 10 minutes
+
   app.post("/api/agents/:id/treasury/pay", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
       const agentId = req.params.id as string;
@@ -8804,6 +8809,31 @@ export async function registerRoutes(
       const recipient = await storage.getAgent(recipientAgentId);
       if (!recipient) return res.status(404).json({ message: "Recipient agent not found" });
 
+      // ── Protection 5a: daily limit reset ──────────────────────────────────
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const lastReset = sender.treasurySpentTodayReset;
+      if (!lastReset || lastReset < todayStart) {
+        await storage.resetAgentSpendingToday(agentId);
+        sender.treasurySpentToday = 0;
+      }
+
+      // ── Protection 5b: reject if over daily limit ──────────────────────────
+      const dailyLimit = sender.treasuryDailyLimit ?? 50_000_000;
+      const spentToday = sender.treasurySpentToday ?? 0;
+      if (spentToday + amount > dailyLimit) {
+        const remaining = Math.max(0, dailyLimit - spentToday);
+        const nextReset = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+        return res.status(429).json({
+          message: "Daily treasury spend limit reached",
+          dailyLimit,
+          spentToday,
+          remaining,
+          remainingFormatted: `${(remaining / 1_000_000).toFixed(2)} USDC`,
+          nextResetAt: nextReset.toISOString(),
+        });
+      }
+
       // Check live balance
       const { balance } = await getTreasuryBalance(sender.treasuryWalletId);
       if (balance < amount) {
@@ -8815,7 +8845,44 @@ export async function registerRoutes(
         });
       }
 
-      // Destination: recipient's treasury wallet address or external wallet
+      // ── Protection 5c: queue large payments ≥ $25 USDC ───────────────────
+      if (amount >= TREASURY_QUEUE_THRESHOLD) {
+        const executeAfter = new Date(Date.now() + TREASURY_QUEUE_DELAY_MS);
+        const queued = await storage.createTreasuryPaymentQueued({
+          fromAgentId: agentId,
+          toAgentId: recipientAgentId,
+          amount,
+          gigId: gigId || null,
+          note: note || null,
+          status: "pending",
+          executeAfter,
+        } as InsertTreasuryPaymentQueue);
+
+        const cancelUrl = `/api/treasury/payments/${queued.id}/cancel`;
+
+        // In-app notification to sender
+        await storage.createNotification({
+          agentId,
+          type: "treasury_payment_queued",
+          title: "Treasury payment queued",
+          message: `Payment of ${(amount / 1_000_000).toFixed(2)} USDC to @${recipient.handle} is queued — executes in 10 min. Cancel: ${cancelUrl}`,
+          metadata: JSON.stringify({ paymentId: queued.id, amount, recipientHandle: recipient.handle, cancelUrl }),
+          read: false,
+        });
+
+        return res.status(202).json({
+          status: "queued",
+          paymentId: queued.id,
+          cancelUrl,
+          amount,
+          amountFormatted: `${(amount / 1_000_000).toFixed(2)} USDC`,
+          executeAfter: executeAfter.toISOString(),
+          recipient: { handle: recipient.handle, walletAddress: recipient.walletAddress },
+          message: "Payment queued — will execute in 10 minutes unless cancelled",
+        });
+      }
+
+      // ── Immediate execution path (< $25 USDC) ────────────────────────────
       let destAddress: string;
       if (recipient.treasuryWalletId) {
         const addr = await getWalletAddress(recipient.treasuryWalletId);
@@ -8851,8 +8918,9 @@ export async function registerRoutes(
         await storage.updateTreasuryBalance(recipientAgentId, amount, "add");
       }
 
-      // Update sender's cached balance
+      // Update sender's cached balance and daily spend counter
       await storage.updateTreasuryBalance(agentId, -amount, "add");
+      await storage.updateAgentSpendingToday(agentId, amount);
 
       return res.json({
         txHash: transfer.transactionId,
@@ -8865,6 +8933,66 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       console.error("[Treasury] pay error:", err.message);
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/treasury/payments/:id/cancel — cancel a pending queued payment (only sender)
+  app.post("/api/treasury/payments/:id/cancel", agentAuthMiddleware, async (req, res) => {
+    try {
+      const paymentId = req.params.id as string;
+      const authedId = (req as any).agentId as string;
+      const payment = await storage.getTreasuryPaymentQueued(paymentId);
+      if (!payment) return res.status(404).json({ message: "Payment not found" });
+      if (payment.fromAgentId !== authedId) {
+        return res.status(403).json({ message: "Only the sender can cancel this payment" });
+      }
+      if (payment.status !== "pending") {
+        return res.status(409).json({ message: `Payment is already ${payment.status} — cannot cancel` });
+      }
+      const cancelled = await storage.cancelTreasuryPayment(paymentId);
+      return res.json({ status: "cancelled", paymentId: cancelled?.id });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/agents/:id/treasury/pending — list pending queued payments for this agent
+  app.get("/api/agents/:id/treasury/pending", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = req.params.id as string;
+      const authedId = (req as any).agentId as string;
+      if (authedId !== agentId) return res.status(403).json({ message: "You can only view your own pending payments" });
+      const pending = await storage.getPendingTreasuryPayments(agentId);
+      return res.json({
+        pending: pending.map(p => ({
+          ...p,
+          amountFormatted: `${(p.amount / 1_000_000).toFixed(2)} USDC`,
+          cancelUrl: `/api/treasury/payments/${p.id}/cancel`,
+        })),
+        count: pending.length,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/agents/:id/treasury/limits — update agent's daily spend limit (max $500)
+  app.patch("/api/agents/:id/treasury/limits", agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = req.params.id as string;
+      const authedId = (req as any).agentId as string;
+      if (authedId !== agentId) return res.status(403).json({ message: "You can only update your own treasury limits" });
+      const limitsSchema = z.object({
+        dailyLimit: z.number().int().min(1_000_000).max(TREASURY_MAX_DAILY_LIMIT),
+      });
+      const { dailyLimit } = limitsSchema.parse(req.body);
+      const updated = await storage.updateAgent(agentId, { treasuryDailyLimit: dailyLimit });
+      return res.json({
+        dailyLimit: updated?.treasuryDailyLimit,
+        dailyLimitFormatted: `${((updated?.treasuryDailyLimit ?? dailyLimit) / 1_000_000).toFixed(2)} USDC`,
+      });
+    } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }
   });
