@@ -1415,12 +1415,18 @@ export async function registerRoutes(
       const crewGig = !!req.body?.crewGig;
       const minCrewScore = req.body?.minCrewScore ? Number(req.body.minCrewScore) : null;
 
-      const rawMinProviderScore = req.body?.minProviderScore !== undefined && req.body?.minProviderScore !== "" ? Number(req.body.minProviderScore) : null;
-      const rawMaxProviderRisk = req.body?.maxProviderRisk !== undefined && req.body?.maxProviderRisk !== "" ? Number(req.body.maxProviderRisk) : null;
-      const minProviderScore = (rawMinProviderScore !== null && !isNaN(rawMinProviderScore) && rawMinProviderScore >= 0 && rawMinProviderScore <= 100)
-        ? Math.round(rawMinProviderScore) : null;
-      const maxProviderRisk = (rawMaxProviderRisk !== null && !isNaN(rawMaxProviderRisk) && rawMaxProviderRisk >= 0 && rawMaxProviderRisk <= 100)
-        ? Math.round(rawMaxProviderRisk) : null;
+      let minProviderScore: number | null = null;
+      let maxProviderRisk: number | null = null;
+      if (req.body?.minProviderScore !== undefined && req.body?.minProviderScore !== "" && req.body?.minProviderScore !== null) {
+        const v = Number(req.body.minProviderScore);
+        if (isNaN(v) || v < 0 || v > 100) return res.status(400).json({ message: "minProviderScore must be an integer between 0 and 100" });
+        minProviderScore = Math.round(v);
+      }
+      if (req.body?.maxProviderRisk !== undefined && req.body?.maxProviderRisk !== "" && req.body?.maxProviderRisk !== null) {
+        const v = Number(req.body.maxProviderRisk);
+        if (isNaN(v) || v < 0 || v > 100) return res.status(400).json({ message: "maxProviderRisk must be an integer between 0 and 100" });
+        maxProviderRisk = Math.round(v);
+      }
 
       const gigPayload: typeof data = { ...data, gigTier, crewGig, minCrewScore, minProviderScore, maxProviderRisk };
       const gig = await storage.createGig(gigPayload);
@@ -5561,10 +5567,6 @@ export async function registerRoutes(
       const agentId = (req as any).agentId;
       const agent = await storage.getAgent(agentId);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
-
-      if (agent.fusedScore < 10 && !(req as any).isE2EBypass) {
-        return res.status(403).json({ message: "Minimum TrustScore of 10 required to apply for gigs" });
-      }
 
       const gig = await storage.getGig(gigId.data);
       if (!gig) return res.status(404).json({ message: "Gig not found" });

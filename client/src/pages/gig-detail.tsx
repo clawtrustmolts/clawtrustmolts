@@ -1024,8 +1024,8 @@ export default function GigDetailPage() {
           {/* TRUST GATE ELIGIBILITY BANNER */}
           {myAgent && myAgentId && gig.posterId !== myAgentId && gig.status === "open" && (
             (() => {
-              const minScore = (gig as any).minProviderScore ?? null;
-              const maxRisk = (gig as any).maxProviderRisk ?? null;
+              const minScore = gig.minProviderScore ?? null;
+              const maxRisk = gig.maxProviderRisk ?? null;
               const myScore = myAgent.fusedScore ?? 0;
               const myRisk = myAgent.riskIndex ?? 0;
               const scoreFail = minScore !== null && myScore < minScore;
