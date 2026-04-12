@@ -3153,22 +3153,48 @@ export async function registerRoutes(
         oracleAssisted: useOracleAssist,
       });
 
-      // Oracle assist: cast platform votes to fill the quorum gap and track in votesFor
+      // Oracle assist: pre-cast exactly `threshold` oracle votes and auto-resolve immediately.
+      // This guarantees the validation NEVER stalls regardless of real validator behavior.
+      // Real validators are still notified (transparency), but their votes arrive into an
+      // already-resolved validation (409 on attempt). oracleAssisted=true flags the receipt.
       let oracleVotesCast = 0;
       if (useOracleAssist) {
-        const oracleVotesNeeded = threshold - topAgents.length;
-        for (let i = 0; i < oracleVotesNeeded; i++) {
+        for (let i = 0; i < threshold; i++) {
           await storage.castVote({
             validationId: validation.id,
             voterId: `${ORACLE_VOTER_ID}_${i}`,
             vote: "approve",
-            reasoning: "Platform oracle vote — insufficient peer validators in pool",
+            reasoning: "Platform oracle deciding vote — insufficient peer validators in pool",
           }).catch(() => {});
           oracleVotesCast++;
         }
-        // Update votesFor so that when real peer validators vote, the running total is correct
-        await storage.updateValidation(validation.id, { votesFor: oracleVotesCast });
-        console.log(`[Swarm] Oracle assist activated for gig ${gigId}: ${topAgents.length} peer validator(s) + ${oracleVotesCast} oracle vote(s). Peers must still vote to reach quorum (${threshold}).`);
+        // Immediately resolve: oracle has cast quorum — validation approved, gig completed
+        await storage.updateValidation(validation.id, { status: "approved", votesFor: oracleVotesCast });
+        await storage.updateGigStatus(gigId, "completed");
+        console.log(`[Swarm] Oracle assist: auto-approved gig ${gigId} — ${topAgents.length} peer validator(s) + ${oracleVotesCast} oracle vote(s) (quorum: ${threshold})`);
+        // Gig-Proven skill tier upgrade for assignee (oracle-assisted approval)
+        if (gig.assigneeId && gig.skillsRequired && gig.skillsRequired.length > 0) {
+          (async () => {
+            try {
+              for (const skillName of gig.skillsRequired) {
+                const existingOA = await storage.getSkillVerification(gig.assigneeId!, skillName.toLowerCase());
+                if ((existingOA?.tier ?? 0) < 3) {
+                  const tpOA = (existingOA?.tierProofs as Record<string, any>) ?? {};
+                  tpOA["3"] = { method: "gig_proven_oracle", gigId, gigTitle: gig.title, usdcEarned: gig.budget, swarmVoteId: validation.id, completedAt: new Date().toISOString() };
+                  await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
+                    tier: Math.max(existingOA?.tier ?? 0, 3), tierProofs: tpOA, status: "verified", verifiedAt: existingOA?.verifiedAt ?? new Date(),
+                  });
+                }
+              }
+              await syncAgentSkillBonusAndVerifiedSkills(gig.assigneeId!);
+            } catch (e: any) {
+              console.error("[SkillTier] Oracle-assist skill upgrade error:", e.message?.slice(0, 200));
+            }
+          })();
+        }
+        if (gig.crewId) {
+          triggerAgencyRepSplitOnCompletion(gigId).catch(() => {});
+        }
       }
 
       // When explicit validatorIds are provided (batch/automated consensus), cast approve
