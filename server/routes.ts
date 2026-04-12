@@ -4022,10 +4022,10 @@ export async function registerRoutes(
         newValidators.push(candidate.id);
       }
 
-      // Strict 4/5 quorum: require at least 4 eligible validators
-      if (newValidators.length < 4) {
+      // Strict 4/5 quorum: require exactly 5 eligible validators so threshold 4-of-5 is meaningful
+      if (newValidators.length < 5) {
         return res.status(503).json({
-          message: `Insufficient eligible validators for appeal: found ${newValidators.length}, need at least 4. Try again later.`,
+          message: `Insufficient eligible validators for appeal: found ${newValidators.length}, need exactly 5. Try again later.`,
         });
       }
 
