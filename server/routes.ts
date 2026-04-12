@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address, getAddress as toChecksumAddress, verifyMessage } from "viem";
-import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL, computeSkillTierBonus, getTierLabel, getTierBadge, getNextTierUpgrade, MAX_VERIFIED_SKILLS_BONUS, computeCrewRepSplit } from "./reputation";
+import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL, computeSkillTierBonus, getTierLabel, getTierBadge, getNextTierUpgrade, MAX_VERIFIED_SKILLS_BONUS, computeCrewRepSplit, computeValidatorAccuracyAdjustment } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
   buildIdentityMetadata,
@@ -1762,7 +1762,10 @@ export async function registerRoutes(
 
     let liveFused;
     try {
-      liveFused = await computeLiveFusedReputation(agent, agentTierBonus);
+      // Fetch validator accuracy history for ecosystem adjustment (Protection 3)
+      const accuracyHistory = await storage.getValidatorAccuracyHistory(req.params.agentId, 20);
+      const valAccuracyAdj = computeValidatorAccuracyAdjustment(accuracyHistory);
+      liveFused = await computeLiveFusedReputation(agent, agentTierBonus, valAccuracyAdj);
     } catch (err: any) {
       liveFused = null;
     }
@@ -3624,7 +3627,7 @@ export async function registerRoutes(
       if (newFor >= validation.threshold) newStatus = "approved";
       else if (newAgainst >= validation.threshold) newStatus = "rejected";
 
-      const updated = await storage.updateValidation(validationId, {
+      let updated = await storage.updateValidation(validationId, {
         votesFor: newFor,
         votesAgainst: newAgainst,
         status: newStatus,
@@ -3808,26 +3811,106 @@ export async function registerRoutes(
             const alreadySlashed = bondEvts.some(e => e.eventType === "SLASH");
 
             if (!alreadySlashed) {
-              try {
-                await slashBond(gig.assigneeId, gig.id, `Swarm rejected gig "${gig.title}"`);
-                await storage.updateGig(gig.id, { bondLocked: false });
-                console.log(`[Swarm] Slashed bond for rejected gig ${gig.id}`);
-                try { const slashedAgent = await storage.getAgent(gig.assigneeId); if (slashedAgent) telegramAnnounceSlash(slashedAgent, gig.bondRequired || 0, `Swarm rejected gig "${gig.title}"`); } catch {}
-              } catch (slashErr: any) {
-                console.warn(`[Swarm] Slash failed for gig ${gig.id}: ${slashErr.message}`);
-                await unlockBondForGig(gig.assigneeId, gig.id);
-                await storage.updateGig(gig.id, { bondLocked: false });
+              // ── Protection 3: Coordinated Slash Defense ──────────────────
+              const realValidators = (validation.selectedValidators || []).filter(
+                (id: string) => !id.startsWith("PLATFORM_ORACLE")
+              );
+
+              const memberMap = await storage.getValidatorCrewMemberships(realValidators);
+
+              // Check 1: Crew overlap — 2+ rejection voters share a crew
+              const crewCounts: Record<string, number> = {};
+              for (const agentId of realValidators) {
+                for (const crewId of memberMap[agentId] || []) {
+                  crewCounts[crewId] = (crewCounts[crewId] || 0) + 1;
+                }
+              }
+              const overlappingCrews = Object.entries(crewCounts).filter(([, n]) => n >= 2);
+
+              // Check 2: New account cluster — 2+ validators created < 48h ago
+              const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000);
+              const newAccountIds: string[] = [];
+              for (const vid of realValidators) {
+                const vagent = await storage.getAgent(vid);
+                if (vagent?.registeredAt && new Date(vagent.registeredAt) > cutoff48h) {
+                  newAccountIds.push(vid);
+                }
+              }
+
+              const slashFrozen = overlappingCrews.length > 0 || newAccountIds.length >= 2;
+
+              if (slashFrozen) {
+                const freezeReason = overlappingCrews.length > 0
+                  ? `Crew overlap detected: ${overlappingCrews.length} shared crew(s) among rejection voters — suspected coordinated slash`
+                  : `New account cluster: ${newAccountIds.length} validators have accounts < 48h old — Sybil signal`;
+
+                updated = await storage.updateValidation(validationId, {
+                  status: "disputed_auto" as any,
+                  bondSlashFrozen: true,
+                  disputeReason: freezeReason,
+                }) ?? updated;
+
+                notifyAgent(
+                  gig.assigneeId,
+                  "slash_frozen",
+                  "Bond Slash Frozen",
+                  `Your bond slash has been frozen: ${freezeReason}. You may appeal within 48 hours via POST /api/validations/${validationId}/appeal.`,
+                  { gigId: gig.id }
+                ).catch(() => {});
+
+                console.log(`[SlashDefense] Slash frozen for gig ${gig.id}: ${freezeReason}`);
+              } else {
+                // Normal rejection: execute bond slash
+                try {
+                  await slashBond(gig.assigneeId, gig.id, `Swarm rejected gig "${gig.title}"`);
+                  await storage.updateGig(gig.id, { bondLocked: false });
+                  console.log(`[Swarm] Slashed bond for rejected gig ${gig.id}`);
+                  try {
+                    const slashedAgent = await storage.getAgent(gig.assigneeId);
+                    if (slashedAgent) telegramAnnounceSlash(slashedAgent, gig.bondRequired || 0, `Swarm rejected gig "${gig.title}"`);
+                  } catch {}
+                } catch (slashErr: any) {
+                  console.warn(`[Swarm] Slash failed for gig ${gig.id}: ${slashErr.message}`);
+                  await unlockBondForGig(gig.assigneeId, gig.id);
+                  await storage.updateGig(gig.id, { bondLocked: false });
+                }
+
+                await recordRiskEvent(gig.assigneeId, "FAILED_GIG", 25, `Swarm rejected gig "${gig.title}"`).catch(err =>
+                  console.error(`[Risk] Failed to record swarm rejection: ${err.message}`)
+                );
+
+                await syncPerformanceScore(gig.assigneeId).catch(err =>
+                  console.error(`[Swarm] Performance sync on rejection failed: ${err.message}`)
+                );
               }
             }
-
-            await recordRiskEvent(gig.assigneeId, "FAILED_GIG", 25, `Swarm rejected gig "${gig.title}"`).catch(err =>
-              console.error(`[Risk] Failed to record swarm rejection: ${err.message}`)
-            );
-
-            await syncPerformanceScore(gig.assigneeId).catch(err =>
-              console.error(`[Swarm] Performance sync on rejection failed: ${err.message}`)
-            );
           }
+        }
+      }
+
+      // ── Protection 3: Record validator accuracy for all resolved validations ─
+      if (newStatus !== "pending") {
+        const resolvedStatus = (updated as any)?.status ?? newStatus;
+        if (resolvedStatus === "approved" || resolvedStatus === "rejected") {
+          (async () => {
+            try {
+              const allVotes = await storage.getVotesByValidation(validationId);
+              for (const vid of (validation.selectedValidators || [])) {
+                if (vid.startsWith("PLATFORM_ORACLE")) continue;
+                const voteRow = allVotes.find(v => v.voterId === vid);
+                if (!voteRow) continue;
+                await storage.recordValidatorAccuracy({
+                  validatorAgentId: vid,
+                  validationId,
+                  vote: voteRow.vote,
+                  outcome: resolvedStatus,
+                  matched: voteRow.vote === resolvedStatus,
+                });
+              }
+            } catch (accErr: any) {
+              console.warn("[SlashDefense] Accuracy recording error:", accErr.message);
+            }
+          })();
         }
       }
 
@@ -3835,7 +3918,8 @@ export async function registerRoutes(
         validation: updated,
         vote: { voterId, vote, rewardAmount },
         resolution: newStatus !== "pending" ? {
-          status: newStatus,
+          status: (updated as any)?.status ?? newStatus,
+          slashFrozen: (updated as any)?.bondSlashFrozen ?? false,
           escrowRelease,
           rewardsDistributed,
         } : null,
@@ -3851,6 +3935,118 @@ export async function registerRoutes(
   app.post("/api/swarm/vote", apiLimiter, walletAuthMiddleware, async (req, res) => {
     req.url = "/api/validations/vote";
     (app as any).handle(req, res);
+  });
+
+  // ── Protection 3: Appeal endpoint ─────────────────────────────────────────
+  app.post("/api/validations/:id/appeal", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const validationId = safeId.safeParse(req.params.id);
+      if (!validationId.success) return res.status(400).json({ message: "Invalid validation ID" });
+
+      const agentId = (req as any).agentId as string;
+
+      const validation = await storage.getValidation(validationId.data);
+      if (!validation) return res.status(404).json({ message: "Validation not found" });
+
+      const gig = await storage.getGig(validation.gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+
+      // Auth: only the gig assignee can appeal
+      if (gig.assigneeId !== agentId) {
+        return res.status(403).json({ message: "Only the gig assignee can file an appeal" });
+      }
+
+      // Status gate: only rejected or disputed_auto validations can be appealed
+      const appealableStatuses = ["rejected", "disputed_auto"];
+      if (!appealableStatuses.includes(validation.status as string)) {
+        return res.status(400).json({ message: `Validation status "${validation.status}" cannot be appealed` });
+      }
+
+      // Time gate: within 48 hours of validation creation
+      const ageMs = Date.now() - new Date(validation.createdAt!).getTime();
+      if (ageMs > 48 * 60 * 60 * 1000) {
+        return res.status(400).json({ message: "Appeal window has closed (48 hours from validation creation)" });
+      }
+
+      // One-shot gate: cannot appeal twice
+      if (validation.appealed) {
+        return res.status(400).json({ message: "This validation has already been appealed" });
+      }
+
+      // Mark original validation as appealed
+      await storage.updateValidation(validationId.data, { appealed: true });
+
+      // Build exclusion list: all crew members of original validators
+      const originalValidators = (validation.selectedValidators || []).filter(
+        (id: string) => !id.startsWith("PLATFORM_ORACLE")
+      );
+      const memberMap = await storage.getValidatorCrewMemberships(originalValidators);
+      const excludedCrewIds = new Set<string>();
+      for (const crewIds of Object.values(memberMap)) {
+        for (const c of crewIds) excludedCrewIds.add(c);
+      }
+      // Get all members of those crews
+      const taintedAgentIds = new Set<string>(originalValidators);
+      for (const crewId of excludedCrewIds) {
+        const members = await storage.getCrewMembers(crewId);
+        for (const m of members) taintedAgentIds.add(m.agentId);
+      }
+
+      // Select 5 eligible validators not in tainted set
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const candidatePool = await storage.getTopAgentsByFusedScore(50, [...taintedAgentIds]);
+      const newValidators: string[] = [];
+      for (const candidate of candidatePool) {
+        if (newValidators.length >= 5) break;
+        if (candidate.id === agentId) continue; // can't validate own gig
+        if (candidate.fusedScore < 5) continue;
+        if (candidate.riskIndex !== null && candidate.riskIndex > 60) continue;
+        if (candidate.registeredAt && new Date(candidate.registeredAt) > sevenDaysAgo) continue;
+        newValidators.push(candidate.id);
+      }
+
+      if (newValidators.length === 0) {
+        return res.status(503).json({ message: "No eligible validators found for appeal — try again later" });
+      }
+
+      // Create new validation with threshold 4/5 and parentValidationId set
+      const appealValidation = await storage.createValidation({
+        gigId: validation.gigId,
+        status: "pending",
+        votesFor: 0,
+        votesAgainst: 0,
+        threshold: Math.min(4, newValidators.length),
+        selectedValidators: newValidators,
+        totalRewardPool: validation.totalRewardPool,
+        rewardPerValidator: validation.rewardPerValidator,
+        oracleAssisted: false,
+        parentValidationId: validationId.data,
+      } as any);
+
+      // Notify poster that an appeal has been filed
+      if (gig.posterId) {
+        notifyAgent(
+          gig.posterId,
+          "validation_appeal",
+          "Gig Appeal Filed",
+          `Assignee has appealed the swarm rejection of "${gig.title}". A new validation (ID: ${appealValidation.id}) has been created with ${newValidators.length} fresh validators.`,
+          { gigId: gig.id, validationId: appealValidation.id }
+        ).catch(() => {});
+      }
+
+      res.status(201).json({
+        appeal: appealValidation,
+        parentValidationId: validationId.data,
+        newValidators: newValidators.length,
+        threshold: appealValidation.threshold,
+        message: "Appeal filed. A new validation round has started with fresh validators.",
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.post("/api/molt-sync", apiLimiter, walletAuthMiddleware, async (req, res) => {

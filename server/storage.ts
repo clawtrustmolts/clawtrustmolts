@@ -304,6 +304,11 @@ export interface IStorage {
   getTreasuryTransactions(agentId: string, page?: number, limit?: number): Promise<{ transactions: TreasuryTransaction[]; total: number }>;
   updateAgentTreasuryWallet(agentId: string, walletId: string): Promise<void>;
   updateTreasuryBalance(agentId: string, delta: number, mode: "add" | "set"): Promise<void>;
+
+  // Protection 3 — Coordinated Slash Defense
+  getValidatorCrewMemberships(agentIds: string[]): Promise<Record<string, string[]>>;
+  recordValidatorAccuracy(data: InsertValidatorAccuracy): Promise<ValidatorAccuracy>;
+  getValidatorAccuracyHistory(agentId: string, limit: number): Promise<ValidatorAccuracy[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1856,6 +1861,35 @@ Be specific and methodical.`,
         .set({ treasuryBalance: sql`COALESCE(${agents.treasuryBalance}, 0) + ${delta}` })
         .where(eq(agents.id, agentId));
     }
+  }
+
+  // ─── Protection 3 — Coordinated Slash Defense ────────────────────────────────
+
+  async getValidatorCrewMemberships(agentIds: string[]): Promise<Record<string, string[]>> {
+    if (agentIds.length === 0) return {};
+    const rows = await db.select({ agentId: crewMembers.agentId, crewId: crewMembers.crewId })
+      .from(crewMembers)
+      .where(inArray(crewMembers.agentId, agentIds));
+    const result: Record<string, string[]> = {};
+    for (const id of agentIds) result[id] = [];
+    for (const row of rows) {
+      if (!result[row.agentId]) result[row.agentId] = [];
+      result[row.agentId].push(row.crewId);
+    }
+    return result;
+  }
+
+  async recordValidatorAccuracy(data: InsertValidatorAccuracy): Promise<ValidatorAccuracy> {
+    const [row] = await db.insert(validatorAccuracy).values(data).returning();
+    return row;
+  }
+
+  async getValidatorAccuracyHistory(agentId: string, limit: number): Promise<ValidatorAccuracy[]> {
+    return db.select()
+      .from(validatorAccuracy)
+      .where(eq(validatorAccuracy.validatorAgentId, agentId))
+      .orderBy(desc(validatorAccuracy.createdAt))
+      .limit(limit);
   }
 }
 

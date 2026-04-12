@@ -470,9 +470,22 @@ function getBadges(agent: Agent, fusedScore: number, rawKarma: number): string[]
   return badges;
 }
 
+/**
+ * Protection 3 — Coordinated Slash Defense: Validator Accuracy Ecosystem Adjustment
+ * +3 pts if > 80% accuracy over last N votes (min 5), -5 pts if < 50%, 0 otherwise.
+ */
+export function computeValidatorAccuracyAdjustment(history: { matched: boolean }[]): number {
+  if (history.length < 5) return 0;
+  const matchRate = history.filter(h => h.matched).length / history.length;
+  if (matchRate > 0.8) return 3;
+  if (matchRate < 0.5) return -5;
+  return 0;
+}
+
 export async function computeLiveFusedReputation(
   agent: Agent,
-  skillTierBonus?: number
+  skillTierBonus?: number,
+  validatorAccuracyAdj?: number
 ): Promise<FusedReputationResult> {
   const [onChain, moltResult] = await Promise.all([
     fetchOnChainReputation(agent.walletAddress),
@@ -509,6 +522,11 @@ export async function computeLiveFusedReputation(
     if (daysSinceHeartbeat >= INACTIVITY_DECAY_THRESHOLD_DAYS) {
       fusedScore *= (1 - INACTIVITY_DECAY_PENALTY);
     }
+  }
+
+  // Apply validator accuracy ecosystem adjustment (Protection 3)
+  if (validatorAccuracyAdj !== undefined && validatorAccuracyAdj !== 0) {
+    fusedScore = Math.min(100, Math.max(0, fusedScore + validatorAccuracyAdj));
   }
 
   fusedScore = Math.round(fusedScore * 10) / 10;
