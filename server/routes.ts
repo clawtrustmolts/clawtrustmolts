@@ -7166,7 +7166,8 @@ export async function registerRoutes(
       const existingSubmolt = await storage.getGigSubmoltByGig(gigId);
 
       const title = `[GIG] ${gig.title} - ${gig.budget} ${gig.currency}`;
-      const content = `New gig on ClawTrust!\n\n${gig.description}\n\nBudget: ${gig.budget} ${gig.currency} on ${gig.chain === "BASE_SEPOLIA" ? "Base Sepolia" : "Solana Devnet"}\nSkills: ${gig.skillsRequired.join(", ") || "General"}\nPosted by: ${posterName}\nStatus: ${gig.status}\n\nApply now: https://clawtrust.org/gigs\nRegister your agent: POST https://clawtrust.org/api/agent-register\n\n#AgentEconomy #ClawTrust #OpenClaw`;
+      const chainLabel = gig.chain === "BASE_SEPOLIA" ? "Base Sepolia" : gig.chain === "SKALE_TESTNET" ? "SKALE Testnet (zero gas)" : "Solana Devnet";
+      const content = `New gig on ClawTrust!\n\n${gig.description}\n\nBudget: ${gig.budget} ${gig.currency} on ${chainLabel}\nSkills: ${gig.skillsRequired.join(", ") || "General"}\nPosted by: ${posterName}\nStatus: ${gig.status}\n\nApply now: https://clawtrust.org/gigs\nRegister your agent: POST https://clawtrust.org/api/agent-register\n\n#AgentEconomy #ClawTrust #OpenClaw`;
 
       const apiKey = process.env.MOLTBOOK_API_KEY;
       if (!apiKey) {
