@@ -827,6 +827,13 @@ export async function registerRoutes(
                 description: "ClawTrust trust-check API — returns full agent trust data including TrustScore, tier, risk, and hireability status",
               },
             },
+            "GET /api/reputation/check-eligibility": {
+              price: "$0.001",
+              network: "base-sepolia",
+              config: {
+                description: "ClawTrust eligibility oracle — checks whether an agent wallet meets minScore and maxRisk thresholds (ERC-8004 composable middleware)",
+              },
+            },
             "GET /api/reputation/*": {
               price: "$0.002",
               network: "base-sepolia",
@@ -1573,6 +1580,95 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
       }
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  // ─── Reputation Oracle: Public Eligibility Check (x402-gated $0.001) ────────
+  // ERC-8004 composable middleware endpoint — checks if a wallet meets a protocol's
+  // minimum FusedScore and maximum riskIndex thresholds. No auth required beyond payment.
+  app.get("/api/reputation/check-eligibility", async (req, res) => {
+    try {
+      const wallet = (req.query.wallet as string || "").trim();
+      const minScore = parseFloat(req.query.minScore as string ?? "0");
+      const maxRisk = parseFloat(req.query.maxRisk as string ?? "100");
+
+      if (!wallet) {
+        return res.status(400).json({
+          eligible: false,
+          reason: "bad_request",
+          message: "wallet query parameter is required",
+        });
+      }
+      if (isNaN(minScore) || minScore < 0 || minScore > 100) {
+        return res.status(400).json({ eligible: false, reason: "bad_request", message: "minScore must be 0-100" });
+      }
+      if (isNaN(maxRisk) || maxRisk < 0 || maxRisk > 100) {
+        return res.status(400).json({ eligible: false, reason: "bad_request", message: "maxRisk must be 0-100" });
+      }
+
+      const agent = await storage.getAgentByWallet(wallet);
+      if (!agent) {
+        return res.json({
+          eligible: false,
+          reason: "not_registered",
+          wallet,
+          checkedAt: new Date().toISOString(),
+          standard: "ERC-8004",
+        });
+      }
+
+      const fusedScore = agent.fusedScore ?? 0;
+      const riskIndex = agent.riskIndex ?? 0;
+
+      const scorePasses = fusedScore >= minScore;
+      const riskPasses = riskIndex <= maxRisk;
+      const eligible = scorePasses && riskPasses;
+
+      const reasons: string[] = [];
+      if (!scorePasses) reasons.push(`fusedScore too low (${fusedScore.toFixed(1)} < ${minScore})`);
+      if (!riskPasses) reasons.push(`riskIndex too high (${riskIndex.toFixed(1)} > ${maxRisk})`);
+
+      const tierNum = fusedScore >= 90 ? 4 : fusedScore >= 75 ? 3 : fusedScore >= 55 ? 2 : fusedScore >= 35 ? 1 : 0;
+      const tierNames = ["Hatchling", "Bronze Pinch", "Silver Molt", "Gold Shell", "Diamond Claw"];
+      const tierName = tierNames[tierNum];
+
+      const riskLevel = riskIndex >= 70 ? "high" : riskIndex >= 40 ? "medium" : "low";
+
+      const bondStatus = agent.bondTier ?? "UNBONDED";
+
+      const passportUrl = `https://clawtrust.org/profile/${agent.id}`;
+
+      storage.createX402Payment({
+        endpoint: "/api/reputation/check-eligibility",
+        callerWallet: (req.headers["x-payer-address"] as string) || null,
+        targetWallet: agent.walletAddress.toLowerCase(),
+        targetAgentId: agent.id,
+        amount: 0.001,
+        currency: "USDC",
+        chain: "base-sepolia",
+        txHash: typeof req.headers["x-payment-response"] === "string"
+          ? (req.headers["x-payment-response"] as string).substring(0, 128)
+          : null,
+      }).then(() => recordX402ReputationBoost(agent.id, agent.x402PaymentCount)).catch(() => {});
+
+      res.json({
+        eligible,
+        fusedScore,
+        tier: tierName,
+        riskIndex,
+        riskLevel,
+        bondStatus,
+        reasons: eligible ? [] : reasons,
+        checkedAt: new Date().toISOString(),
+        standard: "ERC-8004",
+        passportUrl,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        eligible: false,
+        reason: "internal_error",
+        message: err.message,
+      });
     }
   });
 

@@ -1328,8 +1328,8 @@
       ]
     },
     "/home/runner/workspace/contracts/contracts/ClawTrustRepAdapter.sol": {
-      "lastModificationDate": 1775580635495,
-      "contentHash": "5296fd500e712dfa4cb51b29d941ca71",
+      "lastModificationDate": 1775980362264,
+      "contentHash": "3a6ed9f4a8df8152ab7700203e521de0",
       "sourceName": "contracts/ClawTrustRepAdapter.sol",
       "solcConfig": {
         "version": "0.8.24",

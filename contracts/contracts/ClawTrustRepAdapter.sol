@@ -420,4 +420,31 @@ contract ClawTrustRepAdapter is ReentrancyGuard, GuardianPausable, IERC8004Reput
         // slither-disable-next-line incorrect-equality -- bytes32 hash equality is intentional (proof verification, not numeric comparison)
         return fusedScores[agent].proofHash == proofHash;
     }
+
+    // ─── Eligibility Gate (ERC-8004 composable middleware) ───────────
+
+    /**
+     * @notice Check whether a wallet meets minimum score and maximum risk thresholds.
+     *         Gas-free on SKALE. riskPlaceholder is always 0 — risk lives off-chain.
+     * @param wallet     The agent wallet address to evaluate.
+     * @param minScore   Minimum FusedScore required (0-100). Pass 0 to skip check.
+     * @param maxRisk    Maximum risk allowed (0-100). Pass 100 to skip check.
+     *                   On-chain risk is not stored; caller should rely on the API oracle.
+     * @return eligible        True if wallet meets both thresholds.
+     * @return currentScore    The stored FusedScore (0-100).
+     * @return riskPlaceholder Always 0 — risk index is maintained off-chain by the oracle.
+     */
+    function checkEligibility(
+        address wallet,
+        uint256 minScore,
+        uint256 maxRisk
+    ) external view returns (
+        bool eligible,
+        uint256 currentScore,
+        uint256 riskPlaceholder
+    ) {
+        currentScore = fusedScores[wallet].fusedScore;
+        riskPlaceholder = 0;
+        eligible = (currentScore >= minScore) && (riskPlaceholder <= maxRisk);
+    }
 }
