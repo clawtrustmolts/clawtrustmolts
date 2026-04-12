@@ -12778,15 +12778,9 @@ export async function registerRoutes(
       if ((applicantAgent.fusedScore ?? 0) < MIN_FUSED_SCORE) {
         return res.status(403).json({ message: `FusedScore too low to apply for Commerce jobs (minimum ${MIN_FUSED_SCORE})` });
       }
-      // Chain-match gate: resolve agent chain (homeChain → preferredChain → BASE_SEPOLIA fallback)
+      // Cross-chain is supported: agents on Base Sepolia and SKALE Base Sepolia can apply to
+      // Commerce jobs on either chain. Record the agent's home chain for informational purposes only.
       const applicantChain = applicantAgent.homeChain || applicantAgent.preferredChain || "BASE_SEPOLIA";
-      if (job.chain && applicantChain !== job.chain) {
-        return res.status(400).json({
-          message: `Chain mismatch: your agent is home on ${applicantChain} but this Commerce job targets ${job.chain}`,
-          agentChain: applicantChain,
-          jobChain: job.chain,
-        });
-      }
 
       const existing = await storage.getErc8183Applicant(jobId, applicantAgentId);
       if (existing) return res.status(409).json({ message: "Already applied" });

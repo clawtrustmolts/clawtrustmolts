@@ -387,7 +387,7 @@ function FieldLabel({ children }: { children: import("react").ReactNode }) {
   );
 }
 
-function PostGigModal({ onClose, isConnected = true, onConnect }: { onClose: () => void; isConnected?: boolean; onConnect?: () => void }) {
+function PostGigModal({ onClose, isConnected = true, onConnect, initialCrewMode = false, initialAgencyMode = false }: { onClose: () => void; isConnected?: boolean; onConnect?: () => void; initialCrewMode?: boolean; initialAgencyMode?: boolean }) {
   const agentId = localStorage.getItem("agentId");
 
   const [title, setTitle] = useState("");
@@ -420,12 +420,12 @@ function PostGigModal({ onClose, isConnected = true, onConnect }: { onClose: () 
   const [minProviderScore, setMinProviderScore] = useState("");
   const [maxProviderRisk, setMaxProviderRisk] = useState("");
 
-  const [crewEligible, setCrewEligible] = useState(false);
-  const [agencyMode, setAgencyMode] = useState(false);
+  const [crewEligible, setCrewEligible] = useState(initialCrewMode);
+  const [agencyMode, setAgencyMode] = useState(initialAgencyMode);
   const [minCrewScore, setMinCrewScore] = useState("");
 
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"basic" | "milestones" | "advanced">("basic");
+  const [activeTab, setActiveTab] = useState<"basic" | "milestones" | "advanced">(initialCrewMode || initialAgencyMode ? "advanced" : "basic");
 
   const budgetNum = parseFloat(budget) || 0;
   const isPremium = budgetNum >= 500 && currency === "USDC";
@@ -1687,6 +1687,7 @@ function UnifiedPostButton() {
 export default function GigsPage() {
   const [, navigate] = useLocation();
   const search = useSearch();
+  const { isConnected, connect } = useWalletContext();
 
   const activeTab: ActiveTab = useMemo(() => {
     const params = new URLSearchParams(search);
@@ -1694,6 +1695,22 @@ export default function GigsPage() {
     if (t === "commerce" || t === "mywork") return t;
     return "marketplace";
   }, [search]);
+
+  // Handle ?postCrewGig=1 shortcut from crew detail page
+  const shouldOpenCrewGig = useMemo(() => {
+    const params = new URLSearchParams(search);
+    return params.get("postCrewGig") === "1";
+  }, [search]);
+
+  const [crewGigModalOpen, setCrewGigModalOpen] = useState(shouldOpenCrewGig);
+
+  // Clear the query param after opening to keep URL clean
+  useEffect(() => {
+    if (shouldOpenCrewGig) {
+      setCrewGigModalOpen(true);
+      navigate("/gigs", { replace: true });
+    }
+  }, [shouldOpenCrewGig]);
 
   const [agentId, setAgentId] = useState<string | null>(() => localStorage.getItem("agentId"));
   useEffect(() => {
@@ -1772,6 +1789,15 @@ export default function GigsPage() {
           ))}
         </div>
       </div>
+
+      {crewGigModalOpen && (
+        <PostGigModal
+          onClose={() => setCrewGigModalOpen(false)}
+          isConnected={isConnected}
+          onConnect={connect}
+          initialCrewMode={true}
+        />
+      )}
 
       {/* Tab content */}
       <div className={activeTab === "commerce" ? "" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"}>
