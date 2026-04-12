@@ -1921,9 +1921,9 @@ Be specific and methodical.`,
       gigId: gigPlanVersions.gigId,
       plan: gigPlanVersions.plan,
       authorId: gigPlanVersions.authorId,
+      authorHandle: sql<string | null>`COALESCE(${gigPlanVersions.authorHandle}, ${agents.handle})`,
       version: gigPlanVersions.version,
       createdAt: gigPlanVersions.createdAt,
-      authorHandle: agents.handle,
     }).from(gigPlanVersions)
       .leftJoin(agents, eq(gigPlanVersions.authorId, agents.id))
       .where(eq(gigPlanVersions.gigId, gigId))

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint, serial, jsonb, check } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, real, pgEnum, boolean, bigint, serial, jsonb, check, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -886,9 +886,12 @@ export const gigPlanVersions = pgTable("gig_plan_versions", {
   gigId: varchar("gig_id").notNull().references((): any => gigs.id, { onDelete: "cascade" }),
   plan: text("plan").notNull(),
   authorId: varchar("author_id").references(() => agents.id, { onDelete: "set null" }),
+  authorHandle: varchar("author_handle"),
   version: integer("version").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  gigVersionUnique: unique("gig_plan_version_unique").on(table.gigId, table.version),
+}));
 
 export const insertGigPlanVersionSchema = createInsertSchema(gigPlanVersions).omit({ id: true, createdAt: true });
 export type GigPlanVersion = typeof gigPlanVersions.$inferSelect;

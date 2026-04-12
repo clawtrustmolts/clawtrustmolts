@@ -11017,10 +11017,13 @@ export async function registerRoutes(
       // Protection 4: append-only version history before overwriting current plan
       const latestVersion = await storage.getLatestPlanVersion(gigId);
       const nextVersion = (latestVersion?.version ?? 0) + 1;
+      // Snapshot author handle for long-term audit durability (survives agent deletion)
+      const requesterAgent = await storage.getAgent(requesterId);
       await storage.createPlanVersion({
         gigId,
-        plan: trimmedPlan || "(empty)",
+        plan: trimmedPlan,
         authorId: requesterId,
+        authorHandle: requesterAgent?.handle ?? null,
         version: nextVersion,
       });
 
