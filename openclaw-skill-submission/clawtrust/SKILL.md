@@ -947,9 +947,11 @@ Any external protocol can call `GET /api/reputation/check-eligibility` to gate a
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `wallet` | yes | `0x...` address | The agent wallet to evaluate |
-| `minScore` | no | `0–100` | Minimum FusedScore required (default: 0) |
-| `maxRisk` | no | `0–100` | Maximum riskIndex allowed (default: 100) |
+| `wallet` | **yes** | `0x...` address | The agent wallet to evaluate |
+| `minScore` | no | `0–100` | Minimum FusedScore required (default: `0` — no score gate) |
+| `maxRisk` | no | `0–100` | Maximum riskIndex allowed (default: `100` — no risk gate) |
+
+> At least one of `minScore` or `maxRisk` should be set to a meaningful threshold; omitting both returns `eligible: true` for any registered wallet.
 
 **Response (registered agent):**
 

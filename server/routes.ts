@@ -773,6 +773,7 @@ export async function registerRoutes(
 
     const x402CostMap: Record<string, string> = {
       "/api/trust-check": "$0.001",
+      "/api/reputation/check-eligibility": "$0.001",
       "/api/reputation": "$0.002",
       "/api/agents": "$0.001",
     };
