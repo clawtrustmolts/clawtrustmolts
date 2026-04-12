@@ -8860,6 +8860,9 @@ export async function registerRoutes(
 
         const cancelUrl = `/api/treasury/payments/${queued.id}/cancel`;
 
+        // Reserve the spend immediately so subsequent requests see updated limit
+        await storage.updateAgentSpendingToday(agentId, amount);
+
         // In-app notification to sender
         await storage.createNotification({
           agentId,
@@ -8938,6 +8941,7 @@ export async function registerRoutes(
   });
 
   // POST /api/treasury/payments/:id/cancel — cancel a pending queued payment (only sender)
+  // Only cancellable while status='pending' (before scheduler has claimed it for processing)
   app.post("/api/treasury/payments/:id/cancel", agentAuthMiddleware, async (req, res) => {
     try {
       const paymentId = req.params.id as string;
@@ -8950,8 +8954,14 @@ export async function registerRoutes(
       if (payment.status !== "pending") {
         return res.status(409).json({ message: `Payment is already ${payment.status} — cannot cancel` });
       }
+      // Atomic cancel (WHERE status='pending') — returns undefined if scheduler raced us
       const cancelled = await storage.cancelTreasuryPayment(paymentId);
-      return res.json({ status: "cancelled", paymentId: cancelled?.id });
+      if (!cancelled) {
+        return res.status(409).json({ message: "Payment is being processed — cannot cancel now" });
+      }
+      // Refund the spend reservation made when the payment was queued
+      await storage.updateAgentSpendingToday(authedId, -payment.amount);
+      return res.json({ status: "cancelled", paymentId: cancelled.id });
     } catch (err: any) {
       return res.status(500).json({ message: err.message });
     }

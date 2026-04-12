@@ -453,19 +453,48 @@ async function processTreasuryPaymentQueue() {
 
     for (const payment of due) {
       try {
+        // ── Atomic claim: pending→processing (idempotency guard) ──────────
+        const claimed = await storage.claimTreasuryPaymentForProcessing(payment.id);
+        if (!claimed) {
+          console.log(`[TreasuryQueue] Skipping ${payment.id} — already claimed by another run`);
+          continue;
+        }
+
         const sender = await storage.getAgent(payment.fromAgentId);
         const recipient = await storage.getAgent(payment.toAgentId);
         if (!sender || !sender.treasuryWalletId || !recipient) {
-          console.warn(`[TreasuryQueue] Skipping ${payment.id} — missing sender/recipient`);
-          await storage.cancelTreasuryPayment(payment.id);
+          console.warn(`[TreasuryQueue] Aborting ${payment.id} — missing sender/recipient`);
+          await storage.abortProcessingTreasuryPayment(payment.id);
+          continue;
+        }
+
+        // ── Execution-time daily limit re-check ───────────────────────────
+        // NOTE: spend was reserved at queue time; this re-check guards against
+        // edge cases where the limit was lowered after queuing, or if the
+        // counter reset for a new day (execution day differs from queue day).
+        const todayStart = new Date();
+        todayStart.setUTCHours(0, 0, 0, 0);
+        const lastReset = sender.treasurySpentTodayReset;
+        const isNewDay = !lastReset || lastReset < todayStart;
+        if (isNewDay) {
+          // New day: reset counter; spend reservation from yesterday no longer counts
+          await storage.resetAgentSpendingToday(payment.fromAgentId);
+          sender.treasurySpentToday = 0;
+        }
+        const dailyLimit = sender.treasuryDailyLimit ?? 50_000_000;
+        if (sender.treasurySpentToday > dailyLimit) {
+          console.warn(`[TreasuryQueue] Aborting ${payment.id} — daily limit exceeded at execution time`);
+          await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
+          await storage.abortProcessingTreasuryPayment(payment.id);
           continue;
         }
 
         // Check live balance
         const { balance } = await getTreasuryBalance(sender.treasuryWalletId);
         if (balance < payment.amount) {
-          console.warn(`[TreasuryQueue] Skipping ${payment.id} — insufficient balance ${balance} < ${payment.amount}`);
-          await storage.cancelTreasuryPayment(payment.id);
+          console.warn(`[TreasuryQueue] Aborting ${payment.id} — insufficient balance ${balance} < ${payment.amount}`);
+          await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
+          await storage.abortProcessingTreasuryPayment(payment.id);
           continue;
         }
 
@@ -481,7 +510,7 @@ async function processTreasuryPaymentQueue() {
         // Execute transfer
         const transfer = await transferBetweenTreasuryWallets(sender.treasuryWalletId, destAddress, payment.amount);
 
-        // Mark executed in queue
+        // Mark executed in queue (transitions from processing→executed)
         await storage.executeTreasuryPayment(payment.id);
 
         // Record treasury transactions
@@ -508,9 +537,13 @@ async function processTreasuryPaymentQueue() {
           await storage.updateTreasuryBalance(payment.toAgentId, payment.amount, "add");
         }
 
-        // Update sender balance and daily spend counter
+        // Update sender balance (actual USDC deduction)
         await storage.updateTreasuryBalance(payment.fromAgentId, -payment.amount, "add");
-        await storage.updateAgentSpendingToday(payment.fromAgentId, payment.amount);
+        // Only increment daily spend counter if execution is on a new day (counter was reset);
+        // if same day, the reservation at queue time already counted this spend.
+        if (isNewDay) {
+          await storage.updateAgentSpendingToday(payment.fromAgentId, payment.amount);
+        }
 
         // Notify sender that payment executed
         await storage.createNotification({

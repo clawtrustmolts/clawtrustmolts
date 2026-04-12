@@ -324,7 +324,9 @@ export interface IStorage {
   getTreasuryPaymentQueued(id: string): Promise<TreasuryPaymentQueue | undefined>;
   getPendingTreasuryPayments(fromAgentId: string): Promise<TreasuryPaymentQueue[]>;
   getDueTreasuryPayments(): Promise<TreasuryPaymentQueue[]>;
+  claimTreasuryPaymentForProcessing(id: string): Promise<TreasuryPaymentQueue | undefined>;
   cancelTreasuryPayment(id: string): Promise<TreasuryPaymentQueue | undefined>;
+  abortProcessingTreasuryPayment(id: string): Promise<void>;
   executeTreasuryPayment(id: string): Promise<TreasuryPaymentQueue | undefined>;
   updateAgentSpendingToday(agentId: string, amount: number): Promise<void>;
   resetAgentSpendingToday(agentId: string): Promise<void>;
@@ -1966,7 +1968,16 @@ Be specific and methodical.`,
       .where(and(eq(treasuryPaymentQueue.status, "pending"), lte(treasuryPaymentQueue.executeAfter, new Date())));
   }
 
+  async claimTreasuryPaymentForProcessing(id: string): Promise<TreasuryPaymentQueue | undefined> {
+    const [row] = await db.update(treasuryPaymentQueue)
+      .set({ status: "processing" })
+      .where(and(eq(treasuryPaymentQueue.id, id), eq(treasuryPaymentQueue.status, "pending")))
+      .returning();
+    return row;
+  }
+
   async cancelTreasuryPayment(id: string): Promise<TreasuryPaymentQueue | undefined> {
+    // User-facing cancel: only works if still 'pending' (before scheduler claims it)
     const [row] = await db.update(treasuryPaymentQueue)
       .set({ status: "cancelled", cancelledAt: new Date() })
       .where(and(eq(treasuryPaymentQueue.id, id), eq(treasuryPaymentQueue.status, "pending")))
@@ -1974,10 +1985,17 @@ Be specific and methodical.`,
     return row;
   }
 
+  async abortProcessingTreasuryPayment(id: string): Promise<void> {
+    // Scheduler-internal abort: cancels a 'processing' payment (limit/balance check failed)
+    await db.update(treasuryPaymentQueue)
+      .set({ status: "cancelled", cancelledAt: new Date() })
+      .where(and(eq(treasuryPaymentQueue.id, id), eq(treasuryPaymentQueue.status, "processing")));
+  }
+
   async executeTreasuryPayment(id: string): Promise<TreasuryPaymentQueue | undefined> {
     const [row] = await db.update(treasuryPaymentQueue)
       .set({ status: "executed", executedAt: new Date() })
-      .where(and(eq(treasuryPaymentQueue.id, id), eq(treasuryPaymentQueue.status, "pending")))
+      .where(and(eq(treasuryPaymentQueue.id, id), eq(treasuryPaymentQueue.status, "processing")))
       .returning();
     return row;
   }
