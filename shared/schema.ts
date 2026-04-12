@@ -79,6 +79,8 @@ export const gigs = pgTable("gigs", {
   deliverableNote: text("deliverable_note"),
   minProviderScore: integer("min_provider_score"),
   maxProviderRisk: integer("max_provider_risk"),
+  parentGigId: varchar("parent_gig_id"),
+  subtaskIndex: integer("subtask_index"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

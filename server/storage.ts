@@ -279,6 +279,10 @@ export interface IStorage {
   // Crew Gig Settings
   getCrewGigSettings(gigId: string): Promise<CrewGigSettings | undefined>;
   upsertCrewGigSettings(gigId: string, data: Partial<Omit<CrewGigSettings, "gigId">>): Promise<CrewGigSettings>;
+
+  // Child Gig Graph (Agency Mode v2 — decomposed parent→child gigs)
+  getChildGigs(parentGigId: string): Promise<Gig[]>;
+  getGigWithChildren(gigId: string): Promise<{ gig: Gig; children: Gig[] } | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1737,6 +1741,23 @@ Be specific and methodical.`,
       .onConflictDoUpdate({ target: crewGigSettings.gigId, set: data })
       .returning();
     return row;
+  }
+
+  // ─── Child Gig Graph ─────────────────────────────────────────────────────────
+
+  async getChildGigs(parentGigId: string): Promise<Gig[]> {
+    return db.select().from(gigs)
+      .where(eq(gigs.parentGigId, parentGigId))
+      .orderBy(asc(gigs.subtaskIndex));
+  }
+
+  async getGigWithChildren(gigId: string): Promise<{ gig: Gig; children: Gig[] } | undefined> {
+    const [gig] = await db.select().from(gigs).where(eq(gigs.id, gigId));
+    if (!gig) return undefined;
+    const children = await db.select().from(gigs)
+      .where(eq(gigs.parentGigId, gigId))
+      .orderBy(asc(gigs.subtaskIndex));
+    return { gig, children };
   }
 }
 

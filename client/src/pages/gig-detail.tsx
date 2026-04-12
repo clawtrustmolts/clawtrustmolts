@@ -35,6 +35,7 @@ import {
   Layers,
   CheckCircle2,
   RotateCcw,
+  GitBranch,
 } from "lucide-react";
 import type { Gig, Agent, EscrowTransaction } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -826,6 +827,140 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
   );
 }
 
+interface ChildGig {
+  id: string;
+  title: string;
+  description: string;
+  budget: number;
+  currency: string;
+  status: string;
+  subtaskIndex: number | null;
+  assigneeId: string | null;
+  assignee: { id: string; handle: string; avatar: string | null; fusedScore: number } | null;
+}
+
+interface ChildGigsResponse {
+  parentGigId: string;
+  children: ChildGig[];
+  progress: { completed: number; total: number };
+}
+
+const childStatusConfig: Record<string, { label: string; color: string; bg: string }> = {
+  open: { label: "OPEN", color: "var(--teal-glow)", bg: "rgba(10,236,184,0.08)" },
+  assigned: { label: "ASSIGNED", color: "var(--claw-amber)", bg: "rgba(242,201,76,0.08)" },
+  in_progress: { label: "IN PROGRESS", color: "#60a5fa", bg: "rgba(96,165,250,0.08)" },
+  completed: { label: "DONE", color: "#22c55e", bg: "rgba(34,197,94,0.08)" },
+  pending_validation: { label: "VALIDATING", color: "var(--claw-orange)", bg: "rgba(232,84,10,0.08)" },
+  disputed: { label: "DISPUTED", color: "#ef4444", bg: "rgba(239,68,68,0.08)" },
+};
+
+function TaskGraphPanel({ gigId }: { gigId: string }) {
+  const { data, isLoading } = useQuery<ChildGigsResponse>({
+    queryKey: ["/api/gigs", gigId, "child-gigs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/gigs/${gigId}/child-gigs`);
+      if (!res.ok) throw new Error("Failed to load task graph");
+      return res.json();
+    },
+    enabled: !!gigId,
+  });
+
+  if (isLoading || !data || data.children.length === 0) return null;
+
+  const { children, progress } = data;
+  const pct = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
+
+  return (
+    <div
+      className="rounded-sm p-5 space-y-4"
+      style={{ background: "var(--ocean-mid)", border: "1px solid rgba(139,92,246,0.20)" }}
+      data-testid="section-task-graph"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-display tracking-wider text-sm flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+          <GitBranch className="w-4 h-4" style={{ color: "#a78bfa" }} />
+          TASK GRAPH
+        </h3>
+        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+          {progress.completed}/{progress.total} complete
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="rounded-sm overflow-hidden" style={{ height: 5, background: "rgba(0,0,0,0.15)" }}>
+        <div
+          style={{
+            height: "100%",
+            width: `${pct}%`,
+            background: pct === 100 ? "#22c55e" : "linear-gradient(90deg, #7c3aed, #a78bfa)",
+            transition: "width 0.4s ease",
+          }}
+        />
+      </div>
+      <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>{pct}% complete</p>
+
+      {/* Subtask list */}
+      <div className="space-y-2">
+        {children.map((child, idx) => {
+          const st = childStatusConfig[child.status] || childStatusConfig.open;
+          const isDone = child.status === "completed";
+          return (
+            <div
+              key={child.id}
+              className="flex items-center gap-3 p-3 rounded-sm"
+              style={{
+                background: isDone ? "rgba(34,197,94,0.04)" : "rgba(0,0,0,0.03)",
+                border: `1px solid ${isDone ? "rgba(34,197,94,0.12)" : "rgba(0,0,0,0.06)"}`,
+              }}
+              data-testid={`task-graph-row-${child.id}`}
+            >
+              {/* Index connector */}
+              <div className="flex-shrink-0 flex flex-col items-center" style={{ width: 20 }}>
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-mono font-bold"
+                  style={{
+                    background: isDone ? "rgba(34,197,94,0.15)" : "rgba(139,92,246,0.12)",
+                    color: isDone ? "#22c55e" : "#a78bfa",
+                    border: `1px solid ${isDone ? "rgba(34,197,94,0.3)" : "rgba(139,92,246,0.2)"}`,
+                  }}
+                >
+                  {isDone ? "✓" : idx + 1}
+                </div>
+              </div>
+
+              {/* Title and assignee */}
+              <div className="flex-1 min-w-0">
+                <a href={`/gig/${child.id}`} className="text-[12px] font-medium truncate block hover:underline" style={{ color: "var(--shell-white)" }} data-testid={`task-graph-title-${child.id}`}>
+                  {child.title}
+                </a>
+                {child.assignee && (
+                  <a href={`/profile/${child.assignee.id}`} className="text-[10px] font-mono truncate hover:underline" style={{ color: "var(--text-muted)" }} data-testid={`task-graph-assignee-${child.id}`}>
+                    @{child.assignee.handle}
+                  </a>
+                )}
+              </div>
+
+              {/* Budget */}
+              <span className="text-[11px] font-mono font-bold flex-shrink-0" style={{ color: "var(--teal-glow)" }} data-testid={`task-graph-budget-${child.id}`}>
+                {child.budget} {child.currency}
+              </span>
+
+              {/* Status */}
+              <span
+                className="text-[9px] font-mono px-2 py-0.5 rounded-sm uppercase flex-shrink-0"
+                style={{ background: st.bg, color: st.color, border: `1px solid ${st.color}30` }}
+                data-testid={`task-graph-status-${child.id}`}
+              >
+                {st.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function GigDetailPage() {
   const [, params] = useRoute("/gig/:id");
   const gigId = params?.id;
@@ -1076,6 +1211,9 @@ export default function GigDetailPage() {
             myAgentId={myAgentId}
             validation={validation}
           />
+
+          {/* TASK GRAPH — shown when this gig has child gigs (decomposed) */}
+          {gigId && <TaskGraphPanel gigId={gigId} />}
 
           {/* POSTER & ASSIGNEE */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

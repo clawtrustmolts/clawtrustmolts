@@ -1562,6 +1562,11 @@ export async function registerRoutes(
         triggerAgencyRepSplitOnCompletion(gigId.data).catch(() => {});
       }
 
+      // Auto-completion cascade: if this is a child gig reaching "completed", check parent
+      if (status === "completed" && gig.parentGigId) {
+        triggerChildGigCompletionCascade(gig.parentGigId).catch(() => {});
+      }
+
       res.json(updated);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -2796,6 +2801,11 @@ export async function registerRoutes(
         })();
         // Agency rep split + agencyVerified — post-gig-completion (escrow released)
         triggerAgencyRepSplitOnCompletion(gigId).catch(() => {});
+      }
+
+      // Auto-completion cascade: if this is a child gig (parentGigId set), check parent
+      if (gig.parentGigId) {
+        triggerChildGigCompletionCascade(gig.parentGigId).catch(() => {});
       }
 
       res.json({
@@ -9315,6 +9325,76 @@ export async function registerRoutes(
     }
   }
 
+  /**
+   * Auto-completion cascade for decomposed gig graphs.
+   * Called when any child gig (parentGigId != null) reaches "completed".
+   * If ALL siblings are completed, the parent gig advances to "pending_validation"
+   * and swarm validation is triggered automatically.
+   */
+  async function triggerChildGigCompletionCascade(parentGigId: string): Promise<void> {
+    try {
+      const parentGig = await storage.getGig(parentGigId);
+      if (!parentGig) return;
+
+      // Only cascade on active parent gigs
+      if (!["assigned", "in_progress", "open"].includes(parentGig.status)) return;
+
+      const children = await storage.getChildGigs(parentGigId);
+      if (children.length === 0) return;
+
+      const allDone = children.every(c => c.status === "completed");
+      if (!allDone) return;
+
+      console.log(`[TaskGraph] All ${children.length} child gigs completed for parent ${parentGigId} — cascading to pending_validation`);
+
+      // Build a combined deliverable note from children
+      const deliverableLines = children
+        .filter(c => c.deliverableNote)
+        .map((c, i) => `[Child ${i + 1}: ${c.title}] ${c.deliverableNote}`)
+        .join("\n---\n");
+
+      await storage.updateGig(parentGigId, {
+        deliverableNote: deliverableLines || `All ${children.length} child gigs completed successfully.`,
+      });
+
+      // Advance parent to pending_validation
+      await storage.updateGigStatus(parentGigId, "pending_validation");
+
+      // Trigger swarm validation if none exists
+      const existingValidation = await storage.getValidationByGig(parentGigId);
+      if (!existingValidation) {
+        const allAgents = await storage.getAgents();
+        const childAssigneeIds = new Set(children.map(c => c.assigneeId).filter(Boolean));
+        const candidateValidators = allAgents
+          .filter(a => !childAssigneeIds.has(a.id) && a.id !== parentGig.posterId)
+          .sort((a, b) => b.fusedScore - a.fusedScore)
+          .slice(0, 3);
+
+        if (candidateValidators.length > 0) {
+          await storage.createValidation({
+            gigId: parentGigId,
+            status: "pending",
+            threshold: candidateValidators.length,
+            selectedValidators: candidateValidators.map(a => a.id),
+            totalRewardPool: 0,
+            rewardPerValidator: 0,
+          });
+        }
+      }
+
+      // Notify parent poster
+      notifyAgent(
+        parentGig.posterId,
+        "gig_cascade_complete",
+        "All Child Gigs Completed",
+        `All ${children.length} child gigs for "${parentGig.title}" are complete. Swarm validation has been triggered.`,
+        { gigId: parentGigId }
+      ).catch(() => {});
+    } catch (e: any) {
+      console.error("[TaskGraph] triggerChildGigCompletionCascade error:", e.message?.slice(0, 200));
+    }
+  }
+
   // POST /api/gigs/:id/subtasks — Lead creates a subtask
   app.post("/api/gigs/:id/subtasks", apiLimiter, agentAuthMiddleware, async (req, res) => {
     try {
@@ -9546,6 +9626,129 @@ export async function registerRoutes(
 
       await storage.deleteCrewSubtask(subtaskId);
       res.json({ deleted: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/gigs/:id/decompose — Lead decomposes parent gig into child gigs (Agency Mode v2)
+  app.post("/api/gigs/:id/decompose", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const parentGigId = req.params.id as string;
+      const parentGig = await storage.getGig(parentGigId);
+      if (!parentGig) return res.status(404).json({ message: "Gig not found" });
+
+      // Only crew gigs with a crewId can be decomposed
+      if (!parentGig.crewId || !parentGig.crewGig) {
+        return res.status(400).json({ message: "Only crew gigs can be decomposed into child gigs" });
+      }
+
+      // Already has child gigs — idempotency guard
+      const existingChildren = await storage.getChildGigs(parentGigId);
+      if (existingChildren.length > 0) {
+        return res.status(409).json({ message: "This gig has already been decomposed. Delete child gigs first." });
+      }
+
+      const requesterId = (req as any).agentId as string;
+      const members = await storage.getCrewMembers(parentGig.crewId);
+      const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
+      if (!isLead) return res.status(403).json({ message: "Only the crew Lead can decompose a gig" });
+
+      const { subtasks } = req.body;
+      if (!Array.isArray(subtasks) || subtasks.length === 0) {
+        return res.status(400).json({ message: "subtasks must be a non-empty array" });
+      }
+      if (subtasks.length > 20) {
+        return res.status(400).json({ message: "Maximum 20 subtasks allowed per gig" });
+      }
+
+      // Validate each subtask entry
+      const memberAgentIds = new Set(members.map(m => m.agentId));
+      for (const [i, st] of subtasks.entries()) {
+        if (!st.title || typeof st.title !== "string" || st.title.trim().length === 0) {
+          return res.status(400).json({ message: `subtasks[${i}].title is required` });
+        }
+        if (typeof st.usdcShare !== "number" || st.usdcShare < 0) {
+          return res.status(400).json({ message: `subtasks[${i}].usdcShare must be a non-negative number` });
+        }
+        if (st.assigneeAgentId && !memberAgentIds.has(st.assigneeAgentId)) {
+          return res.status(400).json({ message: `subtasks[${i}].assigneeAgentId must be a crew member` });
+        }
+      }
+
+      // Validate total budget
+      const totalShare = subtasks.reduce((s: number, t: any) => s + (t.usdcShare || 0), 0);
+      if (totalShare > parentGig.budget + 0.001) {
+        return res.status(400).json({ message: `Total usdcShare (${totalShare}) exceeds parent budget (${parentGig.budget})` });
+      }
+
+      // Create child gigs
+      const created = await Promise.all(
+        subtasks.map(async (st: any, idx: number) => {
+          return storage.createGig({
+            title: st.title.trim(),
+            description: st.description?.trim() || `Subtask ${idx + 1} of "${parentGig.title}"`,
+            budget: st.usdcShare,
+            currency: parentGig.currency,
+            chain: parentGig.chain,
+            status: "assigned",
+            posterId: parentGig.posterId,
+            assigneeId: st.assigneeAgentId || null,
+            bondRequired: 0,
+            crewGig: false,
+            crewId: parentGig.crewId,
+            gigTier: "STANDARD",
+            deadlineHours: st.deadlineHours || parentGig.deadlineHours || 72,
+            parentGigId: parentGigId,
+            subtaskIndex: idx,
+          } as any);
+        })
+      );
+
+      // Enable parallel mode on parent gig settings
+      await storage.upsertCrewGigSettings(parentGigId, { parallelModeEnabled: true });
+
+      // Notify assignees
+      for (const child of created) {
+        if (child.assigneeId) {
+          notifyAgent(child.assigneeId, "gig_assigned", "Child Gig Assigned", `You have been assigned "${child.title}" as part of "${parentGig.title}".`, { gigId: child.id }).catch(() => {});
+        }
+      }
+
+      res.status(201).json({
+        parentGigId,
+        childGigs: created,
+        totalBudgetAllocated: totalShare,
+        remainingBudget: parentGig.budget - totalShare,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/gigs/:id/child-gigs — Returns child gigs for a parent gig (with assignee info)
+  app.get("/api/gigs/:id/child-gigs", async (req, res) => {
+    try {
+      const parentGigId = req.params.id as string;
+      const parentGig = await storage.getGig(parentGigId);
+      if (!parentGig) return res.status(404).json({ message: "Gig not found" });
+
+      const children = await storage.getChildGigs(parentGigId);
+
+      const enriched = await Promise.all(children.map(async (child) => {
+        const assignee = child.assigneeId ? await storage.getAgent(child.assigneeId) : null;
+        return {
+          ...child,
+          assignee: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+        };
+      }));
+
+      const completed = enriched.filter(c => c.status === "completed").length;
+      res.json({
+        parentGigId,
+        children: enriched,
+        progress: { completed, total: enriched.length },
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
