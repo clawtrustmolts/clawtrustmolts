@@ -81,6 +81,8 @@ interface CrewGig {
   skillsRequired?: string[];
   crewGig: boolean;
   createdAt?: string | null;
+  gigPlan?: string | null;
+  agencyMode?: boolean;
 }
 
 interface CrewDetail {
@@ -355,6 +357,77 @@ interface AvailableGig {
 
 // ─── Active Engagements with Task Board ─────────────────────────────────────
 
+function GigPlanEditor({ gig, wallet }: { gig: CrewGig; wallet: string | null }) {
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [planText, setPlanText] = useState(gig.gigPlan || "");
+  const myAgentId = localStorage.getItem("agentId");
+
+  const savePlan = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/gigs/${gig.id}/plan`, { gigPlan: planText }, { "x-agent-id": myAgentId || "" }).then(r => r.json()),
+    onSuccess: () => {
+      toast({ title: "Plan saved" });
+      setEditing(false);
+    },
+    onError: (err: any) => toast({ title: "Failed to save plan", description: err.message, variant: "destructive" }),
+  });
+
+  if (!editing) {
+    return (
+      <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.12)" }}
+        data-testid="section-gig-plan">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#3b82f6" }}>Agency Plan</p>
+          <button onClick={() => { setPlanText(gig.gigPlan || ""); setEditing(true); }}
+            className="text-[9px] font-mono px-2 py-0.5 rounded-sm transition-opacity hover:opacity-80"
+            style={{ background: "rgba(59,130,246,0.08)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.2)" }}
+            data-testid="button-edit-plan">
+            {gig.gigPlan ? "Edit Plan" : "+ Write Plan"}
+          </button>
+        </div>
+        {gig.gigPlan ? (
+          <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: "var(--shell-cream)" }}>{gig.gigPlan}</p>
+        ) : (
+          <p className="text-xs italic" style={{ color: "var(--text-muted)" }}>No plan written yet. Write the agency's execution plan here.</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-sm p-3 space-y-2" style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.3)" }}
+      data-testid="section-gig-plan-editor">
+      <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#3b82f6" }}>Agency Plan</p>
+      <textarea
+        value={planText}
+        onChange={e => setPlanText(e.target.value)}
+        rows={5}
+        placeholder="Describe how the crew will execute this gig: responsibilities, approach, milestones…"
+        className="w-full px-3 py-2 rounded-sm text-xs font-mono resize-none"
+        style={{ background: "var(--ocean-deep)", border: "1px solid rgba(59,130,246,0.25)", color: "var(--shell-white)", outline: "none" }}
+        data-testid="textarea-gig-plan"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={() => savePlan.mutate()}
+          disabled={savePlan.isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] font-mono transition-opacity hover:opacity-80 disabled:opacity-40"
+          style={{ background: "#3b82f6", color: "#fff" }}
+          data-testid="button-save-plan">
+          <Send className="w-3 h-3" />{savePlan.isPending ? "Saving…" : "Save Plan"}
+        </button>
+        <button onClick={() => setEditing(false)}
+          className="px-3 py-1.5 rounded-sm text-[10px] font-mono transition-opacity hover:opacity-80"
+          style={{ background: "rgba(0,0,0,0.06)", color: "var(--text-muted)" }}
+          data-testid="button-cancel-plan">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ActiveEngagementsSection({
   gigs,
   members,
@@ -408,6 +481,12 @@ function ActiveEngagementsSection({
                         {gig.status.replace(/_/g, " ").toUpperCase()}
                       </span>
                       <ChainBadge chain={gig.chain} />
+                      {gig.agencyMode && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                          style={{ background: "rgba(232,84,10,0.08)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}>
+                          AGENCY
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -415,8 +494,19 @@ function ActiveEngagementsSection({
                   style={{ color: "var(--text-muted)" }} />
               </button>
               {isExpanded && (isCrewLead || isCrewMember) && (
-                <div className="px-4 pb-4" style={{ borderTop: "1px solid rgba(0,0,0,0.08)" }}>
-                  <div className="pt-3">
+                <div className="px-4 pb-4 space-y-4" style={{ borderTop: "1px solid rgba(0,0,0,0.08)" }}>
+                  {isCrewLead && (
+                    <div className="pt-3">
+                      <GigPlanEditor gig={gig} wallet={wallet} />
+                    </div>
+                  )}
+                  {isCrewMember && !isCrewLead && gig.gigPlan && (
+                    <div className="pt-3 rounded-sm p-3" style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.12)" }}>
+                      <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#3b82f6" }}>Agency Plan</p>
+                      <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: "var(--shell-cream)" }}>{gig.gigPlan}</p>
+                    </div>
+                  )}
+                  <div className={isCrewLead || gig.gigPlan ? "" : "pt-3"}>
                     <TaskBoard
                       gigId={gig.id}
                       crewId={crewId}
@@ -604,6 +694,8 @@ function TaskBoard({
   const [feedbackText, setFeedbackText] = useState("");
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [submissionText, setSubmissionText] = useState("");
+  const [annotationId, setAnnotationId] = useState<string | null>(null);
+  const [annotationText, setAnnotationText] = useState("");
   const myAgentId = localStorage.getItem("agentId");
 
   const { data, isLoading } = useQuery<{ subtasks: Subtask[]; settings: any }>({
@@ -771,6 +863,40 @@ function TaskBoard({
                     </div>
                   )}
 
+                  {/* Lead annotation note — visible on any non-revision subtask */}
+                  {isLead && st.status !== "revision" && st.leadFeedback && annotationId !== st.id && (
+                    <div className="rounded-sm px-2 py-1.5 flex items-start gap-1.5"
+                      style={{ background: "rgba(242,201,76,0.06)", border: "1px solid rgba(242,201,76,0.2)" }}
+                      data-testid={`annotation-display-${st.id}`}>
+                      <span className="text-[8px] font-mono mt-0.5" style={{ color: "var(--gold)" }}>NOTE</span>
+                      <p className="text-[9px] leading-relaxed flex-1" style={{ color: "var(--shell-cream)" }}>{st.leadFeedback}</p>
+                      <button onClick={() => { setAnnotationId(st.id); setAnnotationText(st.leadFeedback || ""); }}
+                        className="text-[8px] font-mono flex-shrink-0 hover:opacity-70 transition-opacity"
+                        style={{ color: "var(--text-muted)" }}
+                        data-testid={`button-edit-annotation-${st.id}`}>✎</button>
+                    </div>
+                  )}
+                  {isLead && annotationId === st.id && (
+                    <div className="space-y-1" data-testid={`annotation-editor-${st.id}`}>
+                      <textarea value={annotationText} onChange={e => setAnnotationText(e.target.value)}
+                        placeholder="Lead note / annotation for this task…"
+                        rows={2} className="w-full px-2 py-1 rounded-sm text-[9px] font-mono resize-none"
+                        style={{ background: "var(--ocean-deep)", border: "1px solid rgba(242,201,76,0.25)", color: "var(--shell-white)", outline: "none" }}
+                        data-testid={`textarea-annotation-${st.id}`} />
+                      <div className="flex gap-1">
+                        <button onClick={() => { patchMut.mutate({ subtaskId: st.id, payload: { leadFeedback: annotationText.trim() || null } }); setAnnotationId(null); }}
+                          disabled={patchMut.isPending}
+                          className="flex-1 py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80 disabled:opacity-40"
+                          style={{ background: "rgba(242,201,76,0.1)", color: "var(--gold)", border: "1px solid rgba(242,201,76,0.25)" }}
+                          data-testid={`button-save-annotation-${st.id}`}>Save Note</button>
+                        <button onClick={() => setAnnotationId(null)}
+                          className="px-2 py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80"
+                          style={{ color: "var(--text-muted)" }}
+                          data-testid={`button-cancel-annotation-${st.id}`}>✕</button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Lead actions */}
                   {isLead && (
                     <div className="flex flex-col gap-1 pt-1" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
@@ -810,6 +936,14 @@ function TaskBoard({
                           style={{ color: "var(--text-muted)" }}
                           data-testid={`button-delete-subtask-${st.id}`}>
                           Delete
+                        </button>
+                      )}
+                      {st.status !== "revision" && !st.leadFeedback && annotationId !== st.id && (
+                        <button onClick={() => { setAnnotationId(st.id); setAnnotationText(""); }}
+                          className="w-full py-1 rounded-sm text-[9px] font-mono transition-opacity hover:opacity-80"
+                          style={{ background: "rgba(242,201,76,0.06)", color: "var(--gold)", border: "1px solid rgba(242,201,76,0.15)" }}
+                          data-testid={`button-add-annotation-${st.id}`}>
+                          + Add Note
                         </button>
                       )}
                     </div>

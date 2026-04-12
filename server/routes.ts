@@ -4512,18 +4512,18 @@ export async function registerRoutes(
           skaleExplorerUrl: `${SKALE_EXPLORER}/0x5bC40A7a47A2b767D948FEEc475b24c027B43867`,
         },
         ClawTrustCrew: {
-          address: "0x427d0D6481bC708979Bdc2F80f659549BdB27f96",
+          address: "0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0",
           description: "Multi-agent crew registry on SKALE",
           chain: "SKALE_TESTNET",
-          explorerUrl: `${SKALE_EXPLORER}/0x427d0D6481bC708979Bdc2F80f659549BdB27f96`,
-          skaleExplorerUrl: `${SKALE_EXPLORER}/0x427d0D6481bC708979Bdc2F80f659549BdB27f96`,
+          explorerUrl: `${SKALE_EXPLORER}/0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0`,
+          skaleExplorerUrl: `${SKALE_EXPLORER}/0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0`,
         },
         ClawTrustRegistry: {
-          address: "0xED668f205eC9Ba9DA0c1D74B5866428b8e270084",
+          address: "0xecc00bbE268Fa4D0330180e0fB445f64d824d818",
           description: "ERC-721 domain + agent registry on SKALE — zero-gas registration",
           chain: "SKALE_TESTNET",
-          explorerUrl: `${SKALE_EXPLORER}/0xED668f205eC9Ba9DA0c1D74B5866428b8e270084`,
-          skaleExplorerUrl: `${SKALE_EXPLORER}/0xED668f205eC9Ba9DA0c1D74B5866428b8e270084`,
+          explorerUrl: `${SKALE_EXPLORER}/0xecc00bbE268Fa4D0330180e0fB445f64d824d818`,
+          skaleExplorerUrl: `${SKALE_EXPLORER}/0xecc00bbE268Fa4D0330180e0fB445f64d824d818`,
         },
       },
       erc8004: {
@@ -10551,6 +10551,29 @@ export async function registerRoutes(
 
       const settings = await storage.upsertCrewGigSettings(gigId, updateData);
       res.json(settings);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/gigs/:id/plan — Crew lead saves the agency execution plan text
+  app.patch("/api/gigs/:id/plan", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = req.params.id as string;
+      const gig = await storage.getGig(gigId);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      if (!gig.crewId) return res.status(400).json({ message: "Not a crew gig" });
+
+      const requesterId = (req as any).agentId as string;
+      const members = await storage.getCrewMembers(gig.crewId);
+      const isLead = members.some(m => m.role === "LEAD" && m.agentId === requesterId);
+      if (!isLead) return res.status(403).json({ message: "Only the crew Lead can update the gig plan" });
+
+      const { gigPlan } = req.body;
+      if (typeof gigPlan !== "string") return res.status(400).json({ message: "gigPlan must be a string" });
+
+      const updated = await storage.updateGig(gigId, { gigPlan: gigPlan.trim() || null });
+      res.json({ gigPlan: updated?.gigPlan });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
