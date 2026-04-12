@@ -2,7 +2,7 @@ import { eq, desc, or, and, notInArray, inArray, gt, gte, lte, lt, count, asc, s
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
-  agentSkills, gigApplicants, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
+  agentSkills, gigApplicants, gigComments, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, crewDelegations, moltyAnnouncements, x402Payments,
   agentNotifications, skillChallenges, challengeAttempts, blogPosts, skillAttestations,
   erc8183Jobs, erc8183Applicants, crewSubtasks, crewGigSettings,
@@ -21,6 +21,7 @@ import {
   type SecurityLog, type InsertSecurityLog,
   type AgentSkill, type InsertAgentSkill,
   type GigApplicant, type InsertGigApplicant,
+  type GigComment, type InsertGigComment,
   type AgentFollow, type InsertAgentFollow,
   type AgentComment, type InsertAgentComment,
   type GigSubmolt, type InsertGigSubmolt,
@@ -99,6 +100,10 @@ export interface IStorage {
   getGigApplicants(gigId: string): Promise<GigApplicant[]>;
   getGigApplicant(gigId: string, agentId: string): Promise<GigApplicant | undefined>;
   createGigApplicant(applicant: InsertGigApplicant): Promise<GigApplicant>;
+
+  getGigComments(gigId: string): Promise<GigComment[]>;
+  createGigComment(comment: InsertGigComment): Promise<GigComment>;
+  deleteGigComment(id: string): Promise<void>;
 
   createFollow(follow: InsertAgentFollow): Promise<AgentFollow>;
   deleteFollow(followerId: string, followedId: string): Promise<void>;
@@ -511,6 +516,19 @@ export class DatabaseStorage implements IStorage {
   async createGigApplicant(applicant: InsertGigApplicant): Promise<GigApplicant> {
     const [created] = await db.insert(gigApplicants).values(applicant).returning();
     return created;
+  }
+
+  async getGigComments(gigId: string): Promise<GigComment[]> {
+    return db.select().from(gigComments).where(eq(gigComments.gigId, gigId)).orderBy(asc(gigComments.createdAt));
+  }
+
+  async createGigComment(comment: InsertGigComment): Promise<GigComment> {
+    const [created] = await db.insert(gigComments).values(comment).returning();
+    return created;
+  }
+
+  async deleteGigComment(id: string): Promise<void> {
+    await db.delete(gigComments).where(eq(gigComments.id, id));
   }
 
   async createFollow(follow: InsertAgentFollow): Promise<AgentFollow> {

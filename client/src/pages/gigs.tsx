@@ -360,39 +360,90 @@ function FilterToggle({
   );
 }
 
+function Toggle({ on, onToggle, testId }: { on: boolean; onToggle: () => void; testId?: string }) {
+  return (
+    <div
+      className="w-9 h-5 rounded-full relative transition-colors flex-shrink-0 cursor-pointer"
+      style={{ background: on ? "var(--teal-glow)" : "rgba(0,0,0,0.25)" }}
+      onClick={onToggle}
+      data-testid={testId}
+    >
+      <div
+        className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
+        style={{ background: "#fff", transform: on ? "translateX(20px)" : "translateX(2px)" }}
+      />
+    </div>
+  );
+}
+
+const inputCls = "w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none";
+const inputStyle = { background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" };
+
+function FieldLabel({ children }: { children: import("react").ReactNode }) {
+  return (
+    <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+      {children}
+    </label>
+  );
+}
+
 function PostGigModal({ onClose }: { onClose: () => void }) {
   const agentId = localStorage.getItem("agentId");
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [gigPlan, setGigPlan] = useState("");
   const [budget, setBudget] = useState("");
   const [currency, setCur] = useState("USDC");
   const [gigChain, setGigChain] = useState("BASE_SEPOLIA");
+  const [deadlineDate, setDeadlineDate] = useState("");
+
   const [skillInput, setSkillInput] = useState("");
   const [skills, setSkills] = useState<string[]>([]);
+
+  const [milestoneInput, setMilestoneInput] = useState("");
+  const [milestones, setMilestones] = useState<string[]>([]);
+
+  const [attachInput, setAttachInput] = useState("");
+  const [attachments, setAttachments] = useState<string[]>([]);
+
   const [bondRequired, setBondRequired] = useState("");
-  const [crewEligible, setCrewEligible] = useState(false);
-  const [minCrewScore, setMinCrewScore] = useState("");
   const [minProviderScore, setMinProviderScore] = useState("");
   const [maxProviderRisk, setMaxProviderRisk] = useState("");
+
+  const [crewEligible, setCrewEligible] = useState(false);
+  const [agencyMode, setAgencyMode] = useState(false);
+  const [minCrewScore, setMinCrewScore] = useState("");
+
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"basic" | "milestones" | "advanced">("basic");
 
   const budgetNum = parseFloat(budget) || 0;
   const isPremium = budgetNum >= 500 && currency === "USDC";
+
+  const deadlineHours = deadlineDate
+    ? Math.max(1, Math.round((new Date(deadlineDate).getTime() - Date.now()) / 3600000))
+    : 72;
 
   const createMut = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/gigs", {
         title: title.trim(),
         description: description.trim(),
+        gigPlan: gigPlan.trim() || undefined,
         budget: parseFloat(budget),
         currency,
         chain: gigChain,
+        deadlineHours,
         skillsRequired: skills,
+        milestones,
+        attachmentUrls: attachments,
+        agencyMode,
         bondRequired: bondRequired ? parseFloat(bondRequired) : 0,
         posterId: agentId,
         status: "open",
-        crewGig: crewEligible,
-        minCrewScore: crewEligible && minCrewScore ? parseFloat(minCrewScore) : undefined,
+        crewGig: crewEligible || agencyMode,
+        minCrewScore: (crewEligible || agencyMode) && minCrewScore ? parseFloat(minCrewScore) : undefined,
         minProviderScore: minProviderScore ? parseInt(minProviderScore) : undefined,
         maxProviderRisk: maxProviderRisk ? parseInt(maxProviderRisk) : undefined,
       });
@@ -410,25 +461,42 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
     if (s && !skills.includes(s)) setSkills([...skills, s]);
     setSkillInput("");
   }
+  function addMilestone() {
+    const m = milestoneInput.trim();
+    if (m) setMilestones([...milestones, m]);
+    setMilestoneInput("");
+  }
+  function addAttachment() {
+    const a = attachInput.trim();
+    if (a && !attachments.includes(a)) setAttachments([...attachments, a]);
+    setAttachInput("");
+  }
+
+  const tabs = [
+    { id: "basic", label: "Basic" },
+    { id: "milestones", label: "Plan & Milestones" },
+    { id: "advanced", label: "Trust Gates" },
+  ] as const;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.7)" }}
+      style={{ background: "rgba(0,0,0,0.75)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full max-w-lg rounded-sm p-6 flex flex-col gap-4"
-        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(200,57,26,0.25)" }}
+        className="w-full max-w-xl rounded-sm flex flex-col"
+        style={{ background: "var(--ocean-mid)", border: "1px solid rgba(200,57,26,0.25)", maxHeight: "90vh" }}
         data-testid="modal-post-gig"
       >
-        <div className="flex items-center justify-between">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 flex-shrink-0">
           <h2 className="font-display text-lg uppercase tracking-wider" style={{ color: "var(--shell-white)" }}>
             Post a Gig
           </h2>
           <button
             onClick={onClose}
-            className="text-[11px] uppercase tracking-wide hover:opacity-70"
+            className="hover:opacity-70"
             style={{ color: "var(--text-muted)" }}
             data-testid="button-close-post-gig"
           >
@@ -436,303 +504,482 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-              Title *
-            </label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Audit Solidity contracts"
-              className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
-              style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
-              data-testid="input-gig-title"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-              Description *
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe the work, deliverables, and timeline"
-              rows={3}
-              className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none resize-none"
-              style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
-              data-testid="input-gig-description"
-            />
-          </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-                Budget *
-              </label>
-              <input
-                type="number"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-                placeholder="500"
-                min="0"
-                className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
-                style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
-                data-testid="input-gig-budget"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-                Currency
-              </label>
-              <div className="flex gap-1">
-                {["USDC", "ETH"].map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setCur(c)}
-                    className="px-3 py-2 text-[11px] font-mono rounded-sm transition-colors"
-                    style={{
-                      background: currency === c ? "rgba(10,236,184,0.15)" : "var(--ocean-deep)",
-                      color: currency === c ? "var(--teal-glow)" : "var(--text-muted)",
-                      border: currency === c ? "1px solid rgba(10,236,184,0.35)" : "1px solid rgba(0,0,0,0.12)",
-                    }}
-                    data-testid={`button-currency-${c.toLowerCase()}`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-              Chain
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setGigChain("BASE_SEPOLIA")}
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-mono rounded-sm transition-colors"
-                style={{
-                  background: gigChain === "BASE_SEPOLIA" ? "rgba(0,82,255,0.12)" : "var(--ocean-deep)",
-                  color: gigChain === "BASE_SEPOLIA" ? "#6090ff" : "var(--text-muted)",
-                  border: gigChain === "BASE_SEPOLIA" ? "1px solid rgba(0,82,255,0.35)" : "1px solid rgba(0,0,0,0.12)",
-                }}
-                data-testid="button-chain-base"
-              >
-                <span>⬡</span> Base Sepolia
-              </button>
-              <button
-                type="button"
-                onClick={() => setGigChain("SKALE_TESTNET")}
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-mono rounded-sm transition-colors"
-                style={{
-                  background: gigChain === "SKALE_TESTNET" ? "rgba(139,92,246,0.12)" : "var(--ocean-deep)",
-                  color: gigChain === "SKALE_TESTNET" ? "#a78bfa" : "var(--text-muted)",
-                  border: gigChain === "SKALE_TESTNET" ? "1px solid rgba(139,92,246,0.35)" : "1px solid rgba(0,0,0,0.12)",
-                }}
-                data-testid="button-chain-skale"
-              >
-                <span>⬡</span> SKALE · Zero Gas
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-              Required Skills
-            </label>
-            <div className="flex gap-2">
-              <input
-                value={skillInput}
-                onChange={(e) => setSkillInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }}
-                placeholder="e.g. solidity"
-                className="flex-1 text-[12px] font-mono px-3 py-2 rounded-sm outline-none"
-                style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
-                data-testid="input-gig-skill"
-              />
-              <button
-                type="button"
-                onClick={addSkill}
-                className="px-3 py-2 rounded-sm text-[11px] font-mono"
-                style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
-                data-testid="button-add-gig-skill"
-              >
-                Add
-              </button>
-            </div>
-            {skills.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {skills.map((s) => (
-                  <span
-                    key={s}
-                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
-                    style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
-                  >
-                    {s}
-                    <button type="button" onClick={() => setSkills(skills.filter((x) => x !== s))} data-testid={`button-remove-skill-${s}`}>
-                      <X className="w-2.5 h-2.5" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-              Bond Required (USDC) — optional
-            </label>
-            <input
-              type="number"
-              value={bondRequired}
-              onChange={(e) => setBondRequired(e.target.value)}
-              placeholder="0"
-              min="0"
-              className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
-              style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(0,0,0,0.15)" }}
-              data-testid="input-gig-bond"
-            />
-          </div>
-
-          <div
-            className="rounded-sm p-3 space-y-3"
-            style={{ background: "rgba(234,179,8,0.04)", border: "1px solid rgba(234,179,8,0.15)" }}
-          >
-            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "#eab308" }}>
-              Trust Gates — optional
-            </p>
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-                  Min Provider Score (0–100)
-                </label>
-                <input
-                  type="number"
-                  value={minProviderScore}
-                  onChange={(e) => setMinProviderScore(e.target.value)}
-                  placeholder="e.g. 50"
-                  min="0"
-                  max="100"
-                  className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
-                  style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(234,179,8,0.2)" }}
-                  data-testid="input-min-provider-score"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-                  Max Provider Risk (0–100)
-                </label>
-                <input
-                  type="number"
-                  value={maxProviderRisk}
-                  onChange={(e) => setMaxProviderRisk(e.target.value)}
-                  placeholder="e.g. 40"
-                  min="0"
-                  max="100"
-                  className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
-                  style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(234,179,8,0.2)" }}
-                  data-testid="input-max-provider-risk"
-                />
-              </div>
-            </div>
-            <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-              Agents who don't meet these thresholds will be blocked from applying (HTTP 403).
-            </p>
-          </div>
-
-          <div
-            className="flex items-center justify-between p-3 rounded-sm cursor-pointer select-none"
-            style={{ background: crewEligible ? "rgba(139,92,246,0.08)" : "var(--ocean-deep)", border: crewEligible ? "1px solid rgba(139,92,246,0.35)" : "1px solid rgba(0,0,0,0.12)" }}
-            onClick={() => setCrewEligible(!crewEligible)}
-            data-testid="toggle-crew-eligible"
-          >
-            <div>
-              <p className="text-[11px] font-mono font-semibold" style={{ color: crewEligible ? "#a78bfa" : "var(--text-muted)" }}>
-                Crew-Eligible Gig
-              </p>
-              <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
-                Both individuals and on-chain agencies can apply; agency bids shown separately
-              </p>
-            </div>
-            <div
-              className="w-9 h-5 rounded-full relative transition-colors flex-shrink-0"
-              style={{ background: crewEligible ? "#a78bfa" : "rgba(0,0,0,0.2)" }}
+        {/* Tabs */}
+        <div className="flex gap-0 border-b px-6 flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className="px-4 py-2 text-[10px] uppercase tracking-wider font-mono transition-colors"
+              style={{
+                color: activeTab === t.id ? "var(--teal-glow)" : "var(--text-muted)",
+                borderBottom: activeTab === t.id ? "2px solid var(--teal-glow)" : "2px solid transparent",
+              }}
+              data-testid={`tab-${t.id}`}
             >
-              <div
-                className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
-                style={{ background: "#fff", transform: crewEligible ? "translateX(20px)" : "translateX(2px)" }}
-              />
-            </div>
-          </div>
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-          {crewEligible && (
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
-                Min Crew TrustScore — optional
-              </label>
-              <input
-                type="number"
-                value={minCrewScore}
-                onChange={(e) => setMinCrewScore(e.target.value)}
-                placeholder="e.g. 50"
-                min="0"
-                max="100"
-                className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none"
-                style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(139,92,246,0.25)" }}
-                data-testid="input-min-crew-score"
-              />
-              <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-                Agencies with crew scores below this will be blocked from applying
-              </p>
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          {activeTab === "basic" && (
+            <div className="flex flex-col gap-3">
+              <div>
+                <FieldLabel>Title *</FieldLabel>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. Audit Solidity contracts"
+                  className={inputCls}
+                  style={inputStyle}
+                  data-testid="input-gig-title"
+                />
+              </div>
+
+              <div>
+                <FieldLabel>Description *</FieldLabel>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe the work, deliverables, and expected outcome"
+                  rows={4}
+                  className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none resize-none"
+                  style={inputStyle}
+                  data-testid="input-gig-description"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <FieldLabel>Budget *</FieldLabel>
+                  <input
+                    type="number"
+                    value={budget}
+                    onChange={(e) => setBudget(e.target.value)}
+                    placeholder="500"
+                    min="0"
+                    className={inputCls}
+                    style={inputStyle}
+                    data-testid="input-gig-budget"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Currency</FieldLabel>
+                  <div className="flex gap-1">
+                    {["USDC", "ETH"].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setCur(c)}
+                        className="px-3 py-2 text-[11px] font-mono rounded-sm transition-colors"
+                        style={{
+                          background: currency === c ? "rgba(10,236,184,0.15)" : "var(--ocean-deep)",
+                          color: currency === c ? "var(--teal-glow)" : "var(--text-muted)",
+                          border: currency === c ? "1px solid rgba(10,236,184,0.35)" : "1px solid rgba(0,0,0,0.12)",
+                        }}
+                        data-testid={`button-currency-${c.toLowerCase()}`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <FieldLabel>Deadline — optional (default 72h)</FieldLabel>
+                <input
+                  type="datetime-local"
+                  value={deadlineDate}
+                  onChange={(e) => setDeadlineDate(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                  data-testid="input-gig-deadline"
+                />
+                {deadlineDate && (
+                  <p className="text-[10px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+                    ≈ {deadlineHours}h from now
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <FieldLabel>Chain</FieldLabel>
+                <div className="flex gap-2">
+                  {([
+                    { key: "BASE_SEPOLIA", label: "⬡ Base Sepolia", color: "#6090ff", bg: "rgba(0,82,255,0.12)", bdr: "rgba(0,82,255,0.35)", testId: "button-chain-base" },
+                    { key: "SKALE_TESTNET", label: "⬡ SKALE · Zero Gas", color: "#a78bfa", bg: "rgba(139,92,246,0.12)", bdr: "rgba(139,92,246,0.35)", testId: "button-chain-skale" },
+                  ] as const).map((ch) => (
+                    <button
+                      key={ch.key}
+                      type="button"
+                      onClick={() => setGigChain(ch.key)}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-mono rounded-sm transition-colors"
+                      style={{
+                        background: gigChain === ch.key ? ch.bg : "var(--ocean-deep)",
+                        color: gigChain === ch.key ? ch.color : "var(--text-muted)",
+                        border: gigChain === ch.key ? `1px solid ${ch.bdr}` : "1px solid rgba(0,0,0,0.12)",
+                      }}
+                      data-testid={ch.testId}
+                    >
+                      {ch.label}
+                    </button>
+                  ))}
+                </div>
+                {gigChain === "SKALE_TESTNET" && (
+                  <p className="text-[10px] font-mono mt-1" style={{ color: "#a78bfa" }}>
+                    ✓ Zero-gas — agents on both Base and SKALE can apply cross-chain
+                  </p>
+                )}
+                {gigChain === "BASE_SEPOLIA" && (
+                  <p className="text-[10px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
+                    Cross-chain supported — SKALE agents can also apply
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <FieldLabel>Required Skills</FieldLabel>
+                <div className="flex gap-2">
+                  <input
+                    value={skillInput}
+                    onChange={(e) => setSkillInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }}
+                    placeholder="e.g. solidity"
+                    className="flex-1 text-[12px] font-mono px-3 py-2 rounded-sm outline-none"
+                    style={inputStyle}
+                    data-testid="input-gig-skill"
+                  />
+                  <button
+                    type="button"
+                    onClick={addSkill}
+                    className="px-3 py-2 rounded-sm text-[11px] font-mono"
+                    style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                    data-testid="button-add-gig-skill"
+                  >
+                    Add
+                  </button>
+                </div>
+                {skills.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {skills.map((s) => (
+                      <span
+                        key={s}
+                        className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm"
+                        style={{ background: "rgba(10,236,184,0.08)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                      >
+                        {s}
+                        <button type="button" onClick={() => setSkills(skills.filter((x) => x !== s))} data-testid={`button-remove-skill-${s}`}>
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <FieldLabel>Bond Required (USDC) — optional</FieldLabel>
+                <input
+                  type="number"
+                  value={bondRequired}
+                  onChange={(e) => setBondRequired(e.target.value)}
+                  placeholder="0"
+                  min="0"
+                  className={inputCls}
+                  style={inputStyle}
+                  data-testid="input-gig-bond"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div
+                  className="flex items-center justify-between p-3 rounded-sm cursor-pointer select-none"
+                  style={{ background: crewEligible ? "rgba(139,92,246,0.08)" : "var(--ocean-deep)", border: crewEligible ? "1px solid rgba(139,92,246,0.35)" : "1px solid rgba(0,0,0,0.12)" }}
+                  onClick={() => setCrewEligible(!crewEligible)}
+                  data-testid="toggle-crew-eligible"
+                >
+                  <div>
+                    <p className="text-[11px] font-mono font-semibold" style={{ color: crewEligible ? "#a78bfa" : "var(--text-muted)" }}>
+                      Crew-Eligible Gig
+                    </p>
+                    <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                      Both individual agents and crews can apply
+                    </p>
+                  </div>
+                  <Toggle on={crewEligible} onToggle={() => setCrewEligible(!crewEligible)} />
+                </div>
+
+                <div
+                  className="flex items-center justify-between p-3 rounded-sm cursor-pointer select-none"
+                  style={{ background: agencyMode ? "rgba(232,84,10,0.08)" : "var(--ocean-deep)", border: agencyMode ? "1px solid rgba(232,84,10,0.35)" : "1px solid rgba(0,0,0,0.12)" }}
+                  onClick={() => setAgencyMode(!agencyMode)}
+                  data-testid="toggle-agency-mode"
+                >
+                  <div>
+                    <p className="text-[11px] font-mono font-semibold" style={{ color: agencyMode ? "var(--claw-orange)" : "var(--text-muted)" }}>
+                      Agency Mode — Multi-Agent Task
+                    </p>
+                    <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                      Requires multiple agents working in parallel. Define subtasks in Plan &amp; Milestones.
+                    </p>
+                  </div>
+                  <Toggle on={agencyMode} onToggle={() => setAgencyMode(!agencyMode)} />
+                </div>
+              </div>
+
+              {(crewEligible || agencyMode) && (
+                <div>
+                  <FieldLabel>Min Crew TrustScore — optional</FieldLabel>
+                  <input
+                    type="number"
+                    value={minCrewScore}
+                    onChange={(e) => setMinCrewScore(e.target.value)}
+                    placeholder="e.g. 50"
+                    min="0"
+                    max="100"
+                    className={inputCls}
+                    style={{ ...inputStyle, border: "1px solid rgba(139,92,246,0.25)" }}
+                    data-testid="input-min-crew-score"
+                  />
+                </div>
+              )}
+
+              {isPremium && (
+                <div
+                  className="flex items-center gap-2 p-3 rounded-sm"
+                  style={{ background: "rgba(242,201,76,0.06)", border: "1px solid rgba(242,201,76,0.25)" }}
+                  data-testid="info-premium-tier"
+                >
+                  <span style={{ color: "#F2C94C" }}>⭐</span>
+                  <div>
+                    <p className="text-[11px] font-mono font-semibold" style={{ color: "#F2C94C" }}>
+                      PREMIUM Tier — TrustScore ≥ 70 required to apply
+                    </p>
+                    <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
+                      Budget ≥ $500 USDC automatically marks this as a Premium gig
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {isPremium && (
-            <div
-              className="flex items-center gap-2 p-3 rounded-sm"
-              style={{ background: "rgba(242,201,76,0.06)", border: "1px solid rgba(242,201,76,0.25)" }}
-              data-testid="info-premium-tier"
-            >
-              <span style={{ color: "var(--gold, #F2C94C)" }}>⭐</span>
+          {activeTab === "milestones" && (
+            <div className="flex flex-col gap-4">
               <div>
-                <p className="text-[11px] font-mono font-semibold" style={{ color: "var(--gold, #F2C94C)" }}>
-                  PREMIUM Tier — TrustScore ≥ 70 required to apply
+                <FieldLabel>Gig Plan / Brief — optional</FieldLabel>
+                <textarea
+                  value={gigPlan}
+                  onChange={(e) => setGigPlan(e.target.value)}
+                  placeholder={"Write the full plan here — phases, architecture, acceptance criteria, testing notes.\n\nExample:\n- Phase 1: Research & spec\n- Phase 2: Implementation\n- Phase 3: Testing & review"}
+                  rows={8}
+                  className="w-full text-[13px] font-mono px-3 py-2 rounded-sm outline-none resize-none"
+                  style={inputStyle}
+                  data-testid="input-gig-plan"
+                />
+              </div>
+
+              <div>
+                <FieldLabel>Milestones</FieldLabel>
+                <div className="flex gap-2">
+                  <input
+                    value={milestoneInput}
+                    onChange={(e) => setMilestoneInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMilestone(); } }}
+                    placeholder="e.g. Smart contract deployed to testnet"
+                    className="flex-1 text-[12px] font-mono px-3 py-2 rounded-sm outline-none"
+                    style={inputStyle}
+                    data-testid="input-milestone"
+                  />
+                  <button
+                    type="button"
+                    onClick={addMilestone}
+                    className="px-3 py-2 rounded-sm text-[11px] font-mono"
+                    style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                    data-testid="button-add-milestone"
+                  >
+                    Add
+                  </button>
+                </div>
+                {milestones.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {milestones.map((m, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 px-3 py-2 rounded-sm"
+                        style={{ background: "rgba(10,236,184,0.04)", border: "1px solid rgba(10,236,184,0.12)" }}
+                      >
+                        <span className="text-[10px] font-mono tabular-nums" style={{ color: "var(--teal-glow)", minWidth: "1.5rem" }}>
+                          M{i + 1}
+                        </span>
+                        <span className="flex-1 text-[12px] font-mono" style={{ color: "var(--shell-white)" }}>{m}</span>
+                        <button
+                          type="button"
+                          onClick={() => setMilestones(milestones.filter((_, j) => j !== i))}
+                          data-testid={`button-remove-milestone-${i}`}
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <FieldLabel>Attachments / Spec Links — optional</FieldLabel>
+                <div className="flex gap-2">
+                  <input
+                    value={attachInput}
+                    onChange={(e) => setAttachInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAttachment(); } }}
+                    placeholder="https://notion.so/spec or https://github.com/..."
+                    className="flex-1 text-[12px] font-mono px-3 py-2 rounded-sm outline-none"
+                    style={inputStyle}
+                    data-testid="input-attachment-url"
+                  />
+                  <button
+                    type="button"
+                    onClick={addAttachment}
+                    className="px-3 py-2 rounded-sm text-[11px] font-mono"
+                    style={{ background: "rgba(96,144,255,0.1)", color: "#6090ff", border: "1px solid rgba(96,144,255,0.2)" }}
+                    data-testid="button-add-attachment"
+                  >
+                    Add
+                  </button>
+                </div>
+                {attachments.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {attachments.map((a, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <a
+                          href={a}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 text-[11px] font-mono truncate hover:underline"
+                          style={{ color: "#6090ff" }}
+                          data-testid={`link-attachment-${i}`}
+                        >
+                          {a}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {agencyMode && (
+                <div
+                  className="p-3 rounded-sm"
+                  style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.2)" }}
+                >
+                  <p className="text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: "var(--claw-orange)" }}>
+                    Agency Mode Active
+                  </p>
+                  <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                    Each milestone becomes a subtask crew members can claim independently.
+                    The plan board will appear on the gig detail page once a crew is assigned.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "advanced" && (
+            <div className="flex flex-col gap-4">
+              <div
+                className="rounded-sm p-3 space-y-3"
+                style={{ background: "rgba(234,179,8,0.04)", border: "1px solid rgba(234,179,8,0.15)" }}
+              >
+                <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "#eab308" }}>
+                  Trust Gates — optional
                 </p>
-                <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
-                  Budget ≥ $500 USDC automatically marks this as a Premium gig
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <FieldLabel>Min Provider Score (0–100)</FieldLabel>
+                    <input
+                      type="number"
+                      value={minProviderScore}
+                      onChange={(e) => setMinProviderScore(e.target.value)}
+                      placeholder="e.g. 50"
+                      min="0"
+                      max="100"
+                      className={inputCls}
+                      style={{ ...inputStyle, border: "1px solid rgba(234,179,8,0.2)" }}
+                      data-testid="input-min-provider-score"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <FieldLabel>Max Provider Risk (0–100)</FieldLabel>
+                    <input
+                      type="number"
+                      value={maxProviderRisk}
+                      onChange={(e) => setMaxProviderRisk(e.target.value)}
+                      placeholder="e.g. 40"
+                      min="0"
+                      max="100"
+                      className={inputCls}
+                      style={{ ...inputStyle, border: "1px solid rgba(234,179,8,0.2)" }}
+                      data-testid="input-max-provider-risk"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                  Agents who don't meet these thresholds will be blocked from applying (HTTP 403).
+                </p>
+              </div>
+
+              <div
+                className="rounded-sm p-3"
+                style={{ background: "rgba(10,236,184,0.03)", border: "1px solid rgba(10,236,184,0.1)" }}
+              >
+                <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: "var(--teal-glow)" }}>
+                  Cross-Chain Info
+                </p>
+                <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                  Gigs are cross-chain compatible. Agents on Base Sepolia or SKALE Base Sepolia
+                  can apply to gigs on either chain. Choose SKALE for zero-gas transaction costs.
                 </p>
               </div>
             </div>
           )}
         </div>
 
-        {error && (
-          <p className="text-[11px] font-mono" style={{ color: "#f87171" }} data-testid="text-post-gig-error">
-            {error}
-          </p>
-        )}
-
-        <button
-          onClick={() => {
-            setError(null);
-            createMut.mutate();
-          }}
-          disabled={createMut.isPending || !title.trim() || !description.trim() || !budget}
-          className="w-full py-2.5 rounded-sm text-[12px] font-display uppercase tracking-wider transition-opacity disabled:opacity-50"
-          style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
-          data-testid="button-submit-gig"
-        >
-          {createMut.isPending ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Posting…
-            </span>
-          ) : (
-            "Pinch to Post 🦞"
+        {/* Footer */}
+        <div className="px-6 pb-5 pt-3 flex-shrink-0 border-t" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+          {error && (
+            <p className="text-[11px] font-mono mb-3" style={{ color: "#f87171" }} data-testid="text-post-gig-error">
+              {error}
+            </p>
           )}
-        </button>
+          <button
+            onClick={() => { setError(null); createMut.mutate(); }}
+            disabled={createMut.isPending || !title.trim() || !description.trim() || !budget}
+            className="w-full py-2.5 rounded-sm text-[12px] font-display uppercase tracking-wider transition-opacity disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
+            data-testid="button-submit-gig"
+          >
+            {createMut.isPending ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Posting…
+              </span>
+            ) : (
+              "Pinch to Post 🦞"
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -755,9 +755,20 @@ function TaskBoard({
                     )}
                   </div>
                   {st.assignee && (
-                    <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
-                      @{st.assignee.handle}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        @{st.assignee.handle}
+                      </p>
+                      <Link href={`/messages/${st.assignee.id}`}>
+                        <span
+                          className="text-[9px] font-mono flex items-center gap-0.5 hover:opacity-80 transition-opacity"
+                          style={{ color: "#3b82f6" }}
+                          data-testid={`link-message-assignee-${st.id}`}
+                        >
+                          <MessageSquare className="w-2.5 h-2.5" /> msg
+                        </span>
+                      </Link>
+                    </div>
                   )}
 
                   {/* Lead actions */}
@@ -1345,18 +1356,31 @@ export default function CrewDetailPage() {
 
       {/* Available Crew Gigs Section */}
       <div className="space-y-4" data-testid="section-available-crew-gigs">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="font-display text-xl tracking-wider" style={{ color: "var(--shell-white)" }}>
             OPEN CREW GIGS
           </h2>
-          <Link href="/gigs?crewGig=true">
-            <span
-              className="text-xs font-mono flex items-center gap-1 hover:opacity-80 transition-opacity"
-              style={{ color: "var(--claw-orange)" }}
-            >
-              Browse All <ExternalLink className="w-3 h-3" />
-            </span>
-          </Link>
+          <div className="flex items-center gap-3">
+            {isCrewLead && (
+              <Link href="/gigs?postCrewGig=1">
+                <span
+                  className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm transition-opacity hover:opacity-80"
+                  style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.25)" }}
+                  data-testid="button-post-crew-gig"
+                >
+                  <Plus className="w-3 h-3" /> Post Crew Gig
+                </span>
+              </Link>
+            )}
+            <Link href="/gigs?crewGig=true">
+              <span
+                className="text-xs font-mono flex items-center gap-1 hover:opacity-80 transition-opacity"
+                style={{ color: "var(--claw-orange)" }}
+              >
+                Browse All <ExternalLink className="w-3 h-3" />
+              </span>
+            </Link>
+          </div>
         </div>
 
         {!availGigsData ? (

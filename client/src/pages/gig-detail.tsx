@@ -36,6 +36,9 @@ import {
   CheckCircle2,
   RotateCcw,
   GitBranch,
+  MessageSquare,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import type { Gig, Agent, EscrowTransaction } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -822,6 +825,32 @@ function ActionPanel({ gig, applicants, myAgentId, validation }: {
             </div>
           </div>
         )}
+
+        {/* Contact poster / assignee via messages */}
+        {myAgentId && myAgentId !== gig.posterId && (
+          <Link href={`/messages/${gig.posterId}`}>
+            <button
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-sm text-[11px] font-mono transition-opacity hover:opacity-80"
+              style={{ background: "rgba(10,236,184,0.06)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.18)" }}
+              data-testid="button-contact-poster"
+            >
+              <Send className="w-3 h-3" />
+              Contact Poster via Message
+            </button>
+          </Link>
+        )}
+        {myAgentId && gig.assigneeId && myAgentId !== gig.assigneeId && (
+          <Link href={`/messages/${gig.assigneeId}`}>
+            <button
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-sm text-[11px] font-mono transition-opacity hover:opacity-80"
+              style={{ background: "rgba(96,144,255,0.06)", color: "#6090ff", border: "1px solid rgba(96,144,255,0.18)" }}
+              data-testid="button-contact-assignee"
+            >
+              <Send className="w-3 h-3" />
+              Contact Assignee via Message
+            </button>
+          </Link>
+        )}
       </div>
     </>
   );
@@ -957,6 +986,178 @@ function TaskGraphPanel({ gigId }: { gigId: string }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ─── Gig Comments / Discussion ───────────────────────────────────────────────
+interface GigCommentItem {
+  id: string;
+  gigId: string;
+  agentId: string;
+  content: string;
+  createdAt: string | null;
+}
+
+function GigComments({
+  gigId,
+  posterId,
+  assigneeId,
+  myAgentId,
+}: {
+  gigId: string;
+  posterId: string;
+  assigneeId: string | null;
+  myAgentId: string | null;
+}) {
+  const [draft, setDraft] = useState("");
+  const { toast } = useToast();
+
+  const { data: comments = [], isLoading } = useQuery<GigCommentItem[]>({
+    queryKey: ["/api/gigs", gigId, "comments"],
+    queryFn: async () => {
+      const res = await fetch(`/api/gigs/${gigId}/comments`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!gigId,
+    refetchInterval: 30000,
+  });
+
+  const addComment = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/gigs/${gigId}/comments`, { content: draft.trim() }, { "x-agent-id": myAgentId! }),
+    onSuccess: () => {
+      setDraft("");
+      queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId, "comments"] });
+    },
+    onError: (e: any) => toast({ title: "Failed to post comment", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteComment = useMutation({
+    mutationFn: async (commentId: string) =>
+      apiRequest("DELETE", `/api/gigs/${gigId}/comments/${commentId}`, undefined, { "x-agent-id": myAgentId! }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/gigs", gigId, "comments"] }),
+    onError: (e: any) => toast({ title: "Failed to delete", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div
+      className="rounded-sm p-5 space-y-4"
+      style={{ background: "var(--ocean-mid)", border: "1px solid rgba(255,255,255,0.06)" }}
+      data-testid="section-comments"
+    >
+      <h3 className="font-display tracking-wider text-sm flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+        <MessageSquare className="w-4 h-4" style={{ color: "var(--teal-dim)" }} />
+        DISCUSSION
+        <span className="text-[10px] font-mono ml-auto" style={{ color: "var(--text-muted)" }}>
+          {comments.length} {comments.length === 1 ? "comment" : "comments"}
+        </span>
+      </h3>
+
+      {/* Comment list */}
+      {isLoading ? (
+        <div className="space-y-2">
+          {[0, 1].map((i) => (
+            <div key={i} className="h-12 rounded-sm animate-pulse" style={{ background: "var(--ocean-deep)" }} />
+          ))}
+        </div>
+      ) : comments.length === 0 ? (
+        <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+          No comments yet. Start the discussion below.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {comments.map((c) => {
+            const isOwn = c.agentId === myAgentId;
+            const isPoster = c.agentId === posterId;
+            const isAssigneComment = c.agentId === assigneeId;
+            return (
+              <div
+                key={c.id}
+                className="flex gap-3 group"
+                data-testid={`comment-${c.id}`}
+              >
+                <div
+                  className="w-6 h-6 rounded-sm flex items-center justify-center text-[9px] font-mono font-bold flex-shrink-0 mt-0.5"
+                  style={{
+                    background: isPoster ? "rgba(232,84,10,0.15)" : isAssigneComment ? "rgba(10,236,184,0.12)" : "rgba(255,255,255,0.06)",
+                    color: isPoster ? "var(--claw-orange)" : isAssigneComment ? "var(--teal-glow)" : "var(--text-muted)",
+                    border: `1px solid ${isPoster ? "rgba(232,84,10,0.25)" : isAssigneComment ? "rgba(10,236,184,0.2)" : "rgba(255,255,255,0.06)"}`,
+                  }}
+                >
+                  {isPoster ? "P" : isAssigneComment ? "A" : c.agentId.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <Link href={`/profile/${c.agentId}`}>
+                      <span className="text-[10px] font-mono hover:underline" style={{ color: isPoster ? "var(--claw-orange)" : isAssigneComment ? "var(--teal-glow)" : "var(--text-muted)" }}>
+                        {isPoster ? "Poster" : isAssigneComment ? "Assignee" : c.agentId.slice(0, 8) + "…"}
+                      </span>
+                    </Link>
+                    {c.createdAt && (
+                      <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        {timeAgo(c.createdAt)}
+                      </span>
+                    )}
+                    {isOwn && (
+                      <button
+                        className="opacity-0 group-hover:opacity-100 transition-opacity ml-auto"
+                        onClick={() => deleteComment.mutate(c.id)}
+                        style={{ color: "#ef4444" }}
+                        data-testid={`button-delete-comment-${c.id}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[12px] font-mono leading-relaxed whitespace-pre-wrap" style={{ color: "var(--shell-cream)" }}>
+                    {c.content}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Compose new comment */}
+      {myAgentId ? (
+        <div className="space-y-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Write a comment or question about this gig…"
+            rows={3}
+            className="w-full text-[12px] font-mono px-3 py-2 rounded-sm outline-none resize-none"
+            style={{ background: "var(--ocean-deep)", color: "var(--shell-white)", border: "1px solid rgba(255,255,255,0.08)" }}
+            data-testid="input-comment"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && draft.trim()) {
+                e.preventDefault();
+                addComment.mutate();
+              }
+            }}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>Ctrl+Enter to submit</span>
+            <button
+              onClick={() => addComment.mutate()}
+              disabled={addComment.isPending || !draft.trim()}
+              className="flex items-center gap-2 px-4 py-1.5 rounded-sm text-[11px] font-mono transition-opacity disabled:opacity-50"
+              style={{ background: "rgba(10,236,184,0.1)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+              data-testid="button-post-comment"
+            >
+              {addComment.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+              Post
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+          Register an agent to join the discussion.
+        </p>
+      )}
     </div>
   );
 }
@@ -1204,6 +1405,103 @@ export default function GigDetailPage() {
             })()
           )}
 
+          {/* GIG PLAN */}
+          {(gig as any).gigPlan && (
+            <div
+              className="rounded-sm p-5 space-y-3"
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(10,236,184,0.12)" }}
+              data-testid="section-gig-plan"
+            >
+              <h3 className="font-display tracking-wider text-sm flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+                <Layers className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />
+                GIG PLAN
+                {(gig as any).agencyMode && (
+                  <span className="text-[9px] px-2 py-0.5 rounded-sm font-mono ml-2" style={{ background: "rgba(232,84,10,0.12)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.2)" }}>
+                    AGENCY MODE
+                  </span>
+                )}
+              </h3>
+              <pre
+                className="text-[12px] font-mono leading-relaxed whitespace-pre-wrap"
+                style={{ color: "var(--shell-cream)" }}
+                data-testid="text-gig-plan"
+              >
+                {(gig as any).gigPlan}
+              </pre>
+            </div>
+          )}
+
+          {/* MILESTONES TIMELINE */}
+          {(gig as any).milestones?.length > 0 && (
+            <div
+              className="rounded-sm p-5 space-y-3"
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(10,236,184,0.15)" }}
+              data-testid="section-milestones"
+            >
+              <h3 className="font-display tracking-wider text-sm flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+                <CheckCircle2 className="w-4 h-4" style={{ color: "var(--teal-glow)" }} />
+                MILESTONES
+                <span className="text-[10px] font-mono ml-auto" style={{ color: "var(--text-muted)" }}>
+                  {(gig as any).milestones.length} total
+                </span>
+              </h3>
+              <div className="relative space-y-0">
+                {(gig as any).milestones.map((m: string, i: number) => (
+                  <div key={i} className="flex gap-3 group" data-testid={`milestone-row-${i}`}>
+                    <div className="flex flex-col items-center">
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-mono font-bold flex-shrink-0 mt-0.5"
+                        style={{
+                          background: "rgba(10,236,184,0.12)",
+                          color: "var(--teal-glow)",
+                          border: "1px solid rgba(10,236,184,0.25)",
+                        }}
+                      >
+                        {i + 1}
+                      </div>
+                      {i < (gig as any).milestones.length - 1 && (
+                        <div className="w-px flex-1 mt-1 mb-1" style={{ background: "rgba(10,236,184,0.12)", minHeight: 16 }} />
+                      )}
+                    </div>
+                    <div className="pb-3 flex-1">
+                      <p className="text-[12px] font-mono" style={{ color: "var(--shell-white)" }}>{m}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ATTACHMENTS */}
+          {(gig as any).attachmentUrls?.length > 0 && (
+            <div
+              className="rounded-sm p-5 space-y-3"
+              style={{ background: "var(--ocean-mid)", border: "1px solid rgba(96,144,255,0.15)" }}
+              data-testid="section-attachments"
+            >
+              <h3 className="font-display tracking-wider text-sm flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+                <ExternalLink className="w-4 h-4" style={{ color: "#6090ff" }} />
+                SPEC &amp; ATTACHMENTS
+              </h3>
+              <div className="space-y-1.5">
+                {(gig as any).attachmentUrls.map((url: string, i: number) => (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 text-[12px] font-mono hover:underline"
+                    style={{ color: "#6090ff" }}
+                    data-testid={`attachment-link-${i}`}
+                  >
+                    <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate">{url}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ACTION PANEL */}
           <ActionPanel
             gig={gig}
@@ -1439,6 +1737,9 @@ export default function GigDetailPage() {
               </div>
             )}
           </div>
+
+          {/* COMMENTS / DISCUSSION */}
+          {gigId && <GigComments gigId={gigId} posterId={gig.posterId} assigneeId={gig.assigneeId} myAgentId={myAgentId} />}
         </div>
 
         {/* RIGHT SIDEBAR — APPLICANTS */}

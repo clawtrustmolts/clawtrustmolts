@@ -83,6 +83,10 @@ export const gigs = pgTable("gigs", {
   maxProviderRisk: integer("max_provider_risk"),
   parentGigId: varchar("parent_gig_id").references((): any => gigs.id, { onDelete: "set null" }),
   subtaskIndex: integer("subtask_index"),
+  milestones: text("milestones").array().notNull().default(sql`'{}'::text[]`),
+  attachmentUrls: text("attachment_urls").array().notNull().default(sql`'{}'::text[]`),
+  agencyMode: boolean("agency_mode").notNull().default(false),
+  gigPlan: text("gig_plan"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -225,6 +229,15 @@ export const gigApplicants = pgTable("gig_applicants", {
   gigId: varchar("gig_id").notNull(),
   agentId: varchar("agent_id").notNull(),
   message: text("message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const gigComments = pgTable("gig_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gigId: varchar("gig_id").notNull(),
+  agentId: varchar("agent_id").notNull(),
+  content: text("content").notNull(),
+  isInternal: boolean("is_internal").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -448,6 +461,7 @@ export const insertSwarmVoteSchema = createInsertSchema(swarmVotes).omit({ id: t
 export const insertEscrowSchema = createInsertSchema(escrowTransactions).omit({ id: true, createdAt: true, updatedAt: true, txHash: true, releaseTxHash: true, circleWalletId: true, circleTransactionId: true });
 export const insertAgentSkillSchema = createInsertSchema(agentSkills).omit({ id: true, createdAt: true });
 export const insertGigApplicantSchema = createInsertSchema(gigApplicants).omit({ id: true, createdAt: true });
+export const insertGigCommentSchema = createInsertSchema(gigComments).omit({ id: true, createdAt: true });
 export const insertAgentFollowSchema = createInsertSchema(agentFollows).omit({ id: true, createdAt: true });
 export const insertAgentCommentSchema = createInsertSchema(agentComments).omit({ id: true, createdAt: true });
 export const insertBondEventSchema = createInsertSchema(bondEvents).omit({ id: true, createdAt: true });
@@ -525,6 +539,8 @@ export type AgentSkill = typeof agentSkills.$inferSelect;
 export type InsertAgentSkill = z.infer<typeof insertAgentSkillSchema>;
 export type GigApplicant = typeof gigApplicants.$inferSelect;
 export type InsertGigApplicant = z.infer<typeof insertGigApplicantSchema>;
+export type GigComment = typeof gigComments.$inferSelect;
+export type InsertGigComment = z.infer<typeof insertGigCommentSchema>;
 export type AgentFollow = typeof agentFollows.$inferSelect;
 export type InsertAgentFollow = z.infer<typeof insertAgentFollowSchema>;
 export type AgentComment = typeof agentComments.$inferSelect;

@@ -5778,16 +5778,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Cannot apply to your own gig" });
       }
 
-      // Cross-chain validation: agent and gig must be on the same chain
-      const agentChain = agent.homeChain || agent.preferredChain || "BASE_SEPOLIA";
-      if (agentChain !== gig.chain) {
-        return res.status(400).json({
-          message: `Chain mismatch: this gig is on ${gig.chain} but your agent is registered on ${agentChain}. Agents can only apply to gigs on their home chain.`,
-          agentChain,
-          gigChain: gig.chain,
-        });
-      }
-
       if (gig.gigTier === "PREMIUM" && agent.fusedScore < 70 && !(req as any).isE2EBypass) {
         return res.status(403).json({ message: "Premium gigs require a TrustScore of 70 or above" });
       }
@@ -6388,6 +6378,53 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId.data);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
       res.json(gig);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Gig Comments ───────────────────────────────────────────────────────────
+  app.get("/api/gigs/:id/comments", async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      const comments = await storage.getGigComments(gigId.data);
+      res.json(comments);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gigs/:id/comments", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      if (!gigId.success) return res.status(400).json({ message: "Invalid gig ID" });
+      const gig = await storage.getGig(gigId.data);
+      if (!gig) return res.status(404).json({ message: "Gig not found" });
+      const agentId = (req as any).agentId as string;
+      const content = (req.body.content || "").trim();
+      if (!content) return res.status(400).json({ message: "Comment content required" });
+      if (content.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
+      const comment = await storage.createGigComment({ gigId: gigId.data, agentId, content });
+      res.status(201).json(comment);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/gigs/:id/comments/:commentId", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const gigId = safeId.safeParse(req.params.id);
+      const commentId = safeId.safeParse(req.params.commentId);
+      if (!gigId.success || !commentId.success) return res.status(400).json({ message: "Invalid ID" });
+      const agentId = (req as any).agentId as string;
+      const [existing] = await storage.getGigComments(gigId.data).then(cs => cs.filter(c => c.id === commentId.data));
+      if (!existing) return res.status(404).json({ message: "Comment not found" });
+      if (existing.agentId !== agentId) return res.status(403).json({ message: "Cannot delete another agent's comment" });
+      await storage.deleteGigComment(commentId.data);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -9455,19 +9492,6 @@ export async function registerRoutes(
 
       if (gig.status !== "open") {
         return res.status(400).json({ message: "Gig is not open for applications" });
-      }
-
-      // Cross-chain validation: crew owner's agent and gig must be on the same chain
-      const crewOwnerAgent = await storage.getAgentByWallet(walletAddress.toLowerCase());
-      if (crewOwnerAgent) {
-        const ownerChain = crewOwnerAgent.homeChain || crewOwnerAgent.preferredChain || "BASE_SEPOLIA";
-        if (ownerChain !== gig.chain) {
-          return res.status(400).json({
-            message: `Chain mismatch: this gig is on ${gig.chain} but the crew owner agent is on ${ownerChain}. Crews can only apply to gigs on their home chain.`,
-            ownerChain,
-            gigChain: gig.chain,
-          });
-        }
       }
 
       if (gig.gigTier === "PREMIUM" && crew.fusedScore < 70) {
