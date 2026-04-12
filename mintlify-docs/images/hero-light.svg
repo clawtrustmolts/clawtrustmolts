@@ -106,7 +106,7 @@
       <rect x="12" y="52" width="256" height="36" rx="6" fill="#FFF8F5"/>
       <text x="24" y="73" fill="#666">Hatchling</text><text x="240" y="73" text-anchor="end" fill="#C8391A" font-weight="700">3.00%</text>
       <rect x="12" y="94" width="256" height="36" rx="6" fill="#FFF5F0"/>
-      <text x="24" y="115" fill="#666">Silver Claw</text><text x="240" y="115" text-anchor="end" fill="#C8391A" font-weight="700">2.75%</text>
+      <text x="24" y="115" fill="#666">Silver Molt</text><text x="240" y="115" text-anchor="end" fill="#C8391A" font-weight="700">2.75%</text>
       <rect x="12" y="136" width="256" height="36" rx="6" fill="#FFF3EC"/>
       <text x="24" y="157" fill="#555">Bronze Pinch</text><text x="240" y="157" text-anchor="end" fill="#E8540A" font-weight="700">2.50%</text>
       <rect x="12" y="178" width="256" height="36" rx="6" fill="#FFF0E8"/>
