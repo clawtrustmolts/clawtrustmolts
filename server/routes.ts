@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as jose from "jose";
 import crypto from "crypto";
 import { type Address, getAddress as toChecksumAddress, verifyMessage } from "viem";
-import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL, computeSkillTierBonus, getTierLabel, getTierBadge, getNextTierUpgrade, MAX_VERIFIED_SKILLS_BONUS } from "./reputation";
+import { computeFusedScore, getScoreBreakdown, estimateRepBoostFromMolt, computeLiveFusedReputation, getTier, computeContextualTrustScore, computeSkillTrustMultiplier, TRUST_SCORE_LABEL, computeSkillTierBonus, getTierLabel, getTierBadge, getNextTierUpgrade, MAX_VERIFIED_SKILLS_BONUS, computeCrewRepSplit } from "./reputation";
 import { moltyWelcomeAgent, moltyAnnounceGigCompletion, moltyAnnounceSwarmConsensus, moltyAnnounceTierChange, tryPostToMoltbook, moltyAnnounceMoltClaim } from "./molty-automation";
 import {
   buildIdentityMetadata,
@@ -9833,11 +9833,46 @@ export async function registerRoutes(
         console.log(`[Agency] Crew ${gig.crewId} marked agencyVerified after gig ${gigId} completed`);
       }
 
-      const LEAD_FEE_PCT = gigSettings?.leadCoordinationFeePct ?? 10;
-      // Distribute first; mark complete only after successful execution to allow retry on failure
-      await distributeCrewReputation(gigId, gig.title, crewMembers, approvedSubtasks, LEAD_FEE_PCT);
+      // Compute the Protection-2 budget-proportional rep split (10% captain bonus + 90% work share)
+      const splitEntries = computeCrewRepSplit(gig.budget, subtasks, crewMembers);
+
+      for (const entry of splitEntries) {
+        // Write canonical reputation event for every member (even 0-rep entries for audit trail)
+        if (entry.repAwarded > 0) {
+          await storage.createReputationEvent({
+            agentId: entry.agentId,
+            eventType: "gig_completion",
+            scoreChange: entry.repAwarded,
+            source: "swarm",
+            details: JSON.stringify({
+              gigId,
+              gigTitle: gig.title,
+              workUsdcShare: entry.workUsdcShare,
+              reason: entry.reason,
+              formula: "protection2_crew_rep_split",
+            }),
+          }).catch(() => {});
+
+          // Increment performanceScore (capped at 100)
+          const agent = await storage.getAgent(entry.agentId);
+          if (agent) {
+            const newPerf = Math.min(100, (agent.performanceScore ?? 0) + entry.repAwarded);
+            await storage.updateAgent(entry.agentId, { performanceScore: newPerf }).catch(() => {});
+          }
+        }
+
+        // Write crew_rep_events row for every member regardless of repAwarded amount
+        await storage.createCrewRepEvent({
+          crewId: gig.crewId!,
+          gigId,
+          agentId: entry.agentId,
+          repAwarded: entry.repAwarded,
+          reason: entry.reason,
+        }).catch(() => {});
+      }
+
       await storage.upsertCrewGigSettings(gigId, { repSplitCompleted: true });
-      console.log(`[Agency] Rep split complete for gig ${gigId}: ${crewMembers.length} members, leadFeePct=${LEAD_FEE_PCT}`);
+      console.log(`[Agency] Protection-2 rep split complete for gig ${gigId}: ${splitEntries.length} members, budget=${gig.budget} USDC`);
     } catch (e: any) {
       console.error("[Agency] triggerAgencyRepSplitOnCompletion error:", e.message?.slice(0, 200));
     }

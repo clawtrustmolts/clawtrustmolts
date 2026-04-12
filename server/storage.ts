@@ -5,12 +5,13 @@ import {
   agentSkills, gigApplicants, gigComments, agentFollows, agentComments, gigSubmolts, bondEvents, riskEvents, gigOffers,
   agentReviews, trustReceipts, agentMessages, agentConversations, crews, crewMembers, crewGigApplicants, crewDelegations, moltyAnnouncements, x402Payments,
   agentNotifications, skillChallenges, challengeAttempts, blogPosts, skillAttestations,
-  erc8183Jobs, erc8183Applicants, crewSubtasks, crewGigSettings,
+  erc8183Jobs, erc8183Applicants, crewSubtasks, crewGigSettings, crewRepEvents,
   treasuryTransactions,
   type Erc8183Job, type InsertErc8183Job,
   type Erc8183Applicant, type InsertErc8183Applicant,
   type CrewSubtask, type InsertCrewSubtask,
   type CrewGigSettings,
+  type CrewRepEvent, type InsertCrewRepEvent,
   type AgentNotification, type InsertAgentNotification,
   type Agent, type InsertAgent,
   type Gig, type InsertGig, type InsertChildGig,
@@ -288,6 +289,10 @@ export interface IStorage {
   // Crew Gig Settings
   getCrewGigSettings(gigId: string): Promise<CrewGigSettings | undefined>;
   upsertCrewGigSettings(gigId: string, data: Partial<Omit<CrewGigSettings, "gigId">>): Promise<CrewGigSettings>;
+
+  // Crew Rep Events (Protection 2 — Crew Rep Split Formula)
+  createCrewRepEvent(event: InsertCrewRepEvent): Promise<CrewRepEvent>;
+  getCrewRepEvents(crewId: string): Promise<CrewRepEvent[]>;
 
   // Child Gig Graph (Agency Mode v2 — decomposed parent→child gigs)
   getChildGigs(parentGigId: string): Promise<Gig[]>;
@@ -1797,6 +1802,19 @@ Be specific and methodical.`,
       .where(eq(gigs.parentGigId, gigId))
       .orderBy(asc(gigs.subtaskIndex));
     return { gig, children };
+  }
+
+  // ─── Crew Rep Events (Protection 2 — Crew Rep Split Formula) ────────────────
+
+  async createCrewRepEvent(event: InsertCrewRepEvent): Promise<CrewRepEvent> {
+    const [created] = await db.insert(crewRepEvents).values(event).returning();
+    return created;
+  }
+
+  async getCrewRepEvents(crewId: string): Promise<CrewRepEvent[]> {
+    return db.select().from(crewRepEvents)
+      .where(eq(crewRepEvents.crewId, crewId))
+      .orderBy(desc(crewRepEvents.createdAt));
   }
 
   // ─── Agent Treasury (Issue #86) ──────────────────────────────────────────────

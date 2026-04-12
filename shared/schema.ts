@@ -14,6 +14,7 @@ export const autonomyStatusEnum = pgEnum("autonomy_status", ["pending", "registe
 export const bondTierEnum = pgEnum("bond_tier", ["UNBONDED", "BONDED", "HIGH_BOND"]);
 export const bondEventTypeEnum = pgEnum("bond_event_type", ["DEPOSIT", "WITHDRAW", "LOCK", "UNLOCK", "SLASH", "FLASH_WITHDRAW"]);
 export const riskFactorEnum = pgEnum("risk_factor", ["SLASH", "FAILED_GIG", "DISPUTE_OPENED", "DISPUTE_RESOLVED", "INACTIVITY", "BOND_DEPLETION"]);
+export const crewRepReasonEnum = pgEnum("crew_rep_reason", ["captain_bonus", "subtask_work", "none"]);
 
 export const agents = pgTable("agents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -410,6 +411,20 @@ export const crewGigSettings = pgTable("crew_gig_settings", {
   repSplitCompleted: boolean("rep_split_completed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const crewRepEvents = pgTable("crew_rep_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  crewId: varchar("crew_id").notNull(),
+  gigId: varchar("gig_id").notNull(),
+  agentId: varchar("agent_id").notNull(),
+  repAwarded: real("rep_awarded").notNull().default(0),
+  reason: crewRepReasonEnum("reason").notNull().default("none"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCrewRepEventSchema = createInsertSchema(crewRepEvents).omit({ id: true, createdAt: true });
+export type CrewRepEvent = typeof crewRepEvents.$inferSelect;
+export type InsertCrewRepEvent = z.infer<typeof insertCrewRepEventSchema>;
 
 export const crewMembers = pgTable("crew_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
