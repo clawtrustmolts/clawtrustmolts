@@ -1901,7 +1901,9 @@ export async function registerRoutes(
       try {
         const svs = await storage.getSkillVerifications(agent.id);
         const tb = computeSkillTierBonus(svs.map(v => v.tier ?? 0));
-        liveFused = await computeLiveFusedReputation(agent, tb);
+        const accHistory = await storage.getValidatorAccuracyHistory(agent.id, 20);
+        const accAdj = computeValidatorAccuracyAdjustment(accHistory);
+        liveFused = await computeLiveFusedReputation(agent, tb, accAdj);
       } catch {}
 
       const fusedScore = liveFused?.fusedScore ?? dbBreakdown.fusedScore;
@@ -1955,7 +1957,9 @@ export async function registerRoutes(
       try {
         const svs2 = await storage.getSkillVerifications(agent.id);
         const tb2 = computeSkillTierBonus(svs2.map(v => v.tier ?? 0));
-        liveFused = await computeLiveFusedReputation(agent, tb2);
+        const accHistory2 = await storage.getValidatorAccuracyHistory(agent.id, 20);
+        const accAdj2 = computeValidatorAccuracyAdjustment(accHistory2);
+        liveFused = await computeLiveFusedReputation(agent, tb2, accAdj2);
       } catch {}
 
       const fusedScore = liveFused?.fusedScore ?? dbBreakdown.fusedScore;
@@ -2110,7 +2114,9 @@ export async function registerRoutes(
       try {
         const svs3 = await storage.getSkillVerifications(agentId);
         const tb3 = computeSkillTierBonus(svs3.map(v => v.tier ?? 0));
-        const liveFused = await computeLiveFusedReputation(agent, tb3);
+        const accHistory3 = await storage.getValidatorAccuracyHistory(agentId, 20);
+        const accAdj3 = computeValidatorAccuracyAdjustment(accHistory3);
+        const liveFused = await computeLiveFusedReputation(agent, tb3, accAdj3);
         newScore = liveFused.fusedScore;
         await storage.updateAgent(agentId, { fusedScore: newScore, onChainScore: Math.round(newScore * 10) });
       } catch {
@@ -3987,9 +3993,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "This validation has already been appealed" });
       }
 
-      // Mark original validation as appealed
-      await storage.updateValidation(validationId.data, { appealed: true });
-
       // Build exclusion list: all crew members of original validators
       const originalValidators = (validation.selectedValidators || []).filter(
         (id: string) => !id.startsWith("PLATFORM_ORACLE")
@@ -4037,6 +4040,9 @@ export async function registerRoutes(
         oracleAssisted: false,
         parentValidationId: validationId.data,
       });
+
+      // Mark original as appealed only after successful creation (so retries are possible on quorum failure)
+      await storage.updateValidation(validationId.data, { appealed: true });
 
       // Notify poster that an appeal has been filed
       if (gig.posterId) {
@@ -9156,7 +9162,9 @@ export async function registerRoutes(
       try {
         const svs4 = await storage.getSkillVerifications(agent.id);
         const tb4 = computeSkillTierBonus(svs4.map(v => v.tier ?? 0));
-        liveFused = await computeLiveFusedReputation(agent, tb4);
+        const accHistory4 = await storage.getValidatorAccuracyHistory(agent.id, 20);
+        const accAdj4 = computeValidatorAccuracyAdjustment(accHistory4);
+        liveFused = await computeLiveFusedReputation(agent, tb4, accAdj4);
       } catch {}
 
       const fusedScore = liveFused?.fusedScore ?? dbBreakdown.fusedScore;
