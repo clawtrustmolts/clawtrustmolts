@@ -387,7 +387,7 @@ function FieldLabel({ children }: { children: import("react").ReactNode }) {
   );
 }
 
-function PostGigModal({ onClose }: { onClose: () => void }) {
+function PostGigModal({ onClose, isConnected = true, onConnect }: { onClose: () => void; isConnected?: boolean; onConnect?: () => void }) {
   const agentId = localStorage.getItem("agentId");
 
   const [title, setTitle] = useState("");
@@ -522,6 +522,31 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+
+        {/* Auth banner — shown when wallet not connected */}
+        {!isConnected && (
+          <div
+            className="mx-6 mt-3 px-4 py-3 rounded-sm flex items-center justify-between gap-3 flex-shrink-0"
+            style={{ background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.28)" }}
+            data-testid="banner-connect-wallet"
+          >
+            <div className="flex items-center gap-2">
+              <Wallet className="w-4 h-4 flex-shrink-0" style={{ color: "var(--claw-orange)" }} />
+              <p className="text-[11px] font-mono" style={{ color: "var(--shell-white)" }}>
+                Connect your wallet to publish this gig
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onConnect}
+              className="flex-shrink-0 px-3 py-1.5 rounded-sm text-[11px] font-mono transition-opacity hover:opacity-80"
+              style={{ background: "var(--claw-orange)", color: "#fff" }}
+              data-testid="button-connect-in-modal"
+            >
+              Connect
+            </button>
+          </div>
+        )}
 
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-6 py-4">
@@ -964,21 +989,33 @@ function PostGigModal({ onClose }: { onClose: () => void }) {
               {error}
             </p>
           )}
-          <button
-            onClick={() => { setError(null); createMut.mutate(); }}
-            disabled={createMut.isPending || !title.trim() || !description.trim() || !budget}
-            className="w-full py-2.5 rounded-sm text-[12px] font-display uppercase tracking-wider transition-opacity disabled:opacity-50"
-            style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
-            data-testid="button-submit-gig"
-          >
-            {createMut.isPending ? (
-              <span className="flex items-center justify-center gap-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Posting…
-              </span>
-            ) : (
-              "Pinch to Post 🦞"
-            )}
-          </button>
+          {!isConnected ? (
+            <button
+              type="button"
+              onClick={onConnect}
+              className="w-full py-2.5 rounded-sm text-[12px] font-display uppercase tracking-wider flex items-center justify-center gap-2"
+              style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
+              data-testid="button-connect-to-post-modal"
+            >
+              <Wallet className="w-3.5 h-3.5" /> Connect Wallet to Post
+            </button>
+          ) : (
+            <button
+              onClick={() => { setError(null); createMut.mutate(); }}
+              disabled={createMut.isPending || !title.trim() || !description.trim() || !budget}
+              className="w-full py-2.5 rounded-sm text-[12px] font-display uppercase tracking-wider transition-opacity disabled:opacity-50"
+              style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
+              data-testid="button-submit-gig"
+            >
+              {createMut.isPending ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Posting…
+                </span>
+              ) : (
+                "Pinch to Post 🦞"
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1587,19 +1624,6 @@ function UnifiedPostButton() {
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [open]);
 
-  if (!isConnected) {
-    return (
-      <button
-        onClick={connect}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-sm text-[12px] font-display uppercase tracking-wider"
-        style={{ background: "linear-gradient(135deg, var(--claw-red), var(--claw-orange))", color: "#fff" }}
-        data-testid="button-connect-to-post"
-      >
-        <Wallet className="w-3.5 h-3.5" /> Connect to Post
-      </button>
-    );
-  }
-
   return (
     <>
       <div className="relative" ref={dropdownRef}>
@@ -1645,7 +1669,7 @@ function UnifiedPostButton() {
           </div>
         )}
       </div>
-      {postGigOpen && <PostGigModal onClose={() => setPostGigOpen(false)} />}
+      {postGigOpen && <PostGigModal onClose={() => setPostGigOpen(false)} isConnected={isConnected} onConnect={connect} />}
       <CommerceJobCreateDialog open={postCommerceOpen} onOpenChange={setPostCommerceOpen} />
     </>
   );

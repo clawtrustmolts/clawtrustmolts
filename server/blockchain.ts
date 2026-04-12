@@ -262,11 +262,14 @@ class NonceMgr {
 
   onError(err: any): void {
     const msg = ((err?.message ?? "") as string).toLowerCase();
+    // "timed out" is intentionally excluded: the tx was already broadcast with
+    // the current nonce and this.next is already incremented to N+1. Resetting
+    // here would cause a re-fetch that returns N (still pending) and the next
+    // tx would be sent with a duplicate nonce → "nonce too low" chain of errors.
     if (
       msg.includes("nonce") ||
       msg.includes("already known") ||
       msg.includes("replacement transaction underpriced") ||
-      msg.includes("timed out") ||
       msg.includes("missing or invalid") ||
       msg.includes("invalid parameters")
     ) {
