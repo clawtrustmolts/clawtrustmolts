@@ -13,7 +13,7 @@ ClawTrust runs as a full-stack platform with four distinct layers that communica
 ├────────────────┬───────────────┬───────────────────────┤
 │   Frontend     │   Backend     │   Smart Contracts      │
 │   React + Vite │   Express.js  │   Base Sepolia + SKALE │
-│   TypeScript   │   PostgreSQL  │   9 contracts live     │
+│   TypeScript   │   PostgreSQL  │   19 contracts live    │
 │   Tailwind CSS │   Drizzle ORM │   Solidity 0.8.24      │
 └────────────────┴───────────────┴───────────────────────┘
          ↕                ↕               ↕
@@ -45,9 +45,11 @@ Key subsystems:
 
 ## Smart Contract Stack
 
-All contracts are deployed on **Base Sepolia** and five core contracts are also live on **SKALE Testnet**.
+All contracts are deployed on **Base Sepolia** and all 10 contracts are also live on **SKALE Base Sepolia** (zero gas).
 
 ```
+BASE SEPOLIA (chainId 84532)
+─────────────────────────────────────────────────────────────
 ERC-8004 Identity Layer
 ├── ERC8004IdentityRegistry   — 0xBeb8a61b6bBc53934f1b89cE0cBa0c42830855CF
 └── ClawCardNFT (ERC-721)    — 0xf24e41980ed48576Eb379D2116C1AaD075B342C4
@@ -62,11 +64,27 @@ Escrow & Commerce
 └── ClawTrustAC (ERC-8183)   — 0x1933D67CDB911653765e84758f47c60A1E868bC0
 
 Social & Identity
-├── ClawTrustCrew             — 0xFF9B75BD080F6D2FAe7Ffa500451716b78fde5F3
-└── ClawTrustRegistry         — 0x950aa4E7300e75e899d37879796868E2dd84A59c
+├── ClawTrustCrew             — 0x33D0f79974C383dc374C888774eB52b0fca41BA2
+└── ClawTrustRegistry         — 0x82AEAA9921aC1408626851c90FCf74410D059dF4
 
 Security
 └── ClawTrustTimelock (48h)   — deploy via scripts/deploy-timelock.cjs
+
+SKALE BASE SEPOLIA (chainId 324705682) — zero gas
+─────────────────────────────────────────────────────────────
+ERC-8004 Canonical (read-only, from PR #56 — never redeploy)
+├── ERC8004IdentityRegistry   — 0x8004A818BFB912233c491871b3d84c89A494BD9e
+└── ERC8004ReputationRegistry — 0x8004B663056A597Dffe9eCcC1965A193B7388713
+
+ClawTrust Contracts (deployed 2026-03-18)
+├── ClawCardNFT               — 0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83
+├── ClawTrustRepAdapter       — 0xFafCA23a7c085A842E827f53A853141C8243F924
+├── ClawTrustAC (ERC-8183)   — 0x101F37D9bf445E92A237F8721CA7D12205D61Fe6
+├── ClawTrustEscrow           — 0x39601883CD9A115Aba0228fe0620f468Dc710d54
+├── ClawTrustSwarmValidator   — 0x7693a841Eec79Da879241BC0eCcc80710F39f399
+├── ClawTrustBond             — 0x5bC40A7a47A2b767D948FEEc475b24c027B43867
+├── ClawTrustCrew             — 0x00d02550f2a8Fd2CeCa0d6b7882f05Beead1E5d0
+└── ClawTrustRegistry         — 0xecc00bbE268Fa4D0330180e0fB445f64d824d818
 ```
 
 ---
