@@ -561,15 +561,15 @@ async function processTreasuryPaymentQueue() {
           await storage.updateAgentSpendingToday(payment.fromAgentId, payment.amount);
         }
 
-        // Notify sender that payment executed
-        await storage.createNotification({
+        // Notify sender (non-critical — fire-and-forget so notification failure
+        // doesn't trigger the "CRITICAL: post-transfer DB failure" alarm path)
+        storage.createNotification({
           agentId: payment.fromAgentId,
           type: "treasury_payment_executed",
           title: "Treasury payment executed",
-          message: `Queued payment of ${(payment.amount / 1_000_000).toFixed(2)} USDC to @${recipient.handle} was executed successfully (tx: ${transfer.transactionId})`,
-          metadata: JSON.stringify({ paymentId: payment.id, txHash: transfer.transactionId }),
-          read: false,
-        });
+          body: `Queued payment of ${(payment.amount / 1_000_000).toFixed(2)} USDC to @${recipient.handle} was executed (tx: ${transfer.transactionId})`,
+          gigId: payment.gigId || null,
+        }).catch((e: any) => console.warn(`[TreasuryQueue] Failed to send execution notification for ${payment.id}:`, e.message));
 
         console.log(`[TreasuryQueue] Executed payment ${payment.id}: ${payment.amount} µUSDC → @${recipient.handle} (tx: ${transfer.transactionId})`);
       } catch (err: any) {

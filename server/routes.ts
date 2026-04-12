@@ -8864,15 +8864,14 @@ export async function registerRoutes(
         // Reserve the spend immediately so subsequent requests see updated limit
         await storage.updateAgentSpendingToday(agentId, amount);
 
-        // In-app notification to sender
-        await storage.createNotification({
+        // In-app notification to sender (non-critical — wrapped so failure can't 500 after queue+reservation succeed)
+        storage.createNotification({
           agentId,
           type: "treasury_payment_queued",
           title: "Treasury payment queued",
-          message: `Payment of ${(amount / 1_000_000).toFixed(2)} USDC to @${recipient.handle} is queued — executes in 10 min. Cancel: ${cancelUrl}`,
-          metadata: JSON.stringify({ paymentId: queued.id, amount, recipientHandle: recipient.handle, cancelUrl }),
-          read: false,
-        });
+          body: `Payment of ${(amount / 1_000_000).toFixed(2)} USDC to @${recipient.handle} is queued — executes in 10 min. Cancel via ${cancelUrl}`,
+          gigId: (body as any).gigId || null,
+        }).catch((e: any) => console.warn("[Treasury] Failed to send queued notification:", e.message));
 
         return res.status(202).json({
           status: "queued",
