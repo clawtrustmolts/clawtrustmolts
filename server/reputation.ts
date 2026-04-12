@@ -579,12 +579,16 @@ export interface CrewRepSplitEntry {
  *    regardless of their personal subtask delivery (reason: "captain_bonus").
  *  - The remaining 90% is distributed proportionally among ALL members (including
  *    the captain) based on their approved subtask usdcShare vs the total gig budget.
- *    Values are stored as exact decimals (not rounded) to preserve proportionality.
+ *    Values are computed with 4-decimal precision (parseFloat + toFixed 4) to minimize
+ *    rounding distortion while remaining compatible with PostgreSQL's real column type.
  *  - Members with no approved subtasks receive zero from the work pool (reason: "none").
  *
- * Returns one entry per reward component — captains emit up to two entries
- * (one "captain_bonus" + one "subtask_work"/"none") for clean per-reason audit fidelity.
- * Other members emit exactly one entry.
+ * Returns one entry per reward component. Captains emit exactly two entries:
+ *   1. reason="captain_bonus"  — the flat 10% bonus (workUsdcShare=0)
+ *   2. reason="subtask_work"|"none" — their proportional work-pool share
+ * Non-captain members emit exactly one entry. This deliberate cardinality choice
+ * (rather than one row/member) preserves per-reason audit fidelity so each row's
+ * `reason` accurately reflects the single source of that specific rep component.
  */
 export function computeCrewRepSplit(
   gigBudget: number,
