@@ -9450,6 +9450,27 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
 
+      // --- Task-graph mode (Agency Mode v2): gig was decomposed via POST /decompose ---
+      // If this gig has child gigs linked by parentGigId, return the task-graph contract.
+      const childGigs = await storage.getChildGigs(gigId);
+      if (childGigs.length > 0) {
+        const enriched = await Promise.all(childGigs.map(async (child) => {
+          const assignee = child.assigneeId ? await storage.getAgent(child.assigneeId) : null;
+          return {
+            ...child,
+            assignee: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
+          };
+        }));
+        const completed = enriched.filter(c => c.status === "completed").length;
+        return res.json({
+          mode: "task-graph",
+          parentGigId: gigId,
+          children: enriched,
+          progress: { completed, total: enriched.length },
+        });
+      }
+
+      // --- Legacy crewSubtasks mode ---
       // Use only cryptographically verified identity — never trust raw x-agent-id header
       const requesterId = await resolveVerifiedIdentity(req);
       let requesterRole: string | null = null;
@@ -9467,7 +9488,7 @@ export async function registerRoutes(
       // Role-based visibility: lead sees all; member sees only their assigned tasks;
       // non-crew users receive an empty list (no data exposure outside the crew)
       if (!isLead && !isMember) {
-        return res.json({ subtasks: [], settings: settings || null });
+        return res.json({ mode: "crew-subtasks", subtasks: [], settings: settings || null });
       }
       const visible = subtasks.filter(st => {
         if (isLead) return true;
@@ -9475,7 +9496,7 @@ export async function registerRoutes(
       });
 
       // Enrich with assignee info; strip submission details for non-members
-      const enriched = await Promise.all(visible.map(async (st) => {
+      const enriched2 = await Promise.all(visible.map(async (st) => {
         const assignee = st.assigneeId ? await storage.getAgent(st.assigneeId) : null;
         const base = {
           ...st,
@@ -9486,7 +9507,7 @@ export async function registerRoutes(
         return base;
       }));
 
-      res.json({ subtasks: enriched, settings: settings || null });
+      res.json({ mode: "crew-subtasks", subtasks: enriched2, settings: settings || null });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -9729,34 +9750,6 @@ export async function registerRoutes(
 
   // GET /api/gigs/:id/child-gigs — Returns child gigs for a parent gig (with assignee info)
   app.get("/api/gigs/:id/child-gigs", async (req, res) => {
-    try {
-      const parentGigId = req.params.id as string;
-      const parentGig = await storage.getGig(parentGigId);
-      if (!parentGig) return res.status(404).json({ message: "Gig not found" });
-
-      const children = await storage.getChildGigs(parentGigId);
-
-      const enriched = await Promise.all(children.map(async (child) => {
-        const assignee = child.assigneeId ? await storage.getAgent(child.assigneeId) : null;
-        return {
-          ...child,
-          assignee: assignee ? { id: assignee.id, handle: assignee.handle, avatar: assignee.avatar, fusedScore: assignee.fusedScore } : null,
-        };
-      }));
-
-      const completed = enriched.filter(c => c.status === "completed").length;
-      res.json({
-        parentGigId,
-        children: enriched,
-        progress: { completed, total: enriched.length },
-      });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  // GET /api/gigs/:id/subtasks — Alias for /child-gigs; returns decomposed task-graph children
-  app.get("/api/gigs/:id/subtasks", async (req, res) => {
     try {
       const parentGigId = req.params.id as string;
       const parentGig = await storage.getGig(parentGigId);
