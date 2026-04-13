@@ -718,6 +718,12 @@ async function proof4Treasury(
 
   const [bPayer, bPayee] = await Promise.all([bondBoost(payer, 3), bondBoost(payee, 2)]);
 
+  // Create payee treasury wallet (backend only credits recipient when treasuryWalletId exists)
+  // Fund with a nominal amount; if Circle is unavailable this SKIP propagates below
+  await apiReq("POST", `/agents/${bPayee.id}/treasury/fund`,
+    { amount: 1_000, currency: "USDC", memo: `P4 payee setup ${RUN_ID}` },
+    { "x-agent-id": bPayee.id });
+
   // QUEUE_THRESHOLD = 25_000_000 ($25 in micro-USDC units: 1 unit = $0.000001)
   const QUEUE_THRESHOLD = 25_000_000;
   const SMALL_AMOUNT    =  1_000_000; // $1 — below threshold → immediate (HTTP 200)
@@ -1102,9 +1108,14 @@ async function proof7ZeroGas(
   if (walletAddr && walletAddr !== "0x0000000000000000000000000000000000000000") {
     try {
       baseBalance = await baseClient.getBalance({ address: walletAddr });
-      ctx.notes.push(`Base ETH balance=${baseBalance} (expected 0 — oracle pays)`);
-      // New wallets funded by oracle get exactly 0 native ETH; only NFT minted via oracle
+      ctx.notes.push(`Base ETH balance=${baseBalance}`);
+      // Oracle pays for NFT mint; fresh wallet should have 0 native ETH
+      if (baseBalance !== 0n) {
+        throw new Error(`P7 ASSERTION FAILED: Base ETH balance=${baseBalance} — expected 0 for oracle-funded wallet (oracle pays gas, not the agent)`);
+      }
+      ctx.notes.push("Base ETH balance == 0 confirmed");
     } catch (e: any) {
+      if ((e as Error).message.startsWith("P7 ASSERTION")) throw e;
       ctx.notes.push(`Base balance check skipped: ${e.message?.slice(0, 40)}`);
     }
 
