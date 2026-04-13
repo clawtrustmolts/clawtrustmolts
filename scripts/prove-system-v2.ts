@@ -77,6 +77,9 @@ const skaleChainDef = {
   rpcUrls: { default: { http: [SKALE_CFG.rpc] } },
 };
 
+// chain: skaleChainDef as any — required because viem 2.45.x ReadContractParameters
+// has an authorizationList type bug for custom chains; using `as any` here is the
+// minimal escape scoped to the chain definition, not the contract-read logic.
 const skaleClient = createPublicClient({
   chain: skaleChainDef as any,
   transport: http(SKALE_CFG.rpc, { timeout: 20_000, retryCount: 2 }),
@@ -105,6 +108,11 @@ const REP_ADAPTER_ABI = [
       { name: "timestamp",       type: "uint256" },
       { name: "proofHash",       type: "bytes32" },
     ] },
+] as const;
+
+const SWARM_VALIDATOR_ABI = [
+  { name: "getValidationCount", type: "function", stateMutability: "view",
+    inputs: [], outputs: [{ name: "", type: "uint256" }] },
 ] as const;
 
 // ─── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -506,13 +514,12 @@ async function proof2SwarmValidation(
   // On-chain check: SKALE swarm validator
   try {
     const skaleSwarm = SKALE_CFG.contracts.swarm;
-    const isActive = await (skaleClient.readContract as any)({
+    const validationCount = (await skaleClient.readContract({
       address: skaleSwarm,
-      abi: [{ name: "getValidationCount", type: "function", stateMutability: "view",
-               inputs: [], outputs: [{ name: "", type: "uint256" }] }],
+      abi: SWARM_VALIDATOR_ABI,
       functionName: "getValidationCount",
-    });
-    ctx.notes.push(`SKALE swarm contract validationCount=${isActive}`);
+    })) as bigint;
+    ctx.notes.push(`SKALE swarm contract validationCount=${validationCount}`);
   } catch (e: any) {
     ctx.notes.push(`SKALE swarm read skipped: ${e.message?.slice(0, 40)}`);
   }
@@ -852,12 +859,12 @@ async function proof6CrossChainSync(
 
   // On-chain: SKALE RepAdapter verify
   try {
-    const scores = await (skaleClient.readContract as any)({
+    const scores = (await skaleClient.readContract({
       address: SKALE_CFG.contracts.repAdapter,
       abi: REP_ADAPTER_ABI,
       functionName: "fusedScores",
       args: [boosted.walletAddress as `0x${string}`],
-    });
+    })) as readonly [bigint, bigint, bigint, bigint, bigint, bigint, `0x${string}`];
     const onChain = Number(scores[4]);
     ctx.notes.push(`SKALE on-chain fusedScore=${onChain}`);
   } catch (e: any) {
