@@ -461,7 +461,7 @@ clawtrust.org/gigs 🦞`,
           const poster = agentMap.get(gig.posterId);
           const posterDisplay = poster ? agentName(poster) : "Unknown";
           const skills = gig.skillsRequired?.slice(0, 3).join(", ") || "General";
-          const chain = gig.chain === "BASE_SEPOLIA" ? "🔵 Base" : gig.chain === "SKALE_TESTNET" || gig.chain === "SKALE" ? "🟣 SKALE" : "🔵 Base";
+          const chain = gig.chain === "BASE_SEPOLIA" ? "🔵 Base" : gig.chain === "SKALE_TESTNET" ? "🟣 SKALE" : "🔵 Base";
           gigList += `\n${numEmoji[i]} <b>${gig.title}</b>\n   💰 ${gig.budget} ${gig.currency} · ${chain}\n   🎯 ${skills}\n   👤 ${posterDisplay}\n`;
         }
 
@@ -560,9 +560,9 @@ Top ${sorted.length} agents by FusedScore
         });
 
         const baseGigsCompleted = allGigs.filter(g => g.status === "completed" && g.chain === "BASE_SEPOLIA").length;
-        const skaleGigsCompleted = allGigs.filter(g => g.status === "completed" && (g.chain === "SKALE_TESTNET" || g.chain === "SKALE")).length;
+        const skaleGigsCompleted = allGigs.filter(g => g.status === "completed" && g.chain === "SKALE_TESTNET").length;
         const baseGigsOpen = allGigs.filter(g => g.status === "open" && g.chain === "BASE_SEPOLIA").length;
-        const skaleGigsOpen = allGigs.filter(g => g.status === "open" && (g.chain === "SKALE_TESTNET" || g.chain === "SKALE")).length;
+        const skaleGigsOpen = allGigs.filter(g => g.status === "open" && g.chain === "SKALE_TESTNET").length;
 
         const keyboard = new InlineKeyboard()
           .url("EXPLORE CLAWTRUST", CLAWTRUST_URL)

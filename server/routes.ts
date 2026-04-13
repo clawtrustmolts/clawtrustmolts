@@ -2961,7 +2961,7 @@ export async function registerRoutes(
                 const tierProofs = (existing?.tierProofs as Record<string, any>) ?? {};
                 tierProofs["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: escrowAmt ?? gig.budget, swarmVoteId: swarmValidation?.id ?? null, completedAt: new Date().toISOString() };
                 await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
-                  tier: newTier, tierProofs, status: "verified", verifiedAt: existing?.verifiedAt ?? new Date(),
+                  tier: newTier as 0 | 1 | 2 | 3 | 4, tierProofs, status: "verified", verifiedAt: existing?.verifiedAt ?? new Date(),
                 });
               }
             }
@@ -3427,7 +3427,7 @@ export async function registerRoutes(
                   const tpOA = (existingOA?.tierProofs as Record<string, any>) ?? {};
                   tpOA["3"] = { method: "gig_proven_oracle", gigId, gigTitle: gig.title, usdcEarned: gig.budget, swarmVoteId: validation.id, completedAt: new Date().toISOString() };
                   await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
-                    tier: Math.max(existingOA?.tier ?? 0, 3), tierProofs: tpOA, status: "verified", verifiedAt: existingOA?.verifiedAt ?? new Date(),
+                    tier: Math.max(existingOA?.tier ?? 0, 3) as 0 | 1 | 2 | 3 | 4, tierProofs: tpOA, status: "verified", verifiedAt: existingOA?.verifiedAt ?? new Date(),
                   });
                 }
               }
@@ -3474,7 +3474,7 @@ export async function registerRoutes(
                     const tp2 = (existing2?.tierProofs as Record<string, any>) ?? {};
                     tp2["3"] = { method: "gig_proven", gigId, gigTitle: gig.title, usdcEarned: gig.budget, swarmVoteId: validation.id, completedAt: new Date().toISOString() };
                     await storage.upsertSkillVerification(gig.assigneeId!, skillName.toLowerCase(), {
-                      tier: Math.max(existing2?.tier ?? 0, 3), tierProofs: tp2, status: "verified", verifiedAt: existing2?.verifiedAt ?? new Date(),
+                      tier: Math.max(existing2?.tier ?? 0, 3) as 0 | 1 | 2 | 3 | 4, tierProofs: tp2, status: "verified", verifiedAt: existing2?.verifiedAt ?? new Date(),
                     });
                   }
                 }
@@ -3705,7 +3705,7 @@ export async function registerRoutes(
                     const tp3 = (existing3?.tierProofs as Record<string, any>) ?? {};
                     tp3["3"] = { method: "gig_proven", gigId: gig2.id, gigTitle: gig2.title, usdcEarned: gig2.budget, swarmVoteId: validationId, completedAt: new Date().toISOString() };
                     await storage.upsertSkillVerification(gig2.assigneeId!, skillName.toLowerCase(), {
-                      tier: Math.max(existing3?.tier ?? 0, 3), tierProofs: tp3, status: "verified", verifiedAt: existing3?.verifiedAt ?? new Date(),
+                      tier: Math.max(existing3?.tier ?? 0, 3) as 0 | 1 | 2 | 3 | 4, tierProofs: tp3, status: "verified", verifiedAt: existing3?.verifiedAt ?? new Date(),
                     });
                   }
                 }
@@ -4061,7 +4061,7 @@ export async function registerRoutes(
           "validation_appeal",
           "Gig Appeal Filed",
           `Assignee has appealed the swarm rejection of "${gig.title}" (statement: "${statement.slice(0, 120)}…"). A new 4/5 validation (ID: ${appealValidation.id}) has been created with ${newValidators.length} fresh validators.`,
-          { gigId: gig.id, validationId: appealValidation.id }
+          { gigId: gig.id }
         ).catch(() => {});
       }
 
@@ -10347,7 +10347,7 @@ export async function registerRoutes(
       if (!allowed.includes(status)) {
         return res.status(400).json({ message: `Status must be one of: ${allowed.join(", ")}` });
       }
-      const updated = await storage.updateCrewDelegationStatus(req.params.id, status);
+      const updated = await storage.updateCrewDelegationStatus(req.params.id as string, status);
       if (!updated) return res.status(404).json({ message: "Delegation not found" });
       res.json(updated);
     } catch (err: any) {
@@ -12321,7 +12321,7 @@ export async function registerRoutes(
           challengeCompletedAt: new Date(),
           verificationMethod: existing?.verificationMethod && existing.verificationMethod !== "challenge" ? existing.verificationMethod : "challenge",
           trustScore: Math.min(100, (existing?.trustScore ?? 0) + newTrustScore),
-          tier: newTier,
+          tier: newTier as 0 | 1 | 2 | 3 | 4,
           tierProofs,
         });
 
@@ -12570,7 +12570,7 @@ export async function registerRoutes(
         trustScore: newTrust,
         status: existing?.status === "verified" ? "verified" : "partial",
         verificationMethod: "github_api",
-        tier: newTier,
+        tier: newTier as 0 | 1 | 2 | 3 | 4,
         tierProofs,
       });
 

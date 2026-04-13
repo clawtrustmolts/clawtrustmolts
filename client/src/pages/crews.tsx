@@ -166,7 +166,6 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
       const merged = [...new Set([...prev, ...derivedCapabilities])].slice(0, 20);
       return merged;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members.map(m => m.agentId).join(",")]);
 
   const createMutation = useMutation({
@@ -495,6 +494,7 @@ function CrewCreationForm({ onClose, agents }: { onClose: () => void; agents: Ag
 }
 
 export default function Crews() {
+  const [, setLocation] = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [activeSpec, setActiveSpec] = useState<string>("");
   const [minScore, setMinScore] = useState(0);

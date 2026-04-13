@@ -535,7 +535,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAgentSkill(skill: InsertAgentSkill): Promise<AgentSkill> {
-    const [created] = await db.insert(agentSkills).values(skill).returning();
+    const [created] = await db.insert(agentSkills).values(skill as typeof agentSkills.$inferInsert).returning();
     return created;
   }
 

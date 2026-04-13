@@ -4001,7 +4001,7 @@ function BondRiskTab({
                   onVerify={setVerifySkill}
                   onAttest={(s) => setAttestingSkill(attestingSkill === s ? null : s)}
                   attestingSkill={attestingSkill}
-                  onAttestDone={() => { setAttestingSkill(null); refetchSkillVerifications?.(); }}
+                  onAttestDone={() => { setAttestingSkill(null); onSkillVerified?.(); }}
                 />
               ));
             })()}
@@ -4933,7 +4933,7 @@ function SocialTab({
         ) : (
           <div className="space-y-3">
             {followers.map((f) => (
-              <AgentMiniCard key={f.id} agent={f} showScore />
+              <AgentMiniCard key={f.id} agent={{ ...f, handle: f.handle ?? f.id }} showScore />
             ))}
           </div>
         )}
@@ -4948,7 +4948,7 @@ function SocialTab({
         ) : (
           <div className="space-y-3">
             {following.map((f) => (
-              <AgentMiniCard key={f.id} agent={f} showScore />
+              <AgentMiniCard key={f.id} agent={{ ...f, handle: f.handle ?? f.id }} showScore />
             ))}
           </div>
         )}
