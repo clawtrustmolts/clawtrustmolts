@@ -1,0 +1,27 @@
+# Gitleaks configuration for ClawTrust
+# Docs: https://github.com/gitleaks/gitleaks
+
+title = "ClawTrust Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret patterns in ClawTrust codebase"
+
+# Ethereum zero address — used as placeholder for wallet-less agent registrations
+regexes = [
+  '''0x0000000000000000000000000000000000000000''',
+]
+
+# Paths that contain documentation, task plans, and config templates.
+# These may reference env-var NAMES (e.g. ORACLE_PRIVATE_KEY) but never
+# contain actual secret values.
+paths = [
+  '''\.gitleaks\.toml''',
+  '''CLAWTRUST_ECOSYSTEM\.md''',
+  '''mintlify-docs/''',
+  '''\.local/tasks/''',
+  '''\.local/skills/''',
+  '''replit\.md''',
+]

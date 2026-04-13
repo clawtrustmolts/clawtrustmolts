@@ -17,7 +17,10 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npx eslint . --ext .ts,.tsx --max-warnings 0 || true
+      # ESLint now uses flat config (eslint.config.js) — no --ext needed.
+      # Security rules are `warn`; only `error`-level rules fail the build.
+      # The || true is intentionally removed so lint errors actually block merges.
+      - run: npx eslint .
 
   test:
     runs-on: ubuntu-latest
@@ -60,3 +63,72 @@ jobs:
           node-version: '20'
       - run: npm install
       - run: npx hardhat compile
+
+  # ── Secret scanning ────────────────────────────────────────────────────────
+  # Gitleaks scans the full git history for committed secrets: private keys,
+  # API tokens, credentials. Fails the build if any are found.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # ── Static Application Security Testing ───────────────────────────────────
+  # Semgrep scans TypeScript / Express code for security antipatterns using
+  # community rulesets: typescript, express, jwt, owasp-top-ten.
+  # Only ERROR-severity findings fail the build (WARNING findings are reported
+  # but do not block merges on day one).
+  sast:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        run: >
+          semgrep scan
+          --config p/typescript
+          --config p/express
+          --config p/jwt
+          --config p/owasp-top-ten
+          --error
+          --severity ERROR
+          --json-output semgrep-results.json
+          || (cat semgrep-results.json | python3 -c "
+          import sys, json
+          r = json.load(sys.stdin)
+          findings = r.get('results', [])
+          if findings:
+              print(f'Semgrep found {len(findings)} ERROR-level security issue(s):')
+              for f in findings[:10]:
+                  print(f'  {f[\"path\"]}:{f[\"start\"][\"line\"]} — {f[\"check_id\"]}')
+          sys.exit(1)
+          ")
+      - name: Upload Semgrep results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-results
+          path: semgrep-results.json
+          retention-days: 7
+
+  # ── Dependency vulnerability audit ────────────────────────────────────────
+  # npm audit checks all production and dev dependencies for known CVEs.
+  # Fails on CRITICAL severity only — the one known HIGH-severity issue
+  # (tmp ≤0.2.3 via hardhat/solc) is a build-time dev tool with no runtime
+  # exposure. Tighten to --audit-level=high once hardhat is updated.
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm audit --audit-level=critical

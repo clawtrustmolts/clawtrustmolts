@@ -1,0 +1,20 @@
+# Semgrep ignore file for ClawTrust
+# Excludes non-application directories from SAST scanning
+
+# Build output and package manager dirs
+dist/
+node_modules/
+.local/
+
+# Smart contracts — audited separately via Slither/Hardhat
+contracts/
+
+# Mintlify documentation (MDX, no runnable code)
+mintlify-docs/
+
+# Script utilities that aren't part of the runtime
+script/
+
+# Generated/vendored files
+*.min.js
+*.min.ts
