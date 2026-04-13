@@ -8870,7 +8870,7 @@ export async function registerRoutes(
           type: "treasury_payment_queued",
           title: "Treasury payment queued",
           body: `Payment of ${(amount / 1_000_000).toFixed(2)} USDC to @${recipient.handle} is queued — executes in 10 min. Cancel via ${cancelUrl}`,
-          gigId: (body as any).gigId || null,
+          gigId: gigId || null,
         }).catch((e: any) => console.warn("[Treasury] Failed to send queued notification:", e.message));
 
         return res.status(202).json({
