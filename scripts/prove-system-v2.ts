@@ -236,11 +236,21 @@ async function writeReport(results: ProofResult[]): Promise<void> {
     ),
   ].join("\n");
 
-  const txTable = results.flatMap(r => r.txHashes.map(tx => {
-    const baseLink  = `[BaseScan](${BASE_CFG.explorer}/tx/${tx})`;
-    const skaleLink = `[SKALE](${SKALE_CFG.explorer}/tx/${tx})`;
-    return `| ${r.id} | \`${tx.slice(0, 66)}\` | ${baseLink} · ${skaleLink} |`;
-  }));
+  // Determine chain per proof from ID: P1-SKALE → SKALE only; P7 → both; others → BASE only
+  const proofChain = (id: string): "BASE" | "SKALE" | "BOTH" =>
+    id === "P1-SKALE" ? "SKALE" : id === "P7" ? "BOTH" : "BASE";
+
+  const txTable = results.flatMap(r => {
+    const chain = proofChain(r.id);
+    return r.txHashes.map(tx => {
+      const baseLink  = `[BaseScan](${BASE_CFG.explorer}/tx/${tx})`;
+      const skaleLink = `[SKALE](${SKALE_CFG.explorer}/tx/${tx})`;
+      const link = chain === "BASE"  ? baseLink
+                 : chain === "SKALE" ? skaleLink
+                 : `${baseLink} · ${skaleLink}`;
+      return `| ${r.id} | \`${tx.slice(0, 66)}\` | ${link} |`;
+    });
+  });
   const circleTable = results.flatMap(r => r.circleIds.map(id =>
     `| ${r.id} | \`${id}\` |`
   ));
@@ -768,7 +778,12 @@ async function proof4Treasury(
     throw new Error(`SKIP: treasury balance=${balanceBefore} < required=${LARGE_AMOUNT + SMALL_AMOUNT} µUSDC — Circle USDC not funded in this environment`);
   }
 
-  // ── Small payment ($1, below $25 threshold) → must return HTTP 200 (immediate) ──
+  // Capture payee balance BEFORE payment for delta assertion
+  const payeeBalBeforeR = await apiReq("GET", `/agents/${bPayee.id}/treasury/balance`, {}, { "x-agent-id": bPayee.id });
+  const payeeBalanceBefore: number = payeeBalBeforeR.data?.balance ?? payeeBalBeforeR.data?.totalBalance ?? 0;
+  ctx.notes.push(`payee balance before payment: ${payeeBalanceBefore}`);
+
+  // ── Small payment ($2, below $25 threshold) → must return HTTP 200 (immediate) ──
   const smallPayR = await apiReq("POST", `/agents/${bPayer.id}/treasury/pay`, {
     recipientAgentId: bPayee.id,
     amount: SMALL_AMOUNT,
@@ -830,13 +845,15 @@ async function proof4Treasury(
     }
   }
 
-  // Assert payee balance AND history entry after immediate $2 payment
+  // Assert payee balance INCREASED by at least SMALL_AMOUNT (pre/post delta)
   const payeeBalR = await apiReq("GET", `/agents/${bPayee.id}/treasury/balance`, {}, { "x-agent-id": bPayee.id });
   const payeeBalance: number = payeeBalR.data?.balance ?? payeeBalR.data?.totalBalance ?? 0;
-  if (payeeBalance <= 0) {
-    throw new Error(`P4 ASSERTION FAILED: payee balance=${payeeBalance} — immediate $${SMALL_AMOUNT / 1_000_000} payment did not credit recipient`);
+  const payeeDelta = payeeBalance - payeeBalanceBefore;
+  ctx.notes.push(`payee balance: before=${payeeBalanceBefore} after=${payeeBalance} delta=${payeeDelta}`);
+  if (payeeDelta < SMALL_AMOUNT) {
+    throw new Error(`P4 ASSERTION FAILED: payee balance delta=${payeeDelta} < expected=${SMALL_AMOUNT} — $${SMALL_AMOUNT / 1_000_000} immediate payment not credited`);
   }
-  ctx.notes.push(`payee balance confirmed: ${payeeBalance} after $${SMALL_AMOUNT / 1_000_000} payment`);
+  ctx.notes.push(`payee balance delta +${payeeDelta} >= ${SMALL_AMOUNT} confirmed`);
 
   // Assert payee history shows the credit entry
   const payeeHistR = await apiReq("GET", `/agents/${bPayee.id}/treasury/history`, {}, { "x-agent-id": bPayee.id });
