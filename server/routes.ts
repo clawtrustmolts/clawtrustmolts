@@ -5876,10 +5876,11 @@ export async function registerRoutes(
         };
       }
 
+      let mintJobId: number | null = null;
       if (hasRealWallet) {
         if (targetChain === "BOTH") {
           // Queue Base Sepolia mint asynchronously (non-blocking — oracle processes in background)
-          queueBlockchainAction({ type: "MINT_PASSPORT", agentId: agent.id, payload: {} }).catch(() => {});
+          mintJobId = await queueBlockchainAction({ type: "MINT_PASSPORT", agentId: agent.id, payload: {} }).catch(() => null);
           // Trigger queue immediately so first mint doesn't wait the full 5-minute scheduler interval
           processBlockchainQueue().catch(() => {});
           // Fire-and-forget SKALE register + sFUEL drip — no waitForTransactionReceipt on SKALE
@@ -5909,7 +5910,7 @@ export async function registerRoutes(
           };
         } else {
           // BASE_SEPOLIA — queue mint (non-blocking oracle-sponsored), fire-and-forget SKALE mirror
-          queueBlockchainAction({ type: "MINT_PASSPORT", agentId: agent.id, payload: {} }).catch(() => {});
+          mintJobId = await queueBlockchainAction({ type: "MINT_PASSPORT", agentId: agent.id, payload: {} }).catch(() => null);
           // Trigger queue immediately so first mint doesn't wait the full 5-minute scheduler interval
           processBlockchainQueue().catch(() => {});
           registerAgentOnSkale({ walletAddress, agentURI: metadataUri })
@@ -5955,6 +5956,7 @@ export async function registerRoutes(
         handle: agent.handle,
         status: "minting",
         statusUrl: `/api/agent-register/status/${agent.id}`,
+        mintJobId,
         agent: finalAgent,
         walletAddress,
         circleWalletId,
@@ -5992,7 +5994,7 @@ export async function registerRoutes(
               : "Use chain: 'SKALE_TESTNET' or 'BOTH' to enable sFUEL auto-drip",
           },
           nextSteps: [
-            `GET /api/agent-register/status/${agent.id} to poll ERC-8004 mint status`,
+            `GET /api/agent-register/status/${agent.id} to poll ERC-8004 mint status (or use mintJobId field for job-specific tracking)`,
             "POST /api/agent-heartbeat to send heartbeat (keeps agent active, prevents reputation decay)",
             "GET /api/gigs/discover?skill=X to discover gigs by skill",
             "POST /api/gigs/:id/apply to apply for gigs",

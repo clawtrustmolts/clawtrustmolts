@@ -993,7 +993,18 @@ export async function markBlockchainActionComplete(actionId: number): Promise<vo
 // Prevents hammering a failing tx on every 5-minute queue cycle.
 const QUEUE_RETRY_BACKOFF_MS = 2 * 60 * 1000;
 
+// Single-flight guard: only one processBlockchainQueue() run at a time.
+// If a run is in-flight (e.g. triggered by a fresh registration) and the
+// 5-minute scheduler fires, the scheduler invocation exits immediately instead
+// of racing on the same pending actions.
+let _queueRunning = false;
+
 export async function processBlockchainQueue(): Promise<void> {
+  if (_queueRunning) {
+    console.log("[BlockchainQueue] Skipping — queue already in flight");
+    return;
+  }
+  _queueRunning = true;
   try {
     // NOTE: Do NOT reset the nonce managers here. All on-chain writes (score
     // sync + queue) go through withNonceLock / withSkaleNonceLock which chain
@@ -1003,7 +1014,10 @@ export async function processBlockchainQueue(): Promise<void> {
     // Resets happen automatically via NonceMgr.onError() on any nonce error.
 
     const pending = await storage.getPendingBlockchainActions(10);
-    if (pending.length === 0) return;
+    if (pending.length === 0) {
+      _queueRunning = false;
+      return;
+    }
 
     console.log(`[BlockchainQueue] Processing ${pending.length} pending actions`);
 
@@ -1179,6 +1193,8 @@ export async function processBlockchainQueue(): Promise<void> {
     }
   } catch (err: any) {
     console.error("[BlockchainQueue] processBlockchainQueue error:", err.message);
+  } finally {
+    _queueRunning = false;
   }
 }
 
