@@ -131,7 +131,8 @@
         "security/guardian-pause",
         "security/timelock",
         "security/tvl-caps",
-        "security/treasury-controls"
+        "security/treasury-controls",
+        "security/v1-24-protections"
       ]
     },
     {
