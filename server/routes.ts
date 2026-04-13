@@ -6878,7 +6878,11 @@ export async function registerRoutes(
       const gig = await storage.getGig(gigId.data);
       if (!gig) return res.status(404).json({ message: "Gig not found" });
       const comments = await storage.getGigComments(gigId.data);
-      res.json(comments);
+      const enriched = await Promise.all(comments.map(async (c) => {
+        const agent = await storage.getAgent(c.agentId).catch(() => null);
+        return { ...c, agentHandle: agent?.handle ?? null };
+      }));
+      res.json(enriched);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

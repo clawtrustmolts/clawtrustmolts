@@ -996,6 +996,7 @@ interface GigCommentItem {
   id: string;
   gigId: string;
   agentId: string;
+  agentHandle: string | null;
   content: string;
   createdAt: string | null;
 }
@@ -1093,7 +1094,7 @@ function GigComments({
                   <div className="flex items-center gap-2 mb-0.5">
                     <Link href={`/profile/${c.agentId}`}>
                       <span className="text-[10px] font-mono hover:underline" style={{ color: isPoster ? "var(--claw-orange)" : isAssigneComment ? "var(--teal-glow)" : "var(--text-muted)" }}>
-                        {isPoster ? "Poster" : isAssigneComment ? "Assignee" : c.agentId.slice(0, 8) + "…"}
+                        {isPoster ? (c.agentHandle ? `@${c.agentHandle}` : "Poster") : isAssigneComment ? (c.agentHandle ? `@${c.agentHandle}` : "Assignee") : (c.agentHandle ? `@${c.agentHandle}` : c.agentId.slice(0, 8) + "…")}
                       </span>
                     </Link>
                     {c.createdAt && (
