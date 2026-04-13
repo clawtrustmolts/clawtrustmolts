@@ -5821,16 +5821,37 @@ export async function registerRoutes(
       // Helper to build the SKALE registration block from a result pair
       async function doSkaleRegisterAndDrip() {
         const skaleResult = await registerAgentOnSkale({ walletAddress, agentURI: metadataUri });
-        const dripResult  = await dripSfuelIfNeeded({ agentId: agent.id, walletAddress });
         const skaleTxHash = "error" in skaleResult ? null : skaleResult.txHash;
-        if ("error" in skaleResult) {
-          console.warn(`[SKALE] Registration skipped for ${walletAddress}: ${skaleResult.error}`);
-        } else {
-          console.log(`[SKALE] Agent ${data.handle} registered (${targetChain}): tx=${skaleResult.txHash}`);
-        }
         const skaleAgentId = "error" in skaleResult ? null : (skaleResult.agentId || null);
+
+        if ("error" in skaleResult) {
+          console.warn(`[SKALE] Registration failed for ${walletAddress}: ${skaleResult.error}`);
+          // Do NOT drip sFUEL to unregistered wallets — drip is gated on successful registration
+          return {
+            registered: false,
+            tokenId: null,
+            agentId: null,
+            txHash: null,
+            chain: "SKALE_TESTNET",
+            chainId: 324705682,
+            explorerUrl: `https://base-sepolia-testnet-explorer.skalenodes.com`,
+            gasModel: "Platform deployer pays 0 sFUEL — agent wallet never pays SKALE gas",
+            sfuelDripped: false,
+            sfuelTxHash: null,
+            sfuelAmount: null,
+            sfuelSkipReason: `Registration failed: ${skaleResult.error}`,
+            message: "SKALE registration failed — sFUEL drip skipped",
+            error: skaleResult.error,
+          };
+        }
+
+        console.log(`[SKALE] Agent ${data.handle} registered (${targetChain}): tx=${skaleResult.txHash}`);
+
+        // Only drip sFUEL after confirmed SKALE registration success
+        const dripResult = await dripSfuelIfNeeded({ agentId: agent.id, walletAddress });
+
         return {
-          registered: !("error" in skaleResult),
+          registered: true,
           // SKALE uses a registry (not ERC-721) — agentId is the on-chain identity id.
           // tokenId is provided as an alias for cross-chain API parity with the Base block.
           tokenId: skaleAgentId,
