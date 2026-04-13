@@ -5888,28 +5888,46 @@ export async function registerRoutes(
             skaleRegistration = { registered: false, chain: "SKALE_TESTNET", error: e.message };
           }
         } else if (targetChain === "SKALE_TESTNET") {
-          // Synchronous SKALE-only registration with drip
+          // Synchronous SKALE-only registration with drip (gated on registration success)
           try {
             const skaleResult = await registerAgentOnSkale({ walletAddress, agentURI: metadataUri });
-            const dripResult  = await dripSfuelIfNeeded({ agentId: agent.id, walletAddress });
-            const skaleTxHash = "error" in skaleResult ? null : skaleResult.txHash;
-            const skaleAgentId2 = "error" in skaleResult ? null : (skaleResult.agentId || null);
-            skaleRegistration = {
-              registered: !("error" in skaleResult),
-              tokenId: skaleAgentId2,
-              agentId: skaleAgentId2,
-              txHash: skaleTxHash,
-              chain: "SKALE_TESTNET",
-              chainId: 324705682,
-              explorerUrl: skaleTxHash && skaleTxHash !== "already_registered"
-                ? `https://base-sepolia-testnet-explorer.skalenodes.com/tx/${skaleTxHash}`
-                : `https://base-sepolia-testnet-explorer.skalenodes.com`,
-              sfuelDripped: dripResult.dripped,
-              sfuelTxHash: dripResult.txHash || null,
-              sfuelAmount: dripResult.amount || null,
-              sfuelSkipReason: dripResult.skipped || null,
-              message: dripResult.dripped ? "⚡ sFUEL sent — zero gas enabled" : "sFUEL drip skipped",
-            };
+
+            if ("error" in skaleResult) {
+              // Registration failed — do NOT drip sFUEL to unregistered wallets
+              console.warn(`[SKALE] SKALE_TESTNET registration failed for ${walletAddress}: ${skaleResult.error}`);
+              skaleRegistration = {
+                registered: false, tokenId: null, agentId: null, txHash: null,
+                chain: "SKALE_TESTNET", chainId: 324705682,
+                explorerUrl: `https://base-sepolia-testnet-explorer.skalenodes.com`,
+                gasModel: "Platform deployer pays 0 sFUEL — agent wallet never pays SKALE gas",
+                sfuelDripped: false, sfuelTxHash: null, sfuelAmount: null,
+                sfuelSkipReason: `Registration failed: ${skaleResult.error}`,
+                message: "SKALE registration failed — sFUEL drip skipped",
+                error: skaleResult.error,
+              };
+            } else {
+              // Registration succeeded — drip sFUEL to newly registered wallet
+              const dripResult = await dripSfuelIfNeeded({ agentId: agent.id, walletAddress });
+              const skaleTxHash = skaleResult.txHash;
+              const skaleAgentId2 = skaleResult.agentId || null;
+              skaleRegistration = {
+                registered: true,
+                tokenId: skaleAgentId2,
+                agentId: skaleAgentId2,
+                txHash: skaleTxHash,
+                chain: "SKALE_TESTNET",
+                chainId: 324705682,
+                explorerUrl: skaleTxHash && skaleTxHash !== "already_registered"
+                  ? `https://base-sepolia-testnet-explorer.skalenodes.com/tx/${skaleTxHash}`
+                  : `https://base-sepolia-testnet-explorer.skalenodes.com`,
+                gasModel: "Platform deployer pays 0 sFUEL — agent wallet never pays SKALE gas",
+                sfuelDripped: dripResult.dripped,
+                sfuelTxHash: dripResult.txHash || null,
+                sfuelAmount: dripResult.amount || null,
+                sfuelSkipReason: dripResult.skipped || null,
+                message: dripResult.dripped ? "⚡ sFUEL sent — zero gas enabled" : "sFUEL drip skipped",
+              };
+            }
           } catch (e: any) {
             console.warn(`[SKALE] SKALE_TESTNET register/drip failed:`, e.message);
             skaleRegistration = { registered: false, chain: "SKALE_TESTNET", error: e.message };
