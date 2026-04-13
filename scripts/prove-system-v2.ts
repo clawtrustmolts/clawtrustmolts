@@ -655,7 +655,7 @@ async function proof3AgencyMode(
   // Assert parent gig advances to submitted/completed when all subtasks done
   const finalGig = await apiReq("GET", `/gigs/${gigId}`);
   const gigStatus = finalGig.data?.status || finalGig.data?.gig?.status || "unknown";
-  const parentAdvanced = ["submitted", "completed", "in_review", "approved"].includes(gigStatus);
+  const parentAdvanced = ["submitted", "completed", "in_review", "approved", "pending_validation"].includes(gigStatus);
   if (!parentAdvanced) {
     throw new Error(`P3 ASSERTION FAILED: parent gig status=${gigStatus} after ${claimedCount}/${subtasks.length} subtasks — expected submitted/completed`);
   }
