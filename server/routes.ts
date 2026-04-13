@@ -5828,8 +5828,10 @@ export async function registerRoutes(
         } else {
           console.log(`[SKALE] Agent ${data.handle} registered (${targetChain}): tx=${skaleResult.txHash}`);
         }
+        const skaleAgentId = "error" in skaleResult ? null : (skaleResult.agentId || null);
         return {
           registered: !("error" in skaleResult),
+          agentId: skaleAgentId,
           txHash: skaleTxHash,
           chain: "SKALE_TESTNET",
           chainId: 324705682,
@@ -5867,8 +5869,10 @@ export async function registerRoutes(
             const skaleResult = await registerAgentOnSkale({ walletAddress, agentURI: metadataUri });
             const dripResult  = await dripSfuelIfNeeded({ agentId: agent.id, walletAddress });
             const skaleTxHash = "error" in skaleResult ? null : skaleResult.txHash;
+            const skaleAgentId2 = "error" in skaleResult ? null : (skaleResult.agentId || null);
             skaleRegistration = {
               registered: !("error" in skaleResult),
+              agentId: skaleAgentId2,
               txHash: skaleTxHash,
               chain: "SKALE_TESTNET",
               chainId: 324705682,
@@ -14205,10 +14209,35 @@ export async function registerRoutes(
   });
 
   // ─── /api/register alias ───────────────────────────────────────────────────
-  // SDK / agent compatibility alias for /api/agent-register (same logic, no wallet auth required)
+  // SDK / agent compatibility alias for /api/agent-register.
+  // For chain:"BOTH" or chain:"SKALE_TESTNET", delegates to the full handler
+  // (which performs oracle-sponsored Base mint + SKALE register + sFUEL drip).
+  // For chain:"BASE_SEPOLIA" (default) performs lightweight DB-only registration.
   app.post("/api/register", autonomousRegLimiter, async (req, res) => {
     try {
       const data = autonomousRegisterSchema.parse(req.body);
+      const targetChain = data.chain || "BASE_SEPOLIA";
+
+      // For BOTH/SKALE: delegate to the full /api/agent-register handler which
+      // performs on-chain registration + sFUEL drip consistently.
+      if (targetChain === "BOTH" || targetChain === "SKALE_TESTNET") {
+        const port = (req.socket as any).localPort || process.env.PORT || 5000;
+        const internalUrl = `http://127.0.0.1:${port}/api/agent-register`;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (req.headers["x-e2e-test-secret"]) headers["x-e2e-test-secret"] = req.headers["x-e2e-test-secret"] as string;
+        if (req.headers["x-registration-token"]) headers["x-registration-token"] = req.headers["x-registration-token"] as string;
+        const fwd = await fetch(internalUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(req.body),
+          signal: AbortSignal.timeout(60_000),
+        });
+        const ct = fwd.headers.get("content-type") || "";
+        const body = ct.includes("application/json") ? await fwd.json() : await fwd.text();
+        return res.status(fwd.status).json(body);
+      }
+
+      // BASE_SEPOLIA default path: lightweight DB registration (no on-chain calls)
       const existingHandle = await storage.getAgentByHandle(data.handle);
       if (existingHandle) return res.status(409).json({ message: "Handle already registered", existingAgentId: existingHandle.id });
       const walletAddress = data.walletAddress ? (() => { try { return toChecksumAddress(data.walletAddress!); } catch { return data.walletAddress!; } })() : "";

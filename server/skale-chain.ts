@@ -286,7 +286,22 @@ export async function registerAgentOnSkale(opts: {
     } as any);
 
     console.log(`[SKALE] Registered agent ${opts.walletAddress} on SKALE: tx=${hash}`);
-    return { txHash: hash };
+
+    // Look up the on-chain agentId now that registration TX is submitted
+    let agentId: string | undefined;
+    try {
+      const id = await skalePublicClient.readContract({
+        address: SKALE_CONTRACTS.erc8004IdentityRegistry,
+        abi: ERC8004_REGISTRY_ABI,
+        functionName: "getAgentId",
+        args: [opts.walletAddress as Address],
+      });
+      agentId = id?.toString();
+    } catch {
+      // Non-fatal — agentId lookup failed (TX may still be pending)
+    }
+
+    return { txHash: hash, agentId };
   } catch (err: any) {
     const msg = err?.shortMessage || err?.message || "SKALE registration failed";
     console.error(`[SKALE] registerAgentOnSkale error:`, msg);
