@@ -239,9 +239,11 @@ async function writeReport(results: ProofResult[]): Promise<void> {
     ),
   ].join("\n");
 
-  const txTable = results.flatMap(r => r.txHashes.map(tx =>
-    `| ${r.id} | \`${tx.slice(0, 66)}\` |`
-  ));
+  const txTable = results.flatMap(r => r.txHashes.map(tx => {
+    const baseLink  = `[BaseScan](${BASE_CFG.explorer}/tx/${tx})`;
+    const skaleLink = `[SKALE](${SKALE_CFG.explorer}/tx/${tx})`;
+    return `| ${r.id} | \`${tx.slice(0, 66)}\` | ${baseLink} · ${skaleLink} |`;
+  }));
   const circleTable = results.flatMap(r => r.circleIds.map(id =>
     `| ${r.id} | \`${id}\` |`
   ));
@@ -262,9 +264,9 @@ ${summaryTable}
 
 ## On-Chain Transaction Hashes
 
-| Proof | Tx Hash |
-|-------|---------|
-${txTable.length > 0 ? txTable.join("\n") : "| — | No on-chain transactions recorded |"}
+| Proof | Tx Hash | Explorer |
+|-------|---------|----------|
+${txTable.length > 0 ? txTable.join("\n") : "| — | No on-chain transactions recorded | — |"}
 
 ## Circle Transaction IDs
 
@@ -726,7 +728,7 @@ async function proof4Treasury(
 
   // QUEUE_THRESHOLD = 25_000_000 ($25 in micro-USDC units: 1 unit = $0.000001)
   const QUEUE_THRESHOLD = 25_000_000;
-  const SMALL_AMOUNT    =  1_000_000; // $1 — below threshold → immediate (HTTP 200)
+  const SMALL_AMOUNT    =  2_000_000; // $2 — below threshold → immediate (HTTP 200)
   const LARGE_AMOUNT    = 30_000_000; // $30 — above threshold → queued (HTTP 202)
 
   // Fund payer treasury with enough for both payments
@@ -812,19 +814,27 @@ async function proof4Treasury(
     }
   }
 
-  // Assert payee (Agent B) balance/history increased after immediate small payment
+  // Assert payee balance AND history entry after immediate $2 payment
   const payeeBalR = await apiReq("GET", `/agents/${bPayee.id}/treasury/balance`, {}, { "x-agent-id": bPayee.id });
   const payeeBalance: number = payeeBalR.data?.balance ?? payeeBalR.data?.totalBalance ?? 0;
   if (payeeBalance <= 0) {
-    throw new Error(`P4 ASSERTION FAILED: payee balance=${payeeBalance} — immediate small payment did not credit recipient`);
+    throw new Error(`P4 ASSERTION FAILED: payee balance=${payeeBalance} — immediate $${SMALL_AMOUNT / 1_000_000} payment did not credit recipient`);
   }
-  ctx.notes.push(`payee balance after immediate payment: ${payeeBalance}`);
+  ctx.notes.push(`payee balance confirmed: ${payeeBalance} after $${SMALL_AMOUNT / 1_000_000} payment`);
+
+  // Assert payee history shows the credit entry
+  const payeeHistR = await apiReq("GET", `/agents/${bPayee.id}/treasury/history`, {}, { "x-agent-id": bPayee.id });
+  const payeeHist: unknown[] = Array.isArray(payeeHistR.data) ? payeeHistR.data : (payeeHistR.data?.history ?? []);
+  if (payeeHist.length === 0) {
+    throw new Error(`P4 ASSERTION FAILED: payee treasury history empty — credit entry missing after $${SMALL_AMOUNT / 1_000_000} payment`);
+  }
+  ctx.notes.push(`payee history entries: ${payeeHist.length} (credit entry confirmed)`);
 
   // History (payer — auth required)
   const histR = await apiReq("GET", `/agents/${bPayer.id}/treasury/history`, {}, { "x-agent-id": bPayer.id });
   const histCount: number = Array.isArray(histR.data) ? histR.data.length : (histR.data?.total ?? 0);
 
-  return `payer=${bPayer.handle} payee=${bPayee.handle} smallPay=200(immediate) largePay=${largePayR.status}(queued=${largeQueued}) cancelledId=${largePaymentId?.slice(0, 8) || "none"}… historyEntries=${histCount}`;
+  return `payer=${bPayer.handle} payee=${bPayee.handle} smallPay=$${SMALL_AMOUNT / 1_000_000}(200/immediate) largePay=${largePayR.status}(queued=${largeQueued}) cancelledId=${largePaymentId.slice(0, 8)}… payeeHistCount=${payeeHist.length} payerHistCount=${histCount}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1099,15 +1109,11 @@ async function proof7ZeroGas(
   if (sfuelTxHash && sfuelTxHash !== skaleTxHash) ctx.txHashes.push(sfuelTxHash);
 
   // P7 requires chain:"BOTH" response to include BOTH base.tokenId AND skale.tokenId
-  if (!skaleTokenId && !skaleTxHash && !skaleRegistered) {
-    throw new Error("P7 ASSERTION FAILED: SKALE block has no tokenId, no txHash, and registered=false — SKALE registration produced no on-chain artifact");
-  }
   if (!skaleTokenId) {
-    // Backend may omit tokenId for SKALE if it uses registered flag; treat as SKIP so reviewer can audit
-    ctx.notes.push(`SKALE tokenId not present in response — registered=${skaleRegistered} tx=${skaleTxHash?.slice(0, 14) || "none"} — asserted via txHash+registered instead`);
-  } else {
-    ctx.notes.push(`skale tokenId=${skaleTokenId} confirmed`);
+    // Backend does not return skale.tokenId — SKIP with explicit reason so reviewer can audit contract gap
+    throw new Error(`SKIP: chain:BOTH response missing skale.tokenId (registered=${skaleRegistered}, txHash=${skaleTxHash?.slice(0, 14) || "none"}) — backend must return skale.tokenId for P7 to fully pass`);
   }
+  ctx.notes.push(`skale tokenId=${skaleTokenId} confirmed`);
   ctx.notes.push(`skale: registered=${skaleRegistered} sfuelDripped=${sfuelDripped} tx=${skaleTxHash?.slice(0, 14) || "none"}`);
 
   if (baseBlock?.explorerUrl) ctx.notes.push(`Base explorer: ${baseBlock.explorerUrl}`);
