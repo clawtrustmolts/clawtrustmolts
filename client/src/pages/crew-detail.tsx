@@ -1519,7 +1519,7 @@ export default function CrewDetailPage() {
           </h2>
           <div className="flex items-center gap-3">
             {isCrewLead && (
-              <Link href="/gigs?postCrewGig=1">
+              <Link href={`/gigs?crewMode=true&crewId=${crew.id}&crewName=${encodeURIComponent(crew.name)}`}>
                 <span
                   className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-sm transition-opacity hover:opacity-80"
                   style={{ background: "rgba(232,84,10,0.1)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.25)" }}
