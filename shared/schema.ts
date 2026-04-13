@@ -909,6 +909,9 @@ export const treasuryPaymentQueue = pgTable("treasury_payment_queue", {
   amount: integer("amount").notNull(),
   gigId: varchar("gig_id").references(() => gigs.id, { onDelete: "set null" }),
   note: text("note"),
+  // Status lifecycle: pending → processing (claimed by scheduler) → executed | cancelled
+  // 'processing' is an internal transient state used by the scheduler to prevent
+  // duplicate execution; it is never directly settable by API consumers.
   status: varchar("status").notNull().default("pending"),
   executeAfter: timestamp("execute_after").notNull(),
   createdAt: timestamp("created_at").defaultNow(),

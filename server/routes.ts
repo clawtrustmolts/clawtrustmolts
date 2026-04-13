@@ -8918,10 +8918,12 @@ export async function registerRoutes(
       try {
         transfer = await transferBetweenTreasuryWallets(sender.treasuryWalletId, destAddress, amount);
       } catch (transferErr: any) {
-        // Transfer failed pre-submission — undo the atomic claim (fire-and-forget; GREATEST guard prevents negative)
-        storage.updateAgentSpendingToday(agentId, -amount).catch((rbErr: any) =>
-          console.error("[Treasury] Failed to roll back spend claim after transfer failure:", rbErr.message)
-        );
+        // Transfer failed pre-submission — undo the atomic claim (GREATEST guard prevents negative)
+        try {
+          await storage.updateAgentSpendingToday(agentId, -amount);
+        } catch (rbErr: any) {
+          console.error("[Treasury] Failed to roll back spend claim after transfer failure:", rbErr.message);
+        }
         throw transferErr; // re-throw → outer catch → 500
       }
 
@@ -8963,6 +8965,9 @@ export async function registerRoutes(
         note: note || null,
       });
     } catch (err: any) {
+      if (err.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid request body", errors: err.errors });
+      }
       console.error("[Treasury] pay error:", err.message);
       return res.status(500).json({ message: err.message });
     }
@@ -9031,6 +9036,9 @@ export async function registerRoutes(
         dailyLimitFormatted: `${((updated?.treasuryDailyLimit ?? dailyLimit) / 1_000_000).toFixed(2)} USDC`,
       });
     } catch (err: any) {
+      if (err.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid request body", errors: err.errors });
+      }
       return res.status(500).json({ message: err.message });
     }
   });

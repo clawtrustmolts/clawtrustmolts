@@ -566,9 +566,11 @@ async function processTreasuryPaymentQueue() {
             await storage.abortProcessingTreasuryPayment(payment.id);
             if (spendClaimed) {
               // Restore claimed allowance; GREATEST(0) guard prevents negative counter
-              storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount).catch((rbErr: any) =>
-                console.error(`[TreasuryQueue] Failed to roll back spend claim for ${payment.id}:`, rbErr.message)
-              );
+              try {
+                await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
+              } catch (rbErr: any) {
+                console.error(`[TreasuryQueue] Failed to roll back spend claim for ${payment.id}:`, rbErr.message);
+              }
             }
           } catch (abortErr: any) {
             console.error(`[TreasuryQueue] Failed to abort orphaned payment ${payment.id}:`, abortErr.message);
