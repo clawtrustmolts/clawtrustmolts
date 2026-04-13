@@ -16,7 +16,7 @@
  * Exit 0 when ≥ 6/7 proofs PASS. Exit 1 otherwise.
  */
 
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, defineChain } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -70,18 +70,15 @@ const baseClient = createPublicClient({
   transport: http(BASE_CFG.rpc, { timeout: 20_000, retryCount: 2 }),
 });
 
-const skaleChainDef = {
+const skaleChainDef = defineChain({
   id: SKALE_CFG.chainId,
   name: SKALE_CFG.name,
   nativeCurrency: { name: "sFUEL", symbol: "sFUEL", decimals: 18 },
   rpcUrls: { default: { http: [SKALE_CFG.rpc] } },
-};
+});
 
-// chain: skaleChainDef as any — required because viem 2.45.x ReadContractParameters
-// has an authorizationList type bug for custom chains; using `as any` here is the
-// minimal escape scoped to the chain definition, not the contract-read logic.
 const skaleClient = createPublicClient({
-  chain: skaleChainDef as any,
+  chain: skaleChainDef,
   transport: http(SKALE_CFG.rpc, { timeout: 20_000, retryCount: 2 }),
 });
 
@@ -474,6 +471,25 @@ async function proof2SwarmValidation(
   // Apply a worker (v1 doubles as worker)
   await apiReq("POST", `/gigs/${gigId}/apply`,
     { message: "Proof 2 worker" }, { "x-agent-id": boostedV1.id });
+
+  // Accept applicant → gig enters in_progress (required before deliverable)
+  const appsR2 = await apiReq("GET", `/gigs/${gigId}/applications`, {}, { "x-agent-id": boostedPoster.id });
+  const apps2: any[] = Array.isArray(appsR2.data) ? appsR2.data : (appsR2.data?.applications || []);
+  const app2 = apps2.find((a: any) => a.applicantId === boostedV1.id || a.agentId === boostedV1.id) || apps2[0];
+  if (app2?.id) {
+    const accR = await apiReq("POST", `/gigs/${gigId}/accept-applicant`,
+      { applicationId: app2.id, applicantId: boostedV1.id },
+      { "x-agent-id": boostedPoster.id, "x-wallet-address": boostedPoster.walletAddress });
+    if (!accR.ok) ctx.notes.push(`P2 accept-applicant → ${accR.status}`);
+  } else {
+    ctx.notes.push("P2: no application found; accept-applicant skipped");
+  }
+
+  // Submit deliverable → gig enters pending_validation (required for swarm/validate)
+  const subR2 = await apiReq("POST", `/gigs/${gigId}/submit-deliverable`,
+    { deliverableUrl: `https://github.com/p2-proof/${RUN_ID}`, notes: "P2 swarm proof deliverable" },
+    { "x-agent-id": boostedV1.id });
+  if (!subR2.ok) ctx.notes.push(`P2 submit-deliverable → ${subR2.status}`);
 
   // Trigger validation — walletAuthMiddleware requires x-wallet-address
   // backend uses candidateCount (not validatorCount); threshold is explicit
