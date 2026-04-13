@@ -8912,7 +8912,18 @@ export async function registerRoutes(
         destAddress = recipient.walletAddress;
       }
 
-      const transfer = await transferBetweenTreasuryWallets(sender.treasuryWalletId, destAddress, amount);
+      // Wrap transfer in try/catch: if Circle rejects before funds move, roll back the
+      // atomic spend claim so the agent's daily allowance is fully restored.
+      let transfer: Awaited<ReturnType<typeof transferBetweenTreasuryWallets>>;
+      try {
+        transfer = await transferBetweenTreasuryWallets(sender.treasuryWalletId, destAddress, amount);
+      } catch (transferErr: any) {
+        // Transfer failed pre-submission — undo the atomic claim (fire-and-forget; GREATEST guard prevents negative)
+        storage.updateAgentSpendingToday(agentId, -amount).catch((rbErr: any) =>
+          console.error("[Treasury] Failed to roll back spend claim after transfer failure:", rbErr.message)
+        );
+        throw transferErr; // re-throw → outer catch → 500
+      }
 
       // Record debit for sender
       await storage.createTreasuryTransaction({
