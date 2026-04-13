@@ -1028,10 +1028,18 @@ export async function processBlockchainQueue(): Promise<void> {
           if (agent) {
             if (agent.erc8004TokenId) {
               console.log(`[BlockchainQueue] Agent ${agent.handle} already has tokenId=${agent.erc8004TokenId}, skipping mint`);
+              // Persist tokenId in payload so status endpoint can surface it without DB join
+              await storage.updateBlockchainAction(action.id, {
+                payload: JSON.stringify({ tokenId: agent.erc8004TokenId }),
+              }).catch(() => {});
               success = true;
             } else if (!agent.walletAddress || /^0x0+$/.test(agent.walletAddress)) {
               console.warn(`[BlockchainQueue] Agent ${agent.handle} has zero-address wallet, marking as failed`);
-              await storage.updateBlockchainAction(action.id, { status: "failed", lastAttempt: new Date() });
+              await storage.updateBlockchainAction(action.id, {
+                status: "failed",
+                lastAttempt: new Date(),
+                payload: JSON.stringify({ failureReason: "Zero-address wallet — cannot mint ERC-8004 passport" }),
+              });
               continue;
             } else {
               const result = await mintPassportForAgent({
@@ -1041,10 +1049,20 @@ export async function processBlockchainQueue(): Promise<void> {
                 skills: agent.skills,
               }, { fromQueue: true });
               success = !!result.tokenId;
+              // Store txHash + tokenId in payload so status endpoint can surface them
+              if (success) {
+                await storage.updateBlockchainAction(action.id, {
+                  payload: JSON.stringify({ txHash: result.txHash || null, tokenId: result.tokenId || null }),
+                }).catch(() => {});
+              }
             }
           } else {
             console.warn(`[BlockchainQueue] Agent ${action.agentId} not found, marking as failed`);
-            await storage.updateBlockchainAction(action.id, { status: "failed", lastAttempt: new Date() });
+            await storage.updateBlockchainAction(action.id, {
+              status: "failed",
+              lastAttempt: new Date(),
+              payload: JSON.stringify({ failureReason: "Agent not found in database" }),
+            });
             continue;
           }
         } else if (action.type === "SET_MOLT_DOMAIN") {
@@ -1115,19 +1133,26 @@ export async function processBlockchainQueue(): Promise<void> {
           }
         }
 
+        // MINT_PASSPORT uses 3-retry limit (task spec); all other actions use 5
+        const maxRetries = action.type === "MINT_PASSPORT" ? 3 : 5;
+
         if (success) {
           await storage.updateBlockchainAction(action.id, { status: "completed" });
         } else {
           const newRetries = (action.retries || 0) + 1;
-          const newStatus = newRetries >= 5 ? "failed" : "pending";
-          await storage.updateBlockchainAction(action.id, {
+          const newStatus = newRetries >= maxRetries ? "failed" : "pending";
+          const updateData: Parameters<typeof storage.updateBlockchainAction>[1] = {
             retries: newRetries,
             status: newStatus,
             lastAttempt: new Date(),
-          });
-          if (newStatus === "failed") {
-            console.error(`[BlockchainQueue] Action ${action.id} (${action.type}) failed after 5 retries`);
+          };
+          if (newStatus === "failed" && action.type === "MINT_PASSPORT") {
+            updateData.payload = JSON.stringify({ failureReason: `Mint failed after ${maxRetries} retries` });
+            console.error(`[BlockchainQueue] MINT_PASSPORT id=${action.id} failed after ${maxRetries} retries`);
+          } else if (newStatus === "failed") {
+            console.error(`[BlockchainQueue] Action ${action.id} (${action.type}) failed after ${maxRetries} retries`);
           }
+          await storage.updateBlockchainAction(action.id, updateData);
         }
       } catch (err: any) {
         const errMsg = err.message || "";
@@ -1137,14 +1162,19 @@ export async function processBlockchainQueue(): Promise<void> {
           errMsg.includes("InvalidTokenId") ||
           errMsg.includes("PassportNotFound") ||
           errMsg.includes("0x0000000000");
+        const maxRetries = action.type === "MINT_PASSPORT" ? 3 : 5;
         const newRetries = (action.retries || 0) + 1;
-        const newStatus = (isPermFail || newRetries >= 5) ? "failed" : "pending";
+        const newStatus = (isPermFail || newRetries >= maxRetries) ? "failed" : "pending";
         console.error(`[BlockchainQueue] Error processing ${action.type} id=${action.id} (${newStatus}):`, errMsg.slice(0, 120));
-        await storage.updateBlockchainAction(action.id, {
+        const catchUpdateData: Parameters<typeof storage.updateBlockchainAction>[1] = {
           retries: newRetries,
           status: newStatus,
           lastAttempt: new Date(),
-        }).catch(() => {});
+        };
+        if (newStatus === "failed" && action.type === "MINT_PASSPORT") {
+          catchUpdateData.payload = JSON.stringify({ failureReason: errMsg.slice(0, 200) });
+        }
+        await storage.updateBlockchainAction(action.id, catchUpdateData).catch(() => {});
       }
     }
   } catch (err: any) {

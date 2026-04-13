@@ -6610,20 +6610,24 @@ export async function registerRoutes(
     const agent = await storage.getAgent(tempId.data);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
 
-    // Determine ERC-8004 mint status from agent record + blockchain queue
+    // Look up the most recent MINT_PASSPORT job for this agent to get real txHash/error
+    const queueRecord = await storage.getLatestBlockchainActionForAgent(agent.id, "MINT_PASSPORT");
+    let qPayload: Record<string, any> = {};
+    if (queueRecord?.payload) {
+      try { qPayload = typeof queueRecord.payload === "string" ? JSON.parse(queueRecord.payload) : queueRecord.payload; } catch { }
+    }
+
     let mintStatus: "complete" | "pending" | "failed" | "not_started";
     if (agent.erc8004TokenId) {
       mintStatus = "complete";
+    } else if (queueRecord) {
+      if (queueRecord.status === "pending") mintStatus = "pending";
+      else if (queueRecord.status === "failed") mintStatus = "failed";
+      else if (queueRecord.status === "completed") mintStatus = "complete";
+      else mintStatus = "pending";
     } else {
-      // Check blockchain queue for a pending or failed MINT_PASSPORT job
-      const hasPending = await storage.hasPendingBlockchainActionForAgent("MINT_PASSPORT", agent.id);
-      if (hasPending) {
-        mintStatus = "pending";
-      } else {
-        // Check if no real wallet (zero-address agents can't be minted)
-        const hasRealWallet = agent.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress) && !/^0x0+$/.test(agent.walletAddress);
-        mintStatus = hasRealWallet ? "failed" : "not_started";
-      }
+      const hasRealWallet = agent.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress) && !/^0x0+$/.test(agent.walletAddress);
+      mintStatus = hasRealWallet ? "not_started" : "not_started";
     }
 
     res.json({
@@ -6631,6 +6635,10 @@ export async function registerRoutes(
       handle: agent.handle,
       status: mintStatus,
       erc8004TokenId: agent.erc8004TokenId || null,
+      txHash: qPayload.txHash || null,
+      failureReason: qPayload.failureReason || null,
+      mintJobId: queueRecord?.id || null,
+      retries: queueRecord?.retries ?? 0,
       autonomyStatus: agent.autonomyStatus,
       walletAddress: agent.walletAddress,
       circleWalletId: agent.circleWalletId,
@@ -6640,7 +6648,7 @@ export async function registerRoutes(
     });
   });
 
-  // Alias: GET /api/register/status/:agentId — same as above (B1/B3 async registration polling)
+  // GET /api/register/status/:agentId — async registration status polling (B1/B3 fix)
   app.get("/api/register/status/:agentId", async (req, res) => {
     const agentId = safeId.safeParse(req.params.agentId);
     if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
@@ -6648,17 +6656,22 @@ export async function registerRoutes(
     const agent = await storage.getAgent(agentId.data);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
 
+    const queueRecord = await storage.getLatestBlockchainActionForAgent(agent.id, "MINT_PASSPORT");
+    let qPayload: Record<string, any> = {};
+    if (queueRecord?.payload) {
+      try { qPayload = typeof queueRecord.payload === "string" ? JSON.parse(queueRecord.payload) : queueRecord.payload; } catch { }
+    }
+
     let mintStatus: "complete" | "pending" | "failed" | "not_started";
     if (agent.erc8004TokenId) {
       mintStatus = "complete";
+    } else if (queueRecord) {
+      if (queueRecord.status === "pending") mintStatus = "pending";
+      else if (queueRecord.status === "failed") mintStatus = "failed";
+      else if (queueRecord.status === "completed") mintStatus = "complete";
+      else mintStatus = "pending";
     } else {
-      const hasPending = await storage.hasPendingBlockchainActionForAgent("MINT_PASSPORT", agent.id);
-      if (hasPending) {
-        mintStatus = "pending";
-      } else {
-        const hasRealWallet = agent.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress) && !/^0x0+$/.test(agent.walletAddress);
-        mintStatus = hasRealWallet ? "failed" : "not_started";
-      }
+      mintStatus = "not_started";
     }
 
     res.json({
@@ -6666,7 +6679,10 @@ export async function registerRoutes(
       handle: agent.handle,
       status: mintStatus,
       erc8004TokenId: agent.erc8004TokenId || null,
-      txHash: null,
+      txHash: qPayload.txHash || null,
+      failureReason: qPayload.failureReason || null,
+      mintJobId: queueRecord?.id || null,
+      retries: queueRecord?.retries ?? 0,
       skaleTokenId: null,
       skalesTxHash: null,
       walletAddress: agent.walletAddress,
@@ -14356,7 +14372,7 @@ export async function registerRoutes(
         return res.status(fwd.status).json(body);
       }
 
-      // BASE_SEPOLIA default path: lightweight DB registration (no on-chain calls)
+      // BASE_SEPOLIA default path: DB registration + async ERC-8004 mint queue
       const existingHandle = await storage.getAgentByHandle(data.handle);
       if (existingHandle) return res.status(409).json({ message: "Handle already registered", existingAgentId: existingHandle.id });
       const walletAddress = data.walletAddress ? (() => { try { return toChecksumAddress(data.walletAddress!); } catch { return data.walletAddress!; } })() : "";
@@ -14380,7 +14396,22 @@ export async function registerRoutes(
         circleWalletId: null,
         autonomyStatus: "registered",
       });
-      return res.status(201).json({ success: true, agentId: agent.id, handle: agent.handle, walletAddress: agent.walletAddress });
+      // Queue ERC-8004 mint if agent has a real wallet address
+      const hasRealWalletAddr = walletAddress && /^0x[a-fA-F0-9]{40}$/.test(walletAddress) && !/^0x0+$/.test(walletAddress);
+      let mintJobId: number | null = null;
+      if (hasRealWalletAddr) {
+        mintJobId = await queueBlockchainAction({ type: "MINT_PASSPORT", agentId: agent.id, payload: {} });
+        processBlockchainQueue().catch(() => {});
+      }
+      return res.status(202).json({
+        success: true,
+        agentId: agent.id,
+        handle: agent.handle,
+        status: hasRealWalletAddr ? "minting" : "no_wallet",
+        statusUrl: `/api/register/status/${agent.id}`,
+        mintJobId,
+        walletAddress: agent.walletAddress,
+      });
     } catch (err: any) {
       if (err.name === "ZodError") return res.status(400).json({ message: "Validation error", errors: err.errors });
       return res.status(500).json({ message: "Registration failed", error: err.message });

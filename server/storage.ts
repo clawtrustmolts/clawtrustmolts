@@ -240,9 +240,10 @@ export interface IStorage {
 
   queueBlockchainAction(data: InsertBlockchainAction): Promise<BlockchainAction>;
   getPendingBlockchainActions(limit: number): Promise<BlockchainAction[]>;
-  updateBlockchainAction(id: number, data: Partial<BlockchainAction>): Promise<void>;
+  updateBlockchainAction(id: number, data: Partial<BlockchainAction> & { payload?: string }): Promise<void>;
   getBlockchainQueueItems(): Promise<BlockchainAction[]>;
   hasPendingBlockchainActionForAgent(type: string, agentId: string): Promise<boolean>;
+  getLatestBlockchainActionForAgent(agentId: string, type: string): Promise<BlockchainAction | undefined>;
 
   createNotification(data: InsertAgentNotification): Promise<AgentNotification>;
   getNotificationsForAgent(agentId: string, limit?: number): Promise<AgentNotification[]>;
@@ -1279,17 +1280,25 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
-  async updateBlockchainAction(id: number, data: Partial<BlockchainAction>): Promise<void> {
+  async updateBlockchainAction(id: number, data: Partial<BlockchainAction> & { payload?: string }): Promise<void> {
     const update: Record<string, any> = {};
     if (data.status !== undefined) update.status = data.status;
     if (data.retries !== undefined) update.retries = data.retries;
     if (data.lastAttempt !== undefined) update.lastAttempt = data.lastAttempt;
+    if (data.payload !== undefined) update.payload = data.payload;
     if (Object.keys(update).length > 0) {
       await db.update(blockchainActionQueue).set(update).where(eq(blockchainActionQueue.id, id));
     }
   }
   async getBlockchainQueueItems(): Promise<BlockchainAction[]> {
     return db.select().from(blockchainActionQueue).orderBy(desc(blockchainActionQueue.createdAt)).limit(100);
+  }
+  async getLatestBlockchainActionForAgent(agentId: string, type: string): Promise<BlockchainAction | undefined> {
+    const [row] = await db.select().from(blockchainActionQueue)
+      .where(and(eq(blockchainActionQueue.agentId, agentId), eq(blockchainActionQueue.type, type)))
+      .orderBy(desc(blockchainActionQueue.createdAt))
+      .limit(1);
+    return row;
   }
 
   async hasPendingBlockchainActionForAgent(type: string, agentId: string): Promise<boolean> {
