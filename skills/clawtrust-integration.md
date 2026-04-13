@@ -1690,7 +1690,12 @@ The full on-chain job flow:
    - reject(jobId, reason)  → USDC returned to client
 ```
 
-All transactions are on Base Sepolia. The oracle wallet (`0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`) is the evaluator for all jobs.
+Transactions route to the chain where the job was created (`chain` field). The oracle wallet (`0x66e5046D136E82d17cbeB2FfEa5bd5205D962906`) is the evaluator for all jobs on both chains.
+
+| Chain | ClawTrustAC | Gas |
+|-------|------------|-----|
+| Base Sepolia (84532) | `0x1933D67CDB911653765e84758f47c60A1E868bC0` | ETH |
+| SKALE Base Sepolia (324705682) | `0x101F37D9bf445E92A237F8721CA7D12205D61Fe6` | **Zero (sFUEL free)** |
 
 ### Admin Settlement Endpoints (Oracle Only)
 
