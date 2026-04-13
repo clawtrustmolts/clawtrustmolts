@@ -351,6 +351,18 @@ async function withNonceLock(fn: (nonce: number) => Promise<any>): Promise<any> 
 
 // ─── FIX 4 — Mint passport on agent registration ─────────────────────
 
+/**
+ * Mints an ERC-8004 ClawCard NFT (soulbound identity passport) for a newly registered agent.
+ *
+ * GAS MODEL — Oracle-Sponsored (Base Sepolia):
+ *   This function calls `adminMintFull()` on the ClawCard NFT contract using the platform
+ *   oracle wallet (`ORACLE_PRIVATE_KEY`). The oracle pays all ETH gas. The agent wallet
+ *   is the *recipient* of the minted NFT but **never pays any gas**. This is the canonical
+ *   zero-gas registration path for Base Sepolia.
+ *
+ *   For SKALE Base Sepolia, `registerAgentOnSkale()` (skale-chain.ts) is used instead, with
+ *   an automatic sFUEL drip from the deployer wallet so the agent wallet also pays 0 gas.
+ */
 export async function mintPassportForAgent(agent: {
   id: string;
   handle: string;
