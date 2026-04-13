@@ -718,7 +718,7 @@ export async function registerRoutes(
           walletAddress: a.walletAddress,
           moltDomain: a.moltDomain || null,
           fusedScore: a.fusedScore || 0,
-          tier: a.tier || "Hatchling",
+          tier: getTier(a.fusedScore || 0),
           chain: onSkale ? "SKALE_TESTNET" : "BASE_SEPOLIA",
           scanUrl,
         };
@@ -1003,9 +1003,9 @@ export async function registerRoutes(
 
   app.get("/api/erc8004/:tokenId", apiLimiter, async (req, res) => {
     try {
-      const tokenId = req.params.tokenId;
+      const tokenId = String(req.params.tokenId);
       const agents = await storage.getAgents();
-      const agent = agents.find((a) => a.erc8004TokenId === tokenId);
+      const agent = agents.find((a) => String(a.erc8004TokenId) === tokenId);
       if (!agent) return res.status(404).json({ message: "No agent found with that ERC-8004 token ID", tokenId });
       res.json(buildErc8004Payload(agent));
     } catch (err: any) {
@@ -6080,6 +6080,17 @@ export async function registerRoutes(
       return next();
     }
 
+    // ── Zero-wallet bypass (autonomous agents with no real wallet) ─────────
+    // Agents registered via POST /api/agent-register without a wallet get
+    // walletAddress = "0x0000...0000". They cannot sign messages, so skip
+    // all wallet verification and allow x-agent-id alone as proof.
+    const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+    if (agent.walletAddress && agent.walletAddress.toLowerCase() === ZERO_ADDR) {
+      (req as any).agentId = agentId;
+      (req as any).isE2EBypass = false;
+      return next();
+    }
+
     // ── Cryptographic wallet verification ──────────────────────────────────
     // Path A: walletAuthMiddleware already ran (Privy JWT flow — browser users).
     //         req.wallet is set from a verified JWT; use it directly.
@@ -6808,6 +6819,8 @@ export async function registerRoutes(
 
       if (skillList.length > 0) {
         filtered = filtered.filter(g =>
+          // Include gigs with no skill requirement (open to all agents)
+          g.skillsRequired.length === 0 ||
           g.skillsRequired.some(gs =>
             skillList.some(s => gs.toLowerCase().includes(s))
           )
@@ -11888,6 +11901,41 @@ export async function registerRoutes(
 
   // Seed challenges on startup
   storage.seedSkillChallenges().catch((e) => console.error("[Skill] Seed failed:", e));
+
+  // ─── Retroactive trust receipt generation (B6) ───────────────────────────
+  // Generates missing TrustReceipts for completed gigs that have an assignee
+  // but no receipt yet (e.g. gigs completed before receipt auto-creation was added).
+  (async () => {
+    try {
+      const allGigs = await storage.getGigs();
+      const completedGigs = allGigs.filter(g => g.status === "completed" && g.assigneeId && g.budget >= TRUST_RECEIPT_MIN_AMOUNT);
+      let created = 0;
+      for (const gig of completedGigs) {
+        const existing = gig.assigneeId ? await storage.getTrustReceiptByGig(gig.id, gig.assigneeId) : null;
+        if (!existing) {
+          const validation = await storage.getValidationByGig(gig.id).catch(() => null);
+          const swarmVerdict = validation?.status === "approved" ? "PASS" : validation?.status === "rejected" ? "FAIL" : null;
+          await storage.createTrustReceipt({
+            gigId: gig.id,
+            agentId: gig.assigneeId!,
+            posterId: gig.posterId,
+            gigTitle: gig.title,
+            amount: gig.budget,
+            currency: gig.currency,
+            chain: gig.chain,
+            swarmVerdict,
+            scoreChange: Math.round(Math.min(gig.budget * 0.5, 10)),
+            tierBefore: null,
+            tierAfter: null,
+          });
+          created++;
+        }
+      }
+      if (created > 0) console.log(`[TrustReceipts] Retroactively generated ${created} missing receipt(s) for completed gigs.`);
+    } catch (e: any) {
+      console.error("[TrustReceipts] Retroactive generation failed:", e.message);
+    }
+  })();
 
   function gradeChallenge(submission: string, challenge: { expectedKeywords: string[]; minWordCount: number; maxWordCount: number }): { score: number; details: Record<string, number> } {
     const words = submission.trim().split(/\s+/).filter(Boolean);

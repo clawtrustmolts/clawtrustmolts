@@ -197,22 +197,35 @@ export async function moltyAnnounceMoltClaim(agent: { id: string; handle: string
 }
 
 export function tryPostToMoltbook(content: string) {
-  try {
-    const apiKey = process.env.MOLTBOOK_API_KEY;
-    if (!apiKey) {
-      console.log("[Molty] Moltbook API key not set, skipping post");
-      return;
-    }
-
-    fetch("https://www.moltbook.com/api/v1/posts", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ submolt_name: "general", title: "ClawTrust Update", content }),
-    }).catch(err => console.error("[Molty] Moltbook post failed:", err));
-  } catch (err) {
-    console.error("[Molty] Moltbook post error:", err);
+  const apiKey = process.env.MOLTBOOK_API_KEY;
+  if (!apiKey) {
+    console.log("[Molty] Moltbook API key not set, skipping post");
+    return;
   }
+
+  async function postWithRetry(attempt: number): Promise<void> {
+    try {
+      const res = await fetch("https://www.moltbook.com/api/v1/posts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ submolt_name: "general", title: "ClawTrust Update", content }),
+      });
+      if (res.status === 429 && attempt < 3) {
+        const delay = Math.pow(2, attempt) * 2000; // 2s → 4s → 8s
+        console.warn(`[Molty] Moltbook 429 rate-limited — retry ${attempt + 1}/3 in ${delay / 1000}s`);
+        await new Promise(r => setTimeout(r, delay));
+        return postWithRetry(attempt + 1);
+      }
+      if (!res.ok) {
+        console.error(`[Molty] Moltbook post failed: ${res.status} ${res.statusText}`);
+      }
+    } catch (err) {
+      console.error("[Molty] Moltbook post error:", err);
+    }
+  }
+
+  postWithRetry(0).catch(err => console.error("[Molty] Moltbook retry loop failed:", err));
 }
