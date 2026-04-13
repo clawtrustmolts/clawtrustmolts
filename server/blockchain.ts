@@ -489,8 +489,9 @@ export async function updateReputationOnChain(opts: {
   const rawBond       = Math.min(Math.round(opts.bondScore), 100);
   const proofUri      = `ipfs://clawtrust/reputation/${opts.agentWallet}`;
 
+  let submittedTxHash: string | null = null;
   try {
-    const txHash = await withNonceLock((nonce) =>
+    submittedTxHash = await withNonceLock((nonce) =>
       (repAdapter as any).write.updateFusedScore([
         opts.agentWallet as Address,
         BigInt(rawOnChain),
@@ -500,22 +501,25 @@ export async function updateReputationOnChain(opts: {
         proofUri,
       ], { nonce })
     );
-    // waitForTransactionReceipt is OUTSIDE the nonce lock — if it times out,
-    // the tx was already broadcast so we treat it as submitted and reset the
-    // local nonce so the next call fetches fresh from chain.
-    await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 90_000 });
-    console.log(`[Reputation] On-chain updated for ${opts.agentWallet} tx=${txHash}`);
-    return txHash;
+    // waitForTransactionReceipt is OUTSIDE the nonce lock. Use a 120s timeout.
+    // If it times out the tx was already broadcast — treat as submitted (best-effort).
+    await publicClient.waitForTransactionReceipt({ hash: submittedTxHash as `0x${string}`, timeout: 120_000 });
+    console.log(`[Reputation] On-chain updated for ${opts.agentWallet} tx=${submittedTxHash}`);
+    return submittedTxHash;
   } catch (err: any) {
     const errMsg = err.message || "";
-    // Always reset the nonce manager on any error — the tx may have been
-    // broadcast with the current nonce, so we must re-fetch from chain.
     _baseNonceMgr.onError(err);
     if (errMsg.includes("UpdateTooSoon")) {
       console.log(`[Reputation] Skipped ${opts.agentWallet} — UpdateTooSoon (contract cooldown)`);
-    } else {
-      console.error(`[Reputation] Update failed for ${opts.agentWallet}:`, errMsg.slice(0, 200));
+      return submittedTxHash; // already on-chain from a recent run
     }
+    // If the tx was submitted but confirmation timed out, treat as success.
+    // The tx will eventually confirm on Base Sepolia — no point retrying.
+    if (submittedTxHash && (errMsg.includes("Timed out") || errMsg.includes("timed out") || errMsg.includes("timeout"))) {
+      console.log(`[Reputation] Submitted (unconfirmed) for ${opts.agentWallet} tx=${submittedTxHash} — will confirm on-chain shortly`);
+      return submittedTxHash;
+    }
+    console.error(`[Reputation] Update failed for ${opts.agentWallet}:`, errMsg.slice(0, 200));
     return null;
   }
 }
