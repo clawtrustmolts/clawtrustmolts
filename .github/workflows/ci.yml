@@ -85,43 +85,27 @@ jobs:
   # but do not block merges on day one).
   sast:
     runs-on: ubuntu-latest
-    container:
-      image: semgrep/semgrep
     steps:
       - uses: actions/checkout@v4
-      - name: Run Semgrep
-        run: >
-          semgrep scan
-          --config p/typescript
-          --config p/express
-          --config p/jwt
-          --config p/owasp-top-ten
-          --error
-          --severity ERROR
-          --json-output semgrep-results.json
-          || (cat semgrep-results.json | python3 -c "
-          import sys, json
-          r = json.load(sys.stdin)
-          findings = r.get('results', [])
-          if findings:
-              print(f'Semgrep found {len(findings)} ERROR-level security issue(s):')
-              for f in findings[:10]:
-                  print(f'  {f[\"path\"]}:{f[\"start\"][\"line\"]} — {f[\"check_id\"]}')
-          sys.exit(1)
-          ")
-      - name: Upload Semgrep results
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: returntocorp/semgrep-action@v1
         with:
-          name: semgrep-results
-          path: semgrep-results.json
-          retention-days: 7
+          config: >-
+            p/typescript
+            p/express
+            p/jwt
+            p/owasp-top-ten
+        env:
+          # Only fail on ERROR-severity findings.
+          # Most community-ruleset findings are WARNING level, so this keeps
+          # the build green on day one while blocking high-confidence issues.
+          SEMGREP_OPTIONS: "--severity ERROR"
 
   # ── Dependency vulnerability audit ────────────────────────────────────────
-  # npm audit checks all production and dev dependencies for known CVEs.
-  # Fails on CRITICAL severity only — the one known HIGH-severity issue
-  # (tmp ≤0.2.3 via hardhat/solc) is a build-time dev tool with no runtime
-  # exposure. Tighten to --audit-level=high once hardhat is updated.
+  # Uses audit-ci so we can maintain a precise allowlist of known acceptable
+  # advisories instead of lowering the global severity threshold.
+  # GHSA-52f5-9888-hmc6 (tmp ≤0.2.3 via hardhat/solc) is explicitly allowlisted:
+  # it is a build-time dev tool with no runtime exposure; the fix requires a
+  # breaking upgrade to hardhat@3.3.0 — scheduled for a separate task.
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
@@ -131,4 +115,4 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm audit --audit-level=critical
+      - run: npx audit-ci --high --allowlist GHSA-52f5-9888-hmc6
