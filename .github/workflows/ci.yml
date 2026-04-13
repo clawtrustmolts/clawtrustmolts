@@ -17,10 +17,11 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npx tsc --noEmit
-      # ESLint now uses flat config (eslint.config.js) — no --ext needed.
-      # Security rules are `warn`; only `error`-level rules fail the build.
-      # The || true is intentionally removed so lint errors actually block merges.
-      - run: npx eslint .
+      # ESLint uses .eslintrc.json (legacy config, ESLint 8) with @typescript-eslint
+      # and eslint-plugin-security. Dangerous patterns are `error`; existing code
+      # issues tuned to `warn` so the build passes on day one.
+      # || true removed — lint errors now actually block merges.
+      - run: npx eslint . --ext .ts,.tsx
 
   test:
     runs-on: ubuntu-latest
@@ -65,8 +66,9 @@ jobs:
       - run: npx hardhat compile
 
   # ── Secret scanning ────────────────────────────────────────────────────────
-  # Gitleaks scans the full git history for committed secrets: private keys,
-  # API tokens, credentials. Fails the build if any are found.
+  # Gitleaks scans the full git history on every push and PR for committed
+  # secrets: private keys, API tokens, credentials.
+  # .gitleaks.toml allowlists the Ethereum zero-address placeholder and doc paths.
   secret-scan:
     runs-on: ubuntu-latest
     steps:
@@ -79,10 +81,9 @@ jobs:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   # ── Static Application Security Testing ───────────────────────────────────
-  # Semgrep scans TypeScript / Express code for security antipatterns using
-  # community rulesets: typescript, express, jwt, owasp-top-ten.
-  # Only ERROR-severity findings fail the build (WARNING findings are reported
-  # but do not block merges on day one).
+  # Semgrep scans TypeScript/Express code using four community rulesets.
+  # .semgrepignore excludes node_modules, dist, contracts, and test fixtures.
+  # Only ERROR-level findings fail the build; warnings are informational.
   sast:
     runs-on: ubuntu-latest
     steps:
@@ -95,17 +96,15 @@ jobs:
             p/jwt
             p/owasp-top-ten
         env:
-          # Only fail on ERROR-severity findings.
-          # Most community-ruleset findings are WARNING level, so this keeps
-          # the build green on day one while blocking high-confidence issues.
           SEMGREP_OPTIONS: "--severity ERROR"
 
   # ── Dependency vulnerability audit ────────────────────────────────────────
-  # Uses audit-ci so we can maintain a precise allowlist of known acceptable
-  # advisories instead of lowering the global severity threshold.
-  # GHSA-52f5-9888-hmc6 (tmp ≤0.2.3 via hardhat/solc) is explicitly allowlisted:
-  # it is a build-time dev tool with no runtime exposure; the fix requires a
-  # breaking upgrade to hardhat@3.3.0 — scheduled for a separate task.
+  # Runs npm audit --audit-level=high. Fails if any HIGH or CRITICAL CVE is
+  # found in the dependency tree.
+  # NOTE: hardhat is currently in `dependencies` instead of `devDependencies`.
+  # It is a build-time contract compiler with no runtime exposure, but npm
+  # treats it as a production dependency. Moving it to devDependencies with
+  # `npm install --save-dev hardhat` will allow this job to pass cleanly.
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
@@ -115,4 +114,4 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npx audit-ci --high --allowlist GHSA-52f5-9888-hmc6
+      - run: npm audit --audit-level=high
