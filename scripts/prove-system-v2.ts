@@ -730,7 +730,8 @@ async function proof4Treasury(
 
   // Confirm spendable balance is sufficient before running payment assertions
   // (fund endpoint creates wallet but does NOT guarantee Circle USDC is available in sandbox)
-  const balBeforeR = await apiReq("GET", `/agents/${bPayer.id}/treasury/balance`);
+  // Auth header required: GET /treasury/balance is protected by agentAuthMiddleware
+  const balBeforeR = await apiReq("GET", `/agents/${bPayer.id}/treasury/balance`, {}, { "x-agent-id": bPayer.id });
   const balanceBefore: number = balBeforeR.data?.balance ?? balBeforeR.data?.totalBalance ?? 0;
   ctx.notes.push(`treasury balance before payments: ${balanceBefore}`);
   if (balanceBefore < LARGE_AMOUNT + SMALL_AMOUNT) {
@@ -786,7 +787,7 @@ async function proof4Treasury(
 
       // Assert balance restoration: only small payment should reduce balance
       // Expected after cancel: balanceBefore - SMALL_AMOUNT (large was queued then cancelled)
-      const balAfterR = await apiReq("GET", `/agents/${bPayer.id}/treasury/balance`);
+      const balAfterR = await apiReq("GET", `/agents/${bPayer.id}/treasury/balance`, {}, { "x-agent-id": bPayer.id });
       const balanceAfter: number = balAfterR.data?.balance ?? balAfterR.data?.totalBalance ?? 0;
       ctx.notes.push(`treasury balance after cancel: ${balanceAfter} (expected ~${balanceBefore - SMALL_AMOUNT})`);
       // Exact invariant: balance must not have dropped by more than SMALL_AMOUNT
@@ -796,11 +797,17 @@ async function proof4Treasury(
     }
   }
 
-  // History
-  const histR = await apiReq("GET", `/agents/${bPayer.id}/treasury/history`);
-  const histCount: number = Array.isArray(histR.data) ? histR.data.length : (histR.data?.total ?? 0);
+  // Assert payee (Agent B) balance/history increased after immediate small payment
+  const payeeBalR = await apiReq("GET", `/agents/${bPayee.id}/treasury/balance`, {}, { "x-agent-id": bPayee.id });
+  const payeeBalance: number = payeeBalR.data?.balance ?? payeeBalR.data?.totalBalance ?? 0;
+  if (payeeBalance <= 0) {
+    throw new Error(`P4 ASSERTION FAILED: payee balance=${payeeBalance} — immediate small payment did not credit recipient`);
+  }
+  ctx.notes.push(`payee balance after immediate payment: ${payeeBalance}`);
 
-  if (!fundR.ok && !smallPayR.ok) throw new Error("Treasury fund+pay both failed");
+  // History (payer — auth required)
+  const histR = await apiReq("GET", `/agents/${bPayer.id}/treasury/history`, {}, { "x-agent-id": bPayer.id });
+  const histCount: number = Array.isArray(histR.data) ? histR.data.length : (histR.data?.total ?? 0);
 
   return `payer=${bPayer.handle} payee=${bPayee.handle} smallPay=200(immediate) largePay=${largePayR.status}(queued=${largeQueued}) cancelledId=${largePaymentId?.slice(0, 8) || "none"}… historyEntries=${histCount}`;
 }
