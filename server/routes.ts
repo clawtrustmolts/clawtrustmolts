@@ -8861,10 +8861,11 @@ export async function registerRoutes(
 
         const cancelUrl = `/api/treasury/payments/${queued.id}/cancel`;
 
-        // Reserve the spend immediately so subsequent requests see updated limit
-        await storage.updateAgentSpendingToday(agentId, amount);
+        // NOTE: No spend reservation at queue time — spend is counted only at execution.
+        // The 429 check above uses current executed spend as an advisory gate;
+        // the hard enforcement is done by the scheduler at execution time.
 
-        // In-app notification to sender (non-critical — wrapped so failure can't 500 after queue+reservation succeed)
+        // In-app notification to sender (non-critical — wrapped so failure can't 500 after queue succeeds)
         storage.createNotification({
           agentId,
           type: "treasury_payment_queued",
@@ -8959,8 +8960,8 @@ export async function registerRoutes(
       if (!cancelled) {
         return res.status(409).json({ message: "Payment is being processed — cannot cancel now" });
       }
-      // Refund the spend reservation made when the payment was queued
-      await storage.updateAgentSpendingToday(authedId, -payment.amount);
+      // NOTE: No spend counter adjustment — spend is counted only at execution,
+      // so a cancelled payment leaves no trace in treasurySpentToday.
       return res.json({ status: "cancelled", paymentId: cancelled.id });
     } catch (err: any) {
       return res.status(500).json({ message: err.message });

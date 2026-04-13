@@ -484,19 +484,12 @@ async function processTreasuryPaymentQueue() {
           await storage.resetAgentSpendingToday(payment.fromAgentId);
           sender.treasurySpentToday = 0;
         }
+        // ── Execution-day limit check (authoritative enforcement) ───────────
+        // Spend is never reserved at queue time — this is the single source of truth.
+        // treasurySpentToday reflects only actually-executed spend for the current day.
         const dailyLimit = sender.treasuryDailyLimit ?? 50_000_000;
-        // ── Effective spend check at execution time ──────────────────────────
-        // Same day: treasurySpentToday already includes this payment's reservation
-        //   → check spentToday > dailyLimit (catches limit-lowering after queue)
-        // New day: counter reset to 0; reservation gone; check payment.amount alone
-        //   → check payment.amount > dailyLimit (catches limit below single payment)
-        const effectiveSpent = isNewDay ? payment.amount : sender.treasurySpentToday;
-        if (effectiveSpent > dailyLimit) {
-          console.warn(`[TreasuryQueue] Aborting ${payment.id} — daily limit exceeded at execution time (effectiveSpent=${effectiveSpent}, limit=${dailyLimit})`);
-          // Refund reservation only if same day (new day already zeroed counter).
-          if (!isNewDay) {
-            await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
-          }
+        if (sender.treasurySpentToday + payment.amount > dailyLimit) {
+          console.warn(`[TreasuryQueue] Aborting ${payment.id} — would exceed daily limit (spentToday=${sender.treasurySpentToday} + amount=${payment.amount} > limit=${dailyLimit})`);
           await storage.abortProcessingTreasuryPayment(payment.id);
           continue;
         }
@@ -505,10 +498,6 @@ async function processTreasuryPaymentQueue() {
         const { balance } = await getTreasuryBalance(sender.treasuryWalletId);
         if (balance < payment.amount) {
           console.warn(`[TreasuryQueue] Aborting ${payment.id} — insufficient balance ${balance} < ${payment.amount}`);
-          // Same guard: refund only if same day to prevent negative counter.
-          if (!isNewDay) {
-            await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
-          }
           await storage.abortProcessingTreasuryPayment(payment.id);
           continue;
         }
@@ -555,11 +544,9 @@ async function processTreasuryPaymentQueue() {
 
         // Update sender balance (actual USDC deduction)
         await storage.updateTreasuryBalance(payment.fromAgentId, -payment.amount, "add");
-        // Only increment daily spend counter if execution is on a new day (counter was reset);
-        // if same day, the reservation at queue time already counted this spend.
-        if (isNewDay) {
-          await storage.updateAgentSpendingToday(payment.fromAgentId, payment.amount);
-        }
+        // Always count executed spend — no reservation model, so every execution
+        // must be recorded against the current day's limit.
+        await storage.updateAgentSpendingToday(payment.fromAgentId, payment.amount);
 
         // Notify sender (non-critical — fire-and-forget so notification failure
         // doesn't trigger the "CRITICAL: post-transfer DB failure" alarm path)
@@ -575,13 +562,10 @@ async function processTreasuryPaymentQueue() {
       } catch (err: any) {
         console.error(`[TreasuryQueue] Failed to execute payment ${payment.id}:`, err.message);
         if (!transferCompleted) {
-          // Transfer was never submitted — safe to abort and refund reservation.
-          // abortProcessingTreasuryPayment is WHERE status='processing' so it's
-          // a no-op if the payment was never claimed or already finalized.
+          // Transfer was never submitted — safe to abort. No spend counter adjustment
+          // needed since spend is never reserved at queue time (execution-day model).
           try {
             await storage.abortProcessingTreasuryPayment(payment.id);
-            // Refund reservation — GREATEST guard in storage prevents negative counter.
-            await storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount);
           } catch (abortErr: any) {
             console.error(`[TreasuryQueue] Failed to abort orphaned payment ${payment.id}:`, abortErr.message);
           }
