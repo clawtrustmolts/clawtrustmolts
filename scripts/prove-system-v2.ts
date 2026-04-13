@@ -623,10 +623,12 @@ async function proof3AgencyMode(
         { status: "approved" },
         { "x-agent-id": bLead.id });
       claimedCount++;
-      // Assert escrow released per approved subtask
-      const stR = await apiReq("GET", `/gigs/${gigId}/subtasks/${st.id}`);
-      const stData = stR.data?.subtask ?? stR.data;
-      const stStatus = stData?.status || "";
+      // Assert escrow released per approved subtask (no single-subtask GET route exists;
+      // re-fetch the list and match by id)
+      const stListR = await apiReq("GET", `/gigs/${gigId}/subtasks`, {}, { "x-agent-id": bLead.id });
+      const updatedList: any[] = Array.isArray(stListR.data) ? stListR.data : (stListR.data?.subtasks || []);
+      const updatedSt = updatedList.find((s: any) => s.id === st.id);
+      const stStatus: string = updatedSt?.status || "";
       if (!["approved", "completed", "paid"].includes(stStatus)) {
         throw new Error(`P3 ASSERTION FAILED: subtask ${i} status=${stStatus} after approval — expected approved/completed/paid`);
       }
@@ -701,10 +703,10 @@ async function proof4Treasury(
 
   // ── Small payment ($1, below $25 threshold) → must return HTTP 200 (immediate) ──
   const smallPayR = await apiReq("POST", `/agents/${bPayer.id}/treasury/pay`, {
-    recipientId: bPayee.id,
+    recipientAgentId: bPayee.id,
     amount: SMALL_AMOUNT,
     currency: "USDC",
-    description: `P4 small pay ${RUN_ID}`,
+    note: `P4 small pay ${RUN_ID}`,
   }, { "x-agent-id": bPayer.id });
 
   if (!smallPayR.ok) {
@@ -719,17 +721,18 @@ async function proof4Treasury(
 
   // ── Large payment ($30, above $25 threshold) → must return HTTP 202 (queued) ──
   const largePayR = await apiReq("POST", `/agents/${bPayer.id}/treasury/pay`, {
-    recipientId: bPayee.id,
+    recipientAgentId: bPayee.id,
     amount: LARGE_AMOUNT,
     currency: "USDC",
-    description: `P4 large pay ${RUN_ID}`,
+    note: `P4 large pay ${RUN_ID}`,
   }, { "x-agent-id": bPayer.id });
 
-  const largeQueued = largePayR.status === 202 || largePayR.data?.queued === true || largePayR.data?.status === "pending";
-  if (!largePayR.ok && largePayR.status !== 202) {
-    throw new Error(`P4 ASSERTION FAILED: large payment ($${LARGE_AMOUNT / 1_000_000}) returned HTTP ${largePayR.status} — expected 202`);
+  // Hard assert: queued payments MUST return 202 (backend: res.status(202).json({ status:"queued" }))
+  if (largePayR.status !== 202) {
+    throw new Error(`P4 ASSERTION FAILED: large payment ($${LARGE_AMOUNT / 1_000_000}) returned HTTP ${largePayR.status} — QUEUE_THRESHOLD=$${QUEUE_THRESHOLD / 1_000_000} requires 202`);
   }
-  ctx.notes.push(`large payment HTTP ${largePayR.status} queued=${largeQueued} (expected queued for >$${QUEUE_THRESHOLD / 1_000_000})`);
+  const largeQueued: boolean = largePayR.data?.status === "queued" || largePayR.status === 202;
+  ctx.notes.push(`large payment HTTP ${largePayR.status} queued=${largeQueued} (correct — >$${QUEUE_THRESHOLD / 1_000_000})`);
 
   let largePaymentId: string | null = largePayR.data?.paymentId || largePayR.data?.id || null;
   const largeCircleId: string | null = largePayR.data?.circleTxId || null;
