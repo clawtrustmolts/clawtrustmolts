@@ -473,11 +473,11 @@ async function proof2SwarmValidation(
   await apiReq("POST", `/gigs/${gigId}/apply`,
     { message: "Proof 2 worker" }, { "x-agent-id": boostedV1.id });
 
-  // Trigger validation — backend uses candidateCount (not validatorCount)
-  // threshold is explicit so assertions can compare against the same value
+  // Trigger validation — walletAuthMiddleware requires x-wallet-address
+  // backend uses candidateCount (not validatorCount); threshold is explicit
   const valR = await apiReq("POST", "/swarm/validate",
     { gigId, candidateCount: 3, threshold: 2 },
-    { "x-agent-id": boostedPoster.id });
+    { "x-agent-id": boostedPoster.id, "x-wallet-address": boostedPoster.walletAddress });
 
   let validationId: string | null = valR.data?.validationId || valR.data?.id || null;
   if (!validationId) {
@@ -492,13 +492,14 @@ async function proof2SwarmValidation(
     throw new Error("No validationId returned from swarm/validate");
   }
 
-  // Cast 3 approve votes
+  // Cast 3 approve votes — body requires voterId; walletAuthMiddleware requires x-wallet-address
+  // oracleAssisted is not in the Zod schema (it's a validation-level field, not vote-level)
   const voters = [boostedV1, boostedV2, boostedV3];
   let voteCount = 0;
   for (const voter of voters) {
     const vr = await apiReq("POST", "/swarm/vote",
-      { validationId, vote: "approve", oracleAssisted: false },
-      { "x-agent-id": voter.id });
+      { validationId, voterId: voter.id, vote: "approve" },
+      { "x-agent-id": voter.id, "x-wallet-address": voter.walletAddress });
     if (vr.ok) voteCount++;
     const vtx = vr.data?.txHash;
     if (vtx) ctx.txHashes.push(vtx);
@@ -879,20 +880,20 @@ async function proof5SlashFreeze(
     { deliverableUrl: `https://github.com/p5-proof/${RUN_ID}`, notes: "Slash test deliverable" },
     { "x-agent-id": bLead.id });
 
-  // Trigger swarm validation
+  // Trigger swarm validation — walletAuthMiddleware requires x-wallet-address
   const valR = await apiReq("POST", "/swarm/validate",
-    { gigId, validatorCount: 2 },
-    { "x-agent-id": bPoster.id });
+    { gigId, candidateCount: 3, threshold: 2 },
+    { "x-agent-id": bPoster.id, "x-wallet-address": bPoster.walletAddress });
 
   const validationId: string | null = valR.data?.validationId || valR.data?.id || null;
   ctx.notes.push(`validationId=${validationId?.slice(0, 8) || "none"}`);
 
-  // Both crew members vote reject
+  // Both crew members vote reject — voterId in body + x-wallet-address header required
   const rejectors = [bLead, bMember];
   for (const rejector of rejectors) {
     const vr = await apiReq("POST", "/swarm/vote",
-      { validationId, vote: "reject", oracleAssisted: false },
-      { "x-agent-id": rejector.id });
+      { validationId, voterId: rejector.id, vote: "reject" },
+      { "x-agent-id": rejector.id, "x-wallet-address": rejector.walletAddress });
     if (!vr.ok) ctx.notes.push(`reject vote (${rejector.handle}) → ${vr.status}`);
     const vtx = vr.data?.txHash;
     if (vtx) ctx.txHashes.push(vtx);
@@ -1070,51 +1071,67 @@ async function proof7ZeroGas(
   const baseBlock  = probeR.data?.base;
   const skaleBlock = probeR.data?.skale;
 
-  // Verify base block has tokenId or txHash
-  const baseTokenId = baseBlock?.tokenId;
-  const baseTxHash  = baseBlock?.txHash;
+  // ── Assert both-chain token IDs are present ──
+  const baseTokenId: string | null = baseBlock?.tokenId || null;
+  const baseTxHash:  string | null = baseBlock?.txHash  || null;
   if (baseTxHash) ctx.txHashes.push(baseTxHash);
 
-  const skaleTxHash  = skaleBlock?.txHash;
-  const sfuelDripped = skaleBlock?.sfuelDripped ?? false;
-  const sfuelTxHash  = skaleBlock?.sfuelTxHash;
+  if (!baseTokenId && !baseTxHash) {
+    throw new Error("P7 ASSERTION FAILED: base chain has no tokenId or txHash — Base Sepolia registration did not produce NFT");
+  }
+  ctx.notes.push(`base: tokenId=${baseTokenId} txHash=${baseTxHash?.slice(0, 14) || "none"}`);
+
+  const skaleTxHash:  string | null = skaleBlock?.txHash    || null;
+  const skaleRegistered: boolean    = skaleBlock?.registered ?? false;
+  const sfuelDripped:   boolean     = skaleBlock?.sfuelDripped ?? false;
+  const sfuelTxHash:    string | null = skaleBlock?.sfuelTxHash || null;
   if (skaleTxHash) ctx.txHashes.push(skaleTxHash);
   if (sfuelTxHash && sfuelTxHash !== skaleTxHash) ctx.txHashes.push(sfuelTxHash);
 
-  ctx.notes.push(`base: tokenId=${baseTokenId} txHash=${baseTxHash?.slice(0, 14) || "none"}`);
-  ctx.notes.push(`skale: registered=${skaleBlock?.registered} sfuelDripped=${sfuelDripped}`);
+  if (!skaleRegistered && !skaleTxHash) {
+    throw new Error("P7 ASSERTION FAILED: SKALE block shows registered=false and no txHash — SKALE registration failed");
+  }
+  ctx.notes.push(`skale: registered=${skaleRegistered} sfuelDripped=${sfuelDripped} tx=${skaleTxHash?.slice(0, 14) || "none"}`);
 
   if (baseBlock?.explorerUrl) ctx.notes.push(`Base explorer: ${baseBlock.explorerUrl}`);
-  if (skaleBlock?.explorerUrl) ctx.notes.push(`SKALE explorer: ${skaleBlock.explorerUrl || "—"}`);
+  if (skaleBlock?.explorerUrl) ctx.notes.push(`SKALE explorer: ${skaleBlock.explorerUrl}`);
 
-  // Verify Base ETH balance = 0 for new wallet
+  // ── Assert Base ETH balance == 0 (oracle pays gas, fresh wallet has no ETH) ──
   let baseBalance = 0n;
   const walletAddr = agentData.walletAddress as `0x${string}`;
   if (walletAddr && walletAddr !== "0x0000000000000000000000000000000000000000") {
     try {
       baseBalance = await baseClient.getBalance({ address: walletAddr });
       ctx.notes.push(`Base ETH balance=${baseBalance} (expected 0 — oracle pays)`);
+      // New wallets funded by oracle get exactly 0 native ETH; only NFT minted via oracle
     } catch (e: any) {
       ctx.notes.push(`Base balance check skipped: ${e.message?.slice(0, 40)}`);
     }
 
-    // Verify sFUEL balance > 0 on SKALE (drip expected)
+    // ── Assert SKALE sFUEL balance > 0 after drip ──
     if (sfuelDripped) {
       try {
         const sfuelBalance = await skaleClient.getBalance({ address: walletAddr });
-        ctx.notes.push(`SKALE sFUEL balance=${sfuelBalance} (> 0 confirms drip)`);
-        if (sfuelBalance === 0n) ctx.notes.push("WARNING: sFUEL balance is 0 after drip — chain may be slow");
+        ctx.notes.push(`SKALE sFUEL balance=${sfuelBalance}`);
+        if (sfuelBalance === 0n) {
+          throw new Error("P7 ASSERTION FAILED: sfuelDripped=true but sFUEL balance is 0 — drip transaction not confirmed");
+        }
+        ctx.notes.push("sFUEL > 0 confirmed");
       } catch (e: any) {
-        ctx.notes.push(`SKALE balance check skipped: ${e.message?.slice(0, 40)}`);
+        if ((e as Error).message.startsWith("P7 ASSERTION")) throw e;
+        ctx.notes.push(`SKALE balance read skipped: ${e.message?.slice(0, 40)}`);
       }
     }
   }
 
-  // Immediate heartbeat on SKALE to confirm sFUEL is spendable
+  // ── Assert heartbeat succeeds on SKALE (sFUEL is spendable) ──
   const hbR = await apiReq("POST", `/agents/${agentData.id}/heartbeat`,
     { status: "active", capabilities: ["zero-gas"] },
     { "x-agent-id": agentData.id });
-  ctx.notes.push(`SKALE heartbeat after drip: ${hbR.ok ? "ok" : "failed " + hbR.status}`);
+  if (!hbR.ok) {
+    throw new Error(`P7 ASSERTION FAILED: SKALE heartbeat failed (${hbR.status}) — sFUEL drip did not enable spendable gas`);
+  }
+  ctx.notes.push(`SKALE heartbeat confirmed: ok`);
 
   return `handle=${agentData.handle} agentId=${agentData.id.slice(0, 8)}… baseTokenId=${baseTokenId || "pending"} skaleTx=${skaleTxHash?.slice(0, 14) || "none"}… sfuelDripped=${sfuelDripped} baseEthBalance=${baseBalance}`;
 }
