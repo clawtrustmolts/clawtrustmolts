@@ -8810,25 +8810,25 @@ export async function registerRoutes(
       const recipient = await storage.getAgent(recipientAgentId);
       if (!recipient) return res.status(404).json({ message: "Recipient agent not found" });
 
-      // ── Protection 5a: daily limit reset ──────────────────────────────────
+      // ── Protection 5a/5b: advisory daily limit fast-path ──────────────────
+      // Uses the stale read from getAgent(). The hard atomic enforcement for
+      // immediate payments happens below via atomicClaimDailySpend(); the hard
+      // enforcement for queued payments happens in the scheduler at execution time.
+      // This fast-path saves a DB call for the obviously-over-limit case.
       const todayStart = new Date();
       todayStart.setUTCHours(0, 0, 0, 0);
-      const lastReset = sender.treasurySpentTodayReset;
-      if (!lastReset || lastReset < todayStart) {
-        await storage.resetAgentSpendingToday(agentId);
-        sender.treasurySpentToday = 0;
-      }
-
-      // ── Protection 5b: reject if over daily limit ──────────────────────────
-      const dailyLimit = sender.treasuryDailyLimit ?? 50_000_000;
-      const spentToday = sender.treasurySpentToday ?? 0;
-      if (spentToday + amount > dailyLimit) {
-        const remaining = Math.max(0, dailyLimit - spentToday);
+      const advisoryDailyLimit = sender.treasuryDailyLimit ?? 50_000_000;
+      const advisoryReset = sender.treasurySpentTodayReset;
+      const advisorySpentToday = (!advisoryReset || advisoryReset < todayStart)
+        ? 0 // new day — counter effectively 0
+        : (sender.treasurySpentToday ?? 0);
+      if (advisorySpentToday + amount > advisoryDailyLimit) {
+        const remaining = Math.max(0, advisoryDailyLimit - advisorySpentToday);
         const nextReset = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
         return res.status(429).json({
           message: "Daily treasury spend limit reached",
-          dailyLimit,
-          spentToday,
+          dailyLimit: advisoryDailyLimit,
+          spentToday: advisorySpentToday,
           remaining,
           remainingFormatted: `${(remaining / 1_000_000).toFixed(2)} USDC`,
           nextResetAt: nextReset.toISOString(),
@@ -8887,6 +8887,23 @@ export async function registerRoutes(
       }
 
       // ── Immediate execution path (< $25 USDC) ────────────────────────────
+      // Hard atomic enforcement: claim daily spend before the transfer.
+      // Two concurrent requests will see each other's committed increment and at
+      // most one can succeed if the combined total would exceed the daily limit.
+      const spendClaim = await storage.atomicClaimDailySpend(agentId, amount);
+      if (!spendClaim.allowed) {
+        const remaining = Math.max(0, spendClaim.dailyLimit - spendClaim.spentToday);
+        const nextReset = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+        return res.status(429).json({
+          message: "Daily treasury spend limit reached",
+          dailyLimit: spendClaim.dailyLimit,
+          spentToday: spendClaim.spentToday,
+          remaining,
+          remainingFormatted: `${(remaining / 1_000_000).toFixed(2)} USDC`,
+          nextResetAt: nextReset.toISOString(),
+        });
+      }
+
       let destAddress: string;
       if (recipient.treasuryWalletId) {
         const addr = await getWalletAddress(recipient.treasuryWalletId);
@@ -8922,9 +8939,8 @@ export async function registerRoutes(
         await storage.updateTreasuryBalance(recipientAgentId, amount, "add");
       }
 
-      // Update sender's cached balance and daily spend counter
+      // Update sender's cached balance (spend counter already claimed atomically above)
       await storage.updateTreasuryBalance(agentId, -amount, "add");
-      await storage.updateAgentSpendingToday(agentId, amount);
 
       return res.json({
         txHash: transfer.transactionId,

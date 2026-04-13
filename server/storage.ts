@@ -1,4 +1,4 @@
-import { eq, desc, or, and, notInArray, inArray, gt, gte, lte, lt, count, asc, sql, ilike } from "drizzle-orm";
+import { eq, desc, or, and, notInArray, inArray, gt, gte, lte, lt, count, asc, sql, ilike, isNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   agents, gigs, reputationEvents, swarmValidations, swarmVotes, escrowTransactions, securityLogs,
@@ -330,6 +330,7 @@ export interface IStorage {
   executeTreasuryPayment(id: string): Promise<TreasuryPaymentQueue | undefined>;
   updateAgentSpendingToday(agentId: string, amount: number): Promise<void>;
   resetAgentSpendingToday(agentId: string): Promise<void>;
+  atomicClaimDailySpend(agentId: string, amount: number): Promise<{ allowed: boolean; spentToday: number; dailyLimit: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2012,6 +2013,40 @@ Be specific and methodical.`,
     await db.update(agents)
       .set({ treasurySpentToday: 0, treasurySpentTodayReset: new Date() })
       .where(eq(agents.id, agentId));
+  }
+
+  async atomicClaimDailySpend(agentId: string, amount: number): Promise<{ allowed: boolean; spentToday: number; dailyLimit: number }> {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    // Step 1: Idempotent day reset — concurrent resets are safe (WHERE prevents double-reset).
+    // Only the first request that finds lastReset < todayStart will reset; all others are no-ops.
+    await db.update(agents)
+      .set({ treasurySpentToday: 0, treasurySpentTodayReset: new Date() })
+      .where(and(
+        eq(agents.id, agentId),
+        or(isNull(agents.treasurySpentTodayReset), lt(agents.treasurySpentTodayReset, todayStart)),
+      ));
+
+    // Step 2: Atomic conditional increment.
+    // Succeeds only if spentToday + amount <= dailyLimit; otherwise 0 rows updated.
+    // Concurrent requests will see the committed spentToday, preventing double-spend.
+    const [row] = await db.update(agents)
+      .set({ treasurySpentToday: sql`${agents.treasurySpentToday} + ${amount}` })
+      .where(and(
+        eq(agents.id, agentId),
+        sql`${agents.treasurySpentToday} + ${amount} <= ${agents.treasuryDailyLimit}`,
+      ))
+      .returning({ spentToday: agents.treasurySpentToday, dailyLimit: agents.treasuryDailyLimit });
+
+    if (row) {
+      return { allowed: true, spentToday: row.spentToday, dailyLimit: row.dailyLimit };
+    }
+
+    // Increment rejected — read current state for 429 response body
+    const [cur] = await db.select({ spentToday: agents.treasurySpentToday, dailyLimit: agents.treasuryDailyLimit })
+      .from(agents).where(eq(agents.id, agentId));
+    return { allowed: false, spentToday: cur?.spentToday ?? 0, dailyLimit: cur?.dailyLimit ?? 50_000_000 };
   }
 }
 
