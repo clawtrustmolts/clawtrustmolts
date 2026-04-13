@@ -16,7 +16,8 @@
  * Exit 0 when ≥ 6/7 proofs PASS. Exit 1 otherwise.
  */
 
-import { createPublicClient, http, generatePrivateKey, privateKeyToAccount } from "viem";
+import { createPublicClient, http } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { setTimeout as sleep } from "node:timers/promises";
 import * as fs from "node:fs/promises";
@@ -505,10 +506,10 @@ async function proof2SwarmValidation(
   // On-chain check: SKALE swarm validator
   try {
     const skaleSwarm = SKALE_CFG.contracts.swarm;
-    const isActive = await skaleClient.readContract({
+    const isActive = await (skaleClient.readContract as any)({
       address: skaleSwarm,
       abi: [{ name: "getValidationCount", type: "function", stateMutability: "view",
-               inputs: [], outputs: [{ name: "", type: "uint256" }] }] as const,
+               inputs: [], outputs: [{ name: "", type: "uint256" }] }],
       functionName: "getValidationCount",
     });
     ctx.notes.push(`SKALE swarm contract validationCount=${isActive}`);
@@ -851,7 +852,7 @@ async function proof6CrossChainSync(
 
   // On-chain: SKALE RepAdapter verify
   try {
-    const scores = await skaleClient.readContract({
+    const scores = await (skaleClient.readContract as any)({
       address: SKALE_CFG.contracts.repAdapter,
       abi: REP_ADAPTER_ABI,
       functionName: "fusedScores",
