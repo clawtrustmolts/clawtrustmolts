@@ -445,7 +445,16 @@ function scheduleBlogPosts() {
 
 // ─── Protection 5 — Treasury Payment Queue Processor ─────────────────────────
 
+// Process-local re-entrancy guard: prevents overlapping setInterval ticks
+// from running the queue processor concurrently in the same Node process.
+let treasuryQueueRunning = false;
+
 async function processTreasuryPaymentQueue() {
+  if (treasuryQueueRunning) {
+    console.log("[TreasuryQueue] Previous run still in progress, skipping this tick");
+    return;
+  }
+  treasuryQueueRunning = true;
   try {
     const due = await storage.getDueTreasuryPayments();
     if (due.length === 0) return;
@@ -455,6 +464,7 @@ async function processTreasuryPaymentQueue() {
       // Track whether the Circle transfer was submitted before any error occurs.
       // Must be declared outside the try block to be accessible in catch.
       let transferCompleted = false;
+      let spendClaimed = false;
       try {
         // ── Atomic claim: pending→processing (idempotency guard) ──────────
         const claimed = await storage.claimTreasuryPaymentForProcessing(payment.id);
@@ -467,29 +477,6 @@ async function processTreasuryPaymentQueue() {
         const recipient = await storage.getAgent(payment.toAgentId);
         if (!sender || !sender.treasuryWalletId || !recipient) {
           console.warn(`[TreasuryQueue] Aborting ${payment.id} — missing sender/recipient`);
-          await storage.abortProcessingTreasuryPayment(payment.id);
-          continue;
-        }
-
-        // ── Execution-time daily limit re-check ───────────────────────────
-        // NOTE: spend was reserved at queue time; this re-check guards against
-        // edge cases where the limit was lowered after queuing, or if the
-        // counter reset for a new day (execution day differs from queue day).
-        const todayStart = new Date();
-        todayStart.setUTCHours(0, 0, 0, 0);
-        const lastReset = sender.treasurySpentTodayReset;
-        const isNewDay = !lastReset || lastReset < todayStart;
-        if (isNewDay) {
-          // New day: reset counter; spend reservation from yesterday no longer counts
-          await storage.resetAgentSpendingToday(payment.fromAgentId);
-          sender.treasurySpentToday = 0;
-        }
-        // ── Execution-day limit check (authoritative enforcement) ───────────
-        // Spend is never reserved at queue time — this is the single source of truth.
-        // treasurySpentToday reflects only actually-executed spend for the current day.
-        const dailyLimit = sender.treasuryDailyLimit ?? 50_000_000;
-        if (sender.treasurySpentToday + payment.amount > dailyLimit) {
-          console.warn(`[TreasuryQueue] Aborting ${payment.id} — would exceed daily limit (spentToday=${sender.treasurySpentToday} + amount=${payment.amount} > limit=${dailyLimit})`);
           await storage.abortProcessingTreasuryPayment(payment.id);
           continue;
         }
@@ -510,6 +497,19 @@ async function processTreasuryPaymentQueue() {
         } else {
           destAddress = recipient.walletAddress;
         }
+
+        // ── Atomic daily limit claim (hard enforcement before transfer) ───
+        // Same conditional-UPDATE pattern as immediate payments: day reset is
+        // idempotent, increment only succeeds if spentToday + amount <= dailyLimit.
+        // The re-entrancy guard above prevents concurrent runs in the same process;
+        // this atomic claim provides additional defense in multi-worker deployments.
+        const spendResult = await storage.atomicClaimDailySpend(payment.fromAgentId, payment.amount);
+        if (!spendResult.allowed) {
+          console.warn(`[TreasuryQueue] Aborting ${payment.id} — daily limit exceeded at execution time (spentToday=${spendResult.spentToday}, limit=${spendResult.dailyLimit})`);
+          await storage.abortProcessingTreasuryPayment(payment.id);
+          continue;
+        }
+        spendClaimed = true;
 
         // Execute transfer
         const transfer = await transferBetweenTreasuryWallets(sender.treasuryWalletId, destAddress, payment.amount);
@@ -544,9 +544,8 @@ async function processTreasuryPaymentQueue() {
 
         // Update sender balance (actual USDC deduction)
         await storage.updateTreasuryBalance(payment.fromAgentId, -payment.amount, "add");
-        // Always count executed spend — no reservation model, so every execution
-        // must be recorded against the current day's limit.
-        await storage.updateAgentSpendingToday(payment.fromAgentId, payment.amount);
+        // NOTE: updateAgentSpendingToday not called — spend was already claimed
+        // atomically via atomicClaimDailySpend() before the transfer above.
 
         // Notify sender (non-critical — fire-and-forget so notification failure
         // doesn't trigger the "CRITICAL: post-transfer DB failure" alarm path)
@@ -562,10 +561,15 @@ async function processTreasuryPaymentQueue() {
       } catch (err: any) {
         console.error(`[TreasuryQueue] Failed to execute payment ${payment.id}:`, err.message);
         if (!transferCompleted) {
-          // Transfer was never submitted — safe to abort. No spend counter adjustment
-          // needed since spend is never reserved at queue time (execution-day model).
+          // Transfer was never submitted — safe to abort and roll back the atomic spend claim.
           try {
             await storage.abortProcessingTreasuryPayment(payment.id);
+            if (spendClaimed) {
+              // Restore claimed allowance; GREATEST(0) guard prevents negative counter
+              storage.updateAgentSpendingToday(payment.fromAgentId, -payment.amount).catch((rbErr: any) =>
+                console.error(`[TreasuryQueue] Failed to roll back spend claim for ${payment.id}:`, rbErr.message)
+              );
+            }
           } catch (abortErr: any) {
             console.error(`[TreasuryQueue] Failed to abort orphaned payment ${payment.id}:`, abortErr.message);
           }
@@ -579,5 +583,7 @@ async function processTreasuryPaymentQueue() {
     }
   } catch (err: any) {
     console.error("[TreasuryQueue] Queue processor error:", err.message);
+  } finally {
+    treasuryQueueRunning = false;
   }
 }
