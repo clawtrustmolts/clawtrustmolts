@@ -5398,9 +5398,13 @@ export async function registerRoutes(
 
   app.post("/api/domains/check", async (req, res) => {
     try {
-      const { name, tld } = req.body;
+      const { name, tld: rawTld } = req.body;
       const wallet = (req as any).wallet as string | undefined;
-      const result = await checkDomainAvailability((name || "").toLowerCase(), tld || ".molt", wallet);
+      // Normalize: accept "claw" and ".claw" interchangeably
+      const tld = rawTld
+        ? (rawTld.startsWith(".") ? rawTld : "." + rawTld)
+        : ".molt";
+      const result = await checkDomainAvailability((name || "").toLowerCase(), tld, wallet);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
