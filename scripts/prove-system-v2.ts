@@ -604,9 +604,15 @@ async function proof3AgencyMode(
 
   ctx.notes.push(`subtasks auto-generated: ${subtasks.length}`);
 
-  // Snapshot rep scores before completing subtasks
-  const preLeadRep  = await apiReq("GET", `/agents/${bLead.id}`);
+  // Snapshot rep scores before completing subtasks (captain + both members)
+  const [preLeadRep, preM1Rep, preM2Rep] = await Promise.all([
+    apiReq("GET", `/agents/${bLead.id}`),
+    apiReq("GET", `/agents/${bM1.id}`),
+    apiReq("GET", `/agents/${bM2.id}`),
+  ]);
   const preCaptainScore: number = preLeadRep.data?.fusedScore ?? preLeadRep.data?.agent?.fusedScore ?? 0;
+  const preM1Score: number = preM1Rep.data?.fusedScore ?? preM1Rep.data?.agent?.fusedScore ?? 0;
+  const preM2Score: number = preM2Rep.data?.fusedScore ?? preM2Rep.data?.agent?.fusedScore ?? 0;
 
   // Claim + submit each subtask; assert escrow released per subtask
   let claimedCount = 0;
@@ -649,21 +655,38 @@ async function proof3AgencyMode(
   }
   ctx.notes.push(`parent gig advanced to: ${gigStatus}`);
 
-  // Assert rep split: captain (lead) bonus — score should increase
-  const postLeadRep = await apiReq("GET", `/agents/${bLead.id}`);
+  // Assert rep split: captain (lead) bonus + proportional member shares
+  const [postLeadRep, postM1Rep, postM2Rep] = await Promise.all([
+    apiReq("GET", `/agents/${bLead.id}`),
+    apiReq("GET", `/agents/${bM1.id}`),
+    apiReq("GET", `/agents/${bM2.id}`),
+  ]);
   const postCaptainScore: number = postLeadRep.data?.fusedScore ?? postLeadRep.data?.agent?.fusedScore ?? 0;
-  if (postCaptainScore <= preCaptainScore) {
-    ctx.notes.push(`WARNING: captain rep score ${preCaptainScore} → ${postCaptainScore} did not increase (may require async pipeline)`);
-  } else {
-    ctx.notes.push(`captain rep split bonus confirmed: ${preCaptainScore} → ${postCaptainScore}`);
-  }
+  const postM1Score: number = postM1Rep.data?.fusedScore ?? postM1Rep.data?.agent?.fusedScore ?? 0;
+  const postM2Score: number = postM2Rep.data?.fusedScore ?? postM2Rep.data?.agent?.fusedScore ?? 0;
 
-  // Assert treasury credit exists (agency gig should record payment entries)
+  // Captain bonus: lead score must increase (captain gets bonus on top of member share)
+  if (postCaptainScore <= preCaptainScore) {
+    throw new Error(`P3 ASSERTION FAILED: captain rep score ${preCaptainScore} → ${postCaptainScore} did not increase — agency captain bonus not applied`);
+  }
+  ctx.notes.push(`captain rep bonus confirmed: ${preCaptainScore} → ${postCaptainScore}`);
+
+  // Proportional member split: at least one member's score must increase
+  const memberGained = postM1Score > preM1Score || postM2Score > preM2Score;
+  if (!memberGained) {
+    throw new Error(`P3 ASSERTION FAILED: no member rep score increased (m1: ${preM1Score}→${postM1Score}, m2: ${preM2Score}→${postM2Score}) — member rep split not applied`);
+  }
+  ctx.notes.push(`member rep split confirmed: m1 ${preM1Score}→${postM1Score}, m2 ${preM2Score}→${postM2Score}`);
+
+  // Hard assert treasury credit exists (agency gig must record payment entries)
   const treasR = await apiReq("GET", `/agents/${bPoster.id}/treasury/history`);
   const histCount: number = Array.isArray(treasR.data) ? treasR.data.length : (treasR.data?.total ?? treasR.data?.entries?.length ?? 0);
-  ctx.notes.push(`treasury history entries for poster: ${histCount}`);
+  if (histCount === 0) {
+    throw new Error("P3 ASSERTION FAILED: treasury history has 0 entries for poster — agency payment not credited");
+  }
+  ctx.notes.push(`treasury credit confirmed: ${histCount} entries for poster`);
 
-  return `crewId=${crewId.slice(0, 8)}… gigId=${gigId.slice(0, 8)}… milestones=3 subtasksGenerated=${subtasks.length} subtasksCompleted=${claimedCount} gigStatus=${gigStatus} captainScore ${preCaptainScore}→${postCaptainScore}`;
+  return `crewId=${crewId.slice(0, 8)}… gigId=${gigId.slice(0, 8)}… milestones=3 subtasksGenerated=${subtasks.length} subtasksCompleted=${claimedCount} gigStatus=${gigStatus} captainScore ${preCaptainScore}→${postCaptainScore} m1 ${preM1Score}→${postM1Score}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -692,9 +715,12 @@ async function proof4Treasury(
   const fundR = await apiReq("POST", `/agents/${bPayer.id}/treasury/fund`,
     { amount: 50_000_000, currency: "USDC", memo: `P4 fund ${RUN_ID}` },
     { "x-agent-id": bPayer.id });
+  // Graceful SKIP when treasury service is not available (sandbox/staging without Circle)
+  if (!fundR.ok) {
+    throw new Error(`SKIP: treasury funding unavailable (HTTP ${fundR.status}) — ${JSON.stringify(fundR.data).slice(0, 80)} — requires Circle integration`);
+  }
   let depositCircleId: string | null = fundR.data?.circleTxId || fundR.data?.txId || null;
   if (depositCircleId) ctx.circleIds.push(depositCircleId);
-  if (!fundR.ok) ctx.notes.push(`treasury/fund → ${fundR.status}: ${JSON.stringify(fundR.data).slice(0, 60)}`);
 
   // Snapshot balance before payments
   const balBeforeR = await apiReq("GET", `/agents/${bPayer.id}/treasury/balance`);
@@ -748,13 +774,14 @@ async function proof4Treasury(
     } else {
       ctx.notes.push(`large payment cancelled (id=${largePaymentId.slice(0, 8)}…)`);
 
-      // Assert balance is unchanged (cancel restores funds)
+      // Assert balance restoration: only small payment should reduce balance
+      // Expected after cancel: balanceBefore - SMALL_AMOUNT (large was queued then cancelled)
       const balAfterR = await apiReq("GET", `/agents/${bPayer.id}/treasury/balance`);
       const balanceAfter: number = balAfterR.data?.balance ?? balAfterR.data?.totalBalance ?? 0;
-      ctx.notes.push(`treasury balance after cancel: ${balanceAfter} (before large pay: ${balanceBefore})`);
-      // Balance should not have decreased by the large amount (cancel restores it)
-      if (balanceBefore > 0 && balanceAfter < balanceBefore - SMALL_AMOUNT - SMALL_AMOUNT) {
-        throw new Error(`P4 ASSERTION FAILED: balance after cancel=${balanceAfter} dropped more than small payment amount — cancel did not restore funds`);
+      ctx.notes.push(`treasury balance after cancel: ${balanceAfter} (expected ~${balanceBefore - SMALL_AMOUNT})`);
+      // Exact invariant: balance must not have dropped by more than SMALL_AMOUNT
+      if (balanceBefore > 0 && balanceAfter < balanceBefore - SMALL_AMOUNT) {
+        throw new Error(`P4 ASSERTION FAILED: balance after cancel=${balanceAfter} < expected=${balanceBefore - SMALL_AMOUNT} — cancel did not restore large payment funds`);
       }
     }
   }
@@ -877,12 +904,13 @@ async function proof5SlashFreeze(
   // ── Assert slash_frozen notification sent to lead ──
   const notifR = await apiReq("GET", `/agents/${bLead.id}/notifications`);
   const notifs: any[] = Array.isArray(notifR.data) ? notifR.data : (notifR.data?.notifications || []);
-  const slashNotif = notifs.find((n: any) => n.type === "slash_frozen" || (n.type || "").includes("slash") || (n.type || "").includes("freeze"));
+  const slashNotif = notifs.find((n: any) =>
+    n.type === "slash_frozen" || (n.type || "").includes("slash") || (n.type || "").includes("freeze")
+  );
   if (!slashNotif) {
-    ctx.notes.push("WARNING: slash_frozen notification not found (may be async — not blocking)");
-  } else {
-    ctx.notes.push(`slash_frozen notification confirmed: type=${slashNotif.type}`);
+    throw new Error(`P5 ASSERTION FAILED: slash_frozen notification not found for lead ${bLead.handle} — system must notify agent when bond is frozen`);
   }
+  ctx.notes.push(`slash_frozen notification confirmed: type=${slashNotif.type}`);
 
   // ── File appeal; assert new validation session is created ──
   const appealR = await apiReq("POST", `/validations/${validationId}/appeal`,
