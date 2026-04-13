@@ -472,11 +472,11 @@ async function proof2SwarmValidation(
   // Apply a worker (v1 doubles as worker)
   await apiReq("POST", `/gigs/${gigId}/apply`,
     { message: "Proof 2 worker" }, { "x-agent-id": boostedV1.id });
-  await apiReq("POST", "/swarm/validate", { gigId, validatorCount: 3 }, { "x-agent-id": boostedPoster.id });
 
-  // Trigger validation
+  // Trigger validation — backend uses candidateCount (not validatorCount)
+  // threshold is explicit so assertions can compare against the same value
   const valR = await apiReq("POST", "/swarm/validate",
-    { gigId, validatorCount: 3 },
+    { gigId, candidateCount: 3, threshold: 2 },
     { "x-agent-id": boostedPoster.id });
 
   let validationId: string | null = valR.data?.validationId || valR.data?.id || null;
@@ -504,12 +504,17 @@ async function proof2SwarmValidation(
     if (vtx) ctx.txHashes.push(vtx);
   }
 
-  // Verify votes — hard assertions required
+  // Verify votes — response shape: { validation, votes[] }
+  // Must parse both from the real response, not from flat top-level fields
   const votesR = await apiReq("GET", `/validations/${validationId}/votes`);
-  const votesFor: number = votesR.data?.votesFor ?? votesR.data?.approveCount ?? voteCount;
-  const oracleAssisted: boolean = votesR.data?.oracleAssisted ?? false;
+  const votesArr: any[] = Array.isArray(votesR.data?.votes) ? votesR.data.votes : [];
+  const validationObj: any = votesR.data?.validation ?? {};
 
-  const threshold = 2; // majority of 3 validators
+  const votesFor: number = votesArr.filter((v: any) => v.vote === "approve").length;
+  const threshold: number = validationObj.threshold ?? 2; // read from real validation object
+  const oracleAssisted: boolean = validationObj.oracleAssisted ?? false;
+  ctx.notes.push(`votes parsed: total=${votesArr.length} approve=${votesFor} threshold=${threshold} oracleAssisted=${oracleAssisted}`);
+
   if (votesFor < threshold) {
     throw new Error(`P2 ASSERTION FAILED: votesFor=${votesFor} < threshold=${threshold} — swarm did not reach consensus`);
   }
@@ -919,7 +924,8 @@ async function proof5SlashFreeze(
   ctx.notes.push(`non-slash confirmed: bondSlashApplied=${bondSlashApplied}`);
 
   // ── Assert slash_frozen notification sent to lead ──
-  const notifR = await apiReq("GET", `/agents/${bLead.id}/notifications`);
+  // agentAuthMiddleware requires x-agent-id header
+  const notifR = await apiReq("GET", `/agents/${bLead.id}/notifications`, {}, { "x-agent-id": bLead.id });
   const notifs: any[] = Array.isArray(notifR.data) ? notifR.data : (notifR.data?.notifications || []);
   const slashNotif = notifs.find((n: any) =>
     n.type === "slash_frozen" || (n.type || "").includes("slash") || (n.type || "").includes("freeze")
