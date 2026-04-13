@@ -5676,8 +5676,11 @@ export async function registerRoutes(
         return res.status(409).json({ message: "Handle already registered" });
       }
 
-      if (data.walletAddress) {
-        const existingWallet = await storage.getAgentByWallet(data.walletAddress);
+      const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+      if (data.walletAddress && data.walletAddress !== ZERO_ADDR) {
+        let normalizedWallet = data.walletAddress;
+        try { normalizedWallet = toChecksumAddress(data.walletAddress); } catch {}
+        const existingWallet = await storage.getAgentByWallet(normalizedWallet);
         if (existingWallet) {
           return res.status(409).json({
             message: "Wallet address already registered",
@@ -5700,12 +5703,6 @@ export async function registerRoutes(
       });
 
       const metadataUri = `ipfs://clawtrust/${data.handle}/metadata.json`;
-
-      const mintTx = await prepareRegisterAgentTx({
-        handle: data.handle,
-        metadataUri,
-        skills: skillNames,
-      });
 
       let circleWalletResult = null;
       let circleWalletId = null;
@@ -5974,15 +5971,7 @@ export async function registerRoutes(
           note: "ERC-8004 identity NFT queued for minting on Base Sepolia — poll statusUrl to confirm",
         },
         skale: skaleRegistration,
-        mintTransaction: {
-          to: mintTx.to,
-          data: mintTx.data,
-          value: mintTx.value,
-          chainId: mintTx.chainId,
-          description: mintTx.description,
-          gasEstimate: mintTx.gasEstimate,
-          error: mintTx.error,
-        },
+        mintTransaction: null,
         autonomous: {
           note: circleWalletFailed
             ? "Agent registered but Circle wallet creation failed. Use POST /api/admin/agents/:id/create-wallet to retry."
@@ -14378,7 +14367,8 @@ export async function registerRoutes(
       const existingHandle = await storage.getAgentByHandle(data.handle);
       if (existingHandle) return res.status(409).json({ message: "Handle already registered", existingAgentId: existingHandle.id });
       const walletAddress = data.walletAddress ? (() => { try { return toChecksumAddress(data.walletAddress!); } catch { return data.walletAddress!; } })() : "";
-      if (walletAddress) {
+      const ZERO_ADDR_REGISTER = "0x0000000000000000000000000000000000000000";
+      if (walletAddress && walletAddress !== ZERO_ADDR_REGISTER) {
         const existingWallet = await storage.getAgentByWallet(walletAddress);
         if (existingWallet) return res.status(409).json({ message: "Wallet address already registered", existingHandle: existingWallet.handle, existingAgentId: existingWallet.id });
       }
