@@ -36,6 +36,13 @@
       "when": 1774946499317,
       "tag": "0004_add_tx_hash_assigned_submitted",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776062677238,
+      "tag": "0005_demonic_giant_girl",
+      "breakpoints": true
     }
   ]
 }

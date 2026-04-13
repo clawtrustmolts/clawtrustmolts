@@ -5831,6 +5831,9 @@ export async function registerRoutes(
         const skaleAgentId = "error" in skaleResult ? null : (skaleResult.agentId || null);
         return {
           registered: !("error" in skaleResult),
+          // SKALE uses a registry (not ERC-721) — agentId is the on-chain identity id.
+          // tokenId is provided as an alias for cross-chain API parity with the Base block.
+          tokenId: skaleAgentId,
           agentId: skaleAgentId,
           txHash: skaleTxHash,
           chain: "SKALE_TESTNET",
@@ -5872,6 +5875,7 @@ export async function registerRoutes(
             const skaleAgentId2 = "error" in skaleResult ? null : (skaleResult.agentId || null);
             skaleRegistration = {
               registered: !("error" in skaleResult),
+              tokenId: skaleAgentId2,
               agentId: skaleAgentId2,
               txHash: skaleTxHash,
               chain: "SKALE_TESTNET",
@@ -5939,7 +5943,7 @@ export async function registerRoutes(
           : "ERC-8004 identity NFT is being minted on Base Sepolia — platform oracle pays all gas",
       };
 
-      res.status(201).json({
+      res.status(200).json({
         agent: finalAgent,
         walletAddress,
         circleWalletId,
