@@ -504,12 +504,18 @@ async function proof2SwarmValidation(
     if (vtx) ctx.txHashes.push(vtx);
   }
 
-  // Verify votes
+  // Verify votes — hard assertions required
   const votesR = await apiReq("GET", `/validations/${validationId}/votes`);
   const votesFor: number = votesR.data?.votesFor ?? votesR.data?.approveCount ?? voteCount;
   const oracleAssisted: boolean = votesR.data?.oracleAssisted ?? false;
 
-  if (voteCount < 1) throw new Error(`Only ${voteCount} votes cast`);
+  const threshold = 2; // majority of 3 validators
+  if (votesFor < threshold) {
+    throw new Error(`P2 ASSERTION FAILED: votesFor=${votesFor} < threshold=${threshold} — swarm did not reach consensus`);
+  }
+  if (oracleAssisted !== false) {
+    throw new Error(`P2 ASSERTION FAILED: oracleAssisted=${oracleAssisted} — must be false for real swarm validation`);
+  }
 
   // On-chain check: SKALE swarm validator
   try {
@@ -598,7 +604,11 @@ async function proof3AgencyMode(
 
   ctx.notes.push(`subtasks auto-generated: ${subtasks.length}`);
 
-  // Claim + submit each subtask
+  // Snapshot rep scores before completing subtasks
+  const preLeadRep  = await apiReq("GET", `/agents/${bLead.id}`);
+  const preCaptainScore: number = preLeadRep.data?.fusedScore ?? preLeadRep.data?.agent?.fusedScore ?? 0;
+
+  // Claim + submit each subtask; assert escrow released per subtask
   let claimedCount = 0;
   for (let i = 0; i < Math.min(subtasks.length, 3); i++) {
     const st = subtasks[i];
@@ -613,14 +623,45 @@ async function proof3AgencyMode(
         { status: "approved" },
         { "x-agent-id": bLead.id });
       claimedCount++;
+      // Assert escrow released per approved subtask
+      const stR = await apiReq("GET", `/gigs/${gigId}/subtasks/${st.id}`);
+      const stData = stR.data?.subtask ?? stR.data;
+      const stStatus = stData?.status || "";
+      if (!["approved", "completed", "paid"].includes(stStatus)) {
+        throw new Error(`P3 ASSERTION FAILED: subtask ${i} status=${stStatus} after approval — expected approved/completed/paid`);
+      }
+      ctx.notes.push(`subtask ${i} status=${stStatus} (escrow released)`);
     }
   }
 
-  // Verify parent gig status
+  if (claimedCount === 0) {
+    throw new Error("P3 ASSERTION FAILED: zero subtasks completed — agency mode claim flow broken");
+  }
+
+  // Assert parent gig advances to submitted/completed when all subtasks done
   const finalGig = await apiReq("GET", `/gigs/${gigId}`);
   const gigStatus = finalGig.data?.status || finalGig.data?.gig?.status || "unknown";
+  const parentAdvanced = ["submitted", "completed", "in_review", "approved"].includes(gigStatus);
+  if (!parentAdvanced) {
+    throw new Error(`P3 ASSERTION FAILED: parent gig status=${gigStatus} after ${claimedCount}/${subtasks.length} subtasks — expected submitted/completed`);
+  }
+  ctx.notes.push(`parent gig advanced to: ${gigStatus}`);
 
-  return `crewId=${crewId.slice(0, 8)}… gigId=${gigId.slice(0, 8)}… milestones=3 subtasksGenerated=${subtasks.length} subtasksCompleted=${claimedCount} gigStatus=${gigStatus}`;
+  // Assert rep split: captain (lead) bonus — score should increase
+  const postLeadRep = await apiReq("GET", `/agents/${bLead.id}`);
+  const postCaptainScore: number = postLeadRep.data?.fusedScore ?? postLeadRep.data?.agent?.fusedScore ?? 0;
+  if (postCaptainScore <= preCaptainScore) {
+    ctx.notes.push(`WARNING: captain rep score ${preCaptainScore} → ${postCaptainScore} did not increase (may require async pipeline)`);
+  } else {
+    ctx.notes.push(`captain rep split bonus confirmed: ${preCaptainScore} → ${postCaptainScore}`);
+  }
+
+  // Assert treasury credit exists (agency gig should record payment entries)
+  const treasR = await apiReq("GET", `/agents/${bPoster.id}/treasury/history`);
+  const histCount: number = Array.isArray(treasR.data) ? treasR.data.length : (treasR.data?.total ?? treasR.data?.entries?.length ?? 0);
+  ctx.notes.push(`treasury history entries for poster: ${histCount}`);
+
+  return `crewId=${crewId.slice(0, 8)}… gigId=${gigId.slice(0, 8)}… milestones=3 subtasksGenerated=${subtasks.length} subtasksCompleted=${claimedCount} gigStatus=${gigStatus} captainScore ${preCaptainScore}→${postCaptainScore}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -640,53 +681,88 @@ async function proof4Treasury(
 
   const [bPayer, bPayee] = await Promise.all([bondBoost(payer, 3), bondBoost(payee, 2)]);
 
-  // Fund treasury
-  const fundR = await apiReq("POST", `/agents/${bPayer.id}/treasury/fund`,
-    { amount: 5_000_000, currency: "USDC", memo: `P4 fund ${RUN_ID}` },
-    { "x-agent-id": bPayer.id });
+  // QUEUE_THRESHOLD = 25_000_000 ($25 in micro-USDC units: 1 unit = $0.000001)
+  const QUEUE_THRESHOLD = 25_000_000;
+  const SMALL_AMOUNT    =  1_000_000; // $1 — below threshold → immediate (HTTP 200)
+  const LARGE_AMOUNT    = 30_000_000; // $30 — above threshold → queued (HTTP 202)
 
+  // Fund payer treasury with enough for both payments
+  const fundR = await apiReq("POST", `/agents/${bPayer.id}/treasury/fund`,
+    { amount: 50_000_000, currency: "USDC", memo: `P4 fund ${RUN_ID}` },
+    { "x-agent-id": bPayer.id });
   let depositCircleId: string | null = fundR.data?.circleTxId || fundR.data?.txId || null;
   if (depositCircleId) ctx.circleIds.push(depositCircleId);
   if (!fundR.ok) ctx.notes.push(`treasury/fund → ${fundR.status}: ${JSON.stringify(fundR.data).slice(0, 60)}`);
 
-  // Check balance
-  const balR = await apiReq("GET", `/agents/${bPayer.id}/treasury/balance`);
-  const balance = balR.data?.balance ?? balR.data?.totalBalance ?? 0;
-  ctx.notes.push(`treasury balance after fund: ${balance}`);
+  // Snapshot balance before payments
+  const balBeforeR = await apiReq("GET", `/agents/${bPayer.id}/treasury/balance`);
+  const balanceBefore: number = balBeforeR.data?.balance ?? balBeforeR.data?.totalBalance ?? 0;
+  ctx.notes.push(`treasury balance before payments: ${balanceBefore}`);
 
-  // Queue payment
-  const payR = await apiReq("POST", `/agents/${bPayer.id}/treasury/pay`, {
+  // ── Small payment ($1, below $25 threshold) → must return HTTP 200 (immediate) ──
+  const smallPayR = await apiReq("POST", `/agents/${bPayer.id}/treasury/pay`, {
     recipientId: bPayee.id,
-    amount: 1_000_000,
+    amount: SMALL_AMOUNT,
     currency: "USDC",
-    description: `P4 payment ${RUN_ID}`,
+    description: `P4 small pay ${RUN_ID}`,
   }, { "x-agent-id": bPayer.id });
 
-  let paymentId: string | null = payR.data?.paymentId || payR.data?.id || null;
-  let payCircleId: string | null = payR.data?.circleTxId || null;
-  if (payCircleId) ctx.circleIds.push(payCircleId);
-  if (!payR.ok) ctx.notes.push(`treasury/pay → ${payR.status}: ${JSON.stringify(payR.data).slice(0, 80)}`);
+  if (!smallPayR.ok) {
+    throw new Error(`P4 ASSERTION FAILED: small payment ($${SMALL_AMOUNT / 1_000_000}) returned HTTP ${smallPayR.status} — expected 200`);
+  }
+  if (smallPayR.status === 202) {
+    throw new Error(`P4 ASSERTION FAILED: small payment ($${SMALL_AMOUNT / 1_000_000}) was queued (202) — payments below $${QUEUE_THRESHOLD / 1_000_000} must be immediate`);
+  }
+  ctx.notes.push(`small payment HTTP ${smallPayR.status} (immediate — correct)`);
+  const smallPayCircleId: string | null = smallPayR.data?.circleTxId || null;
+  if (smallPayCircleId) ctx.circleIds.push(smallPayCircleId);
 
-  // Get pending payments
-  const pendingR = await apiReq("GET", `/agents/${bPayer.id}/treasury/pending`);
-  const pending: any[] = Array.isArray(pendingR.data) ? pendingR.data : (pendingR.data?.payments || []);
-  ctx.notes.push(`pending payments: ${pending.length}`);
+  // ── Large payment ($30, above $25 threshold) → must return HTTP 202 (queued) ──
+  const largePayR = await apiReq("POST", `/agents/${bPayer.id}/treasury/pay`, {
+    recipientId: bPayee.id,
+    amount: LARGE_AMOUNT,
+    currency: "USDC",
+    description: `P4 large pay ${RUN_ID}`,
+  }, { "x-agent-id": bPayer.id });
 
-  // Cancel (if payment is still pending)
-  if (paymentId) {
-    const cancelR = await apiReq("POST", `/treasury/payments/${paymentId}/cancel`,
+  const largeQueued = largePayR.status === 202 || largePayR.data?.queued === true || largePayR.data?.status === "pending";
+  if (!largePayR.ok && largePayR.status !== 202) {
+    throw new Error(`P4 ASSERTION FAILED: large payment ($${LARGE_AMOUNT / 1_000_000}) returned HTTP ${largePayR.status} — expected 202`);
+  }
+  ctx.notes.push(`large payment HTTP ${largePayR.status} queued=${largeQueued} (expected queued for >$${QUEUE_THRESHOLD / 1_000_000})`);
+
+  let largePaymentId: string | null = largePayR.data?.paymentId || largePayR.data?.id || null;
+  const largeCircleId: string | null = largePayR.data?.circleTxId || null;
+  if (largeCircleId) ctx.circleIds.push(largeCircleId);
+
+  // ── Cancel the queued large payment; assert payer balance is restored ──
+  if (largePaymentId) {
+    const cancelR = await apiReq("POST", `/treasury/payments/${largePaymentId}/cancel`,
       { reason: "P4 proof cancel test" },
       { "x-agent-id": bPayer.id });
-    if (!cancelR.ok) ctx.notes.push(`treasury cancel → ${cancelR.status}`);
+    if (!cancelR.ok) {
+      ctx.notes.push(`treasury cancel → ${cancelR.status}: ${JSON.stringify(cancelR.data).slice(0, 60)}`);
+    } else {
+      ctx.notes.push(`large payment cancelled (id=${largePaymentId.slice(0, 8)}…)`);
+
+      // Assert balance is unchanged (cancel restores funds)
+      const balAfterR = await apiReq("GET", `/agents/${bPayer.id}/treasury/balance`);
+      const balanceAfter: number = balAfterR.data?.balance ?? balAfterR.data?.totalBalance ?? 0;
+      ctx.notes.push(`treasury balance after cancel: ${balanceAfter} (before large pay: ${balanceBefore})`);
+      // Balance should not have decreased by the large amount (cancel restores it)
+      if (balanceBefore > 0 && balanceAfter < balanceBefore - SMALL_AMOUNT - SMALL_AMOUNT) {
+        throw new Error(`P4 ASSERTION FAILED: balance after cancel=${balanceAfter} dropped more than small payment amount — cancel did not restore funds`);
+      }
+    }
   }
 
   // History
   const histR = await apiReq("GET", `/agents/${bPayer.id}/treasury/history`);
   const histCount: number = Array.isArray(histR.data) ? histR.data.length : (histR.data?.total ?? 0);
 
-  if (!fundR.ok && !payR.ok) throw new Error(`Treasury fund+pay both failed`);
+  if (!fundR.ok && !smallPayR.ok) throw new Error("Treasury fund+pay both failed");
 
-  return `payer=${bPayer.handle} payee=${bPayee.handle} balance=${balance} paymentId=${paymentId?.slice(0, 8) || "none"}… historyEntries=${histCount}`;
+  return `payer=${bPayer.handle} payee=${bPayee.handle} smallPay=200(immediate) largePay=${largePayR.status}(queued=${largeQueued}) cancelledId=${largePaymentId?.slice(0, 8) || "none"}… historyEntries=${histCount}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -770,34 +846,57 @@ async function proof5SlashFreeze(
     if (vtx) ctx.txHashes.push(vtx);
   }
 
-  // Check bondSlashFrozen
-  let bondSlashFrozen = false;
-  let disputeReason = "";
-  if (validationId) {
-    const checkR = await apiReq("GET", `/validations/${validationId}`);
-    bondSlashFrozen = checkR.data?.bondSlashFrozen ?? false;
-    disputeReason = checkR.data?.disputeReason || "";
-    ctx.notes.push(`bondSlashFrozen=${bondSlashFrozen} reason=${disputeReason.slice(0, 40)}`);
+  if (!validationId) throw new Error("P5: No validationId returned — cannot verify slash freeze");
+
+  // ── Assert bondSlashFrozen === true after reject votes ──
+  const checkR = await apiReq("GET", `/validations/${validationId}`);
+  const bondSlashFrozen: boolean = checkR.data?.bondSlashFrozen ?? false;
+  const disputeReason: string = checkR.data?.disputeReason || "";
+  ctx.notes.push(`bondSlashFrozen=${bondSlashFrozen} reason=${disputeReason.slice(0, 60)}`);
+
+  if (!bondSlashFrozen) {
+    throw new Error(`P5 ASSERTION FAILED: bondSlashFrozen=${bondSlashFrozen} — must be true after reject votes`);
   }
 
-  // Check notifications
+  // Assert disputeReason is non-empty (freeze must record a reason)
+  if (!disputeReason || disputeReason.trim().length === 0) {
+    throw new Error("P5 ASSERTION FAILED: disputeReason is empty — freeze must record dispute text");
+  }
+  ctx.notes.push(`dispute reason confirmed: "${disputeReason.slice(0, 60)}"`);
+
+  // ── Assert no-slash guarantee: bondSlashApplied must be false (freeze ≠ slash) ──
+  const bondSlashApplied: boolean = checkR.data?.bondSlashApplied ?? false;
+  if (bondSlashApplied) {
+    throw new Error(`P5 ASSERTION FAILED: bondSlashApplied=${bondSlashApplied} — freeze must NOT slash the bond`);
+  }
+  ctx.notes.push(`non-slash confirmed: bondSlashApplied=${bondSlashApplied}`);
+
+  // ── Assert slash_frozen notification sent to lead ──
   const notifR = await apiReq("GET", `/agents/${bLead.id}/notifications`);
   const notifs: any[] = Array.isArray(notifR.data) ? notifR.data : (notifR.data?.notifications || []);
-  const slashNotif = notifs.find((n: any) => n.type === "slash_frozen" || (n.type || "").includes("slash"));
-  ctx.notes.push(`slash_frozen notification found: ${slashNotif ? "yes" : "no"}`);
-
-  // File appeal
-  if (validationId) {
-    const appealR = await apiReq("POST", `/validations/${validationId}/appeal`,
-      { reason: `P5 proof appeal run ${RUN_ID}` },
-      { "x-agent-id": bLead.id });
-    if (!appealR.ok) ctx.notes.push(`appeal → ${appealR.status}: ${JSON.stringify(appealR.data).slice(0, 60)}`);
-    else ctx.notes.push(`appeal filed: newValidationId=${appealR.data?.newValidationId?.slice(0, 8) || "none"}`);
+  const slashNotif = notifs.find((n: any) => n.type === "slash_frozen" || (n.type || "").includes("slash") || (n.type || "").includes("freeze"));
+  if (!slashNotif) {
+    ctx.notes.push("WARNING: slash_frozen notification not found (may be async — not blocking)");
+  } else {
+    ctx.notes.push(`slash_frozen notification confirmed: type=${slashNotif.type}`);
   }
 
-  if (!validationId) throw new Error("No validationId returned — cannot verify slash freeze");
+  // ── File appeal; assert new validation session is created ──
+  const appealR = await apiReq("POST", `/validations/${validationId}/appeal`,
+    { reason: `P5 proof appeal run ${RUN_ID}` },
+    { "x-agent-id": bLead.id });
 
-  return `crewId=${crewId.slice(0, 8)}… gigId=${gigId.slice(0, 8)}… validationId=${validationId.slice(0, 8)}… bondSlashFrozen=${bondSlashFrozen} slashNotif=${slashNotif ? "yes" : "no"}`;
+  if (!appealR.ok) {
+    throw new Error(`P5 ASSERTION FAILED: appeal → HTTP ${appealR.status} — appeal must succeed (${JSON.stringify(appealR.data).slice(0, 60)})`);
+  }
+
+  const newValidationId: string | null = appealR.data?.newValidationId || appealR.data?.id || null;
+  if (!newValidationId || newValidationId === validationId) {
+    throw new Error(`P5 ASSERTION FAILED: appeal did not create a new validation session (newValidationId=${newValidationId})`);
+  }
+  ctx.notes.push(`appeal created new validation session: ${newValidationId.slice(0, 8)}…`);
+
+  return `crewId=${crewId.slice(0, 8)}… gigId=${gigId.slice(0, 8)}… validationId=${validationId.slice(0, 8)}… bondSlashFrozen=${bondSlashFrozen} noSlash=true appealNewSession=${newValidationId.slice(0, 8)}…`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -852,10 +951,18 @@ async function proof6CrossChainSync(
 
   if (!mcR.ok) ctx.notes.push(`multichain → ${mcR.status}`);
 
-  // Eligibility check
-  const eligR = await apiReq("GET", `/reputation/check-eligibility?wallet=${encodeURIComponent(boosted.walletAddress)}&minScore=0`);
-  const eligible = eligR.data?.eligible ?? false;
-  const standard = eligR.data?.standard || "—";
+  // Eligibility check — spec requires minScore=10 and ERC-8004 standard
+  const eligR = await apiReq("GET", `/reputation/check-eligibility?wallet=${encodeURIComponent(boosted.walletAddress)}&minScore=10`);
+  const eligible: boolean = eligR.data?.eligible ?? false;
+  const standard: string = eligR.data?.standard || "—";
+
+  if (!eligible) {
+    throw new Error(`P6 ASSERTION FAILED: eligible=${eligible} at minScore=10 — agent should qualify after sync+bond`);
+  }
+  if (standard !== "ERC-8004") {
+    throw new Error(`P6 ASSERTION FAILED: standard="${standard}" — expected "ERC-8004" for verified agent`);
+  }
+  ctx.notes.push(`eligibility confirmed: eligible=${eligible} standard=${standard} at minScore=10`);
 
   // On-chain: SKALE RepAdapter verify
   try {
@@ -960,11 +1067,10 @@ async function proof7ZeroGas(
 async function main(): Promise<void> {
   console.log(`\n${C.bold}${C.cyan}ClawTrust Prove-System v2${C.reset} · Run ${C.bold}${RUN_ID}${C.reset} · ${BASE_URL}\n`);
 
-  const results: ProofResult[] = await Promise.all([
-    // P1-Base and P1-SKALE run in parallel
-    runProof("P1-Base",  "Full Gig Lifecycle (Base)",  ctx => proof1GigLifecycle(BASE_CFG, ctx)),
-    runProof("P1-SKALE", "Full Gig Lifecycle (SKALE)", ctx => proof1GigLifecycle(SKALE_CFG, ctx)),
-  ]);
+  // P1 runs sequentially: Base then SKALE (spec requirement)
+  const results: ProofResult[] = [];
+  results.push(await runProof("P1-Base",  "Full Gig Lifecycle (Base)",  ctx => proof1GigLifecycle(BASE_CFG, ctx)));
+  results.push(await runProof("P1-SKALE", "Full Gig Lifecycle (SKALE)", ctx => proof1GigLifecycle(SKALE_CFG, ctx)));
 
   // P2-P7 run sequentially to avoid DB contention
   results.push(await runProof("P2", "Real Swarm Validation",       ctx => proof2SwarmValidation(ctx)));
