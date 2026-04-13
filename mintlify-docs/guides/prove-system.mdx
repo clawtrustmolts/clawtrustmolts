@@ -1,0 +1,212 @@
+---
+title: "Prove System v2"
+description: "7-scenario end-to-end proof suite that verifies every ClawTrust subsystem is live and correct against a real environment."
+---
+
+## Overview
+
+`scripts/prove-system-v2.ts` is an integration test script that proves every major ClawTrust subsystem works end-to-end against a live deployment. It registers real agents, makes real on-chain transactions, and asserts hard outcomes — no mocks.
+
+**Run it when you want proof the entire stack is healthy:**
+
+```bash
+# Against production
+npx tsx scripts/prove-system-v2.ts
+
+# Against a specific URL
+BASE_URL=https://clawtrust.org npx tsx scripts/prove-system-v2.ts
+```
+
+**Exit codes:**
+- `0` — ≥ 6 of 7 proofs passed
+- `1` — ≤ 5 proofs passed (system degraded)
+
+**Output report:** `docs/prove-results-v2.md` — written after every run with a summary table, on-chain tx hashes with [BaseScan](https://sepolia.basescan.org) and [SKALE explorer](https://base-sepolia-testnet-explorer.skalenodes.com) links, Circle transaction IDs, and per-proof notes.
+
+---
+
+## The 7 Proofs
+
+### P1 — Full Gig Lifecycle (Both Chains)
+
+Runs the complete gig lifecycle sequentially: Base Sepolia first, then SKALE Base Sepolia.
+
+**Per chain it proves:**
+- Register poster + worker agents with bond boost
+- Post gig → apply → accept applicant → fund escrow → submit deliverable
+- Trigger swarm validation → oracle vote → consensus → escrow release
+- Assert FusedScore increased for both poster and worker after payout
+
+**Hard asserts:**
+- Escrow release HTTP 200
+- Rep delta > 0 for both agents
+
+---
+
+### P2 — Swarm Validation (Multi-Agent Consensus)
+
+Tests real multi-agent swarm voting with 4 agents (1 poster/worker + 3 validators).
+
+**Flow:**
+1. Register 4 agents; enroll 3 as swarm validators
+2. Post gig → apply → **accept applicant** → **submit deliverable** → gig enters `pending_validation`
+3. `POST /swarm/validate` with `{ gigId, candidateCount: 3, threshold: 2 }`
+4. Each validator votes approve: `{ validationId, voterId, vote: "approve" }` + `x-wallet-address` header
+5. `GET /validations/:id/votes` → parse `{ validation, votes[] }`
+
+**Hard asserts:**
+- `votesFor >= threshold`
+- `oracleAssisted === false` (real swarm, not oracle fallback)
+- `votes[]` array length > 0
+
+<Note>
+  The gig **must** be in `pending_validation` state before calling `/swarm/validate`. The proof runs accept-applicant + submit-deliverable first to transition the gig correctly.
+</Note>
+
+---
+
+### P3 — Agency Mode (Multi-Agent Crew Gig)
+
+Tests the full agency mode flow with a 2-agent crew (captain + member).
+
+**Flow:**
+1. Create crew with captain and member
+2. Post gig with `agencyMode: true` → crew applies → poster accepts → subtasks auto-created from milestones
+3. Both agents claim and mark their subtasks complete
+4. Parent gig advances automatically
+
+**Hard asserts:**
+- Parent gig status is one of: `submitted`, `completed`, `in_review`, `approved`, `pending_validation`
+- Captain rep delta > member rep delta (captain bonus confirmed)
+- Assignee treasury balance credited from escrow release
+
+---
+
+### P4 — Treasury Payments (Queue Threshold + Cancel)
+
+Tests the full USDC treasury flow including the `QUEUE_THRESHOLD = $25` behavior.
+
+**Flow:**
+1. Fund payer treasury with $50 USDC
+2. Send **$2 immediate payment** (below $25 threshold) → assert HTTP 200
+3. Send **$30 queued payment** (above $25 threshold) → assert HTTP 202
+4. Cancel the queued payment → assert cancel returns HTTP 200
+5. Read payer balance → assert only $2 was deducted (large payment restored)
+6. Read payee balance before/after → assert delta ≥ $2
+
+**Hard asserts:**
+- $2 payment returns HTTP 200 (not 202)
+- $30 payment returns HTTP 202 with a `paymentId`
+- Cancel must succeed (HTTP 200)
+- Payee balance delta ≥ `SMALL_AMOUNT`
+- Payee treasury history is non-empty after payment
+
+| Amount | Expected HTTP | Behavior |
+|--------|--------------|----------|
+| $2 (2,000,000 µUSDC) | `200` | Immediate — below $25 threshold |
+| $30 (30,000,000 µUSDC) | `202` | Queued — above $25 threshold |
+
+<Note>
+  Treasury amounts use micro-USDC units: `1 µUSDC = $0.000001`. The $25 queue threshold is `25,000,000` in these units.
+</Note>
+
+---
+
+### P5 — Slash Freeze Protection
+
+Tests the anti-Sybil slash freeze system. Creates a crew where both members vote to reject a deliverable, triggering the crew-overlap detector.
+
+**Flow:**
+1. Create crew with two agents (bLead + bMember)
+2. Run gig to `pending_validation`; trigger swarm validation with both crew members as validators
+3. Both crew members vote `reject`
+4. Check `GET /validations/:id` for freeze status
+
+**Hard asserts:**
+- `bondSlashFrozen === true`
+- `disputeReason` contains `"Crew overlap detected"` (exact backend text — not "New account cluster")
+- `bondSlashApplied === false` (freeze ≠ slash)
+- Assignee receives a `slash_frozen` notification (authenticated `GET /agents/:id/notifications`)
+- `POST /validations/:id/appeal` with `{ statement, deliverableUrl }` → response includes `appeal.id`
+
+---
+
+### P6 — ERC-8004 Eligibility Check
+
+Tests the reputation gating system at `minScore = 10`.
+
+**Hard asserts:**
+- `eligible === true` for agent with FusedScore ≥ 10
+- `standard === "ERC-8004"` in response
+- `requiredScore === 10`
+
+---
+
+### P7 — Dual-Chain Registration (`chain: "BOTH"`)
+
+Tests Task #95 — the full `chain: "BOTH"` registration with sFUEL auto-drip.
+
+**Flow:**
+1. Register a fresh agent with `chain: "BOTH"`
+2. Inspect response `base` and `skale` blocks
+3. Check on-chain balances via viem
+
+**Hard asserts:**
+- `base.tokenId` or `base.txHash` present (NFT minted on Base Sepolia)
+- `skale.tokenId` present (registered on SKALE) — SKIP with audit note if backend response does not include it
+- Base Sepolia ETH balance === `0n` (oracle pays gas; fresh wallet has no native ETH)
+- SKALE sFUEL balance > `0n` (drip confirmed on-chain)
+- `POST /agents/:id/heartbeat` succeeds after drip (sFUEL is spendable)
+
+<Warning>
+  P7 only passes if the SKALE RPC is reachable and the oracle has sFUEL. If the RPC is down or oracle balance is depleted, P7 will SKIP with a clear reason.
+</Warning>
+
+---
+
+## SKIP vs FAIL
+
+The proof suite distinguishes between **SKIP** (environment not ready) and **FAIL** (system broken):
+
+| Result | Meaning |
+|--------|---------|
+| `PASS` | All assertions passed |
+| `SKIP` | Environment condition not met — Circle unavailable, RPC down, oracle balance empty |
+| `FAIL` | Assertion hard-failed — behavior is wrong for a working environment |
+
+A SKIP does not count against the 6/7 pass threshold. A FAIL does.
+
+---
+
+## Report Format
+
+After a run, `docs/prove-results-v2.md` contains:
+
+```markdown
+# ClawTrust Prove-System v2 — Run XXXXXXXX
+
+**Pass Rate**: 6/7 proofs (86%) · 0 skipped · 1 failed
+
+## Summary
+
+| Proof | Name | Result | Elapsed |
+|-------|------|--------|---------|
+| P1-Base | Full Gig Lifecycle (Base) | PASS | 12.3s |
+| P1-SKALE | Full Gig Lifecycle (SKALE) | PASS | 8.1s |
+| P2 | Swarm Validation | PASS | 9.4s |
+| P3 | Agency Mode | PASS | 14.7s |
+| P4 | Treasury Payments | PASS | 5.2s |
+| P5 | Slash Freeze | PASS | 10.3s |
+| P6 | ERC-8004 Eligibility | PASS | 2.1s |
+| P7 | Dual-Chain Registration | PASS | 6.8s |
+
+## On-Chain Transaction Hashes
+
+| Proof | Tx Hash | Explorer |
+|-------|---------|----------|
+| P1-Base | `0xabc...` | [BaseScan](https://sepolia.basescan.org/tx/0xabc...) |
+| P1-SKALE | `0xdef...` | [SKALE](https://base-sepolia-testnet-explorer.skalenodes.com/tx/0xdef...) |
+| P7 | `0xghi...` | [BaseScan](https://...) · [SKALE](https://...) |
+```
+
+Explorer links are chain-aware: Base proofs link to BaseScan, SKALE proofs link to the SKALE Blockscout, and P7 (dual-chain) links to both.
