@@ -50,6 +50,7 @@ import {
   readFusedScore,
   readSwarmVerdictOnChain,
   queueBlockchainAction,
+  processBlockchainQueue,
   getDeployerAddress,
   cleanupStuckQueueEntries,
   publicClient,
@@ -5877,73 +5878,40 @@ export async function registerRoutes(
 
       if (hasRealWallet) {
         if (targetChain === "BOTH") {
-          // True concurrent: Base Sepolia mint and SKALE register/drip in parallel
-          try {
-            const [mintResult, skaleBlock] = await Promise.all([
-              mintPassportForAgent({ id: agent.id, handle: data.handle, walletAddress, skills: skillNames }),
-              doSkaleRegisterAndDrip(),
-            ]);
-            baseMintTxHash = mintResult.txHash;
-            skaleRegistration = skaleBlock;
-          } catch (e: any) {
-            console.warn(`[Register] BOTH concurrent error:`, e.message);
-            // Fall back: try base mint standalone
-            try { await mintPassportForAgent({ id: agent.id, handle: data.handle, walletAddress, skills: skillNames }); } catch {}
-            skaleRegistration = { registered: false, chain: "SKALE_TESTNET", error: e.message };
-          }
+          // Queue Base Sepolia mint asynchronously (non-blocking — oracle processes in background)
+          queueBlockchainAction({ type: "MINT_PASSPORT", agentId: agent.id, payload: {} }).catch(() => {});
+          // Trigger queue immediately so first mint doesn't wait the full 5-minute scheduler interval
+          processBlockchainQueue().catch(() => {});
+          // Fire-and-forget SKALE register + sFUEL drip — no waitForTransactionReceipt on SKALE
+          doSkaleRegisterAndDrip()
+            .then(block => console.log(`[Register] SKALE background result for ${data.handle}: registered=${block.registered}`))
+            .catch(e => console.warn(`[Register] SKALE fire-and-forget error for ${data.handle}:`, e.message));
+          skaleRegistration = {
+            status: "queued",
+            chain: "SKALE_TESTNET",
+            chainId: 324705682,
+            rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
+            gasModel: "Platform deployer pays 0 sFUEL — agent wallet never pays SKALE gas",
+            message: "SKALE registration queued — processing in background",
+          };
         } else if (targetChain === "SKALE_TESTNET") {
-          // Synchronous SKALE-only registration with drip (gated on registration success)
-          try {
-            const skaleResult = await registerAgentOnSkale({ walletAddress, agentURI: metadataUri });
-
-            if ("error" in skaleResult) {
-              // Registration failed — do NOT drip sFUEL to unregistered wallets
-              console.warn(`[SKALE] SKALE_TESTNET registration failed for ${walletAddress}: ${skaleResult.error}`);
-              skaleRegistration = {
-                registered: false, tokenId: null, agentId: null, txHash: null,
-                chain: "SKALE_TESTNET", chainId: 324705682,
-                explorerUrl: `https://base-sepolia-testnet-explorer.skalenodes.com`,
-                gasModel: "Platform deployer pays 0 sFUEL — agent wallet never pays SKALE gas",
-                sfuelDripped: false, sfuelTxHash: null, sfuelAmount: null,
-                sfuelSkipReason: `Registration failed: ${skaleResult.error}`,
-                message: "SKALE registration failed — sFUEL drip skipped",
-                error: skaleResult.error,
-              };
-            } else {
-              // Registration succeeded — drip sFUEL to newly registered wallet
-              const dripResult = await dripSfuelIfNeeded({ agentId: agent.id, walletAddress });
-              const skaleTxHash = skaleResult.txHash;
-              const skaleAgentId2 = skaleResult.agentId || null;
-              skaleRegistration = {
-                registered: true,
-                tokenId: skaleAgentId2,
-                agentId: skaleAgentId2,
-                txHash: skaleTxHash,
-                chain: "SKALE_TESTNET",
-                chainId: 324705682,
-                explorerUrl: skaleTxHash && skaleTxHash !== "already_registered"
-                  ? `https://base-sepolia-testnet-explorer.skalenodes.com/tx/${skaleTxHash}`
-                  : `https://base-sepolia-testnet-explorer.skalenodes.com`,
-                gasModel: "Platform deployer pays 0 sFUEL — agent wallet never pays SKALE gas",
-                sfuelDripped: dripResult.dripped,
-                sfuelTxHash: dripResult.txHash || null,
-                sfuelAmount: dripResult.amount || null,
-                sfuelSkipReason: dripResult.skipped || null,
-                message: dripResult.dripped ? "⚡ sFUEL sent — zero gas enabled" : "sFUEL drip skipped",
-              };
-            }
-          } catch (e: any) {
-            console.warn(`[SKALE] SKALE_TESTNET register/drip failed:`, e.message);
-            skaleRegistration = { registered: false, chain: "SKALE_TESTNET", error: e.message };
-          }
+          // Fire-and-forget SKALE-only registration + sFUEL drip (no Base Sepolia mint)
+          doSkaleRegisterAndDrip()
+            .then(block => console.log(`[Register] SKALE background result for ${data.handle}: registered=${block.registered}`))
+            .catch(e => console.warn(`[Register] SKALE fire-and-forget error for ${data.handle}:`, e.message));
+          skaleRegistration = {
+            status: "queued",
+            chain: "SKALE_TESTNET",
+            chainId: 324705682,
+            rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha",
+            gasModel: "Platform deployer pays 0 sFUEL — agent wallet never pays SKALE gas",
+            message: "SKALE registration queued — processing in background",
+          };
         } else {
-          // BASE_SEPOLIA — mint on Base (oracle-sponsored), fire-and-forget SKALE mirror
-          try {
-            const mintResult = await mintPassportForAgent({ id: agent.id, handle: data.handle, walletAddress, skills: skillNames });
-            baseMintTxHash = mintResult.txHash;
-          } catch (mintErr: any) {
-            console.error("[Passport] Autonomous mint error:", mintErr.message);
-          }
+          // BASE_SEPOLIA — queue mint (non-blocking oracle-sponsored), fire-and-forget SKALE mirror
+          queueBlockchainAction({ type: "MINT_PASSPORT", agentId: agent.id, payload: {} }).catch(() => {});
+          // Trigger queue immediately so first mint doesn't wait the full 5-minute scheduler interval
+          processBlockchainQueue().catch(() => {});
           registerAgentOnSkale({ walletAddress, agentURI: metadataUri })
             .then((result) => {
               if ("error" in result) {
@@ -5967,26 +5935,26 @@ export async function registerRoutes(
       }
 
       const finalAgent = (await storage.getAgent(agent.id)) ?? updatedAgent ?? agent;
-      const hasMintedToken = !!finalAgent?.erc8004TokenId;
 
       // ── Build chain-specific blocks for response ──────────────────────────────
+      // Minting is always async — erc8004TokenId will be populated by the background worker.
       const baseBlock = {
         tokenId: finalAgent.erc8004TokenId || null,
         txHash: baseMintTxHash,
         gasModel: "Oracle-sponsored — agent pays 0 ETH (adminMintFull via ORACLE_PRIVATE_KEY)",
-        status: hasMintedToken ? "minted" : "pending_mint",
+        status: finalAgent.erc8004TokenId ? "minted" : "queued",
         chainId: 84532,
-        explorerUrl: baseMintTxHash
-          ? `https://sepolia.basescan.org/tx/${baseMintTxHash}`
-          : hasMintedToken && finalAgent.erc8004TokenId
+        explorerUrl: finalAgent.erc8004TokenId
           ? `https://sepolia.basescan.org/address/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`
           : null,
-        note: hasMintedToken
-          ? "ERC-8004 identity NFT minted on Base Sepolia (gas paid by platform oracle)"
-          : "ERC-8004 identity NFT is being minted on Base Sepolia — platform oracle pays all gas",
+        note: "ERC-8004 identity NFT queued for minting on Base Sepolia — platform oracle pays all gas",
       };
 
-      res.status(200).json({
+      res.status(202).json({
+        agentId: agent.id,
+        handle: agent.handle,
+        status: "minting",
+        statusUrl: `/api/agent-register/status/${agent.id}`,
         agent: finalAgent,
         walletAddress,
         circleWalletId,
@@ -5998,12 +5966,10 @@ export async function registerRoutes(
         erc8004: {
           identityRegistry: ERC8004_CONTRACTS.identity.address,
           metadataUri,
-          status: hasMintedToken ? "minted" : "pending_mint",
+          status: "queued",
           tokenId: finalAgent.erc8004TokenId || null,
           gasModel: "Oracle-sponsored — agent pays 0 ETH",
-          note: hasMintedToken
-            ? "ERC-8004 identity NFT minted on Base Sepolia (gas paid by platform oracle)"
-            : "ERC-8004 identity NFT is being minted on Base Sepolia (check status with GET /api/agent-register/status/:tempId)",
+          note: "ERC-8004 identity NFT queued for minting on Base Sepolia — poll statusUrl to confirm",
         },
         skale: skaleRegistration,
         mintTransaction: {
@@ -6022,10 +5988,11 @@ export async function registerRoutes(
           zeroGas: {
             base: "Gas sponsored by ClawTrust oracle — agents never pay ETH to register",
             skale: targetChain === "BOTH" || targetChain === "SKALE_TESTNET"
-              ? (skaleRegistration?.sfuelDripped ? "sFUEL dripped — agent can transact immediately" : "sFUEL drip skipped — see skale.sfuelSkipReason")
+              ? "sFUEL drip processing in background — agent will receive zero-gas access shortly"
               : "Use chain: 'SKALE_TESTNET' or 'BOTH' to enable sFUEL auto-drip",
           },
           nextSteps: [
+            `GET /api/agent-register/status/${agent.id} to poll ERC-8004 mint status`,
             "POST /api/agent-heartbeat to send heartbeat (keeps agent active, prevents reputation decay)",
             "GET /api/gigs/discover?skill=X to discover gigs by skill",
             "POST /api/gigs/:id/apply to apply for gigs",
@@ -6034,7 +6001,6 @@ export async function registerRoutes(
             "POST /api/agents/:id/follow to follow another agent",
             "GET /api/reputation/:agentId to view FusedScore breakdown",
             "GET /api/erc8183/info to view ERC-8183 Agentic Commerce capabilities",
-            "GET /api/agent-register/status/:tempId to check registration status",
             ...(finalAgent.moltDomain ? [`GET /api/passport/scan/${finalAgent.moltDomain} to view your .molt passport (auto-claimed)`] : []),
           ],
           moltDomain: finalAgent.moltDomain ? {
@@ -6644,14 +6610,68 @@ export async function registerRoutes(
     const agent = await storage.getAgent(tempId.data);
     if (!agent) return res.status(404).json({ message: "Agent not found" });
 
+    // Determine ERC-8004 mint status from agent record + blockchain queue
+    let mintStatus: "complete" | "pending" | "failed" | "not_started";
+    if (agent.erc8004TokenId) {
+      mintStatus = "complete";
+    } else {
+      // Check blockchain queue for a pending or failed MINT_PASSPORT job
+      const hasPending = await storage.hasPendingBlockchainActionForAgent("MINT_PASSPORT", agent.id);
+      if (hasPending) {
+        mintStatus = "pending";
+      } else {
+        // Check if no real wallet (zero-address agents can't be minted)
+        const hasRealWallet = agent.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress) && !/^0x0+$/.test(agent.walletAddress);
+        mintStatus = hasRealWallet ? "failed" : "not_started";
+      }
+    }
+
     res.json({
       id: agent.id,
       handle: agent.handle,
-      status: agent.autonomyStatus,
-      erc8004TokenId: agent.erc8004TokenId,
+      status: mintStatus,
+      erc8004TokenId: agent.erc8004TokenId || null,
+      autonomyStatus: agent.autonomyStatus,
       walletAddress: agent.walletAddress,
       circleWalletId: agent.circleWalletId,
       fusedScore: agent.fusedScore,
+      isVerified: agent.isVerified,
+      moltDomain: agent.moltDomain || null,
+    });
+  });
+
+  // Alias: GET /api/register/status/:agentId — same as above (B1/B3 async registration polling)
+  app.get("/api/register/status/:agentId", async (req, res) => {
+    const agentId = safeId.safeParse(req.params.agentId);
+    if (!agentId.success) return res.status(400).json({ message: "Invalid agent ID" });
+
+    const agent = await storage.getAgent(agentId.data);
+    if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+    let mintStatus: "complete" | "pending" | "failed" | "not_started";
+    if (agent.erc8004TokenId) {
+      mintStatus = "complete";
+    } else {
+      const hasPending = await storage.hasPendingBlockchainActionForAgent("MINT_PASSPORT", agent.id);
+      if (hasPending) {
+        mintStatus = "pending";
+      } else {
+        const hasRealWallet = agent.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(agent.walletAddress) && !/^0x0+$/.test(agent.walletAddress);
+        mintStatus = hasRealWallet ? "failed" : "not_started";
+      }
+    }
+
+    res.json({
+      agentId: agent.id,
+      handle: agent.handle,
+      status: mintStatus,
+      erc8004TokenId: agent.erc8004TokenId || null,
+      txHash: null,
+      skaleTokenId: null,
+      skalesTxHash: null,
+      walletAddress: agent.walletAddress,
+      isVerified: agent.isVerified,
+      moltDomain: agent.moltDomain || null,
     });
   });
 

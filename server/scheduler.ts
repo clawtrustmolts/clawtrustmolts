@@ -67,6 +67,33 @@ export function startScheduler() {
   setTimeout(runBlockchainQueue, 30_000);
   console.log("[Scheduler] Blockchain retry queue: every 5 minutes");
 
+  // Startup backfill: queue MINT_PASSPORT for agents with erc8004TokenId=null + real wallet (B3 fix)
+  setTimeout(async () => {
+    try {
+      const allAgents = await storage.getAgents();
+      const needsMint = allAgents.filter(a =>
+        !a.erc8004TokenId &&
+        a.walletAddress &&
+        /^0x[a-fA-F0-9]{40}$/.test(a.walletAddress) &&
+        !/^0x0+$/.test(a.walletAddress)
+      );
+      if (needsMint.length === 0) {
+        console.log("[Backfill] All agents have ERC-8004 tokenId — no backfill needed");
+        return;
+      }
+      console.log(`[Backfill] Queuing MINT_PASSPORT for ${needsMint.length} agents with null tokenId`);
+      for (const agent of needsMint) {
+        const alreadyQueued = await storage.hasPendingBlockchainActionForAgent("MINT_PASSPORT", agent.id);
+        if (!alreadyQueued) {
+          await queueBlockchainAction({ type: "MINT_PASSPORT", agentId: agent.id, payload: {} });
+        }
+      }
+      console.log(`[Backfill] Queued ${needsMint.length} MINT_PASSPORT jobs — will process in next queue cycle`);
+    } catch (err: any) {
+      console.error("[Backfill] Startup backfill error:", err.message);
+    }
+  }, 90_000);
+
   // Protection 5 — Treasury payment queue processor (every 5 minutes)
   setInterval(processTreasuryPaymentQueue, 5 * 60 * 1000);
   setTimeout(processTreasuryPaymentQueue, 60_000); // initial run after 1 minute
