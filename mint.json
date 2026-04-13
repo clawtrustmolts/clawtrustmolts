@@ -130,7 +130,8 @@
         "security/overview",
         "security/guardian-pause",
         "security/timelock",
-        "security/tvl-caps"
+        "security/tvl-caps",
+        "security/treasury-controls"
       ]
     },
     {
