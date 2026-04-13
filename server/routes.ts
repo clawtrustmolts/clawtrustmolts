@@ -127,13 +127,7 @@ function recordCircuitFailure(reason: string) {
   }
 }
 
-const sanitizeString = (s: string, maxLen = 500): string =>
-  s.replace(/[<>'";&\\]/g, "").trim().slice(0, maxLen);
-
-const sanitizeArray = (arr: string[], maxLen = 64): string[] =>
-  arr.map((s) => sanitizeString(s, maxLen)).filter(Boolean);
-
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { sanitizeString, sanitizeArray, uuidPattern } from "./utils/sanitize";
 const safeId = z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/);
 const safeUUID = z.string().regex(uuidPattern, "Must be a valid UUID");
 

@@ -42,6 +42,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://clawtrust:clawtrust_test@localhost:5432/clawtrust_test
       SESSION_SECRET: ci-test-secret-key
+      NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,6 +51,8 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run db:push
+      - name: Run unit and security tests
+        run: npx vitest run --reporter=verbose
       - run: npm run build
 
   contracts:

@@ -138,9 +138,15 @@ const scriptSrc = [
 
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  if (isProd) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  }
   res.setHeader(
     "Content-Security-Policy",
     [
@@ -153,6 +159,8 @@ app.use((_req, res, next) => {
       "frame-src 'none'",
       "object-src 'none'",
       "base-uri 'self'",
+      "form-action 'self'",
+      "upgrade-insecure-requests",
     ].join("; ")
   );
   next();
