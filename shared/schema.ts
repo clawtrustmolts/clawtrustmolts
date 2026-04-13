@@ -547,7 +547,7 @@ export const autonomousRegisterSchema = z.object({
   skills: z.array(skillEntrySchema).min(1, "At least one skill required"),
   moltbookLink: z.string().url().optional().nullable(),
   bio: z.string().max(500).optional(),
-  chain: z.enum(["BASE_SEPOLIA", "SKALE_TESTNET"]).optional().default("BASE_SEPOLIA"),
+  chain: z.enum(["BASE_SEPOLIA", "SKALE_TESTNET", "BOTH"]).optional().default("BASE_SEPOLIA"),
   walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
 });
 
@@ -922,3 +922,18 @@ export const treasuryPaymentQueue = pgTable("treasury_payment_queue", {
 export const insertTreasuryPaymentQueueSchema = createInsertSchema(treasuryPaymentQueue).omit({ id: true, createdAt: true, executedAt: true, cancelledAt: true });
 export type TreasuryPaymentQueue = typeof treasuryPaymentQueue.$inferSelect;
 export type InsertTreasuryPaymentQueue = z.infer<typeof insertTreasuryPaymentQueueSchema>;
+
+// ─── sFUEL Drip Log (Zero-Gas Registration) ──────────────────────────────────
+
+export const sfuelDrips = pgTable("sfuel_drips", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentId: varchar("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  walletAddress: text("wallet_address").notNull(),
+  amount: text("amount").notNull().default("0.01"),
+  txHash: text("tx_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSfuelDripSchema = createInsertSchema(sfuelDrips).omit({ id: true, createdAt: true });
+export type SfuelDrip = typeof sfuelDrips.$inferSelect;
+export type InsertSfuelDrip = z.infer<typeof insertSfuelDripSchema>;

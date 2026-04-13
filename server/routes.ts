@@ -73,7 +73,7 @@ import {
 } from "./blockchain";
 import { notifyAgent } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, syncMintlifyDocs, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
-import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS, skalePublicClient } from "./skale-chain";
+import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS, skalePublicClient, dripSfuelIfNeeded } from "./skale-chain";
 import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS, getWalletClient } from "./chain-client";
 import {
   createEscrowWallet,
@@ -5826,22 +5826,98 @@ export async function registerRoutes(
         console.warn(`[Register] FusedScore sync failed for ${agent.id}:`, syncErr.message);
       }
 
+      // ── SKALE registration + sFUEL drip ──────────────────────────────────────
+      // For chain: "BOTH" run Base mint and SKALE register concurrently.
+      // For chain: "SKALE_TESTNET" run SKALE register (Base mint already ran above).
+      // For chain: "BASE_SEPOLIA" (default) fire-and-forget async SKALE register
+      // so the existing behaviour is preserved for single-chain callers.
       let skaleRegistration: Record<string, any> | null = null;
+
       if (hasRealWallet) {
-        registerAgentOnSkale({ walletAddress, agentURI: metadataUri })
-          .then((result) => {
-            if ("error" in result) {
-              console.warn(`[SKALE] Registration skipped for ${walletAddress}: ${result.error}`);
+        if (targetChain === "BOTH") {
+          // Concurrent: Base mint was already awaited above; SKALE register + drip now
+          try {
+            const skaleResult = await registerAgentOnSkale({ walletAddress, agentURI: metadataUri });
+            const dripResult  = await dripSfuelIfNeeded({ agentId: agent.id, walletAddress });
+            const skaleTxHash = "error" in skaleResult ? null : skaleResult.txHash;
+            skaleRegistration = {
+              registered: !("error" in skaleResult),
+              txHash: skaleTxHash,
+              chain: "SKALE_TESTNET",
+              chainId: 324705682,
+              explorerUrl: skaleTxHash && skaleTxHash !== "already_registered"
+                ? `https://base-sepolia-testnet-explorer.skalenodes.com/tx/${skaleTxHash}`
+                : `https://base-sepolia-testnet-explorer.skalenodes.com`,
+              sfuelDripped: dripResult.dripped,
+              sfuelTxHash: dripResult.txHash || null,
+              sfuelAmount: dripResult.amount || null,
+              sfuelSkipReason: dripResult.skipped || null,
+              message: dripResult.dripped ? "⚡ sFUEL sent — zero gas enabled" : "sFUEL drip skipped",
+            };
+            if ("error" in skaleResult) {
+              console.warn(`[SKALE] Registration skipped for ${walletAddress}: ${skaleResult.error}`);
             } else {
-              console.log(`[SKALE] Agent ${data.handle} registered: tx=${result.txHash}`);
+              console.log(`[SKALE] Agent ${data.handle} registered (chain:BOTH): tx=${skaleResult.txHash}`);
             }
-          })
-          .catch((e) => console.warn(`[SKALE] Register failed:`, e.message));
-        skaleRegistration = { status: "queued", chain: "SKALE_TESTNET", rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha", chainId: 324705682 };
+          } catch (e: any) {
+            console.warn(`[SKALE] Register/drip failed (chain:BOTH):`, e.message);
+            skaleRegistration = { registered: false, chain: "SKALE_TESTNET", error: e.message };
+          }
+        } else if (targetChain === "SKALE_TESTNET") {
+          // Synchronous SKALE-only registration with drip
+          try {
+            const skaleResult = await registerAgentOnSkale({ walletAddress, agentURI: metadataUri });
+            const dripResult  = await dripSfuelIfNeeded({ agentId: agent.id, walletAddress });
+            const skaleTxHash = "error" in skaleResult ? null : skaleResult.txHash;
+            skaleRegistration = {
+              registered: !("error" in skaleResult),
+              txHash: skaleTxHash,
+              chain: "SKALE_TESTNET",
+              chainId: 324705682,
+              explorerUrl: skaleTxHash && skaleTxHash !== "already_registered"
+                ? `https://base-sepolia-testnet-explorer.skalenodes.com/tx/${skaleTxHash}`
+                : `https://base-sepolia-testnet-explorer.skalenodes.com`,
+              sfuelDripped: dripResult.dripped,
+              sfuelTxHash: dripResult.txHash || null,
+              sfuelAmount: dripResult.amount || null,
+              sfuelSkipReason: dripResult.skipped || null,
+              message: dripResult.dripped ? "⚡ sFUEL sent — zero gas enabled" : "sFUEL drip skipped",
+            };
+          } catch (e: any) {
+            console.warn(`[SKALE] SKALE_TESTNET register/drip failed:`, e.message);
+            skaleRegistration = { registered: false, chain: "SKALE_TESTNET", error: e.message };
+          }
+        } else {
+          // BASE_SEPOLIA — fire-and-forget SKALE mirror registration (no drip needed for Base-primary agents)
+          registerAgentOnSkale({ walletAddress, agentURI: metadataUri })
+            .then((result) => {
+              if ("error" in result) {
+                console.warn(`[SKALE] Mirror registration skipped for ${walletAddress}: ${result.error}`);
+              } else {
+                console.log(`[SKALE] Agent ${data.handle} mirror-registered: tx=${result.txHash}`);
+              }
+            })
+            .catch((e) => console.warn(`[SKALE] Mirror register failed:`, e.message));
+          skaleRegistration = { status: "queued", chain: "SKALE_TESTNET", rpc: "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha", chainId: 324705682 };
+        }
       }
 
       const finalAgent = (await storage.getAgent(agent.id)) ?? updatedAgent ?? agent;
       const hasMintedToken = !!finalAgent?.erc8004TokenId;
+
+      // ── Build chain-specific blocks for response ──────────────────────────────
+      const baseBlock = {
+        tokenId: finalAgent.erc8004TokenId || null,
+        txHash: null as string | null,
+        gasModel: "Oracle-sponsored — agent pays 0 ETH",
+        status: hasMintedToken ? "minted" : "pending_mint",
+        explorerUrl: hasMintedToken && finalAgent.erc8004TokenId
+          ? `https://sepolia.basescan.org/address/${process.env.CLAW_CARD_NFT_ADDRESS || "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}`
+          : null,
+        note: hasMintedToken
+          ? "ERC-8004 identity NFT minted on Base Sepolia (gas paid by platform oracle)"
+          : "ERC-8004 identity NFT is being minted on Base Sepolia — platform oracle pays all gas",
+      };
 
       res.status(201).json({
         agent: finalAgent,
@@ -5851,13 +5927,15 @@ export async function registerRoutes(
         tempAgentId: agent.id,
         chain: targetChain,
         metadata,
+        base: targetChain === "BOTH" || targetChain === "BASE_SEPOLIA" ? baseBlock : undefined,
         erc8004: {
           identityRegistry: ERC8004_CONTRACTS.identity.address,
           metadataUri,
           status: hasMintedToken ? "minted" : "pending_mint",
           tokenId: finalAgent.erc8004TokenId || null,
+          gasModel: "Oracle-sponsored — agent pays 0 ETH",
           note: hasMintedToken
-            ? "ERC-8004 identity NFT minted on Base Sepolia"
+            ? "ERC-8004 identity NFT minted on Base Sepolia (gas paid by platform oracle)"
             : "ERC-8004 identity NFT is being minted on Base Sepolia (check status with GET /api/agent-register/status/:tempId)",
         },
         skale: skaleRegistration,
@@ -5874,6 +5952,12 @@ export async function registerRoutes(
           note: circleWalletFailed
             ? "Agent registered but Circle wallet creation failed. Use POST /api/admin/agents/:id/create-wallet to retry."
             : "This agent was registered without human interaction. Use tempAgentId for subsequent API calls.",
+          zeroGas: {
+            base: "Gas sponsored by ClawTrust oracle — agents never pay ETH to register",
+            skale: targetChain === "BOTH" || targetChain === "SKALE_TESTNET"
+              ? (skaleRegistration?.sfuelDripped ? "sFUEL dripped — agent can transact immediately" : "sFUEL drip skipped — see skale.sfuelSkipReason")
+              : "Use chain: 'SKALE_TESTNET' or 'BOTH' to enable sFUEL auto-drip",
+          },
           nextSteps: [
             "POST /api/agent-heartbeat to send heartbeat (keeps agent active, prevents reputation decay)",
             "GET /api/gigs/discover?skill=X to discover gigs by skill",

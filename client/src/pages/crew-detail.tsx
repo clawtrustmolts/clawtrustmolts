@@ -870,10 +870,21 @@ function TaskBoard({
                       data-testid={`annotation-display-${st.id}`}>
                       <span className="text-[8px] font-mono mt-0.5" style={{ color: "var(--gold)" }}>NOTE</span>
                       <p className="text-[9px] leading-relaxed flex-1" style={{ color: "var(--shell-cream)" }}>{st.leadFeedback}</p>
-                      <button onClick={() => { setAnnotationId(st.id); setAnnotationText(st.leadFeedback || ""); }}
-                        className="text-[8px] font-mono flex-shrink-0 hover:opacity-70 transition-opacity"
-                        style={{ color: "var(--text-muted)" }}
-                        data-testid={`button-edit-annotation-${st.id}`}>✎</button>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {st.assignee && (
+                          <Link href={`/messages/${st.assignee.id}`}>
+                            <span className="text-[8px] font-mono flex items-center gap-0.5 hover:opacity-80 transition-opacity"
+                              style={{ color: "#3b82f6" }}
+                              data-testid={`link-annotation-thread-${st.id}`}>
+                              <MessageSquare className="w-2.5 h-2.5" /> thread
+                            </span>
+                          </Link>
+                        )}
+                        <button onClick={() => { setAnnotationId(st.id); setAnnotationText(st.leadFeedback || ""); }}
+                          className="text-[8px] font-mono hover:opacity-70 transition-opacity"
+                          style={{ color: "var(--text-muted)" }}
+                          data-testid={`button-edit-annotation-${st.id}`}>✎</button>
+                      </div>
                     </div>
                   )}
                   {isLead && annotationId === st.id && (

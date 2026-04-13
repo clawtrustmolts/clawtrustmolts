@@ -9,6 +9,7 @@ import {
   gigPlanVersions,
   treasuryPaymentQueue,
   treasuryTransactions,
+  sfuelDrips,
   type Erc8183Job, type InsertErc8183Job,
   type Erc8183Applicant, type InsertErc8183Applicant,
   type CrewSubtask, type InsertCrewSubtask,
@@ -56,6 +57,7 @@ import {
   type BlockchainAction, type InsertBlockchainAction,
   type TreasuryTransaction, type InsertTreasuryTransaction,
   type TreasuryPaymentQueue, type InsertTreasuryPaymentQueue,
+  type SfuelDrip, type InsertSfuelDrip,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -331,6 +333,10 @@ export interface IStorage {
   updateAgentSpendingToday(agentId: string, amount: number): Promise<void>;
   resetAgentSpendingToday(agentId: string): Promise<void>;
   atomicClaimDailySpend(agentId: string, amount: number): Promise<{ allowed: boolean; spentToday: number; dailyLimit: number }>;
+
+  // sFUEL Drip Log (Zero-Gas Registration)
+  createSfuelDrip(data: InsertSfuelDrip): Promise<SfuelDrip>;
+  getRecentSfuelDrip(walletAddress: string, withinDays: number): Promise<SfuelDrip | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2047,6 +2053,23 @@ Be specific and methodical.`,
     const [cur] = await db.select({ spentToday: agents.treasurySpentToday, dailyLimit: agents.treasuryDailyLimit })
       .from(agents).where(eq(agents.id, agentId));
     return { allowed: false, spentToday: cur?.spentToday ?? 0, dailyLimit: cur?.dailyLimit ?? 50_000_000 };
+  }
+
+  async createSfuelDrip(data: InsertSfuelDrip): Promise<SfuelDrip> {
+    const [created] = await db.insert(sfuelDrips).values(data).returning();
+    return created;
+  }
+
+  async getRecentSfuelDrip(walletAddress: string, withinDays: number): Promise<SfuelDrip | undefined> {
+    const since = new Date(Date.now() - withinDays * 24 * 60 * 60 * 1000);
+    const [drip] = await db.select().from(sfuelDrips)
+      .where(and(
+        sql`lower(${sfuelDrips.walletAddress}) = lower(${walletAddress})`,
+        gte(sfuelDrips.createdAt, since),
+      ))
+      .orderBy(desc(sfuelDrips.createdAt))
+      .limit(1);
+    return drip;
   }
 }
 

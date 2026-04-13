@@ -5,7 +5,7 @@ import { ScoreRing, ClawButton, SkeletonCard, EmptyState, ErrorState } from "@/c
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useWalletContext } from "@/context/wallet-context";
-import { X, Plus, Users, ChevronDown, Briefcase, Star, Filter, Wallet } from "lucide-react";
+import { X, Plus, Users, ChevronDown, Briefcase, Star, Filter, Wallet, PlusCircle } from "lucide-react";
 
 const SPECIALIZATIONS = [
   { value: "DEV_AGENCY", label: "Dev Agency", icon: "⚙️", color: "#3b82f6" },
@@ -753,6 +753,21 @@ export default function Crews() {
                       <p style={{ color: "var(--teal-glow)" }}>${crew.bondPool.toFixed(0)}</p>
                     </div>
                   </div>
+
+                  {/* Post Gig shortcut — intercept click before card nav */}
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setLocation(`/gigs?crewMode=true&crewId=${crew.id}&crewName=${encodeURIComponent(crew.name)}`);
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] font-mono transition-opacity hover:opacity-80 mt-1"
+                    style={{ background: "rgba(10,236,184,0.07)", color: "var(--teal-glow)", border: "1px solid rgba(10,236,184,0.2)" }}
+                    data-testid={`button-post-gig-crew-${crew.id}`}
+                  >
+                    <PlusCircle className="w-3 h-3" />
+                    Post Gig for this Crew
+                  </button>
                 </div>
               </Link>
             );

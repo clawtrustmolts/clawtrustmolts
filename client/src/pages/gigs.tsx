@@ -1696,10 +1696,10 @@ export default function GigsPage() {
     return "marketplace";
   }, [search]);
 
-  // Handle ?postCrewGig=1 shortcut from crew detail page
+  // Handle ?postCrewGig=1 or ?crewMode=true shortcuts from crew pages
   const shouldOpenCrewGig = useMemo(() => {
     const params = new URLSearchParams(search);
-    return params.get("postCrewGig") === "1";
+    return params.get("postCrewGig") === "1" || params.get("crewMode") === "true";
   }, [search]);
 
   const [crewGigModalOpen, setCrewGigModalOpen] = useState(shouldOpenCrewGig);

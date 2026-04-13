@@ -1,5 +1,6 @@
-import { createPublicClient, createWalletClient, http, type Address, parseAbiItem } from "viem";
+import { createPublicClient, createWalletClient, http, type Address, parseAbiItem, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { storage } from "./storage";
 
 const SKALE_TESTNET_RPC = "https://base-sepolia-testnet.skalenodes.com/v1/jubilant-horrible-ancha";
 
@@ -406,6 +407,75 @@ export async function readSkaleSwarmValidationCount(): Promise<number | null> {
     return logs.filter(l => (l.args as { status?: bigint }).status === 1n).length;
   } catch {
     return null;
+  }
+}
+
+// ─── sFUEL Auto-Drip (Zero-Gas Registration) ─────────────────────────────────
+// Sends a small sFUEL amount from the platform deployer wallet to a new agent
+// wallet so it can immediately transact on SKALE (heartbeats, votes, etc.) without
+// needing to acquire sFUEL manually.
+// Rate-limited: one drip per wallet per 7 days.
+
+const MIN_SFUEL_THRESHOLD = parseEther("0.001");
+const DRIP_AMOUNT         = parseEther("0.01");
+const DRIP_AMOUNT_STR     = "0.01";
+const DRIP_RATE_LIMIT_DAYS = 7;
+
+export async function dripSfuelIfNeeded(opts: {
+  agentId: string;
+  walletAddress: string;
+}): Promise<{ dripped: boolean; txHash?: string; amount?: string; skipped?: string }> {
+  const privKey = process.env.DEPLOYER_PRIVATE_KEY;
+  if (!privKey) {
+    return { dripped: false, skipped: "Deployer key not configured" };
+  }
+
+  try {
+    // 1. Check current sFUEL balance
+    const balance = await skalePublicClient.getBalance({
+      address: opts.walletAddress as Address,
+    });
+
+    if (balance >= MIN_SFUEL_THRESHOLD) {
+      return { dripped: false, skipped: `Balance sufficient (${balance.toString()} wei)` };
+    }
+
+    // 2. Rate-limit check — one drip per wallet per 7 days
+    const recentDrip = await storage.getRecentSfuelDrip(opts.walletAddress, DRIP_RATE_LIMIT_DAYS);
+    if (recentDrip) {
+      return { dripped: false, skipped: `Rate-limited — last drip ${recentDrip.createdAt.toISOString()}` };
+    }
+
+    // 3. Send sFUEL from deployer wallet
+    const account = privateKeyToAccount(
+      (privKey.startsWith("0x") ? privKey : `0x${privKey}`) as `0x${string}`
+    );
+    const walletClient = createWalletClient({
+      account,
+      chain: skaleTestnet as any,
+      transport: http(SKALE_TESTNET_RPC, { timeout: 30_000, retryCount: 2, retryDelay: 2000 }),
+    });
+
+    const txHash = await walletClient.sendTransaction({
+      to: opts.walletAddress as Address,
+      value: DRIP_AMOUNT,
+      chain: undefined,
+    } as any);
+
+    // 4. Record the drip
+    await storage.createSfuelDrip({
+      agentId: opts.agentId,
+      walletAddress: opts.walletAddress,
+      amount: DRIP_AMOUNT_STR,
+      txHash,
+    });
+
+    console.log(`[sFUEL Drip] Sent ${DRIP_AMOUNT_STR} sFUEL to ${opts.walletAddress} — tx=${txHash}`);
+    return { dripped: true, txHash, amount: DRIP_AMOUNT_STR };
+  } catch (err: any) {
+    const msg = err?.shortMessage || err?.message || "sFUEL drip failed";
+    console.warn(`[sFUEL Drip] Failed for ${opts.walletAddress}:`, msg.slice(0, 120));
+    return { dripped: false, skipped: `Drip error: ${msg.slice(0, 80)}` };
   }
 }
 
