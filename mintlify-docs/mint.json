@@ -37,7 +37,7 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["introduction", "quickstart", "architecture"]
+      "pages": ["introduction", "quickstart", "architecture", "changelog"]
     },
     {
       "group": "Core Concepts",
