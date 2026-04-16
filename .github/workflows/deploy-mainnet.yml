@@ -44,6 +44,27 @@ jobs:
           echo "::error::Deploy not confirmed. Re-run with confirm=DEPLOY-MAINNET."
           exit 1
 
+      # Task #105: deploys must be triggered from an annotated git tag
+      # matching `v*` (e.g. v1.2.3). This guarantees every mainnet deploy is
+      # tied to an immutable, human-meaningful release marker, not just a
+      # SHA. Branch-based dispatch (e.g. `main`) is rejected.
+      - name: Require dispatch from a v* tag
+        run: |
+          REF="${GITHUB_REF:-}"
+          REF_TYPE="${GITHUB_REF_TYPE:-}"
+          echo "github.ref=$REF  github.ref_type=$REF_TYPE"
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "::error::Mainnet deploy must be dispatched from a tag, got ref_type=$REF_TYPE ($REF). Create an annotated tag (e.g. 'git tag -a v1.2.3 -m ...; git push --tags') and dispatch from there."
+            exit 1
+          fi
+          case "$REF" in
+            refs/tags/v*) ;;
+            *)
+              echo "::error::Tag must match v* (e.g. v1.2.3). Got: $REF"
+              exit 1
+              ;;
+          esac
+
       - name: Require successful Contract Audit (Heavy) for ${{ github.sha }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

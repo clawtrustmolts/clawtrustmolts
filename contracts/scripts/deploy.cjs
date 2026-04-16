@@ -114,11 +114,27 @@ async function main() {
 
   console.log("\n=== Phase 4: Generate Config ===\n");
 
+  // Task #105: record the release tag and commit SHA alongside the addresses
+  // so every deployment is traceable back to an immutable git ref. CI sets
+  // GITHUB_REF (e.g. refs/tags/v1.2.3) and GITHUB_SHA. Local runs leave
+  // these fields null rather than fabricating values.
+  const githubRef = process.env.GITHUB_REF || null;
+  const githubSha = process.env.GITHUB_SHA || null;
+  const releaseTag =
+    githubRef && githubRef.startsWith("refs/tags/")
+      ? githubRef.slice("refs/tags/".length)
+      : null;
+
   const addressConfig = {
     network: hre.network.name,
     chainId: network.chainId.toString(),
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
+    release: {
+      tag: releaseTag,
+      ref: githubRef,
+      commit: githubSha,
+    },
     contracts: {
       ClawTrustEscrow: deployed.escrow,
       ClawTrustRepAdapter: deployed.repAdapter,
