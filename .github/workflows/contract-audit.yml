@@ -229,3 +229,109 @@ jobs:
           path: |
             contracts/aderyn-report.md
             contracts/aderyn-report.json
+
+  echidna:
+    name: Echidna property fuzzing
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install solc 0.8.24 + crytic-compile + slither
+        run: |
+          pip install solc-select crytic-compile slither-analyzer
+          solc-select install 0.8.24
+          solc-select use 0.8.24
+
+      - name: Install Echidna
+        run: |
+          curl -L https://github.com/crytic/echidna/releases/download/v2.2.5/echidna-2.2.5-x86_64-linux.tar.gz \
+            -o echidna.tar.gz
+          tar -xzf echidna.tar.gz
+          chmod +x echidna
+          sudo mv echidna /usr/local/bin/echidna
+          echidna --version
+
+      - name: Echidna — EchidnaEscrow (Invariants 1, 2)
+        run: |
+          echidna test-fuzz/EchidnaEscrow.sol \
+            --contract EchidnaEscrow \
+            --config echidna.yaml
+
+      - name: Echidna — EchidnaBond (Invariant 7)
+        run: |
+          echidna test-fuzz/EchidnaBond.sol \
+            --contract EchidnaBond \
+            --config echidna.yaml
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: echidna-corpus
+          path: contracts/echidna-corpus/
+
+  medusa:
+    name: Medusa property fuzzing
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install solc 0.8.24 + crytic-compile
+        run: |
+          pip install solc-select crytic-compile
+          solc-select install 0.8.24
+          solc-select use 0.8.24
+
+      - name: Install Medusa
+        run: |
+          curl -L https://github.com/crytic/medusa/releases/download/v0.1.8/medusa-linux-x64.tar.gz \
+            -o medusa.tar.gz
+          tar -xzf medusa.tar.gz
+          chmod +x medusa
+          sudo mv medusa /usr/local/bin/medusa
+          medusa --version
+
+      # Medusa is invoked once per property contract. We point --target at the
+      # specific file so crytic-compile only walks that contract's deps, and we
+      # override targetContracts/deploymentOrder via CLI so the same medusa.json
+      # template is reused.
+      - name: Medusa — EchidnaEscrow (Invariants 1, 2)
+        run: |
+          jq '.fuzzing.targetContracts = ["EchidnaEscrow"] |
+              .fuzzing.deploymentOrder = ["EchidnaEscrow"] |
+              .compilation.platformConfig.target = "test-fuzz/EchidnaEscrow.sol"' \
+              medusa.json > medusa-escrow.json
+          medusa fuzz --config medusa-escrow.json
+
+      - name: Medusa — EchidnaBond (Invariant 7)
+        run: |
+          jq '.fuzzing.targetContracts = ["EchidnaBond"] |
+              .fuzzing.deploymentOrder = ["EchidnaBond"] |
+              .compilation.platformConfig.target = "test-fuzz/EchidnaBond.sol"' \
+              medusa.json > medusa-bond.json
+          medusa fuzz --config medusa-bond.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: medusa-corpus
+          path: contracts/medusa-corpus/

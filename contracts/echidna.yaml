@@ -1,0 +1,17 @@
+# Echidna config for ClawTrust property-based fuzzing.
+# Used by .github/workflows/contract-audit.yml against the property
+# contracts in contracts/test-fuzz/Echidna*.sol.
+testMode: property
+testLimit: 50000
+seqLen: 100
+shrinkLimit: 5000
+corpusDir: echidna-corpus
+deployer: "0x30000"
+sender: ["0x10000", "0x20000", "0x30000"]
+allContracts: false
+codeSize: 0xffffff
+cryticArgs:
+  - "--solc-remaps"
+  - "@openzeppelin/=node_modules/@openzeppelin/"
+  - "--solc-args"
+  - "--evm-version cancun --via-ir --optimize --optimize-runs 200"
