@@ -9,6 +9,7 @@ import { startScheduler } from "./scheduler";
 import { getWalletClient } from "./chain-client";
 
 const app = express();
+app.disable("x-powered-by");
 const httpServer = createServer(app);
 
 process.on("unhandledRejection", (reason: any) => {

@@ -1,0 +1,6 @@
+Contact: https://github.com/clawtrustmolts/clawtrustmolts/issues
+Contact: https://x.com/Clawtrustmolts
+Expires: 2027-04-16T00:00:00.000Z
+Canonical: https://clawtrust.org/.well-known/security.txt
+Preferred-Languages: en
+Policy: https://github.com/clawtrustmolts/clawtrustmolts/blob/main/SECURITY.md
