@@ -9,7 +9,11 @@ name: Release Notes
 #   2. Looks up the most recent SUCCESSFUL `Deploy Contracts (Mainnet)` run
 #      for this exact tag and, if one exists, downloads the
 #      `deployed-addresses-<tag>` artifact uploaded by that run.
-#   3. Creates a GitHub Release for the tag with the changelog as the body
+#   3. Task #110: also tries to download the previous tag's addresses
+#      artifact and, if both are present, inlines a per-contract diff
+#      (re-deployed / added / removed / unchanged) into the release body
+#      so readers don't have to download and diff the JSON by hand.
+#   4. Creates a GitHub Release for the tag with the changelog as the body
 #      and `deployed-addresses.json` attached as a release asset (only
 #      when the deploy artifact was found — we never invent or stale-fill
 #      that file).
@@ -160,6 +164,156 @@ jobs:
             echo "No deployed-addresses.json available; releasing without asset."
             echo "files=" >> "$GITHUB_OUTPUT"
           fi
+
+      # Task #110: also try to fetch the *previous* tag's addresses
+      # artifact so we can compute a per-contract diff and inline it in
+      # the release body. Same lookup strategy as the current-tag run:
+      # match the deploy workflow's run by head_sha + head_branch and
+      # pick the newest one that still has a live artifact. If anything
+      # is missing (no previous tag, no matching deploy run, expired
+      # artifact) we skip the diff section gracefully.
+      - name: Find previous tag's deploy run
+        id: prev_deploy
+        if: ${{ steps.changelog.outputs.prev_tag != '' && steps.asset.outputs.files != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PREV_TAG: ${{ steps.changelog.outputs.prev_tag }}
+        run: |
+          set -euo pipefail
+          PREV_SHA=$(git rev-list -n 1 "$PREV_TAG" 2>/dev/null || true)
+          if [ -z "$PREV_SHA" ]; then
+            echo "Could not resolve commit for $PREV_TAG; skipping diff."
+            echo "run_id=" >> "$GITHUB_OUTPUT"
+            echo "artifact_name=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ARTIFACT_NAME="deployed-addresses-${PREV_TAG}"
+          RUNS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/actions/workflows/deploy-mainnet.yml/runs?head_sha=${PREV_SHA}&per_page=50")
+          CANDIDATES=$(echo "$RUNS" | jq -r --arg tag "$PREV_TAG" '
+            [.workflow_runs[]
+              | select(.status=="completed"
+                       and .conclusion=="success"
+                       and .head_branch==$tag)]
+            | sort_by(.created_at) | reverse | .[].id
+          ')
+          RUN_ID=""
+          for id in $CANDIDATES; do
+            HAS=$(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/${REPO}/actions/runs/${id}/artifacts?per_page=100" \
+              | jq -r --arg n "$ARTIFACT_NAME" \
+                '[.artifacts[] | select(.name==$n and .expired==false)] | length')
+            if [ "$HAS" -gt 0 ]; then
+              RUN_ID="$id"
+              echo "Picked previous deploy run id=$RUN_ID for $PREV_TAG"
+              break
+            fi
+          done
+          if [ -z "$RUN_ID" ]; then
+            echo "No live $ARTIFACT_NAME artifact for $PREV_TAG; diff section will be skipped."
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Download previous deployed-addresses artifact
+        if: ${{ steps.prev_deploy.outputs.run_id != '' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.prev_deploy.outputs.artifact_name }}
+          path: prev-release-assets
+          run-id: ${{ steps.prev_deploy.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Compute the per-contract diff and append a "Deployed contracts"
+      # section to CHANGELOG.md. Skipped entirely if either side of the
+      # comparison is missing (no current artifact, no previous artifact,
+      # or no previous tag at all).
+      - name: Append contracts diff to release notes
+        if: ${{ steps.asset.outputs.files != '' }}
+        env:
+          PREV_TAG: ${{ steps.changelog.outputs.prev_tag }}
+        run: |
+          set -euo pipefail
+          CURR=release-assets/deployed-addresses.json
+          PREV=prev-release-assets/deployed-addresses.json
+          if [ ! -f "$CURR" ]; then
+            echo "No current addresses file; nothing to diff."
+            exit 0
+          fi
+          if [ -z "${PREV_TAG}" ] || [ ! -f "$PREV" ]; then
+            echo "No previous addresses available; skipping Deployed contracts section."
+            exit 0
+          fi
+
+          # Bind each entry to $e before checking $p — inside `($p|...)`
+          # the implicit `.` rebinds to $p, so we can't use `.key` there.
+          jq -n \
+            --slurpfile curr "$CURR" \
+            --slurpfile prev "$PREV" '
+              ($curr[0].contracts // {}) as $c |
+              ($prev[0].contracts // {}) as $p |
+              {
+                added:     [$c | to_entries[] | . as $e
+                             | select($p | has($e.key) | not)
+                             | {name: $e.key, addr: $e.value}],
+                removed:   [$p | to_entries[] | . as $e
+                             | select($c | has($e.key) | not)
+                             | {name: $e.key, addr: $e.value}],
+                changed:   [$c | to_entries[] | . as $e
+                             | select(($p | has($e.key))
+                                      and ($p[$e.key]|ascii_downcase)
+                                          != ($e.value|ascii_downcase))
+                             | {name: $e.key, new: $e.value, old: $p[$e.key]}],
+                unchanged: [$c | to_entries[] | . as $e
+                             | select(($p | has($e.key))
+                                      and ($p[$e.key]|ascii_downcase)
+                                          == ($e.value|ascii_downcase))
+                             | {name: $e.key, addr: $e.value}]
+              }
+            ' > contracts-diff.json
+
+          n_changed=$(jq '.changed   | length' contracts-diff.json)
+          n_added=$(jq   '.added     | length' contracts-diff.json)
+          n_removed=$(jq '.removed   | length' contracts-diff.json)
+          n_unchanged=$(jq '.unchanged | length' contracts-diff.json)
+
+          {
+            echo
+            echo "## Deployed contracts"
+            echo
+            echo "Comparison vs \`$PREV_TAG\`:"
+            echo
+            if [ "$n_changed" -gt 0 ]; then
+              echo "### Re-deployed (address changed)"
+              jq -r '.changed[] | "- **\(.name)**: `\(.new)` (was `\(.old)`)"' contracts-diff.json
+              echo
+            fi
+            if [ "$n_added" -gt 0 ]; then
+              echo "### Added"
+              jq -r '.added[] | "- **\(.name)**: `\(.addr)`"' contracts-diff.json
+              echo
+            fi
+            if [ "$n_removed" -gt 0 ]; then
+              echo "### Removed"
+              jq -r '.removed[] | "- **\(.name)**: was `\(.addr)`"' contracts-diff.json
+              echo
+            fi
+            if [ "$n_unchanged" -gt 0 ]; then
+              echo "### Unchanged"
+              jq -r '.unchanged[] | "- **\(.name)**: `\(.addr)`"' contracts-diff.json
+              echo
+            fi
+            if [ "$n_changed" -eq 0 ] && [ "$n_added" -eq 0 ] && [ "$n_removed" -eq 0 ]; then
+              echo "_No contract address changes since \`$PREV_TAG\`._"
+              echo
+            fi
+          } >> CHANGELOG.md
+
+          echo "----- Updated CHANGELOG.md -----"
+          cat CHANGELOG.md
 
       # Use the official GitHub CLI (`gh release create`) which is
       # preinstalled on GitHub-hosted runners and is the supported way to
