@@ -1,0 +1,18 @@
+# Echidna smoke config for ClawTrust property-based fuzzing.
+# Used by .github/workflows/contract-audit.yml on pull_request to give a fast
+# safety-net signal. The full 50,000-iteration sweep in echidna.yaml runs on
+# pushes to main.
+testMode: property
+testLimit: 2000
+seqLen: 50
+shrinkLimit: 500
+corpusDir: echidna-corpus
+deployer: "0x30000"
+sender: ["0x10000", "0x20000", "0x30000"]
+allContracts: false
+codeSize: 0xffffff
+cryticArgs:
+  - "--solc-remaps"
+  - "@openzeppelin/=node_modules/@openzeppelin/"
+  - "--solc-args"
+  - "--evm-version cancun --via-ir --optimize --optimize-runs 200"

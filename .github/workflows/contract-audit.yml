@@ -238,6 +238,10 @@ jobs:
     defaults:
       run:
         working-directory: contracts
+    env:
+      # Smoke profile (~2k iterations) on PRs for fast feedback; full 50k
+      # sweep on pushes to main and manual dispatches.
+      ECHIDNA_CONFIG: ${{ github.event_name == 'pull_request' && 'echidna.smoke.yaml' || 'echidna.yaml' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -267,37 +271,37 @@ jobs:
         run: |
           echidna test-fuzz/EchidnaEscrow.sol \
             --contract EchidnaEscrow \
-            --config echidna.yaml
+            --config "$ECHIDNA_CONFIG"
 
       - name: Echidna — EchidnaBond (Invariant 7)
         run: |
           echidna test-fuzz/EchidnaBond.sol \
             --contract EchidnaBond \
-            --config echidna.yaml
+            --config "$ECHIDNA_CONFIG"
 
       - name: Echidna — EchidnaSwarmValidator (Invariant 3)
         run: |
           echidna test-fuzz/EchidnaSwarmValidator.sol \
             --contract EchidnaSwarmValidator \
-            --config echidna.yaml
+            --config "$ECHIDNA_CONFIG"
 
       - name: Echidna — EchidnaSoulbound (Invariant 4)
         run: |
           echidna test-fuzz/EchidnaSoulbound.sol \
             --contract EchidnaSoulbound \
-            --config echidna.yaml
+            --config "$ECHIDNA_CONFIG"
 
       - name: Echidna — EchidnaRepAdapter (Invariant 5)
         run: |
           echidna test-fuzz/EchidnaRepAdapter.sol \
             --contract EchidnaRepAdapter \
-            --config echidna.yaml
+            --config "$ECHIDNA_CONFIG"
 
       - name: Echidna — EchidnaRegistry (Invariant 6)
         run: |
           echidna test-fuzz/EchidnaRegistry.sol \
             --contract EchidnaRegistry \
-            --config echidna.yaml
+            --config "$ECHIDNA_CONFIG"
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -311,6 +315,10 @@ jobs:
     defaults:
       run:
         working-directory: contracts
+    env:
+      # Smoke profile (~2k iterations) on PRs for fast feedback; full 50k
+      # sweep on pushes to main and manual dispatches.
+      MEDUSA_CONFIG: ${{ github.event_name == 'pull_request' && 'medusa.smoke.json' || 'medusa.json' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -345,7 +353,7 @@ jobs:
           jq '.fuzzing.targetContracts = ["EchidnaEscrow"] |
               .fuzzing.deploymentOrder = ["EchidnaEscrow"] |
               .compilation.platformConfig.target = "test-fuzz/EchidnaEscrow.sol"' \
-              medusa.json > medusa-escrow.json
+              "$MEDUSA_CONFIG" > medusa-escrow.json
           medusa fuzz --config medusa-escrow.json
 
       - name: Medusa — EchidnaBond (Invariant 7)
@@ -353,7 +361,7 @@ jobs:
           jq '.fuzzing.targetContracts = ["EchidnaBond"] |
               .fuzzing.deploymentOrder = ["EchidnaBond"] |
               .compilation.platformConfig.target = "test-fuzz/EchidnaBond.sol"' \
-              medusa.json > medusa-bond.json
+              "$MEDUSA_CONFIG" > medusa-bond.json
           medusa fuzz --config medusa-bond.json
 
       - name: Medusa — EchidnaSwarmValidator (Invariant 3)
@@ -361,7 +369,7 @@ jobs:
           jq '.fuzzing.targetContracts = ["EchidnaSwarmValidator"] |
               .fuzzing.deploymentOrder = ["EchidnaSwarmValidator"] |
               .compilation.platformConfig.target = "test-fuzz/EchidnaSwarmValidator.sol"' \
-              medusa.json > medusa-swarm.json
+              "$MEDUSA_CONFIG" > medusa-swarm.json
           medusa fuzz --config medusa-swarm.json
 
       - name: Medusa — EchidnaSoulbound (Invariant 4)
@@ -369,7 +377,7 @@ jobs:
           jq '.fuzzing.targetContracts = ["EchidnaSoulbound"] |
               .fuzzing.deploymentOrder = ["EchidnaSoulbound"] |
               .compilation.platformConfig.target = "test-fuzz/EchidnaSoulbound.sol"' \
-              medusa.json > medusa-soulbound.json
+              "$MEDUSA_CONFIG" > medusa-soulbound.json
           medusa fuzz --config medusa-soulbound.json
 
       - name: Medusa — EchidnaRepAdapter (Invariant 5)
@@ -377,7 +385,7 @@ jobs:
           jq '.fuzzing.targetContracts = ["EchidnaRepAdapter"] |
               .fuzzing.deploymentOrder = ["EchidnaRepAdapter"] |
               .compilation.platformConfig.target = "test-fuzz/EchidnaRepAdapter.sol"' \
-              medusa.json > medusa-repadapter.json
+              "$MEDUSA_CONFIG" > medusa-repadapter.json
           medusa fuzz --config medusa-repadapter.json
 
       - name: Medusa — EchidnaRegistry (Invariant 6)
@@ -385,7 +393,7 @@ jobs:
           jq '.fuzzing.targetContracts = ["EchidnaRegistry"] |
               .fuzzing.deploymentOrder = ["EchidnaRegistry"] |
               .compilation.platformConfig.target = "test-fuzz/EchidnaRegistry.sol"' \
-              medusa.json > medusa-registry.json
+              "$MEDUSA_CONFIG" > medusa-registry.json
           medusa fuzz --config medusa-registry.json
 
       - uses: actions/upload-artifact@v4
