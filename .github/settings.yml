@@ -1,0 +1,42 @@
+# Repository settings managed by the Probot "Settings" GitHub App
+# (https://github.com/apps/settings) or equivalent IaC. Committing this file
+# makes the branch-protection policy versioned and reviewable instead of
+# clicking through the GitHub UI.
+#
+# This file enforces the policy required by task #104:
+#   The four jobs of the `Contract Audit (Heavy)` workflow MUST be required
+#   status checks on `main`. A PR cannot merge — and a push cannot land — on
+#   `main` unless every one of these checks has succeeded for the head commit.
+#
+# The check names below MUST match the `name:` of each job in
+# `.github/workflows/contract-audit.yml`. If you rename a job there, update
+# this list too or branch protection will silently stop enforcing it.
+
+branches:
+  - name: main
+    protection:
+      required_status_checks:
+        strict: true
+        # GitHub identifies status checks by the job's `name:` field.
+        contexts:
+          # ── Contract Audit (Heavy) — required before any merge to main ──
+          - "Foundry invariants & fuzz"
+          - "Halmos symbolic proofs"
+          - "Mythril symbolic execution"
+          - "Aderyn static analysis"
+          # ── Pre-existing CI checks kept required for parity ─────────────
+          - "lint-and-typecheck"
+          - "test"
+          - "contracts"
+          - "secret-scan"
+          - "sast"
+          - "dependency-audit"
+      enforce_admins: true
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: false
+      restrictions: null
+      required_linear_history: true
+      allow_force_pushes: false
+      allow_deletions: false

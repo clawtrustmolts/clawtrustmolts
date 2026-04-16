@@ -1,0 +1,112 @@
+name: Deploy Contracts (Mainnet)
+
+# Mainnet deploy for the ClawTrust smart contracts.
+#
+# Gating policy (task #104):
+#   A mainnet deploy MUST NOT run unless the `Contract Audit (Heavy)` workflow
+#   — Foundry invariants, Halmos proofs, Mythril symbolic execution, and
+#   Aderyn static analysis — has completed successfully for the EXACT commit
+#   being deployed.
+#
+# GitHub Actions does not allow `needs:` to span workflows, so this is
+# enforced by the `verify-audit` job below: it calls the GitHub REST API to
+# look up the most recent `Contract Audit (Heavy)` run for `github.sha` and
+# fails the deploy unless that run's conclusion is `success`. The actual
+# `deploy` job declares `needs: [verify-audit]`, so it cannot start until the
+# gate passes.
+#
+# Triggered manually only — never on push — to keep mainnet deploys
+# deliberate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "DEPLOY-MAINNET" to confirm'
+        required: true
+        default: ''
+
+# Minimum scopes the gate + deploy need. `actions: read` lets `verify-audit`
+# query other workflows' runs via the REST API; `contents: read` is needed
+# for checkout. We do not grant write scopes here.
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify-audit:
+    name: Verify Contract Audit (Heavy) passed for this commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject unconfirmed dispatch
+        if: ${{ inputs.confirm != 'DEPLOY-MAINNET' }}
+        run: |
+          echo "::error::Deploy not confirmed. Re-run with confirm=DEPLOY-MAINNET."
+          exit 1
+
+      - name: Require successful Contract Audit (Heavy) for ${{ github.sha }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "Looking up 'Contract Audit (Heavy)' runs for commit $SHA"
+          # List runs of the audit workflow filtered to this exact SHA.
+          RUNS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/actions/workflows/contract-audit.yml/runs?head_sha=${SHA}&per_page=50")
+
+          TOTAL=$(echo "$RUNS" | jq '.total_count')
+          echo "Found $TOTAL audit run(s) for this commit."
+
+          # Filter to runs that have actually completed, then pick the most
+          # recent by created_at. This avoids transient false negatives when
+          # an in-progress rerun for the same SHA would otherwise be selected.
+          LATEST=$(echo "$RUNS" | jq '
+            [.workflow_runs[] | select(.status=="completed")]
+            | sort_by(.created_at) | reverse | .[0] // empty
+          ')
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "::error::No COMPLETED 'Contract Audit (Heavy)' run found for $SHA. Push the commit and let the audit finish before deploying."
+            exit 1
+          fi
+
+          CONCLUSION=$(echo "$LATEST" | jq -r '.conclusion')
+          RUN_URL=$(echo "$LATEST" | jq -r '.html_url')
+          CREATED=$(echo "$LATEST" | jq -r '.created_at')
+          echo "Latest completed audit run: conclusion=$CONCLUSION created_at=$CREATED"
+          echo "Run URL: $RUN_URL"
+
+          # We do NOT accept 'neutral', 'skipped', 'cancelled', etc.
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::Contract Audit (Heavy) for $SHA did not succeed (conclusion=$CONCLUSION). Refusing to deploy."
+            exit 1
+          fi
+          echo "Audit gate passed for $SHA."
+
+  deploy:
+    name: Deploy to mainnet
+    needs: [verify-audit]
+    runs-on: ubuntu-latest
+    environment: mainnet
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: contracts/package-lock.json
+      - run: npm ci
+
+      - name: Compile
+        run: npx hardhat compile
+
+      - name: Deploy
+        env:
+          MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+          MAINNET_DEPLOYER_KEY: ${{ secrets.MAINNET_DEPLOYER_KEY }}
+        run: npx hardhat run scripts/deploy.cjs --network mainnet
