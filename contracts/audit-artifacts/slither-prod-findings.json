@@ -1,0 +1,370 @@
+[
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawCardNFT.updateReputation(uint256,uint256,uint8,uint256,uint256,uint256,uint256,bytes) (contracts/ClawCardNFT.sol#243-287) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- sigTimestamp > block.timestamp (contracts/ClawCardNFT.sol#257)\n\t- block.timestamp > sigTimestamp + sigFreshnessWindo",
+    "files": [
+      "contracts/ClawCardNFT.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "missing-zero-check",
+    "desc": "GuardianPausable.setGuardian(address).newGuardian (contracts/GuardianPausable.sol#68) lacks a zero-check on :\n\t\t- guardian = newGuardian (contracts/GuardianPausable.sol#70)\n",
+    "files": [
+      "contracts/GuardianPausable.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustAC.submit(bytes32,bytes32) (contracts/ClawTrustAC.sol#224-236) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp >= job.expiredAt (contracts/ClawTrustAC.sol#229)\n",
+    "files": [
+      "contracts/ClawTrustAC.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustAC.completeAfterTimeout(bytes32,bytes32) (contracts/ClawTrustAC.sol#259-268) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < submittedAt[jobId] + DISPUTE_WINDOW (contracts/ClawTrustAC.sol#264)\n",
+    "files": [
+      "contracts/ClawTrustAC.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustAC.assignProvider(bytes32,address) (contracts/ClawTrustAC.sol#202-217) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp >= job.expiredAt (contracts/ClawTrustAC.sol#209)\n",
+    "files": [
+      "contracts/ClawTrustAC.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustAC.fund(bytes32) (contracts/ClawTrustAC.sol#183-194) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp >= job.expiredAt (contracts/ClawTrustAC.sol#188)\n",
+    "files": [
+      "contracts/ClawTrustAC.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustAC.expireJob(bytes32) (contracts/ClawTrustAC.sol#340-355) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < job.expiredAt (contracts/ClawTrustAC.sol#343)\n",
+    "files": [
+      "contracts/ClawTrustAC.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustAC.getJob(bytes32) (contracts/ClawTrustAC.sol#375-378) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- jobs[jobId].client == address(0) (contracts/ClawTrustAC.sol#376)\n",
+    "files": [
+      "contracts/ClawTrustAC.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustAC.setTreasury(address)._treasury (contracts/ClawTrustAC.sol#419) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustAC.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustAC.setEvaluator(address)._evaluator (contracts/ClawTrustAC.sol#413) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustAC.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "missing-zero-check",
+    "desc": "GuardianPausable.setGuardian(address).newGuardian (contracts/GuardianPausable.sol#68) lacks a zero-check on :\n\t\t- guardian = newGuardian (contracts/GuardianPausable.sol#70)\n",
+    "files": [
+      "contracts/GuardianPausable.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustBond._finalizeGig(bytes32,bool) (contracts/ClawTrustBond.sol#177-213) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < bond.lastSlashTimestamp + SLASH_COOLDOWN (contracts/ClawTrustBond.sol#188)\n",
+    "files": [
+      "contracts/ClawTrustBond.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustBond.setTreasury(address)._treasury (contracts/ClawTrustBond.sol#222) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustBond.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustCrew.verifyMembership(bytes32,address) (contracts/ClawTrustCrew.sol#267-270) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- crews[crewId].isMember[member] && crews[crewId].active (contracts/ClawTrustCrew.sol#269)\n",
+    "files": [
+      "contracts/ClawTrustCrew.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "costly-loop",
+    "desc": "ClawTrustCrew.dissolveCrew(bytes32) (contracts/ClawTrustCrew.sol#215-227) has costly operations inside a loop:\n\t- delete agentCrew[crew.memberAddresses[i]] (contracts/ClawTrustCrew.sol#219)\n",
+    "files": [
+      "contracts/ClawTrustCrew.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "cyclomatic-complexity",
+    "desc": "ClawTrustCrew.formCrew(string,address[],uint8[]) (contracts/ClawTrustCrew.sol#88-139) has a high cyclomatic complexity (14).\n",
+    "files": [
+      "contracts/ClawTrustCrew.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "missing-zero-check",
+    "desc": "ClawTrustEscrow.constructor(address,address,uint256,address,address)._x402Facilitator (contracts/ClawTrustEscrow.sol#87) lacks a zero-check on :\n\t\t- x402Facilitator = _x402Facilitator (contracts/ClawTrustEscrow.sol#102)\n",
+    "files": [
+      "contracts/ClawTrustEscrow.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "missing-zero-check",
+    "desc": "GuardianPausable.setGuardian(address).newGuardian (contracts/GuardianPausable.sol#68) lacks a zero-check on :\n\t\t- guardian = newGuardian (contracts/GuardianPausable.sol#70)\n",
+    "files": [
+      "contracts/GuardianPausable.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustEscrow.refundAfterTimeout(bytes32) (contracts/ClawTrustEscrow.sol#185-192) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < escrow.createdAt + ESCROW_TIMEOUT (contracts/ClawTrustEscrow.sol#189)\n",
+    "files": [
+      "contracts/ClawTrustEscrow.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustEscrow.claimAfterDisputeTimeout(bytes32) (contracts/ClawTrustEscrow.sol#205-215) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < escrow.disputedAt + DISPUTE_TIMEOUT (contracts/ClawTrustEscrow.sol#209)\n",
+    "files": [
+      "contracts/ClawTrustEscrow.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustEscrow._releaseEscrow(ClawTrustEscrow.Escrow) (contracts/ClawTrustEscrow.sol#290-303) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- fee > 0 (contracts/ClawTrustEscrow.sol#298)\n",
+    "files": [
+      "contracts/ClawTrustEscrow.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustEscrow.setPlatformFeeRate(uint256)._rate (contracts/ClawTrustEscrow.sol#316) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustEscrow.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustEscrow.setTreasury(address)._treasury (contracts/ClawTrustEscrow.sol#330) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustEscrow.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustEscrow.setX402Facilitator(address)._facilitator (contracts/ClawTrustEscrow.sol#323) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustEscrow.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustRegistry._update(address,uint256,address) (contracts/ClawTrustRegistry.sol#262-273) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp > domains[tokenId].expiresAt (contracts/ClawTrustRegistry.sol#268)\n",
+    "files": [
+      "contracts/ClawTrustRegistry.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustRegistry.renew(uint256) (contracts/ClawTrustRegistry.sol#173-183) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- domains[tokenId].expiresAt > block.timestamp (contracts/ClawTrustRegistry.sol#178-180)\n",
+    "files": [
+      "contracts/ClawTrustRegistry.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustRegistry.isAvailable(string,string) (contracts/ClawTrustRegistry.sol#141-146) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp > domains[tokenId].expiresAt (contracts/ClawTrustRegistry.sol#145)\n",
+    "files": [
+      "contracts/ClawTrustRegistry.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustRegistry.resolve(string,string) (contracts/ClawTrustRegistry.sol#132-139) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp > d.expiresAt (contracts/ClawTrustRegistry.sol#137)\n",
+    "files": [
+      "contracts/ClawTrustRegistry.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustRegistry.getOwnerTokenIds(address) (contracts/ClawTrustRegistry.sol#153-171) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- _ownerOf(tokenId) == owner && block.timestamp <= domains[tokenId].expiresAt (contracts/ClawTrustRegistry.sol#158)\n\t- _ownerOf(tokenId_scope_1) == owner && b",
+    "files": [
+      "contracts/ClawTrustRegistry.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "missing-zero-check",
+    "desc": "GuardianPausable.setGuardian(address).newGuardian (contracts/GuardianPausable.sol#68) lacks a zero-check on :\n\t\t- guardian = newGuardian (contracts/GuardianPausable.sol#70)\n",
+    "files": [
+      "contracts/GuardianPausable.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustRepAdapter.updateFusedScoreBatch(address[],uint256[],uint256[],uint256[],uint256[],string[]) (contracts/ClawTrustRepAdapter.sol#171-214) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < lastUpdateTime[agent] + updateCooldown (contracts/ClawTrustRepAdapter.sol#192)",
+    "files": [
+      "contracts/ClawTrustRepAdapter.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustRepAdapter.verifyProof(address,string) (contracts/ClawTrustRepAdapter.sol#418-422) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- fusedScores[agent].proofHash == proofHash (contracts/ClawTrustRepAdapter.sol#421)\n",
+    "files": [
+      "contracts/ClawTrustRepAdapter.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustRepAdapter.setMinOracleCount(uint256)._minCount (contracts/ClawTrustRepAdapter.sol#399) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustRepAdapter.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustRepAdapter.setUpdateCooldown(uint256)._cooldown (contracts/ClawTrustRepAdapter.sol#409) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustRepAdapter.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "missing-zero-check",
+    "desc": "GuardianPausable.setGuardian(address).newGuardian (contracts/GuardianPausable.sol#68) lacks a zero-check on :\n\t\t- guardian = newGuardian (contracts/GuardianPausable.sol#70)\n",
+    "files": [
+      "contracts/GuardianPausable.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustSwarmValidator.getGigVerdict(bytes32) (contracts/ClawTrustSwarmValidator.sol#363-373) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- s == ValidationStatus.Approved (contracts/ClawTrustSwarmValidator.sol#367)\n\t- s == ValidationStatus.Rejected (contracts/ClawTrustSwarmValidator.sol",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustSwarmValidator.vote(bytes32,ClawTrustSwarmValidator.VoteType) (contracts/ClawTrustSwarmValidator.sol#169-194) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp >= v.expiresAt (contracts/ClawTrustSwarmValidator.sol#174)\n",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustSwarmValidator.expireValidation(bytes32) (contracts/ClawTrustSwarmValidator.sol#221-228) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < v.expiresAt (contracts/ClawTrustSwarmValidator.sol#225)\n",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustSwarmValidator.hasVoted(bytes32,address) (contracts/ClawTrustSwarmValidator.sol#306-309) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- validations[gigId].votes[voter] != VoteType.None (contracts/ClawTrustSwarmValidator.sol#308)\n",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "timestamp",
+    "desc": "ClawTrustSwarmValidator.sweepResidualRewards(bytes32,address) (contracts/ClawTrustSwarmValidator.sol#342-357) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < v.resolvedAt + SWEEP_CLAIM_WINDOW (contracts/ClawTrustSwarmValidator.sol#347)\n",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "cyclomatic-complexity",
+    "desc": "ClawTrustSwarmValidator.createValidation(bytes32,address,address,address[],uint256,uint256,address) (contracts/ClawTrustSwarmValidator.sol#120-167) has a high cyclomatic complexity (13).\n",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustSwarmValidator.setEscrowContract(address)._escrow (contracts/ClawTrustSwarmValidator.sol#333) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustSwarmValidator.vote(bytes32,ClawTrustSwarmValidator.VoteType)._vote (contracts/ClawTrustSwarmValidator.sol#169) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustSwarmValidator.setDefaultThreshold(uint256)._threshold (contracts/ClawTrustSwarmValidator.sol#321) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Informational",
+    "check": "naming-convention",
+    "desc": "Parameter ClawTrustSwarmValidator.setDefaultCandidateCount(uint256)._count (contracts/ClawTrustSwarmValidator.sol#328) is not in mixedCase\n",
+    "files": [
+      "contracts/ClawTrustSwarmValidator.sol"
+    ]
+  },
+  {
+    "impact": "Low",
+    "check": "missing-zero-check",
+    "desc": "GuardianPausable.setGuardian(address).newGuardian (contracts/GuardianPausable.sol#68) lacks a zero-check on :\n\t\t- guardian = newGuardian (contracts/GuardianPausable.sol#70)\n",
+    "files": [
+      "contracts/GuardianPausable.sol"
+    ]
+  }
+]
