@@ -1,0 +1,231 @@
+name: Contract Audit (Heavy)
+
+# Heavy fuzz / symbolic-execution / formal-proof job for ClawTrust smart
+# contracts. This complements the lighter Slither + Hardhat checks in ci.yml
+# and is REQUIRED to pass before any mainnet deploy.
+#
+# What this job runs (per CLAWTRUST_SECURITY_AUDIT_REPORT.md §6):
+#   * Foundry — invariant fuzzing of the 7 audit invariants
+#       (escrow conservation, TVL cap, reward-pool conservation, soulbound
+#        transfers, FusedScore range, domain uniqueness, bond solvency).
+#   * Mythril — symbolic execution of each production contract
+#       (--execution-timeout 600 --max-depth 12).
+#   * Halmos — formal `prove_*` proofs for the four core contracts
+#       (Escrow, SwarmValidator, ClawCardNFT, RepAdapter).
+#   * Aderyn — Solidity static analysis, complementing Slither.
+#
+# Failure policy: any High or Medium severity finding fails the job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  foundry:
+    name: Foundry invariants & fuzz
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: contracts/package-lock.json
+
+      - name: Install npm deps (OpenZeppelin)
+        run: npm install --no-audit --no-fund
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install forge-std
+        run: |
+          forge install --no-commit --no-git foundry-rs/forge-std || true
+          forge install foundry-rs/forge-std --no-commit || true
+
+      - name: Build
+        run: forge build --sizes
+
+      - name: Run unit fuzz tests
+        run: forge test -vvv --fuzz-runs 100000
+
+      - name: Run invariant tests
+        run: forge test --match-test "invariant_" -vvv
+
+  halmos:
+    name: Halmos symbolic proofs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+
+      - name: Install Foundry (Halmos depends on forge build)
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+      - run: forge install foundry-rs/forge-std --no-commit || true
+      - run: forge build
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Halmos
+        run: pip install halmos
+
+      - name: Halmos — ClawTrustEscrow
+        run: halmos --root . --contract HalmosProofs --function prove_escrow_tvl_cap --solver-timeout-assertion 60000
+      - name: Halmos — ClawTrustSwarmValidator
+        run: halmos --root . --contract HalmosProofs --function prove_swarm_reward_conservation --solver-timeout-assertion 60000
+      - name: Halmos — ClawCardNFT
+        run: halmos --root . --contract HalmosProofs --function prove_card_soulbound --solver-timeout-assertion 60000
+      - name: Halmos — ClawTrustRepAdapter
+        run: halmos --root . --contract HalmosProofs --function prove_repadapter_score_bounded --solver-timeout-assertion 60000
+
+  mythril:
+    name: Mythril symbolic execution
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install solc 0.8.24 + Mythril
+        run: |
+          pip install solc-select mythril
+          solc-select install 0.8.24
+          solc-select use 0.8.24
+
+      - name: Run Mythril on each production contract
+        # --execution-timeout 600s, --max-depth 12 per audit recommendation.
+        # JSON output is parsed with jq; ANY High or Medium finding fails the
+        # job. A failed `myth` invocation OR malformed JSON also fails the job
+        # (we never silently mask scanner failures).
+        run: |
+          set -euo pipefail
+          mkdir -p mythril-out
+          FAILED=0
+          for f in contracts/ClawCardNFT.sol contracts/ClawTrustAC.sol \
+                   contracts/ClawTrustBond.sol contracts/ClawTrustCrew.sol \
+                   contracts/ClawTrustEscrow.sol contracts/ClawTrustRegistry.sol \
+                   contracts/ClawTrustRepAdapter.sol contracts/ClawTrustSwarmValidator.sol \
+                   contracts/ClawTrustTimelock.sol contracts/ERC8004IdentityRegistry.sol \
+                   contracts/GuardianPausable.sol; do
+            name=$(basename "$f" .sol)
+            echo "::group::Mythril $name"
+            set +e
+            myth analyze "$f" \
+              --solv 0.8.24 \
+              --execution-timeout 600 \
+              --max-depth 12 \
+              --solc-json <(echo '{"remappings":["@openzeppelin/=node_modules/@openzeppelin/"]}') \
+              -o jsonv2 > "mythril-out/${name}.json"
+            RC=$?
+            set -e
+            # Mythril uses RC=1 when issues found, RC=0 when clean.
+            # Anything else (>=2) is a tool/run failure that must NOT be masked.
+            if [ "$RC" -ge 2 ]; then
+              echo "::error file=$f::Mythril invocation failed for ${name} (rc=$RC)"
+              FAILED=1
+              echo "::endgroup::"
+              continue
+            fi
+            if ! jq -e . "mythril-out/${name}.json" >/dev/null 2>&1; then
+              echo "::error file=$f::Mythril produced invalid JSON for ${name}"
+              FAILED=1
+              echo "::endgroup::"
+              continue
+            fi
+            HIGH_MED=$(jq '[.[].issues[]? | select(.severity=="High" or .severity=="Medium")] | length' "mythril-out/${name}.json")
+            if [ "${HIGH_MED}" != "0" ]; then
+              echo "::error file=$f::Mythril found ${HIGH_MED} High/Medium findings in ${name}"
+              FAILED=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $FAILED
+
+      - name: Upload Mythril reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mythril-reports
+          path: contracts/mythril-out/
+
+  aderyn:
+    name: Aderyn static analysis
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+
+      - name: Install Aderyn
+        # Cyfrin/aderyn ships prebuilt binaries via cargo or curl install script.
+        run: |
+          curl -L https://raw.githubusercontent.com/Cyfrin/aderyn/dev/cyfrinup/install | bash
+          echo "$HOME/.cyfrin/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cyfrin/bin:$PATH"
+          cyfrinup
+          aderyn --version
+
+      - name: Run Aderyn (JSON + Markdown)
+        run: |
+          aderyn . --output aderyn-report.json
+          aderyn . --output aderyn-report.md
+
+      - name: Gate on High or Medium severity Aderyn findings
+        # Use the structured JSON report so we count actual findings, never
+        # section headers. Aderyn's JSON has a `high_issues` and
+        # `medium_issues` object, each with an `issues: [...]` array. The
+        # build fails if either array is non-empty.
+        run: |
+          set -euo pipefail
+          HIGH=$(jq '(.high_issues.issues // []) | length' aderyn-report.json)
+          MED=$(jq  '(.medium_issues.issues // []) | length' aderyn-report.json)
+          echo "Aderyn findings — High: $HIGH, Medium: $MED"
+          if [ "$HIGH" -gt 0 ] || [ "$MED" -gt 0 ]; then
+            echo "::error::Aderyn reported $HIGH High and $MED Medium severity findings"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aderyn-report
+          path: |
+            contracts/aderyn-report.md
+            contracts/aderyn-report.json
