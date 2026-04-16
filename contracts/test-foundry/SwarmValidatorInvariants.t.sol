@@ -84,14 +84,18 @@ contract SwarmValidatorInvariantsTest is Test {
 
     /// Invariant 3: Reward pool conservation — total tokens paid out by the
     /// validator contract can never exceed the total deposited as reward pools.
-    /// Equivalent to: Σ rewardPoolClaimed[gig] ≤ Σ rewardPool[gig].
-    /// (rewardPoolClaimed is not exposed via a getter, so we measure via
-    ///  contract balance: paidOut == deposited - balance.)
+    /// Per-gig: rewardPoolClaimed[gig] ≤ rewardPool[gig], asserted directly via
+    /// the new ValidationInfo.rewardPoolClaimed field.
     function invariant_reward_pool_conservation() public view {
         uint256 paidOut = handler.totalDeposited() - token.balanceOf(address(sv));
         assertLe(paidOut, handler.totalDeposited());
-        // Stronger: contract balance never goes negative (implicit via uint),
-        // and each gig's pool sum bounds outflow.
         assertLe(token.balanceOf(address(sv)), handler.totalDeposited());
+
+        uint256 n = handler.gigCount();
+        for (uint256 i = 0; i < n; i++) {
+            bytes32 gigId = handler.gigAt(i);
+            ClawTrustSwarmValidator.ValidationInfo memory info = sv.getValidationInfo(gigId);
+            assertLe(info.rewardPoolClaimed, info.rewardPool);
+        }
     }
 }

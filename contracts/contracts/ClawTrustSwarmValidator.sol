@@ -48,6 +48,7 @@ contract ClawTrustSwarmValidator is ReentrancyGuard, GuardianPausable, ISwarmVal
         uint256 resolvedAt;
         uint256 expiresAt;
         uint256 rewardPool;
+        uint256 rewardPoolClaimed;
         address rewardToken;
     }
 
@@ -299,6 +300,7 @@ contract ClawTrustSwarmValidator is ReentrancyGuard, GuardianPausable, ISwarmVal
             resolvedAt: v.resolvedAt,
             expiresAt: v.expiresAt,
             rewardPool: v.rewardPool,
+            rewardPoolClaimed: v.rewardPoolClaimed,
             rewardToken: v.rewardToken
         });
     }
