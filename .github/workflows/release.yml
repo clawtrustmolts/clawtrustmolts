@@ -1,0 +1,182 @@
+name: Release Notes
+
+# Task #107: cut a GitHub Release automatically every time a `v*` tag is
+# pushed.
+#
+# What this workflow does:
+#   1. Computes the changelog as `git log <prev-tag>..<this-tag>` (or the
+#      full history if this is the very first tag).
+#   2. Looks up the most recent SUCCESSFUL `Deploy Contracts (Mainnet)` run
+#      for this exact tag and, if one exists, downloads the
+#      `deployed-addresses-<tag>` artifact uploaded by that run.
+#   3. Creates a GitHub Release for the tag with the changelog as the body
+#      and `deployed-addresses.json` attached as a release asset (only
+#      when the deploy artifact was found — we never invent or stale-fill
+#      that file).
+#
+# Why this exists: mainnet deploys are pinned to v* tags (Task #105) and
+# `contracts/deployed-addresses.json` records the tag/ref/commit. This
+# workflow surfaces all of that on a single human-readable Release page so
+# nobody has to write release notes by hand.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# `contents: write` is required to create the Release. `actions: read` lets
+# us query the deploy workflow's runs and download its artifact.
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    name: Cut GitHub Release for ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for changelog)
+        uses: actions/checkout@v4
+        with:
+          # Need full history + tags to diff against the previous tag.
+          fetch-depth: 0
+
+      - name: Compute previous tag and changelog
+        id: changelog
+        env:
+          THIS_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Make sure tags are present even if checkout shallow-fetched them.
+          git fetch --tags --force --quiet
+
+          # Find the most recent v* tag that is NOT this one. We sort by
+          # creatordate so the comparison is chronological rather than
+          # lexicographic (v1.10.0 must come after v1.9.0).
+          PREV_TAG=$(git tag --list 'v*' --sort=-creatordate \
+            | grep -vxF "$THIS_TAG" | head -n 1 || true)
+
+          {
+            echo "## What's changed"
+            echo
+            if [ -n "$PREV_TAG" ]; then
+              echo "Changes since \`$PREV_TAG\`:"
+              echo
+              git log --no-merges --pretty=format:'- %s (%h)' \
+                "${PREV_TAG}..${THIS_TAG}"
+              echo
+              echo
+              echo "**Full changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${THIS_TAG}"
+            else
+              echo "Initial release. All commits up to \`$THIS_TAG\`:"
+              echo
+              git log --no-merges --pretty=format:'- %s (%h)' "$THIS_TAG"
+            fi
+          } > CHANGELOG.md
+
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+          echo "----- CHANGELOG.md -----"
+          cat CHANGELOG.md
+
+      # Find the most recent SUCCESSFUL `Deploy Contracts (Mainnet)` run
+      # whose head_sha matches this tag's commit. If none exists yet (e.g.
+      # the tag was just pushed and a deploy hasn't been dispatched), we
+      # skip the artifact attachment instead of failing — the Release is
+      # still useful as a changelog.
+      # We want THE deploy run for THIS tag, not just any run that happens
+      # to share the tag's commit SHA (multiple tags can point at the same
+      # commit). The workflow_runs API exposes `head_branch`, which for a
+      # tag-triggered dispatch is the tag name itself — so we filter on
+      # both head_sha and head_branch == tag. We also iterate matching
+      # runs newest-first and pick the first one that actually has the
+      # expected artifact, so an old run that has since lost its artifact
+      # to retention won't shadow a more recent successful re-deploy.
+      - name: Find matching deploy run
+        id: deploy_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ARTIFACT_NAME="deployed-addresses-${TAG}"
+          echo "Looking up 'Deploy Contracts (Mainnet)' runs for sha=$SHA tag=$TAG"
+          RUNS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/actions/workflows/deploy-mainnet.yml/runs?head_sha=${SHA}&per_page=50")
+
+          # Successful, completed runs whose head_branch is exactly this tag,
+          # newest first.
+          CANDIDATES=$(echo "$RUNS" | jq -r --arg tag "$TAG" '
+            [.workflow_runs[]
+              | select(.status=="completed"
+                       and .conclusion=="success"
+                       and .head_branch==$tag)]
+            | sort_by(.created_at) | reverse | .[].id
+          ')
+
+          RUN_ID=""
+          for id in $CANDIDATES; do
+            HAS=$(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/${REPO}/actions/runs/${id}/artifacts?per_page=100" \
+              | jq -r --arg n "$ARTIFACT_NAME" \
+                '[.artifacts[] | select(.name==$n and .expired==false)] | length')
+            if [ "$HAS" -gt 0 ]; then
+              RUN_ID="$id"
+              echo "Picked deploy run id=$RUN_ID (has artifact $ARTIFACT_NAME)"
+              break
+            fi
+            echo "Run id=$id has no live artifact $ARTIFACT_NAME, skipping"
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful deploy run with artifact $ARTIFACT_NAME found — release will be created without addresses asset."
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download deployed-addresses artifact
+        id: download
+        if: ${{ steps.deploy_run.outputs.run_id != '' }}
+        # `continue-on-error` so a missing/expired artifact doesn't block
+        # the release. We still attempt the download because in the happy
+        # path it should exist.
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: deployed-addresses-${{ github.ref_name }}
+          path: release-assets
+          run-id: ${{ steps.deploy_run.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify addresses asset (if any)
+        id: asset
+        run: |
+          set -euo pipefail
+          if [ -f release-assets/deployed-addresses.json ]; then
+            echo "Found deployed-addresses.json — will attach to release."
+            echo "files=release-assets/deployed-addresses.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "No deployed-addresses.json available; releasing without asset."
+            echo "files=" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Use the official GitHub CLI (`gh release create`) which is
+      # preinstalled on GitHub-hosted runners and is the supported way to
+      # create releases from Actions. Tags containing `-` (e.g. v1.2.3-rc1)
+      # are marked as prereleases.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          ASSET: ${{ steps.asset.outputs.files }}
+        run: |
+          set -euo pipefail
+          ARGS=(release create "$TAG" --title "$TAG" --notes-file CHANGELOG.md)
+          case "$TAG" in
+            *-*) ARGS+=(--prerelease) ;;
+          esac
+          if [ -n "$ASSET" ] && [ -f "$ASSET" ]; then
+            ARGS+=("$ASSET")
+          fi
+          gh "${ARGS[@]}"

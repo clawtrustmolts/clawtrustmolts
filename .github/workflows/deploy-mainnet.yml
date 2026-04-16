@@ -131,3 +131,18 @@ jobs:
           MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
           MAINNET_DEPLOYER_KEY: ${{ secrets.MAINNET_DEPLOYER_KEY }}
         run: npx hardhat run scripts/deploy.cjs --network mainnet
+
+      # Task #107: persist the post-deploy addresses file so the
+      # release-notes workflow (.github/workflows/release.yml), which runs
+      # on a separate `push: tags` event, can fetch it for this exact tag
+      # and attach it to the GitHub Release. The artifact name is keyed on
+      # the tag (refs/tags/vX.Y.Z -> deployed-addresses-vX.Y.Z) so the
+      # release workflow can find it deterministically.
+      - name: Upload deployed-addresses.json artifact
+        if: ${{ success() && startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployed-addresses-${{ github.ref_name }}
+          path: contracts/deployed-addresses.json
+          if-no-files-found: error
+          retention-days: 90
