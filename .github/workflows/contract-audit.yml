@@ -8,6 +8,8 @@ name: Contract Audit (Heavy)
 #   * Foundry — invariant fuzzing of the 7 audit invariants
 #       (escrow conservation, TVL cap, reward-pool conservation, soulbound
 #        transfers, FusedScore range, domain uniqueness, bond solvency).
+#   * Echidna + Medusa — coverage-guided property fuzzing of the same 7
+#       invariants via the test-fuzz/Echidna*.sol property contracts.
 #   * Mythril — symbolic execution of each production contract
 #       (--execution-timeout 600 --max-depth 12).
 #   * Halmos — formal `prove_*` proofs for the four core contracts
@@ -273,6 +275,30 @@ jobs:
             --contract EchidnaBond \
             --config echidna.yaml
 
+      - name: Echidna — EchidnaSwarmValidator (Invariant 3)
+        run: |
+          echidna test-fuzz/EchidnaSwarmValidator.sol \
+            --contract EchidnaSwarmValidator \
+            --config echidna.yaml
+
+      - name: Echidna — EchidnaSoulbound (Invariant 4)
+        run: |
+          echidna test-fuzz/EchidnaSoulbound.sol \
+            --contract EchidnaSoulbound \
+            --config echidna.yaml
+
+      - name: Echidna — EchidnaRepAdapter (Invariant 5)
+        run: |
+          echidna test-fuzz/EchidnaRepAdapter.sol \
+            --contract EchidnaRepAdapter \
+            --config echidna.yaml
+
+      - name: Echidna — EchidnaRegistry (Invariant 6)
+        run: |
+          echidna test-fuzz/EchidnaRegistry.sol \
+            --contract EchidnaRegistry \
+            --config echidna.yaml
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -329,6 +355,38 @@ jobs:
               .compilation.platformConfig.target = "test-fuzz/EchidnaBond.sol"' \
               medusa.json > medusa-bond.json
           medusa fuzz --config medusa-bond.json
+
+      - name: Medusa — EchidnaSwarmValidator (Invariant 3)
+        run: |
+          jq '.fuzzing.targetContracts = ["EchidnaSwarmValidator"] |
+              .fuzzing.deploymentOrder = ["EchidnaSwarmValidator"] |
+              .compilation.platformConfig.target = "test-fuzz/EchidnaSwarmValidator.sol"' \
+              medusa.json > medusa-swarm.json
+          medusa fuzz --config medusa-swarm.json
+
+      - name: Medusa — EchidnaSoulbound (Invariant 4)
+        run: |
+          jq '.fuzzing.targetContracts = ["EchidnaSoulbound"] |
+              .fuzzing.deploymentOrder = ["EchidnaSoulbound"] |
+              .compilation.platformConfig.target = "test-fuzz/EchidnaSoulbound.sol"' \
+              medusa.json > medusa-soulbound.json
+          medusa fuzz --config medusa-soulbound.json
+
+      - name: Medusa — EchidnaRepAdapter (Invariant 5)
+        run: |
+          jq '.fuzzing.targetContracts = ["EchidnaRepAdapter"] |
+              .fuzzing.deploymentOrder = ["EchidnaRepAdapter"] |
+              .compilation.platformConfig.target = "test-fuzz/EchidnaRepAdapter.sol"' \
+              medusa.json > medusa-repadapter.json
+          medusa fuzz --config medusa-repadapter.json
+
+      - name: Medusa — EchidnaRegistry (Invariant 6)
+        run: |
+          jq '.fuzzing.targetContracts = ["EchidnaRegistry"] |
+              .fuzzing.deploymentOrder = ["EchidnaRegistry"] |
+              .compilation.platformConfig.target = "test-fuzz/EchidnaRegistry.sol"' \
+              medusa.json > medusa-registry.json
+          medusa fuzz --config medusa-registry.json
 
       - uses: actions/upload-artifact@v4
         if: always()
