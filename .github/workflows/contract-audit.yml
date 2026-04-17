@@ -48,8 +48,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: contracts/package-lock.json
 
       - name: Install npm deps (OpenZeppelin)
         run: npm install --no-audit --no-fund
@@ -59,10 +57,11 @@ jobs:
         with:
           version: nightly
 
-      - name: Install forge-std
+      - name: Install forge-std (clone, not forge install — repo has no lib/ submodule)
         run: |
-          forge install --no-commit --no-git foundry-rs/forge-std || true
-          forge install foundry-rs/forge-std --no-commit || true
+          mkdir -p lib
+          git clone --depth 1 --branch v1.9.4 https://github.com/foundry-rs/forge-std.git lib/forge-std
+          test -f lib/forge-std/src/Test.sol
 
       - name: Build
         run: forge build --sizes
@@ -92,7 +91,11 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
-      - run: forge install foundry-rs/forge-std --no-commit || true
+      - name: Install forge-std
+        run: |
+          mkdir -p lib
+          git clone --depth 1 --branch v1.9.4 https://github.com/foundry-rs/forge-std.git lib/forge-std
+          test -f lib/forge-std/src/Test.sol
       - run: forge build
 
       - name: Setup Python
@@ -204,12 +207,10 @@ jobs:
       - run: npm install --no-audit --no-fund
 
       - name: Install Aderyn
-        # Cyfrin/aderyn ships prebuilt binaries via cargo or curl install script.
+        # Install via cargo: most reliable path (cyfrinup `dev` install URL is 404).
+        # ubuntu-latest ships with rustup/cargo preinstalled.
         run: |
-          curl -L https://raw.githubusercontent.com/Cyfrin/aderyn/dev/cyfrinup/install | bash
-          echo "$HOME/.cyfrin/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.cyfrin/bin:$PATH"
-          cyfrinup
+          cargo install aderyn --locked
           aderyn --version
 
       - name: Run Aderyn (JSON + Markdown)
@@ -265,6 +266,16 @@ jobs:
           pip install solc-select crytic-compile slither-analyzer
           solc-select install 0.8.24
           solc-select use 0.8.24
+
+      - name: Install Foundry (crytic-compile shells out to forge)
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+      - name: Install forge-std (for any forge-std imports in test-fuzz)
+        working-directory: contracts
+        run: |
+          mkdir -p lib
+          [ -d lib/forge-std ] || git clone --depth 1 --branch v1.9.4 https://github.com/foundry-rs/forge-std.git lib/forge-std
 
       - name: Install Echidna
         run: |
@@ -414,6 +425,16 @@ jobs:
           pip install solc-select crytic-compile
           solc-select install 0.8.24
           solc-select use 0.8.24
+
+      - name: Install Foundry (medusa/crytic-compile shells out to forge)
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+      - name: Install forge-std (for any forge-std imports in test-fuzz)
+        working-directory: contracts
+        run: |
+          mkdir -p lib
+          [ -d lib/forge-std ] || git clone --depth 1 --branch v1.9.4 https://github.com/foundry-rs/forge-std.git lib/forge-std
 
       - name: Install Medusa
         run: |
