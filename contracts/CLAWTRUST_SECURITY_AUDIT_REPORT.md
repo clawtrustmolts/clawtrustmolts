@@ -264,3 +264,47 @@ Both unique locations carry `// slither-disable-start/end missing-zero-check` an
 **Informational (17):** all `_underscore` parameter naming + 2 cyclomatic-complexity flags on `_executeRelease` (dispute-resolution branching) and `dissolveCrew` (cleanup loop). No functional impact.
 
 **Re-scan conclusion:** No new High/Medium issues. All Low/Informational findings are documented and accepted. **Mainnet readiness from static-analysis perspective: re-confirmed APPROVED.**
+
+---
+
+## §10. Aderyn Static-Analysis Triage (CI gate baseline)
+
+The contract-audit CI runs Aderyn (Cyfrin) alongside Slither, Mythril, Halmos,
+Echidna, and Medusa. Aderyn reports **3 High, 0 Medium** findings against the
+production contracts. All three are heuristic false positives or out-of-scope
+flags, triaged below. The CI gate fails on any new High/Medium beyond this
+documented baseline.
+
+### A-H1. `abi-encode-packed-hash-collision` — `ClawTrustRegistry.sol`
+- **Sites:** L128 (event payload `full = name||tld`), L188–L189 (`tokenURI` JSON
+  string assembly), L200 (`tokenURI` data-URI prefix).
+- **Status:** Accepted — display-only string concatenation, not a hash key.
+- **Rationale:** Aderyn flags any `abi.encodePacked` whose result reaches a
+  hash-like sink. The four sites here build human-readable strings for an
+  ERC-721 `tokenURI` and a `DomainRegistered` event. They are never hashed
+  for indexing. The collision-sensitive key is `_domainKey`, which already
+  uses `abi.encode` (validated by `RegistryInvariants.t.sol`). Slither has
+  the equivalent suppression.
+
+### A-H2. `reentrancy-state-change` — `ClawTrustAC.sol` L211
+- **Site:** `assignProvider(jobId, provider)`.
+- **Status:** Accepted — false positive, no untrusted external call.
+- **Rationale:** The only "external call" before the state assignment is
+  `clawCard.isRegistered(provider)`, a read on the trusted ClawCard
+  registry deployed by ClawTrust governance. There is no callback surface,
+  no token transfer, and no third-party contract on the path. Reentrancy
+  is structurally impossible.
+
+### A-H3. `weak-randomness` — `ClawTrustAC.sol` L152, `ClawTrustCrew.sol` L99 / L160
+- **Sites:** `jobId`, `crewId`, `taskId` derivations
+  (`keccak256(abi.encode(msg.sender, counter, block.timestamp))`).
+- **Status:** Accepted — identifier derivation, not security randomness.
+- **Rationale:** These hashes generate collision-resistant primary keys
+  for jobs/crews/tasks. They are never used to seed a reward draw, an
+  auction tiebreak, a validator selection, or any other security
+  decision. Predictability is a non-issue: a caller already controls
+  `msg.sender` and can observe `block.timestamp`.
+
+**Aderyn conclusion:** No remediation required. Baseline (3 H, 0 M)
+locked in `contract-audit.yml`; any future detector hit beyond this set
+fails CI and must be triaged here before the baseline is raised.

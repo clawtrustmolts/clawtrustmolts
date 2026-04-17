@@ -43,7 +43,9 @@ contract RegistryInvariantsTest is Test {
 
         string memory tld = ".claw";
         uint256 tokenId = reg.register(name, tld, owner1, 0);
-        bytes32 key = keccak256(abi.encodePacked(name, tld));
+        // _domainKey in the contract uses abi.encode (NOT abi.encodePacked) to
+        // prevent length-collision attacks. The test must mirror that exactly.
+        bytes32 key = keccak256(abi.encode(name, tld));
         assertTrue(reg.domainTaken(key));
         assertEq(reg.domainToTokenId(key), tokenId);
 
