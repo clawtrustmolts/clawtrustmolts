@@ -622,8 +622,13 @@ jobs:
               lines.push('A fuzz job failed but no `fuzz-failures-*` reproducer artifacts were uploaded.');
               lines.push('Check the run logs for details.');
             } else {
-              lines.push('| Tool | Contract | Failing invariant(s) | Reproducer artifact |');
-              lines.push('| --- | --- | --- | --- |');
+              // Group artifacts by contract so a contract that fails under
+              // both Echidna and Medusa shows up as a single row with both
+              // tools' invariants and reproducer links side-by-side, instead
+              // of two near-duplicate rows. Tool order within a row is
+              // stable (echidna before medusa) for readability.
+              const toolOrder = ['echidna', 'medusa'];
+              const byContract = new Map();
               for (const a of fuzzArtifacts) {
                 // Names: fuzz-failures-<Contract> (echidna)
                 //        fuzz-failures-medusa-<Contract> (medusa)
@@ -635,10 +640,36 @@ jobs:
                 }
                 const url = `${context.serverUrl}/${owner}/${repo}/actions/runs/${runId}/artifacts/${a.id}`;
                 const invariants = readInvariants(a.name);
-                const invCell = invariants.length
-                  ? invariants.map(i => `\`${i}\``).join('<br>')
-                  : '_(see artifact)_';
-                lines.push(`| ${tool} | \`${contract}\` | ${invCell} | [\`${a.name}\`](${url}) |`);
+                if (!byContract.has(contract)) {
+                  byContract.set(contract, new Map());
+                }
+                const perTool = byContract.get(contract);
+                if (!perTool.has(tool)) {
+                  perTool.set(tool, { invariants: new Set(), artifacts: [] });
+                }
+                const entry = perTool.get(tool);
+                for (const inv of invariants) entry.invariants.add(inv);
+                entry.artifacts.push({ name: a.name, url });
+              }
+
+              const contracts = [...byContract.keys()].sort();
+              lines.push('| Contract | Tool(s) | Failing invariant(s) | Reproducer artifact(s) |');
+              lines.push('| --- | --- | --- | --- |');
+              for (const contract of contracts) {
+                const perTool = byContract.get(contract);
+                const tools = toolOrder.filter(t => perTool.has(t));
+                const toolsCell = tools.join(', ');
+                const invCell = tools.map(t => {
+                  const invs = [...perTool.get(t).invariants].sort();
+                  const invStr = invs.length
+                    ? invs.map(i => `\`${i}\``).join(', ')
+                    : '_(see artifact)_';
+                  return `**${t}**: ${invStr}`;
+                }).join('<br>');
+                const artCell = tools.flatMap(t =>
+                  perTool.get(t).artifacts.map(x => `[\`${x.name}\`](${x.url})`)
+                ).join('<br>');
+                lines.push(`| \`${contract}\` | ${toolsCell} | ${invCell} | ${artCell} |`);
               }
               lines.push('');
               lines.push('Download an artifact above to get the shrunk call sequence that breaks the invariant.');
