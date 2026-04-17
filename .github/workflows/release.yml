@@ -38,12 +38,21 @@ jobs:
   release:
     name: Cut GitHub Release for ${{ github.ref_name }}
     runs-on: ubuntu-latest
-    # Hoist the chat webhook secret to job scope so the notify step's
-    # `if:` can read it via `env.` unambiguously (step-level env is
+    # Hoist the chat webhook secrets to job scope so the notify step's
+    # `if:` can read them via `env.` unambiguously (step-level env is
     # evaluated together with the step, which can make `if` checks
     # against it surprising). Treat empty string as "not configured".
+    #
+    # Task #118: per-event routing. Releases go to RELEASE_CHAT_WEBHOOK_URL.
+    # Failure pings prefer FAILURE_CHAT_WEBHOOK_URL but fall back to
+    # RELEASE_CHAT_WEBHOOK_URL so single-channel teams keep working with
+    # no config changes. Verbosity (`full` Block Kit vs. one-line `compact`)
+    # is configurable via repo/org variables; see docs/notifications.md.
     env:
       RELEASE_CHAT_WEBHOOK_URL: ${{ secrets.RELEASE_CHAT_WEBHOOK_URL }}
+      FAILURE_CHAT_WEBHOOK_URL: ${{ secrets.FAILURE_CHAT_WEBHOOK_URL }}
+      RELEASE_CHAT_VERBOSITY: ${{ vars.RELEASE_CHAT_VERBOSITY }}
+      FAILURE_CHAT_VERBOSITY: ${{ vars.FAILURE_CHAT_VERBOSITY }}
     steps:
       - name: Checkout (full history for changelog)
         uses: actions/checkout@v4
@@ -447,42 +456,55 @@ ${SNIPPET}"
 …(truncated, see full notes at $RELEASE_URL)"
           fi
 
-          PAYLOAD=$(jq -n \
-            --arg msg          "$MESSAGE" \
-            --arg tag          "$TAG" \
-            --arg release_url  "$RELEASE_URL" \
-            --arg actor        "$ACTOR" \
-            --arg author_url   "$AUTHOR_URL" \
-            --arg release_kind "$RELEASE_KIND" \
-            --arg prerelease   "$PRERELEASE" \
-            --arg addresses    "$ADDRESSES_NOTE" \
-            --arg snippet      "$SLACK_SNIPPET" \
-            --arg emoji        "$EMOJI" \
-            '{
-              text: $msg,
-              content: $msg,
-              blocks: [
-                { type: "header",
-                  text: { type: "plain_text",
-                          text: ($emoji + " New " + $release_kind + " " + $tag),
-                          emoji: true } },
-                { type: "section",
-                  text: { type: "mrkdwn",
-                          text: ("<" + $release_url + "|View release " + $tag + ">") } },
-                { type: "context",
-                  elements: [
-                    { type: "mrkdwn",
-                      text: ("*Author:* <" + $author_url + "|@" + $actor + ">") },
-                    { type: "mrkdwn",
-                      text: ("*Prerelease:* " + $prerelease) },
-                    { type: "mrkdwn",
-                      text: ("*Addresses:* " + $addresses) }
-                  ] },
-                { type: "divider" },
-                { type: "section",
-                  text: { type: "mrkdwn", text: $snippet } }
-              ]
-            }')
+          # Task #118: verbosity routing. `compact` collapses to a single
+          # line (no Block Kit, no changelog snippet) for low-noise
+          # channels; the default `full` keeps the existing rich payload.
+          # Anything other than `compact` (including unset / `full`) keeps
+          # the rich payload so misconfiguration biases toward more info,
+          # not less.
+          VERBOSITY="${RELEASE_CHAT_VERBOSITY:-full}"
+          if [ "$VERBOSITY" = "compact" ]; then
+            ONE_LINER="${EMOJI} ${RELEASE_KIND} ${TAG} by @${ACTOR} — ${RELEASE_URL}"
+            PAYLOAD=$(jq -n --arg msg "$ONE_LINER" \
+              '{text: $msg, content: $msg}')
+          else
+            PAYLOAD=$(jq -n \
+              --arg msg          "$MESSAGE" \
+              --arg tag          "$TAG" \
+              --arg release_url  "$RELEASE_URL" \
+              --arg actor        "$ACTOR" \
+              --arg author_url   "$AUTHOR_URL" \
+              --arg release_kind "$RELEASE_KIND" \
+              --arg prerelease   "$PRERELEASE" \
+              --arg addresses    "$ADDRESSES_NOTE" \
+              --arg snippet      "$SLACK_SNIPPET" \
+              --arg emoji        "$EMOJI" \
+              '{
+                text: $msg,
+                content: $msg,
+                blocks: [
+                  { type: "header",
+                    text: { type: "plain_text",
+                            text: ($emoji + " New " + $release_kind + " " + $tag),
+                            emoji: true } },
+                  { type: "section",
+                    text: { type: "mrkdwn",
+                            text: ("<" + $release_url + "|View release " + $tag + ">") } },
+                  { type: "context",
+                    elements: [
+                      { type: "mrkdwn",
+                        text: ("*Author:* <" + $author_url + "|@" + $actor + ">") },
+                      { type: "mrkdwn",
+                        text: ("*Prerelease:* " + $prerelease) },
+                      { type: "mrkdwn",
+                        text: ("*Addresses:* " + $addresses) }
+                    ] },
+                  { type: "divider" },
+                  { type: "section",
+                    text: { type: "mrkdwn", text: $snippet } }
+                ]
+              }')
+          fi
 
           HTTP_CODE=$(curl -sS -o /tmp/webhook_resp -w '%{http_code}' \
             -H 'Content-Type: application/json' \
@@ -507,8 +529,14 @@ ${SNIPPET}"
       # skip (not fail) the ping, matching the success-notify behavior
       # above. `continue-on-error` keeps a chat outage from masking the
       # real failure that triggered this step.
+      #
+      # Task #118: route failure pings to FAILURE_CHAT_WEBHOOK_URL when
+      # set, otherwise fall back to RELEASE_CHAT_WEBHOOK_URL so existing
+      # single-channel setups keep getting alerts. Verbosity defaults to
+      # `full` (Block Kit with run link); set FAILURE_CHAT_VERBOSITY=compact
+      # for a single-line ping in busy channels.
       - name: Notify team chat on failure
-        if: ${{ failure() && env.RELEASE_CHAT_WEBHOOK_URL != '' }}
+        if: ${{ failure() && (env.FAILURE_CHAT_WEBHOOK_URL != '' || env.RELEASE_CHAT_WEBHOOK_URL != '') }}
         continue-on-error: true
         env:
           TAG: ${{ github.ref_name }}
@@ -517,15 +545,38 @@ ${SNIPPET}"
         run: |
           set -euo pipefail
           RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
-          MESSAGE=":rotating_light: Release workflow **failed** for tag \`${TAG}\`.
-Failed run: ${RUN_URL}"
+          TARGET_URL="${FAILURE_CHAT_WEBHOOK_URL:-$RELEASE_CHAT_WEBHOOK_URL}"
+          VERBOSITY="${FAILURE_CHAT_VERBOSITY:-full}"
 
-          PAYLOAD=$(jq -n --arg msg "$MESSAGE" \
-            '{text: $msg, content: $msg}')
+          if [ "$VERBOSITY" = "compact" ]; then
+            MESSAGE=":rotating_light: Release ${TAG} failed — ${RUN_URL}"
+            PAYLOAD=$(jq -n --arg msg "$MESSAGE" \
+              '{text: $msg, content: $msg}')
+          else
+            MESSAGE=":rotating_light: Release workflow **failed** for tag \`${TAG}\`.
+Failed run: ${RUN_URL}"
+            PAYLOAD=$(jq -n \
+              --arg msg     "$MESSAGE" \
+              --arg tag     "$TAG" \
+              --arg run_url "$RUN_URL" \
+              '{
+                text: $msg,
+                content: $msg,
+                blocks: [
+                  { type: "header",
+                    text: { type: "plain_text",
+                            text: (":rotating_light: Release " + $tag + " failed"),
+                            emoji: true } },
+                  { type: "section",
+                    text: { type: "mrkdwn",
+                            text: ("<" + $run_url + "|View failed run>") } }
+                ]
+              }')
+          fi
 
           HTTP_CODE=$(curl -sS -o /tmp/webhook_resp -w '%{http_code}' \
             -H 'Content-Type: application/json' \
-            -X POST --data "$PAYLOAD" "$RELEASE_CHAT_WEBHOOK_URL")
+            -X POST --data "$PAYLOAD" "$TARGET_URL")
           echo "Failure webhook responded with HTTP $HTTP_CODE"
           if [ "$HTTP_CODE" -ge 300 ]; then
             echo "Webhook body:"

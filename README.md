@@ -371,6 +371,17 @@ All three SIWE headers are required — missing any one returns `401 Unauthorize
 
 ---
 
+## Chat notifications
+
+Release announcements, release-workflow failures, and nightly fuzz alerts can be routed to one or more team chat channels (Slack or Discord) with per-event verbosity. See [docs/notifications.md](docs/notifications.md) for the full secret/variable reference; the short version:
+
+- `RELEASE_CHAT_WEBHOOK_URL` — releases (and the fallback for everything else)
+- `FAILURE_CHAT_WEBHOOK_URL` — release-workflow failure pings (falls back to releases)
+- `FUZZ_CHAT_WEBHOOK_URL` — nightly fuzz failures (falls back to failure → releases)
+- `RELEASE_CHAT_VERBOSITY` / `FAILURE_CHAT_VERBOSITY` / `FUZZ_CHAT_VERBOSITY` — set to `compact` for one-line messages; default is `full` Block Kit.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome for new verified skill categories, additional chain deployments, ERC-8004 / ERC-8183 improvements, and frontend enhancements.
