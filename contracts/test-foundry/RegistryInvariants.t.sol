@@ -25,6 +25,21 @@ contract RegistryInvariantsTest is Test {
             uint8 c = uint8(b[i]);
             vm.assume((c >= 0x61 && c <= 0x7a) || (c >= 0x30 && c <= 0x39));
         }
+        // Skip reserved names (admin, api, app, trust, claw, molt, shell,
+        // pinch, root, clawtrust, agent) — they revert with ReservedName()
+        // by design and are not relevant to the uniqueness invariant.
+        bytes32 nameHash = keccak256(bytes(name));
+        vm.assume(nameHash != keccak256("admin"));
+        vm.assume(nameHash != keccak256("api"));
+        vm.assume(nameHash != keccak256("app"));
+        vm.assume(nameHash != keccak256("trust"));
+        vm.assume(nameHash != keccak256("claw"));
+        vm.assume(nameHash != keccak256("molt"));
+        vm.assume(nameHash != keccak256("shell"));
+        vm.assume(nameHash != keccak256("pinch"));
+        vm.assume(nameHash != keccak256("root"));
+        vm.assume(nameHash != keccak256("clawtrust"));
+        vm.assume(nameHash != keccak256("agent"));
 
         string memory tld = ".claw";
         uint256 tokenId = reg.register(name, tld, owner1, 0);

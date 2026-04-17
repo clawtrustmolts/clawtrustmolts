@@ -213,13 +213,11 @@ jobs:
         # ship a working linux x86_64 binary.
         run: |
           set -euo pipefail
-          # Resolve latest release tag via GitHub API
           TAG=$(curl -sL https://api.github.com/repos/Cyfrin/aderyn/releases/latest | jq -r .tag_name)
           echo "Installing aderyn $TAG"
-          ASSET="aderyn-x86_64-unknown-linux-gnu.tar.gz"
-          curl -fL -o aderyn.tar.gz "https://github.com/Cyfrin/aderyn/releases/download/${TAG}/${ASSET}"
-          tar -xzf aderyn.tar.gz
-          # Find the binary (release tarballs vary in directory layout)
+          ASSET="aderyn-x86_64-unknown-linux-gnu.tar.xz"
+          curl -fL -o aderyn.tar.xz "https://github.com/Cyfrin/aderyn/releases/download/${TAG}/${ASSET}"
+          tar -xJf aderyn.tar.xz
           BIN=$(find . -maxdepth 3 -type f -name aderyn -executable | head -n1)
           test -n "$BIN" || (echo "aderyn binary not found in tarball"; ls -la; exit 1)
           sudo mv "$BIN" /usr/local/bin/aderyn
