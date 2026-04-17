@@ -342,26 +342,68 @@ jobs:
           gh "${ARGS[@]}"
 
       # Task #111: post a heads-up to the team chat when a release is cut.
+      # Task #114: enrich the message with release author, prerelease
+      # flag, and whether the deployed-addresses.json asset was attached.
+      # Slack incoming webhooks render the `blocks` field with Block Kit
+      # for nicer formatting; Discord ignores `blocks` and falls back to
+      # `content`. We send both fields in the same payload so we don't
+      # have to know which provider is configured. `text` is also kept
+      # as a Slack fallback (used for notifications/previews where Block
+      # Kit isn't rendered).
+      #
       # The webhook URL lives in the `RELEASE_CHAT_WEBHOOK_URL` repo secret
       # (hoisted to job-level env above). If the secret is unset we skip
       # silently — a missing webhook should never fail the release. We
       # also use `continue-on-error` so a chat outage / misbehaving
       # webhook can't undo a release that has already been published in
       # the previous step.
-      #
-      # The JSON body sets both "text" (Slack incoming webhooks) and
-      # "content" (Discord webhooks); each provider ignores the field it
-      # doesn't recognize, so the same payload works for both without us
-      # having to know which one is configured.
       - name: Notify team chat
         if: ${{ env.RELEASE_CHAT_WEBHOOK_URL != '' }}
         continue-on-error: true
         env:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          ASSET: ${{ steps.asset.outputs.files }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           RELEASE_URL="https://github.com/${REPO}/releases/tag/${TAG}"
+          AUTHOR_URL="https://github.com/${ACTOR}"
+
+          # Tags containing `-` (e.g. v1.2.3-rc1) are treated as
+          # prereleases by the "Create GitHub Release" step above; mirror
+          # that classification here so chat reflects the actual release
+          # type without us re-querying the API.
+          case "$TAG" in
+            *-*) PRERELEASE="true"; RELEASE_KIND="Prerelease"; EMOJI=":test_tube:" ;;
+            *)   PRERELEASE="false"; RELEASE_KIND="Release";    EMOJI=":package:" ;;
+          esac
+
+          # Whether the deployed-addresses.json asset made it onto the
+          # release, plus the total asset count attached to this release.
+          # `steps.asset.outputs.files` is empty when no matching deploy
+          # run / live artifact was found. We also query the GitHub API
+          # for the published release so the count reflects what users
+          # will actually see on the release page (today this is 0 or 1,
+          # but the field future-proofs the message if more assets get
+          # attached later).
+          if [ -n "${ASSET:-}" ] && [ -f "${ASSET}" ]; then
+            HAS_ADDRESSES="yes"
+            ADDRESSES_EMOJI=":white_check_mark:"
+          else
+            HAS_ADDRESSES="no (deploy not found for this tag)"
+            ADDRESSES_EMOJI=":warning:"
+          fi
+
+          # Best-effort asset count via the GitHub API. Failures (e.g.
+          # eventual-consistency on a freshly-created release) fall back
+          # to "unknown" rather than blocking the notification.
+          ASSET_COUNT=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/releases/tags/${TAG}" \
+            --jq '.assets | length' 2>/dev/null || echo "unknown")
+          ADDRESSES_NOTE="deployed-addresses.json: ${HAS_ADDRESSES} (assets attached: ${ASSET_COUNT})"
 
           # Trim the changelog to a short snippet so chat messages stay
           # readable. We keep the first ~20 changelog lines and append an
@@ -374,7 +416,12 @@ jobs:
             SNIPPET="$(cat CHANGELOG.md)"
           fi
 
-          MESSAGE=":package: New release **${TAG}** is out: ${RELEASE_URL}
+          # Plain-text message — used as the Discord `content` and as
+          # the Slack `text` fallback for notifications/previews.
+          MESSAGE="${EMOJI} New ${RELEASE_KIND} **${TAG}** is out: ${RELEASE_URL}
+Author: @${ACTOR} (${AUTHOR_URL})
+Prerelease: ${PRERELEASE}
+${ADDRESSES_EMOJI} ${ADDRESSES_NOTE}
 
 ${SNIPPET}"
 
@@ -389,10 +436,53 @@ ${SNIPPET}"
 …(truncated, see full notes at $RELEASE_URL)"
           fi
 
-          # Use jq to safely JSON-encode the message (handles quotes,
-          # newlines, backticks, etc.).
-          PAYLOAD=$(jq -n --arg msg "$MESSAGE" \
-            '{text: $msg, content: $msg}')
+          # Slack Block Kit body. The snippet is emitted in a `mrkdwn`
+          # section block (Slack's flavored markdown) and metadata sits
+          # in a `context` block beneath the header for at-a-glance
+          # scanning. Slack also caps section text at 3000 chars, so
+          # cap the snippet defensively.
+          SLACK_SNIPPET="$SNIPPET"
+          if [ "${#SLACK_SNIPPET}" -gt 2800 ]; then
+            SLACK_SNIPPET="${SLACK_SNIPPET:0:2700}
+…(truncated, see full notes at $RELEASE_URL)"
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg msg          "$MESSAGE" \
+            --arg tag          "$TAG" \
+            --arg release_url  "$RELEASE_URL" \
+            --arg actor        "$ACTOR" \
+            --arg author_url   "$AUTHOR_URL" \
+            --arg release_kind "$RELEASE_KIND" \
+            --arg prerelease   "$PRERELEASE" \
+            --arg addresses    "$ADDRESSES_NOTE" \
+            --arg snippet      "$SLACK_SNIPPET" \
+            --arg emoji        "$EMOJI" \
+            '{
+              text: $msg,
+              content: $msg,
+              blocks: [
+                { type: "header",
+                  text: { type: "plain_text",
+                          text: ($emoji + " New " + $release_kind + " " + $tag),
+                          emoji: true } },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                          text: ("<" + $release_url + "|View release " + $tag + ">") } },
+                { type: "context",
+                  elements: [
+                    { type: "mrkdwn",
+                      text: ("*Author:* <" + $author_url + "|@" + $actor + ">") },
+                    { type: "mrkdwn",
+                      text: ("*Prerelease:* " + $prerelease) },
+                    { type: "mrkdwn",
+                      text: ("*Addresses:* " + $addresses) }
+                  ] },
+                { type: "divider" },
+                { type: "section",
+                  text: { type: "mrkdwn", text: $snippet } }
+              ]
+            }')
 
           HTTP_CODE=$(curl -sS -o /tmp/webhook_resp -w '%{http_code}' \
             -H 'Content-Type: application/json' \
