@@ -60,7 +60,7 @@ contract EscrowHandler is Test {
         internal
         view
         returns (
-            bytes32, address, address, uint256, uint8, uint256, uint256, bool, uint256
+            bytes32, address, address, uint256, ClawTrustEscrow.EscrowStatus, uint256, uint256, bool, uint256
         )
     {
         return escrow.escrows(gigId);

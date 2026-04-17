@@ -207,10 +207,22 @@ jobs:
       - run: npm install --no-audit --no-fund
 
       - name: Install Aderyn
-        # Install via cargo: most reliable path (cyfrinup `dev` install URL is 404).
-        # ubuntu-latest ships with rustup/cargo preinstalled.
+        # Use prebuilt release binary. The 'cyfrinup' install URL (dev branch)
+        # returns 404, and `cargo install aderyn` builds an outdated v0.1.9 from
+        # crates.io that fails to compile. The Cyfrin/aderyn GitHub releases
+        # ship a working linux x86_64 binary.
         run: |
-          cargo install aderyn --locked
+          set -euo pipefail
+          # Resolve latest release tag via GitHub API
+          TAG=$(curl -sL https://api.github.com/repos/Cyfrin/aderyn/releases/latest | jq -r .tag_name)
+          echo "Installing aderyn $TAG"
+          ASSET="aderyn-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fL -o aderyn.tar.gz "https://github.com/Cyfrin/aderyn/releases/download/${TAG}/${ASSET}"
+          tar -xzf aderyn.tar.gz
+          # Find the binary (release tarballs vary in directory layout)
+          BIN=$(find . -maxdepth 3 -type f -name aderyn -executable | head -n1)
+          test -n "$BIN" || (echo "aderyn binary not found in tarball"; ls -la; exit 1)
+          sudo mv "$BIN" /usr/local/bin/aderyn
           aderyn --version
 
       - name: Run Aderyn (JSON + Markdown)
