@@ -23,6 +23,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Nightly heavy fuzz sweep at 03:00 UTC. Between merges to main, days can
+    # pass without the full Echidna/Medusa pass running (PRs use the smoke
+    # profile). The schedule event falls through to the heavy ECHIDNA_CONFIG /
+    # MEDUSA_CONFIG branch below, keeping continuous deep-fuzz coverage
+    # without slowing PRs. Failures surface in the Actions tab and don't
+    # block PRs.
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
