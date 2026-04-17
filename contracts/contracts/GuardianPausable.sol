@@ -64,10 +64,15 @@ abstract contract GuardianPausable is Ownable2Step, Pausable {
     /**
      * @notice Update the guardian address.  Only owner (timelock) can rotate it.
      * @param  newGuardian  New guardian address.  Use address(0) to disable.
+     * @dev    address(0) is intentionally permitted as a way to disable the
+     *         guardian (see GuardianUpdated event). Owner is the timelock,
+     *         so accidental zeroing is gated by the timelock's delay/multisig.
      */
+    // slither-disable-start missing-zero-check
     function setGuardian(address newGuardian) external onlyOwner {
         address old = guardian;
         guardian = newGuardian;
         emit GuardianUpdated(old, newGuardian);
     }
+    // slither-disable-end missing-zero-check
 }

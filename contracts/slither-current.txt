@@ -1,0 +1,194 @@
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ClawCardNFT.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+Compilation warnings/errors on contracts/ClawCardNFT.sol:
+Warning: Unreachable code.
+   --> node_modules/@openzeppelin/contracts/token/ERC721/ERC721.sol:135:9:
+    |
+135 |         ERC721Utils.checkOnERC721Received(_msgSender(), from, to, tokenId, data);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ERC8004IdentityRegistry.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/MockBond.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/MockClawCard.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/MockERC20.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/MockRepAdapter.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ClawTrustAC.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ClawTrustBond.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ClawTrustCrew.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ClawTrustRegistry.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ClawTrustRepAdapter.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ClawTrustTimelock.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/MockRepRegistry.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ClawTrustSwarmValidator.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/GuardianPausable.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+'solc --version' running
+'solc @openzeppelin/=node_modules/@openzeppelin/ contracts/ClawTrustEscrow.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --evm-version cancun --via-ir --optimize --optimize-runs 200 --allow-paths .,/home/runner/workspace/contracts/contracts' running
+
+Detector: timestamp
+ClawCardNFT.updateReputation(uint256,uint256,uint8,uint256,uint256,uint256,uint256,bytes) (contracts/ClawCardNFT.sol#243-287) uses timestamp for comparisons
+	Dangerous comparisons:
+	- sigTimestamp > block.timestamp (contracts/ClawCardNFT.sol#257)
+	- block.timestamp > sigTimestamp + sigFreshnessWindow (contracts/ClawCardNFT.sol#258)
+	- block.timestamp < passports[tokenId].lastUpdated + UPDATE_COOLDOWN (contracts/ClawCardNFT.sol#259)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: timestamp
+ClawTrustAC.fund(bytes32) (contracts/ClawTrustAC.sol#183-194) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp >= job.expiredAt (contracts/ClawTrustAC.sol#188)
+ClawTrustAC.assignProvider(bytes32,address) (contracts/ClawTrustAC.sol#202-217) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp >= job.expiredAt (contracts/ClawTrustAC.sol#209)
+ClawTrustAC.submit(bytes32,bytes32) (contracts/ClawTrustAC.sol#224-236) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp >= job.expiredAt (contracts/ClawTrustAC.sol#229)
+ClawTrustAC.completeAfterTimeout(bytes32,bytes32) (contracts/ClawTrustAC.sol#259-268) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < submittedAt[jobId] + DISPUTE_WINDOW (contracts/ClawTrustAC.sol#264)
+ClawTrustAC.expireJob(bytes32) (contracts/ClawTrustAC.sol#340-355) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < job.expiredAt (contracts/ClawTrustAC.sol#343)
+ClawTrustAC.getJob(bytes32) (contracts/ClawTrustAC.sol#375-378) uses timestamp for comparisons
+	Dangerous comparisons:
+	- jobs[jobId].client == address(0) (contracts/ClawTrustAC.sol#376)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: naming-convention
+Parameter ClawTrustAC.setEvaluator(address)._evaluator (contracts/ClawTrustAC.sol#413) is not in mixedCase
+Parameter ClawTrustAC.setTreasury(address)._treasury (contracts/ClawTrustAC.sol#419) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+
+Detector: timestamp
+ClawTrustBond._finalizeGig(bytes32,bool) (contracts/ClawTrustBond.sol#177-213) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < bond.lastSlashTimestamp + SLASH_COOLDOWN (contracts/ClawTrustBond.sol#188)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: naming-convention
+Parameter ClawTrustBond.setTreasury(address)._treasury (contracts/ClawTrustBond.sol#222) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+
+Detector: timestamp
+ClawTrustCrew.verifyMembership(bytes32,address) (contracts/ClawTrustCrew.sol#267-270) uses timestamp for comparisons
+	Dangerous comparisons:
+	- crews[crewId].isMember[member] && crews[crewId].active (contracts/ClawTrustCrew.sol#269)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: costly-loop
+ClawTrustCrew.dissolveCrew(bytes32) (contracts/ClawTrustCrew.sol#215-227) has costly operations inside a loop:
+	- delete agentCrew[crew.memberAddresses[i]] (contracts/ClawTrustCrew.sol#219)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#costly-operations-inside-a-loop
+
+Detector: cyclomatic-complexity
+ClawTrustCrew.formCrew(string,address[],uint8[]) (contracts/ClawTrustCrew.sol#88-139) has a high cyclomatic complexity (14).
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#cyclomatic-complexity
+
+Detector: timestamp
+ClawTrustRegistry.resolve(string,string) (contracts/ClawTrustRegistry.sol#132-139) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp > d.expiresAt (contracts/ClawTrustRegistry.sol#137)
+ClawTrustRegistry.isAvailable(string,string) (contracts/ClawTrustRegistry.sol#141-146) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp > domains[tokenId].expiresAt (contracts/ClawTrustRegistry.sol#145)
+ClawTrustRegistry.getOwnerTokenIds(address) (contracts/ClawTrustRegistry.sol#153-171) uses timestamp for comparisons
+	Dangerous comparisons:
+	- _ownerOf(tokenId) == owner && block.timestamp <= domains[tokenId].expiresAt (contracts/ClawTrustRegistry.sol#158)
+	- _ownerOf(tokenId_scope_1) == owner && block.timestamp <= domains[tokenId_scope_1].expiresAt (contracts/ClawTrustRegistry.sol#166)
+ClawTrustRegistry.renew(uint256) (contracts/ClawTrustRegistry.sol#173-183) uses timestamp for comparisons
+	Dangerous comparisons:
+	- domains[tokenId].expiresAt > block.timestamp (contracts/ClawTrustRegistry.sol#178-180)
+ClawTrustRegistry._update(address,uint256,address) (contracts/ClawTrustRegistry.sol#262-273) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp > domains[tokenId].expiresAt (contracts/ClawTrustRegistry.sol#268)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: timestamp
+ClawTrustRepAdapter.updateFusedScoreBatch(address[],uint256[],uint256[],uint256[],uint256[],string[]) (contracts/ClawTrustRepAdapter.sol#171-214) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < lastUpdateTime[agent] + updateCooldown (contracts/ClawTrustRepAdapter.sol#192)
+ClawTrustRepAdapter.verifyProof(address,string) (contracts/ClawTrustRepAdapter.sol#418-422) uses timestamp for comparisons
+	Dangerous comparisons:
+	- fusedScores[agent].proofHash == proofHash (contracts/ClawTrustRepAdapter.sol#421)
+ClawTrustRepAdapter.checkEligibility(address,uint256,uint256) (contracts/ClawTrustRepAdapter.sol#437-449) uses timestamp for comparisons
+	Dangerous comparisons:
+	- eligible = (currentScore >= minScore) && (riskPlaceholder <= maxRisk) (contracts/ClawTrustRepAdapter.sol#448)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: naming-convention
+Parameter ClawTrustRepAdapter.setMinOracleCount(uint256)._minCount (contracts/ClawTrustRepAdapter.sol#399) is not in mixedCase
+Parameter ClawTrustRepAdapter.setUpdateCooldown(uint256)._cooldown (contracts/ClawTrustRepAdapter.sol#409) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+
+Detector: timestamp
+ClawTrustSwarmValidator.vote(bytes32,ClawTrustSwarmValidator.VoteType) (contracts/ClawTrustSwarmValidator.sol#170-195) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp >= v.expiresAt (contracts/ClawTrustSwarmValidator.sol#175)
+ClawTrustSwarmValidator.expireValidation(bytes32) (contracts/ClawTrustSwarmValidator.sol#222-229) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < v.expiresAt (contracts/ClawTrustSwarmValidator.sol#226)
+ClawTrustSwarmValidator.hasVoted(bytes32,address) (contracts/ClawTrustSwarmValidator.sol#308-311) uses timestamp for comparisons
+	Dangerous comparisons:
+	- validations[gigId].votes[voter] != VoteType.None (contracts/ClawTrustSwarmValidator.sol#310)
+ClawTrustSwarmValidator.sweepResidualRewards(bytes32,address) (contracts/ClawTrustSwarmValidator.sol#344-359) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < v.resolvedAt + SWEEP_CLAIM_WINDOW (contracts/ClawTrustSwarmValidator.sol#349)
+ClawTrustSwarmValidator.getGigVerdict(bytes32) (contracts/ClawTrustSwarmValidator.sol#365-375) uses timestamp for comparisons
+	Dangerous comparisons:
+	- s == ValidationStatus.Approved (contracts/ClawTrustSwarmValidator.sol#369)
+	- s == ValidationStatus.Rejected (contracts/ClawTrustSwarmValidator.sol#371)
+	- s == ValidationStatus.Expired (contracts/ClawTrustSwarmValidator.sol#373)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: cyclomatic-complexity
+ClawTrustSwarmValidator.createValidation(bytes32,address,address,address[],uint256,uint256,address) (contracts/ClawTrustSwarmValidator.sol#121-168) has a high cyclomatic complexity (13).
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#cyclomatic-complexity
+
+Detector: naming-convention
+Parameter ClawTrustSwarmValidator.vote(bytes32,ClawTrustSwarmValidator.VoteType)._vote (contracts/ClawTrustSwarmValidator.sol#170) is not in mixedCase
+Parameter ClawTrustSwarmValidator.setDefaultThreshold(uint256)._threshold (contracts/ClawTrustSwarmValidator.sol#323) is not in mixedCase
+Parameter ClawTrustSwarmValidator.setDefaultCandidateCount(uint256)._count (contracts/ClawTrustSwarmValidator.sol#330) is not in mixedCase
+Parameter ClawTrustSwarmValidator.setEscrowContract(address)._escrow (contracts/ClawTrustSwarmValidator.sol#335) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+
+Detector: timestamp
+ClawTrustEscrow.refundAfterTimeout(bytes32) (contracts/ClawTrustEscrow.sol#202-209) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < escrow.createdAt + ESCROW_TIMEOUT (contracts/ClawTrustEscrow.sol#206)
+ClawTrustEscrow.claimAfterDisputeTimeout(bytes32) (contracts/ClawTrustEscrow.sol#222-232) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < escrow.disputedAt + DISPUTE_TIMEOUT (contracts/ClawTrustEscrow.sol#226)
+ClawTrustEscrow._createEscrow(bytes32,address,address,uint256,bool) (contracts/ClawTrustEscrow.sol#284-310) uses timestamp for comparisons
+	Dangerous comparisons:
+	- maxTVL != 0 && newTotal > maxTVL (contracts/ClawTrustEscrow.sol#292)
+ClawTrustEscrow._releaseEscrow(ClawTrustEscrow.Escrow) (contracts/ClawTrustEscrow.sol#312-327) uses timestamp for comparisons
+	Dangerous comparisons:
+	- fee > 0 (contracts/ClawTrustEscrow.sol#322)
+ClawTrustEscrow.remainingTVLCapacity() (contracts/ClawTrustEscrow.sol#390-394) uses timestamp for comparisons
+	Dangerous comparisons:
+	- totalLockedUSDC >= maxTVL (contracts/ClawTrustEscrow.sol#392)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: naming-convention
+Parameter ClawTrustEscrow.setPlatformFeeRate(uint256)._rate (contracts/ClawTrustEscrow.sol#342) is not in mixedCase
+Parameter ClawTrustEscrow.setX402Facilitator(address)._facilitator (contracts/ClawTrustEscrow.sol#349) is not in mixedCase
+Parameter ClawTrustEscrow.setTreasury(address)._treasury (contracts/ClawTrustEscrow.sol#356) is not in mixedCase
+Parameter ClawTrustEscrow.setMaxGigAmount(uint256)._cap (contracts/ClawTrustEscrow.sol#370) is not in mixedCase
+Parameter ClawTrustEscrow.setMaxTVL(uint256)._cap (contracts/ClawTrustEscrow.sol#380) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+contracts/ analyzed (169 contracts with 101 detectors), 44 result(s) found
+INFO:Slither:slither-current.json exists already, the overwrite is prevented

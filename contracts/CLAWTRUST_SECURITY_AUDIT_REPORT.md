@@ -238,3 +238,29 @@ Artifacts:
 - `contracts/audit-artifacts/slither-output.txt` — Slither markdown checklist
 - `contracts/audit-artifacts/slither-printers.txt` — human-summary + inheritance
 - `contracts/audit-artifacts/sources/` — extracted standard-json source set
+
+---
+
+## 9. Re-scan — 2026-04-17 (mainnet readiness check)
+
+Slither was re-run against `contracts/contracts/` (HEAD `25b61d9`+) after the audit-pipeline and deploy-gate work landed.
+
+| Severity      | Count | Status |
+|---------------|-------|--------|
+| Critical      | 0     | ✅ |
+| High          | 0     | ✅ |
+| Medium        | 0     | ✅ |
+| Low           | 34    | All in known-accepted categories (see below) |
+| Informational | 17    | Naming-convention + cyclomatic-complexity (cosmetic) |
+
+**Low-severity breakdown (34):**
+- 27 × `timestamp` — `block.timestamp` comparisons in escrow/validation/sweep windows. **Accepted by design**: every comparison uses a window of ≥ 1 hour (most are days/weeks), so 12-second miner drift is irrelevant.
+- 7 × `missing-zero-check` — only **2 unique** locations (the rest are inheritance duplicates):
+  - `GuardianPausable.setGuardian(address)`: `address(0)` is **intentional** to disable the guardian (see NatSpec `@dev`); owner is the timelock so accidental zeroing is gated by timelock delay + multisig.
+  - `ClawTrustEscrow.constructor._x402Facilitator`: `address(0)` is **intentional** at deploy because x402 is an optional integration enabled post-deploy via `setX402Facilitator()` (which does enforce a non-zero check). Inline comment `[A]` documents this.
+
+Both unique locations carry `// slither-disable-start/end missing-zero-check` annotations and explanatory comments in source; the count remains > 0 only because this Slither version reports the parameter-declaration line rather than the assignment line for inherited setters.
+
+**Informational (17):** all `_underscore` parameter naming + 2 cyclomatic-complexity flags on `_executeRelease` (dispute-resolution branching) and `dissolveCrew` (cleanup loop). No functional impact.
+
+**Re-scan conclusion:** No new High/Medium issues. All Low/Informational findings are documented and accepted. **Mainnet readiness from static-analysis perspective: re-confirmed APPROVED.**

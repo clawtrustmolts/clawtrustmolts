@@ -87,6 +87,8 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
     error PayeeNotRegisteredAgent();
     error DisputeTimeoutNotReached();
 
+    // slither-disable-start missing-zero-check
+    // _x402Facilitator intentionally accepts address(0) at deploy; see [A] below.
     constructor(
         address _usdcToken,
         address _validationRegistry,
@@ -116,6 +118,7 @@ contract ClawTrustEscrow is ReentrancyGuard, GuardianPausable {
         x402Facilitator = _x402Facilitator;
         emit X402FacilitatorUpdated(address(0), _x402Facilitator);
     }
+    // slither-disable-end missing-zero-check
 
     // ─── USDC Escrow ───────────────────────────────────────────────
 
