@@ -623,3 +623,103 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
             }
+
+  # Task #116: when the nightly heavy fuzz sweep fails, post a chat alert so
+  # the team finds out the same day instead of stumbling on it in the
+  # Actions tab. Gated strictly on `github.event_name == 'schedule'` so PR
+  # and push failures (which already surface via PR checks / branch
+  # protection) don't double-notify.
+  #
+  # We reuse the `RELEASE_CHAT_WEBHOOK_URL` secret already wired up by
+  # release.yml — there is no separate chat-alert secret today, and a
+  # follow-up task will introduce per-channel routing if the team wants to
+  # split releases from fuzz alerts. If the secret is unset we skip
+  # silently; a missing webhook should never fail the workflow itself.
+  notify-nightly-failure:
+    name: Notify chat on nightly fuzz failure
+    needs: [foundry, halmos, mythril, aderyn, echidna, medusa]
+    if: ${{ always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-latest
+    env:
+      # Hoist to job scope so the step-level `if:` can read it via `env.`
+      # (mirrors the pattern in release.yml).
+      CHAT_WEBHOOK_URL: ${{ secrets.RELEASE_CHAT_WEBHOOK_URL }}
+    steps:
+      - name: Post nightly fuzz failure to chat
+        if: ${{ env.CHAT_WEBHOOK_URL != '' }}
+        continue-on-error: true
+        env:
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          FOUNDRY_RESULT: ${{ needs.foundry.result }}
+          HALMOS_RESULT: ${{ needs.halmos.result }}
+          MYTHRIL_RESULT: ${{ needs.mythril.result }}
+          ADERYN_RESULT: ${{ needs.aderyn.result }}
+          ECHIDNA_RESULT: ${{ needs.echidna.result }}
+          MEDUSA_RESULT: ${{ needs.medusa.result }}
+        run: |
+          set -euo pipefail
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+
+          # Build a list of "<job>: <result>" entries for any job whose
+          # result is `failure`. We deliberately ignore `cancelled` /
+          # `skipped` here — those don't represent a regression worth a
+          # chat ping.
+          FAILED_JOBS=""
+          for entry in \
+            "foundry=${FOUNDRY_RESULT}" \
+            "halmos=${HALMOS_RESULT}" \
+            "mythril=${MYTHRIL_RESULT}" \
+            "aderyn=${ADERYN_RESULT}" \
+            "echidna=${ECHIDNA_RESULT}" \
+            "medusa=${MEDUSA_RESULT}"; do
+            name="${entry%%=*}"
+            result="${entry#*=}"
+            if [ "$result" = "failure" ]; then
+              FAILED_JOBS="${FAILED_JOBS}- ${name}\n"
+            fi
+          done
+
+          # Defensive fallback: the job-level `if:` already guarantees at
+          # least one failure, but if results race we still want a useful
+          # message rather than an empty list.
+          if [ -z "$FAILED_JOBS" ]; then
+            FAILED_JOBS="- (unknown — see run for details)\n"
+          fi
+
+          MESSAGE=$(printf ':rotating_light: Nightly Contract Audit (Heavy) failed\nRun: %s\nFailed job(s):\n%b' "$RUN_URL" "$FAILED_JOBS")
+
+          PAYLOAD=$(jq -n \
+            --arg msg     "$MESSAGE" \
+            --arg run_url "$RUN_URL" \
+            --arg failed  "$(printf "%b" "$FAILED_JOBS")" \
+            '{
+              text: $msg,
+              content: $msg,
+              blocks: [
+                { type: "header",
+                  text: { type: "plain_text",
+                          text: ":rotating_light: Nightly fuzz sweep failed",
+                          emoji: true } },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                          text: ("<" + $run_url + "|View workflow run>") } },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                          text: ("*Failed job(s):*\n" + $failed) } }
+              ]
+            }')
+
+          HTTP_CODE=$(curl -sS -o /tmp/webhook_resp -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -X POST --data "$PAYLOAD" "$CHAT_WEBHOOK_URL")
+          echo "Webhook responded with HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Webhook body:"
+            cat /tmp/webhook_resp || true
+            exit 1
+          fi
+
+      - name: Skip note (no webhook configured)
+        if: ${{ env.CHAT_WEBHOOK_URL == '' }}
+        run: echo "RELEASE_CHAT_WEBHOOK_URL is not configured; skipping nightly fuzz alert."
