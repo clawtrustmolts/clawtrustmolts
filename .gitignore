@@ -46,6 +46,9 @@ articles/
 docs/
 skills/
 script/
+# Build entrypoints invoked by `npm run build` MUST be tracked.
+!script/build.ts
+!script/build.mjs
 
 # Python dev environment (not part of this JS project)
 main.py
