@@ -44,6 +44,8 @@ if [ ! -d "$CORPUS" ]; then
   exit 0
 fi
 
+INV_FILE="${OUT}/failing-invariants.txt"
+
 case "$TOOL" in
   echidna)
     # Echidna writes shrunk reproducers under <corpus>/reproducers/
@@ -53,6 +55,20 @@ case "$TOOL" in
     # Older / configured runs may also drop failure-*.txt at the corpus root.
     find "$CORPUS" -maxdepth 2 -type f \( -name 'failure-*.txt' -o -name 'shrunk-*.txt' \) \
       -exec cp {} "$OUT/" \; 2>/dev/null || true
+
+    # Echidna names each reproducer file after the failing property
+    # (e.g. reproducers/echidna_escrow_conservation.txt). Extract the
+    # property name from the filename so reviewers see it inline in the
+    # PR comment without downloading the artifact.
+    {
+      if [ -d "${OUT}/reproducers" ]; then
+        find "${OUT}/reproducers" -maxdepth 1 -type f -name '*.txt' \
+          -exec basename {} .txt \; 2>/dev/null
+      fi
+      find "$OUT" -maxdepth 1 -type f \( -name 'failure-*.txt' -o -name 'shrunk-*.txt' \) \
+        -exec basename {} \; 2>/dev/null \
+        | sed -e 's/^failure-//' -e 's/^shrunk-//' -e 's/\.txt$//'
+    } | awk 'NF' | sort -u > "$INV_FILE" || true
     ;;
   medusa)
     # Medusa writes failing call sequences under <corpus>/test_results/
@@ -66,12 +82,49 @@ case "$TOOL" in
       find "${CORPUS}/call_sequences" -maxdepth 2 -type f -name '*.json' \
         -exec cp {} "${OUT}/call_sequences/" \; 2>/dev/null || true
     fi
+
+    # Medusa records each failing property as a JSON file under
+    # test_results/. The test name is embedded in the JSON (under various
+    # keys depending on the medusa version) and is also typically the
+    # filename. Extract via jq with a filename fallback so we always
+    # surface a property name when one is available.
+    {
+      if [ -d "${OUT}/test_results" ]; then
+        while IFS= read -r -d '' f; do
+          name=""
+          if command -v jq >/dev/null 2>&1; then
+            # Prefer the property-specific keys at any depth before
+            # falling back to a generic `.name`, which in some medusa
+            # output variants may belong to an unrelated nested object
+            # (e.g. a contract or call entry) rather than the failing
+            # property itself.
+            name=$(jq -r '
+              ([.. | objects |
+                  (.test_name? // .testName? // .property? // .propertyName?)
+                  | strings] | first)
+              // ([.. | objects | .name? | strings] | first)
+              // empty
+            ' "$f" 2>/dev/null)
+          fi
+          if [ -z "$name" ] || [ "$name" = "null" ]; then
+            name=$(basename "$f" .json)
+          fi
+          [ -n "$name" ] && echo "$name"
+        done < <(find "${OUT}/test_results" -maxdepth 3 -type f -name '*.json' -print0)
+      fi
+    } | awk 'NF' | sort -u > "$INV_FILE" || true
     ;;
   *)
     echo "::warning::unknown tool '${TOOL}' — skipping collection"
     exit 0
     ;;
 esac
+
+# Drop the invariants file if it ended up empty so downstream steps can
+# treat its absence as "no inline invariant info available".
+if [ -f "$INV_FILE" ] && [ ! -s "$INV_FILE" ]; then
+  rm -f "$INV_FILE"
+fi
 
 # If the collector found nothing, leave a small marker so reviewers know
 # the post-step ran but the fuzzer didn't emit a structured reproducer.
@@ -94,6 +147,14 @@ RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions
   echo ""
   echo "Reproducer collected. Download the **[\`${ARTIFACT_NAME}\`](${RUN_URL}#artifacts)** artifact from this run."
   echo ""
+  if [ -s "$INV_FILE" ]; then
+    echo "**Failing invariants:**"
+    echo ""
+    while IFS= read -r inv; do
+      echo "- \`${inv}\`"
+    done < "$INV_FILE"
+    echo ""
+  fi
   echo "<details><summary>Files included</summary>"
   echo ""
   echo '```'

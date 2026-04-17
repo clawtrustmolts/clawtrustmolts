@@ -563,10 +563,23 @@ jobs:
       pull-requests: write
       actions: read
     steps:
+      # Download every fuzz-failures-* artifact so we can read the
+      # `failing-invariants.txt` the collector script wrote into each one
+      # and surface the failing invariant names inline in the PR comment.
+      - name: Download fuzz-failures artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: fuzz-failures-*
+          path: fuzz-failures-artifacts
+        continue-on-error: true
+
       - name: Post or update sticky reproducer comment
         uses: actions/github-script@v7
         with:
           script: |
+            const fs = require('fs');
+            const path = require('path');
+
             const marker = '<!-- fuzz-reproducer-comment -->';
             const runId = context.runId;
             const { owner, repo } = context.repo;
@@ -583,6 +596,22 @@ jobs:
               .filter(a => a.name.startsWith('fuzz-failures-') && !a.expired)
               .sort((a, b) => a.name.localeCompare(b.name));
 
+            // Read the failing-invariants.txt the collector script wrote
+            // into each downloaded artifact, if present.
+            const downloadRoot = 'fuzz-failures-artifacts';
+            const readInvariants = (artifactName) => {
+              const p = path.join(downloadRoot, artifactName, 'failing-invariants.txt');
+              try {
+                if (!fs.existsSync(p)) return [];
+                return fs.readFileSync(p, 'utf8')
+                  .split('\n')
+                  .map(s => s.trim())
+                  .filter(Boolean);
+              } catch (_) {
+                return [];
+              }
+            };
+
             const lines = [];
             lines.push(marker);
             lines.push('### ❌ Fuzzer found failing invariants');
@@ -593,8 +622,8 @@ jobs:
               lines.push('A fuzz job failed but no `fuzz-failures-*` reproducer artifacts were uploaded.');
               lines.push('Check the run logs for details.');
             } else {
-              lines.push('| Tool | Contract | Reproducer artifact |');
-              lines.push('| --- | --- | --- |');
+              lines.push('| Tool | Contract | Failing invariant(s) | Reproducer artifact |');
+              lines.push('| --- | --- | --- | --- |');
               for (const a of fuzzArtifacts) {
                 // Names: fuzz-failures-<Contract> (echidna)
                 //        fuzz-failures-medusa-<Contract> (medusa)
@@ -605,7 +634,11 @@ jobs:
                   contract = contract.replace(/^medusa-/, '');
                 }
                 const url = `${context.serverUrl}/${owner}/${repo}/actions/runs/${runId}/artifacts/${a.id}`;
-                lines.push(`| ${tool} | \`${contract}\` | [\`${a.name}\`](${url}) |`);
+                const invariants = readInvariants(a.name);
+                const invCell = invariants.length
+                  ? invariants.map(i => `\`${i}\``).join('<br>')
+                  : '_(see artifact)_';
+                lines.push(`| ${tool} | \`${contract}\` | ${invCell} | [\`${a.name}\`](${url}) |`);
               }
               lines.push('');
               lines.push('Download an artifact above to get the shrunk call sequence that breaks the invariant.');
