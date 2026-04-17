@@ -38,6 +38,12 @@ jobs:
   release:
     name: Cut GitHub Release for ${{ github.ref_name }}
     runs-on: ubuntu-latest
+    # Hoist the chat webhook secret to job scope so the notify step's
+    # `if:` can read it via `env.` unambiguously (step-level env is
+    # evaluated together with the step, which can make `if` checks
+    # against it surprising). Treat empty string as "not configured".
+    env:
+      RELEASE_CHAT_WEBHOOK_URL: ${{ secrets.RELEASE_CHAT_WEBHOOK_URL }}
     steps:
       - name: Checkout (full history for changelog)
         uses: actions/checkout@v4
@@ -334,3 +340,68 @@ jobs:
             ARGS+=("$ASSET")
           fi
           gh "${ARGS[@]}"
+
+      # Task #111: post a heads-up to the team chat when a release is cut.
+      # The webhook URL lives in the `RELEASE_CHAT_WEBHOOK_URL` repo secret
+      # (hoisted to job-level env above). If the secret is unset we skip
+      # silently — a missing webhook should never fail the release. We
+      # also use `continue-on-error` so a chat outage / misbehaving
+      # webhook can't undo a release that has already been published in
+      # the previous step.
+      #
+      # The JSON body sets both "text" (Slack incoming webhooks) and
+      # "content" (Discord webhooks); each provider ignores the field it
+      # doesn't recognize, so the same payload works for both without us
+      # having to know which one is configured.
+      - name: Notify team chat
+        if: ${{ env.RELEASE_CHAT_WEBHOOK_URL != '' }}
+        continue-on-error: true
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          RELEASE_URL="https://github.com/${REPO}/releases/tag/${TAG}"
+
+          # Trim the changelog to a short snippet so chat messages stay
+          # readable. We keep the first ~20 changelog lines and append an
+          # ellipsis if we truncated.
+          SNIPPET_LINES=20
+          if [ "$(wc -l < CHANGELOG.md)" -gt "$SNIPPET_LINES" ]; then
+            SNIPPET="$(head -n "$SNIPPET_LINES" CHANGELOG.md)
+…(truncated, see full notes at $RELEASE_URL)"
+          else
+            SNIPPET="$(cat CHANGELOG.md)"
+          fi
+
+          MESSAGE=":package: New release **${TAG}** is out: ${RELEASE_URL}
+
+${SNIPPET}"
+
+          # Discord rejects messages over 2000 characters with HTTP 400,
+          # and Slack has its own (much higher) limit. Cap the message at
+          # ~1900 chars so both providers accept it; if we cut it down,
+          # leave a pointer back to the release URL.
+          MAX_LEN=1900
+          if [ "${#MESSAGE}" -gt "$MAX_LEN" ]; then
+            KEEP=$(( MAX_LEN - 80 ))
+            MESSAGE="${MESSAGE:0:$KEEP}
+…(truncated, see full notes at $RELEASE_URL)"
+          fi
+
+          # Use jq to safely JSON-encode the message (handles quotes,
+          # newlines, backticks, etc.).
+          PAYLOAD=$(jq -n --arg msg "$MESSAGE" \
+            '{text: $msg, content: $msg}')
+
+          HTTP_CODE=$(curl -sS -o /tmp/webhook_resp -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -X POST --data "$PAYLOAD" "$RELEASE_CHAT_WEBHOOK_URL")
+          echo "Webhook responded with HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Webhook body:"
+            cat /tmp/webhook_resp || true
+            # `continue-on-error: true` above means this exit won't fail
+            # the job — but we still surface the error in the step log.
+            exit 1
+          fi
