@@ -45,6 +45,9 @@ ClawTrust_Complete_Document.md
 articles/
 docs/
 skills/
+# Track the canonical clawhub skill source so 'npx clawhub publish skills/clawtrust' works from CI.
+!skills/clawtrust/
+!skills/clawtrust/**
 script/
 # Build entrypoints invoked by `npm run build` MUST be tracked.
 !script/build.ts
