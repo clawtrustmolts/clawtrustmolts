@@ -18,6 +18,11 @@ contract RegistryInvariantsTest is Test {
         address owner2
     ) public {
         vm.assume(owner1 != address(0) && owner2 != address(0));
+        // _safeMint requires receivers to be EOAs or ERC721Receiver implementers.
+        // Filter to addresses with no code (EOAs + unused precompile slots),
+        // and exclude the registry itself.
+        vm.assume(owner1.code.length == 0 && owner2.code.length == 0);
+        vm.assume(owner1 != address(reg) && owner2 != address(reg));
         vm.assume(bytes(name).length >= 3 && bytes(name).length <= 32);
         // Restrict to lowercase ascii to satisfy registry name policy.
         bytes memory b = bytes(name);
