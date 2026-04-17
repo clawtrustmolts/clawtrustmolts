@@ -495,3 +495,40 @@ ${SNIPPET}"
             # the job — but we still surface the error in the step log.
             exit 1
           fi
+
+      # Task #115: if any earlier step in this job failed, post a
+      # failure ping to the same chat channel so nobody has to discover
+      # a broken release by digging through the Actions tab.
+      #
+      # `failure()` is true when a previous step in the job failed (and
+      # is false on success/cancellation), which is exactly the
+      # "release.yml itself blew up" case we want to flag. We still gate
+      # on the webhook secret being configured — a missing secret should
+      # skip (not fail) the ping, matching the success-notify behavior
+      # above. `continue-on-error` keeps a chat outage from masking the
+      # real failure that triggered this step.
+      - name: Notify team chat on failure
+        if: ${{ failure() && env.RELEASE_CHAT_WEBHOOK_URL != '' }}
+        continue-on-error: true
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+          MESSAGE=":rotating_light: Release workflow **failed** for tag \`${TAG}\`.
+Failed run: ${RUN_URL}"
+
+          PAYLOAD=$(jq -n --arg msg "$MESSAGE" \
+            '{text: $msg, content: $msg}')
+
+          HTTP_CODE=$(curl -sS -o /tmp/webhook_resp -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -X POST --data "$PAYLOAD" "$RELEASE_CHAT_WEBHOOK_URL")
+          echo "Failure webhook responded with HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Webhook body:"
+            cat /tmp/webhook_resp || true
+            exit 1
+          fi
