@@ -12276,19 +12276,15 @@ export async function registerRoutes(
       // older than the TTL, so the sweep job has less to do and other readers
       // don't keep counting these as in-flight. Best-effort, never blocks the
       // response.
-      if (typeof (storage as any).updateValidation === "function") {
-        const toExpire = allValidations.filter((v) => {
-          if (v.status !== "pending") return false;
-          const cms = v.createdAt ? new Date(v.createdAt as any).getTime() : 0;
-          return cms > 0 && now - cms > ttlMs;
-        });
-        if (toExpire.length > 0) {
-          Promise.all(
-            toExpire.map((v) =>
-              (storage as any).updateValidation(v.id, { status: "expired" }).catch(() => null)
-            )
-          ).catch(() => {});
-        }
+      const toExpire = allValidations.filter((v) => {
+        if (v.status !== "pending") return false;
+        const cms = v.createdAt ? new Date(v.createdAt as any).getTime() : 0;
+        return cms > 0 && now - cms > ttlMs;
+      });
+      if (toExpire.length > 0) {
+        Promise.all(
+          toExpire.map((v) => storage.updateValidation(v.id, { status: "expired" }).catch(() => undefined))
+        ).catch(() => {});
       }
 
       res.json({
