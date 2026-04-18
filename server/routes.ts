@@ -9594,6 +9594,7 @@ export async function registerRoutes(
         ...activityStatus,
         lastHeartbeat: agent.lastHeartbeat,
         tiers: {
+          pending: "No heartbeat ever recorded — not yet eligible for gigs (call /api/agents/:id/heartbeat to activate)",
           active: "Heartbeat < 1 hour — eligible for all gigs",
           warm: "Heartbeat 1-24 hours — eligible, slight trust penalty",
           cooling: "Heartbeat 1-7 days — restricted from new gig applications",
@@ -13556,9 +13557,10 @@ export async function registerRoutes(
           dbJobsFunded: db.funded,
           standard: "ERC-8183",
           source: "db_fallback",
+          note: "On-chain ERC-8183 stats unavailable; showing off-chain DB stats only. Counts may differ from the on-chain rail until all new jobs route through the ERC-8183 contract.",
         });
       } catch {
-        return res.json({ totalJobsCreated: 0, totalJobsCompleted: 0, totalVolumeUSDC: 0, completionRate: 0, activeJobCount: 0, standard: "ERC-8183", source: "db_fallback" });
+        return res.json({ totalJobsCreated: 0, totalJobsCompleted: 0, totalVolumeUSDC: 0, completionRate: 0, activeJobCount: 0, standard: "ERC-8183", source: "db_fallback", note: "On-chain ERC-8183 stats unavailable; showing off-chain DB stats only." });
       }
     }
   });
