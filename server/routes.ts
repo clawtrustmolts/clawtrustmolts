@@ -12221,7 +12221,15 @@ export async function registerRoutes(
       const now = Date.now();
       const agentFused = agent.fusedScore ?? 0;
       const agentEligible = agentFused >= MIN_FUSED_SCORE && !!agent.lastHeartbeat;
-      const agentSkillSet = new Set((agent.skills || []).map((s) => s.toLowerCase()));
+      // Prefer the 5-tier verified skill list (tier >= 1). Fall back to the
+      // self-declared profile skills only when the agent has no verified records,
+      // so brand-new agents aren't completely shut out of validation work.
+      const verifiedSkillRows = await storage.getAgentSkills(agent.id).catch(() => []);
+      const verifiedSkills = verifiedSkillRows.filter((s: any) => (s.tier ?? 0) >= 1).map((s: any) => String(s.skillName || "").toLowerCase()).filter(Boolean);
+      const skillSourceUsed: "verified" | "declared" = verifiedSkills.length > 0 ? "verified" : "declared";
+      const agentSkillSet = new Set(
+        skillSourceUsed === "verified" ? verifiedSkills : (agent.skills || []).map((s) => s.toLowerCase())
+      );
 
       const allValidations = await storage.getValidations();
       // Fetch gigs to check poster/assignee eligibility AND skill overlap.
@@ -12264,9 +12272,24 @@ export async function registerRoutes(
         return true;
       });
 
-      // NB: validation_status enum doesn't currently include "expired"; the dedicated
-      // expired-validation sweep job (Scheduler: "Expired validation sweep") owns the
-      // schema-correct lifecycle transition. We just filter in-memory here.
+      // Read-time stale transition: persist `expired` for any pending validation
+      // older than the TTL, so the sweep job has less to do and other readers
+      // don't keep counting these as in-flight. Best-effort, never blocks the
+      // response.
+      if (typeof (storage as any).updateValidation === "function") {
+        const toExpire = allValidations.filter((v) => {
+          if (v.status !== "pending") return false;
+          const cms = v.createdAt ? new Date(v.createdAt as any).getTime() : 0;
+          return cms > 0 && now - cms > ttlMs;
+        });
+        if (toExpire.length > 0) {
+          Promise.all(
+            toExpire.map((v) =>
+              (storage as any).updateValidation(v.id, { status: "expired" }).catch(() => null)
+            )
+          ).catch(() => {});
+        }
+      }
 
       res.json({
         agentId: agent.id,
@@ -12288,6 +12311,8 @@ export async function registerRoutes(
           agentEligible,
           requiresHeartbeat: true,
           requiresSkillOverlap: true,
+          skillSourceUsed,
+          verifiedSkillCount: verifiedSkills.length,
           filteredByTtl: staleCount,
           filteredByReputation: agentGateCount,
           filteredBySkillMismatch: skillGateCount,

@@ -782,7 +782,7 @@ export default function ProfilePage() {
               {agent.erc8004TokenId ? (
                 <div className="flex flex-col items-end gap-0.5">
                   <a
-                    href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                    href={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
@@ -791,7 +791,7 @@ export default function ProfilePage() {
                   >
                     NFT #{agent.erc8004TokenId} <ExternalLink className="w-2.5 h-2.5" />
                   </a>
-                  {agent.preferredChain === "SKALE_TESTNET" ? (
+                  {(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? (
                     <a
                       href={`https://base-sepolia-testnet-explorer.skalenodes.com/address/${agent.walletAddress}`}
                       target="_blank"
@@ -904,7 +904,7 @@ export default function ProfilePage() {
                     {agent.isVerified && (
                       <a
                         href={
-                          agent.preferredChain === "SKALE_TESTNET"
+                          (agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"))
                             ? (agent.erc8004TokenId ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://base-sepolia-testnet-explorer.skalenodes.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e`)
                             : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
                         }
@@ -918,7 +918,7 @@ export default function ProfilePage() {
                       </a>
                     )}
                     {(() => {
-                      const onSkale = agent.preferredChain === "SKALE_TESTNET";
+                      const onSkale = (agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"));
                       const onBase = !onSkale;
                       return (
                         <div className="inline-flex items-center rounded-sm overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }} data-testid="badge-chains-active">
@@ -1245,12 +1245,12 @@ export default function ProfilePage() {
                         return d.onChainTxHash ? (
                           <a
                             key={d.id}
-                            href={agent.preferredChain === "SKALE_TESTNET"
+                            href={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"))
                               ? `https://base-sepolia-testnet-explorer.skalenodes.com/tx/${d.onChainTxHash}`
                               : `https://sepolia.basescan.org/tx/${d.onChainTxHash}`}
                             target="_blank" rel="noopener noreferrer"
                             className="hover:opacity-80 transition-opacity"
-                            title={agent.preferredChain === "SKALE_TESTNET" ? "View on SKALE Explorer" : "View on Basescan"}
+                            title={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? "View on SKALE Explorer" : "View on Basescan"}
                           >
                             {badge}
                           </a>
@@ -1259,14 +1259,14 @@ export default function ProfilePage() {
                     ) : agent.moltDomain ? (
                       <a
                         href={agent.erc8004TokenId
-                          ? agent.preferredChain === "SKALE_TESTNET"
+                          ? (agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"))
                             ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}`
                             : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`
                           : `/passport?wallet=${agent.walletAddress}`}
                         target={agent.erc8004TokenId ? "_blank" : undefined}
                         rel={agent.erc8004TokenId ? "noopener noreferrer" : undefined}
                         title={agent.erc8004TokenId
-                          ? agent.preferredChain === "SKALE_TESTNET"
+                          ? (agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"))
                             ? "View identity on SKALE Explorer"
                             : "View name NFT on BaseScan"
                           : "View passport"}
@@ -1344,7 +1344,7 @@ export default function ProfilePage() {
               {/* NFT PASSPORT IDENTITY */}
               {agent.erc8004TokenId ? (
                 <a
-                  href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                  href={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block rounded-sm p-3 transition-opacity hover:opacity-85 group"
@@ -1353,7 +1353,7 @@ export default function ProfilePage() {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[9px] font-mono uppercase tracking-[2px]" style={{ color: "var(--teal-glow)", opacity: 0.8 }}>
-                      {agent.preferredChain === "SKALE_TESTNET" ? "Passport NFT · SKALE" : "Passport NFT · Base Sepolia"}
+                      {(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? "Passport NFT · SKALE" : "Passport NFT · Base Sepolia"}
                     </span>
                     <ExternalLink className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: "var(--teal-glow)" }} />
                   </div>
@@ -1375,7 +1375,7 @@ export default function ProfilePage() {
                   </div>
                   <div className="mt-2 pt-2 flex items-center justify-between gap-2" style={{ borderTop: "1px solid rgba(10,236,184,0.1)" }}>
                     <span className="text-[8px] font-mono truncate" style={{ color: "var(--text-muted)" }}>
-                      {agent.preferredChain === "SKALE_TESTNET"
+                      {(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"))
                         ? "0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83"
                         : "0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}
                     </span>
@@ -1415,7 +1415,7 @@ export default function ProfilePage() {
               )}
 
               {agent.erc8004TokenId && (
-                agent.preferredChain === "SKALE_TESTNET" ? (
+                (agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? (
                   <a
                     href={`https://base-sepolia-testnet-explorer.skalenodes.com/address/${agent.walletAddress}`}
                     target="_blank"
@@ -1602,7 +1602,7 @@ export default function ProfilePage() {
               {agent.erc8004TokenId && (
                 <div className="mt-2 flex flex-col gap-1">
                   <a
-                    href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                    href={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[9px] font-mono flex items-center gap-1 hover:opacity-70 transition-opacity"
@@ -1610,7 +1610,7 @@ export default function ProfilePage() {
                     data-testid="link-claw-card-basescan"
                   >
                     <ExternalLink className="w-2.5 h-2.5" />
-                    {agent.preferredChain === "SKALE_TESTNET" ? `NFT #${agent.erc8004TokenId} on SKALE ↗` : `NFT #${agent.erc8004TokenId} on BaseScan ↗`}
+                    {(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? `NFT #${agent.erc8004TokenId} on SKALE ↗` : `NFT #${agent.erc8004TokenId} on BaseScan ↗`}
                   </a>
                   {(agent.homeChain === "BASE_SEPOLIA" || agent.preferredChain === "BASE_SEPOLIA" || (!agent.homeChain && !agent.preferredChain)) && (
                     <a
@@ -2288,7 +2288,7 @@ function FusedScoreBlock({ agent, breakdown }: { agent: any; breakdown: any }) {
             <div className="space-y-1">
               {[
                 { label: "Performance", desc: "Gigs completed, dispute rate, repeat hires — swarm verified" },
-                { label: "On-Chain", desc: `Feedback scores recorded by ClawTrustRepAdapter on ${agent.preferredChain === "SKALE_TESTNET" ? "SKALE" : "Base Sepolia"}` },
+                { label: "On-Chain", desc: `Feedback scores recorded by ClawTrustRepAdapter on ${(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? "SKALE" : "Base Sepolia"}` },
                 { label: "Bond", desc: "USDC bond held vs. slashes applied" },
                 { label: "Ecosystem", desc: "Social karma from Moltbook profile + viral bonus" },
               ].map(item => (
@@ -2520,7 +2520,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
             )}
             {agent.erc8004TokenId && (
               <a
-                href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
+                href={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 text-[9px] font-mono hover:opacity-70 transition-opacity"
@@ -2619,7 +2619,7 @@ function CrossChainRepPanel({ agent, baseScore }: { agent: Agent; baseScore: num
                 { label: "Escrow", short: "0x6B6767…", href: "https://sepolia.basescan.org/address/0x6B676744B8c4900F9999E9a9323728C160706126", testId: "link-base-escrow" },
                 { label: "SwarmValidator", short: "0xb219dd…", href: "https://sepolia.basescan.org/address/0xb219ddb4a65934Cea396C606e7F6bcfBF2F68743", testId: "link-base-swarm" },
                 { label: "Bond", short: "0x23a1E1…", href: "https://sepolia.basescan.org/address/0x23a1E1e958C932639906d0650A13283f6E60132c", testId: "link-base-bond" },
-                ...(agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`, testId: "link-base-nft" }] : []),
+                ...(agent.erc8004TokenId ? [{ label: `ClawCard NFT #${agent.erc8004TokenId}`, short: `Token #${agent.erc8004TokenId}`, href: (agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${agent.erc8004TokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${agent.erc8004TokenId}`, testId: "link-base-nft" }] : []),
               ].map((c) => (
                 <div key={c.testId} className="flex justify-between text-[8px] font-mono items-center">
                   <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
@@ -2960,7 +2960,7 @@ function OverviewTab({
 
           {/* Hero NFT Passport block */}
           <a
-            href={agent.preferredChain === "SKALE_TESTNET" ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${erc8004.tokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
+            href={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${erc8004.tokenId}` : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-4 p-4 rounded-sm mb-4 hover:opacity-90 transition-opacity group"
@@ -2975,7 +2975,7 @@ function OverviewTab({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[9px] font-mono uppercase tracking-widest mb-0.5" style={{ color: "var(--teal-glow)", opacity: 0.7 }}>
-                {agent.preferredChain === "SKALE_TESTNET" ? "Agent Passport NFT · SKALE" : "Agent Passport NFT · Base Sepolia"}
+                {(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? "Agent Passport NFT · SKALE" : "Agent Passport NFT · Base Sepolia"}
               </p>
               <p className="text-2xl font-mono font-bold" style={{ color: "var(--teal-glow)" }}>
                 #{erc8004.tokenId}
@@ -2991,7 +2991,7 @@ function OverviewTab({
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>ClawCard Contract</span>
               <a
-                href={agent.preferredChain === "SKALE_TESTNET"
+                href={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"))
                   ? "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83"
                   : "https://sepolia.basescan.org/address/0xf24e41980ed48576Eb379D2116C1AaD075B342C4"}
                 target="_blank"
@@ -3000,13 +3000,13 @@ function OverviewTab({
                 style={{ color: "var(--shell-cream)" }}
                 data-testid="link-basescan-contract"
               >
-                {agent.preferredChain === "SKALE_TESTNET" ? "0xdB7F6c...cb83" : "0xf24e41...342C4"} <ExternalLink className="w-2.5 h-2.5" />
+                {(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? "0xdB7F6c...cb83" : "0xf24e41...342C4"} <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Rep Registry</span>
               <a
-                href={agent.preferredChain === "SKALE_TESTNET"
+                href={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"))
                   ? "https://base-sepolia-testnet-explorer.skalenodes.com/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"
                   : "https://sepolia.basescan.org/address/0xEfF3d3170e37998C7db987eFA628e7e56E1866DB"}
                 target="_blank"
@@ -3019,8 +3019,8 @@ function OverviewTab({
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
               <span style={{ color: "var(--text-muted)" }}>Network</span>
-              <span style={{ color: agent.preferredChain === "SKALE_TESTNET" ? "#a78bfa" : "var(--teal-glow)" }}>
-                {agent.preferredChain === "SKALE_TESTNET" ? "SKALE · Chain 324705682" : "Base Sepolia · Chain 84532"}
+              <span style={{ color: (agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? "#a78bfa" : "var(--teal-glow)" }}>
+                {(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? "SKALE · Chain 324705682" : "Base Sepolia · Chain 84532"}
               </span>
             </div>
             <div className="flex justify-between gap-2 items-center px-2 py-1.5 rounded-sm" style={{ background: "rgba(0,0,0,0.1)" }}>
@@ -3032,17 +3032,17 @@ function OverviewTab({
           </div>
           <div className="mt-4 pt-3 border-t" style={{ borderColor: "rgba(10, 236, 184, 0.15)" }}>
             <a
-              href={agent.preferredChain === "SKALE_TESTNET"
+              href={(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"))
                 ? `https://base-sepolia-testnet-explorer.skalenodes.com/token/0xdB7F6cCf57D6c6AA90ccCC1a510589513f28cb83?a=${erc8004.tokenId}`
                 : `https://sepolia.basescan.org/token/0xf24e41980ed48576Eb379D2116C1AaD075B342C4?a=${erc8004.tokenId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[10px] font-mono flex items-center gap-1.5 hover:opacity-70 transition-opacity"
-              style={{ color: agent.preferredChain === "SKALE_TESTNET" ? "#a78bfa" : "var(--teal-glow)" }}
+              style={{ color: (agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? "#a78bfa" : "var(--teal-glow)" }}
               data-testid="link-basescan-passport"
             >
               <ExternalLink className="w-3 h-3" />
-              {agent.preferredChain === "SKALE_TESTNET" ? "View full passport on SKALE Explorer ↗" : "View full passport on BaseScan ↗"}
+              {(agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET")) ? "View full passport on SKALE Explorer ↗" : "View full passport on BaseScan ↗"}
             </a>
           </div>
 
@@ -4563,7 +4563,7 @@ function CommerceTab({
   isLoading: boolean;
 }) {
   const [commerceSubTab, setCommerceSubTab] = useState<"posted" | "taken">("posted");
-  const isSkale = agent.preferredChain === "SKALE_TESTNET";
+  const isSkale = (agent.preferredChain === "SKALE_TESTNET" || (!agent.preferredChain && agent.homeChain === "SKALE_TESTNET"));
   const explorerBase = isSkale
     ? "https://base-sepolia-testnet-explorer.skalenodes.com"
     : "https://sepolia.basescan.org";

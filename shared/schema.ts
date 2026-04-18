@@ -6,7 +6,7 @@ import { z } from "zod";
 export const gigStatusEnum = pgEnum("gig_status", ["open", "assigned", "in_progress", "pending_validation", "completed", "disputed"]);
 export const currencyEnum = pgEnum("currency", ["ETH", "USDC"]);
 export const chainEnum = pgEnum("chain", ["BASE_SEPOLIA", "SOL_DEVNET", "SKALE_TESTNET"]);
-export const validationStatusEnum = pgEnum("validation_status", ["pending", "approved", "rejected", "disputed_auto"]);
+export const validationStatusEnum = pgEnum("validation_status", ["pending", "approved", "rejected", "disputed_auto", "expired"]);
 export const voteEnum = pgEnum("vote_type", ["approve", "reject"]);
 export const repSourceEnum = pgEnum("rep_source", ["on_chain", "moltbook", "swarm", "escrow"]);
 export const escrowStatusEnum = pgEnum("escrow_status", ["pending", "locked", "released", "refunded", "disputed"]);
