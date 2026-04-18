@@ -1051,8 +1051,13 @@ export async function registerRoutes(
     eligibleForGigs: boolean;
     trustPenalty: number;
   } {
-    const lastActive = agent.lastHeartbeat || agent.registeredAt;
-    if (!lastActive) return { status: "inactive", label: "Inactive", eligibleForGigs: false, trustPenalty: 0.5 };
+    // Agents that have never sent a heartbeat are NOT "active" — they are unverified
+    // (BUG-006). Only fall back to registeredAt if a real heartbeat exists at some
+    // point, otherwise classify as `pending` with eligibleForGigs=false.
+    if (!agent.lastHeartbeat) {
+      return { status: "pending", label: "Pending Heartbeat", eligibleForGigs: false, trustPenalty: 0.25 };
+    }
+    const lastActive = agent.lastHeartbeat;
     const hoursSince = (Date.now() - new Date(lastActive).getTime()) / (1000 * 60 * 60);
     if (hoursSince < 1) return { status: "active", label: "Active", eligibleForGigs: true, trustPenalty: 0 };
     if (hoursSince < 24) return { status: "warm", label: "Warm", eligibleForGigs: true, trustPenalty: 0.05 };
@@ -5557,7 +5562,19 @@ export async function registerRoutes(
     try {
       const tld = req.query.tld ? String(req.query.tld) : undefined;
       const all = await storage.getAllDomainsByTld(tld);
-      res.json({ domains: all, total: all.length });
+      // BUG-004 fix: honor limit/offset (cap limit at 200) and return pagination metadata.
+      const rawLimit = parseInt(req.query.limit as string);
+      const rawOffset = parseInt(req.query.offset as string);
+      const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : all.length;
+      const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+      const paginated = all.slice(offset, offset + limit);
+      res.json({
+        domains: paginated,
+        total: all.length,
+        limit,
+        offset,
+        returned: paginated.length,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -7616,8 +7633,11 @@ export async function registerRoutes(
     if (PRIVY_JWKS_URL) (checks.auth as any).jwksUrl = PRIVY_JWKS_URL;
 
     checks.captcha = {
-      status: process.env.TURNSTILE_SECRET_KEY ? "active" : "bypassed",
-      details: process.env.TURNSTILE_SECRET_KEY ? "Cloudflare Turnstile enforced" : "No TURNSTILE_SECRET_KEY - CAPTCHA bypassed",
+      status: process.env.TURNSTILE_SECRET_KEY ? "active" : "disabled_testnet",
+      details: process.env.TURNSTILE_SECRET_KEY
+        ? "Cloudflare Turnstile enforced"
+        : "Intentionally disabled on testnet — set TURNSTILE_SECRET_KEY to enforce on registration and gig posting before mainnet.",
+      policy: process.env.TURNSTILE_SECRET_KEY ? "enforced" : "testnet_open_registration",
     };
 
     const adminWallets = (process.env.ADMIN_WALLETS || "").split(",").filter(Boolean);
@@ -12191,29 +12211,67 @@ export async function registerRoutes(
       const agent = await storage.getAgent(req.params.id as string);
       if (!agent) return res.status(404).json({ message: "Agent not found" });
 
+      // BUG-001 hardening: gate by reputation, TTL, and skill overlap so brand-new
+      // untrusted agents don't see month-old validations the moment they register.
+      const TTL_DAYS = 7;
+      const MIN_FUSED_SCORE = 30;
+      const ttlMs = TTL_DAYS * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      const agentFused = agent.fusedScore ?? 0;
+      const agentEligible = agentFused >= MIN_FUSED_SCORE && !!agent.lastHeartbeat;
+      const agentSkillSet = new Set((agent.skills || []).map((s) => s.toLowerCase()));
+
       const allValidations = await storage.getValidations();
-      // Fetch gigs to check poster/assignee eligibility
+      // Fetch gigs to check poster/assignee eligibility AND skill overlap.
       const gigIds = [...new Set(allValidations.map((v) => v.gigId))];
-      const gigMap = new Map<string, { posterId: string | null; assigneeId: string | null }>();
+      const gigMap = new Map<string, { posterId: string | null; assigneeId: string | null; skills: string[] }>();
       await Promise.all(
         gigIds.map(async (gId) => {
           try {
             const gig = await storage.getGig(gId);
-            if (gig) gigMap.set(gId, { posterId: gig.posterId, assigneeId: gig.assigneeId });
+            if (gig) gigMap.set(gId, {
+              posterId: gig.posterId,
+              assigneeId: gig.assigneeId,
+              skills: (gig.skillsRequired || []) as string[],
+            });
           } catch {}
         })
       );
 
+      let staleCount = 0;
+      let agentGateCount = 0;
+      let skillGateCount = 0;
       const pendingValidations = allValidations.filter((v) => {
         if (v.status !== "pending") return false;
         if (v.selectedValidators.includes(agent.id)) return false;
-        // Exclude gigs where agent is the poster or assignee (conflict of interest)
+        // TTL: validations older than TTL_DAYS are considered stale.
+        const createdMs = v.createdAt ? new Date(v.createdAt as any).getTime() : 0;
+        if (createdMs > 0 && now - createdMs > ttlMs) { staleCount++; return false; }
+        // Conflict of interest.
         const gig = gigMap.get(v.gigId);
         if (gig) {
           if (gig.posterId === agent.id || gig.assigneeId === agent.id) return false;
         }
+        // Reputation gate.
+        if (!agentEligible) { agentGateCount++; return false; }
+        // Skill overlap (when the gig declares required skills).
+        if (gig && gig.skills.length > 0) {
+          const overlap = gig.skills.some((s) => agentSkillSet.has(s.toLowerCase()));
+          if (!overlap) { skillGateCount++; return false; }
+        }
         return true;
       });
+
+      // Best-effort: mark stale validations expired so the sweep job has less to do.
+      if (staleCount > 0 && typeof (storage as any).updateValidation === "function") {
+        for (const v of allValidations) {
+          if (v.status !== "pending") continue;
+          const createdMs = v.createdAt ? new Date(v.createdAt as any).getTime() : 0;
+          if (createdMs > 0 && now - createdMs > ttlMs) {
+            try { await (storage as any).updateValidation(v.id, { status: "expired" }); } catch {}
+          }
+        }
+      }
 
       res.json({
         agentId: agent.id,
@@ -12228,6 +12286,17 @@ export async function registerRoutes(
           createdAt: v.createdAt,
         })),
         total: pendingValidations.length,
+        gates: {
+          ttlDays: TTL_DAYS,
+          minFusedScoreRequired: MIN_FUSED_SCORE,
+          agentFusedScore: agentFused,
+          agentEligible,
+          requiresHeartbeat: true,
+          requiresSkillOverlap: true,
+          filteredByTtl: staleCount,
+          filteredByReputation: agentGateCount,
+          filteredBySkillMismatch: skillGateCount,
+        },
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -13453,6 +13522,7 @@ export async function registerRoutes(
         dbJobsCompleted: db.completed,
         dbJobsOpen: db.open,
         dbJobsFunded: db.funded,
+        note: "ERC-8183 (Agentic Commerce) is the new on-chain rail introduced in v1.18. Gigs created before that landed are recorded in the off-chain DB only and use Circle USDC escrow (see /api/gigs). On-chain and off-chain counts are expected to differ until all new jobs route through the ERC-8183 contract.",
       });
     } catch {
       // Fallback to DB-only stats — always return 200
@@ -14367,6 +14437,8 @@ export async function registerRoutes(
         if (existingWallet) return res.status(409).json({ message: "Wallet address already registered", existingHandle: existingWallet.handle, existingAgentId: existingWallet.id });
       }
       const skillNames = data.skills.map((s: any) => sanitizeString(s.name, 100));
+      // Persist the explicit chain choice — null/missing here would let UIs fall back to "Base" everywhere.
+      const persistedChainBase = "BASE_SEPOLIA" as const;
       const agent = await storage.createAgent({
         handle: data.handle,
         walletAddress: walletAddress || "0x0000000000000000000000000000000000000000",
@@ -14381,6 +14453,8 @@ export async function registerRoutes(
         solanaAddress: null,
         circleWalletId: null,
         autonomyStatus: "registered",
+        preferredChain: persistedChainBase,
+        homeChain: persistedChainBase,
       });
       // Queue ERC-8004 mint if agent has a real wallet address
       const hasRealWalletAddr = walletAddress && /^0x[a-fA-F0-9]{40}$/.test(walletAddress) && !/^0x0+$/.test(walletAddress);
@@ -14389,14 +14463,25 @@ export async function registerRoutes(
         mintJobId = await queueBlockchainAction({ type: "MINT_PASSPORT", agentId: agent.id, payload: {} });
         processBlockchainQueue().catch(() => {});
       }
+      const status = hasRealWalletAddr ? "minting" : "no_wallet";
       return res.status(202).json({
         success: true,
         agentId: agent.id,
         handle: agent.handle,
-        status: hasRealWalletAddr ? "minting" : "no_wallet",
+        status,
         statusUrl: `/api/register/status/${agent.id}`,
         mintJobId,
         walletAddress: agent.walletAddress,
+        chain: persistedChainBase,
+        preferredChain: persistedChainBase,
+        homeChain: persistedChainBase,
+        ...(status === "no_wallet" ? {
+          upgradePath: {
+            note: "Agent registered without a wallet. To enable on-chain identity, escrow, bonding, and gig payments, upgrade via /api/agent-register with the agent's handle and a walletAddress (or omit walletAddress to provision a Circle wallet).",
+            upgradeEndpoint: "/api/agent-register",
+            limits: ["no_wallet", "no_circle_wallet", "no_erc8004_passport", "no_molt_domain", "ineligible_for_paid_gigs"],
+          },
+        } : {}),
       });
     } catch (err: any) {
       if (err.name === "ZodError") return res.status(400).json({ message: "Validation error", errors: err.errors });

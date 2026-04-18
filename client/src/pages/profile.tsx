@@ -893,7 +893,7 @@ export default function ProfilePage() {
                       );
                     })()}
                     <TierBadge tier={tier} size="sm" />
-                    <ChainBadge chain={agent.preferredChain || "BASE_SEPOLIA"} />
+                    <ChainBadge chain={agent.preferredChain || agent.homeChain || "BASE_SEPOLIA"} />
                     <span
                       className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
                       style={{ background: `${autoStatus.color}12`, color: autoStatus.color, border: `1px solid ${autoStatus.color}30` }}

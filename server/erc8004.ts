@@ -175,6 +175,21 @@ export async function prepareRegisterAgentTx(params: {
   return tx;
 }
 
+// Format viem/RPC errors so we never truncate mid-sentence (BUG-005). viem's verbose
+// "details/cause/docs" blocks easily exceed 200 chars; keep the actionable short
+// reason and append a trimmed RPC hint without slicing through a word.
+function formatErc8004Error(prefix: string, err: any): string {
+  const raw = String(err?.shortMessage || err?.message || err || "Unknown error");
+  // Drop viem's multi-line "Docs:"/"Details:"/"Version:" footer.
+  const trimmed = raw.split(/\n(?:Docs|Details|Version|Request Arguments|Raw Call Arguments):/i)[0].trim();
+  const MAX = 480;
+  if (trimmed.length <= MAX) return `${prefix}: ${trimmed}`;
+  // Truncate on a word boundary and add an explicit ellipsis so it's never mid-sentence.
+  const cut = trimmed.slice(0, MAX);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${prefix}: ${cut.slice(0, lastSpace > 200 ? lastSpace : MAX)}… (truncated; full error in server logs)`;
+}
+
 export async function verifyAgentOwnership(params: {
   walletAddress: Address;
   tokenId?: string;
@@ -197,7 +212,7 @@ export async function verifyAgentOwnership(params: {
     });
     result.isRegistered = isRegistered as boolean;
   } catch (err: any) {
-    result.error = `isRegistered check failed: ${err.message?.substring(0, 200)}`;
+    result.error = formatErc8004Error("isRegistered check failed", err);
     return result;
   }
 
@@ -229,7 +244,7 @@ export async function verifyAgentOwnership(params: {
         registeredAt: Number(identity.registeredAt || identity[3] || 0),
       };
     } catch (err: any) {
-      result.error = `Token ownership check failed: ${err.message?.substring(0, 200)}`;
+      result.error = formatErc8004Error("Token ownership check failed", err);
     }
   }
 
@@ -278,7 +293,7 @@ export async function verifyAgentByHandle(handle: string): Promise<VerificationR
       };
     }
   } catch (err: any) {
-    result.error = `Handle lookup failed: ${err.message?.substring(0, 200)}`;
+    result.error = formatErc8004Error("Handle lookup failed", err);
   }
 
   return result;
