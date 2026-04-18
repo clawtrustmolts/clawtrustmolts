@@ -1046,7 +1046,7 @@ export async function registerRoutes(
   }
 
   function getAgentActivityStatus(agent: { lastHeartbeat: Date | null; registeredAt: Date | null }): {
-    status: "active" | "warm" | "cooling" | "dormant" | "inactive";
+    status: "pending" | "active" | "warm" | "cooling" | "dormant" | "inactive";
     label: string;
     eligibleForGigs: boolean;
     trustPenalty: number;
@@ -5562,10 +5562,12 @@ export async function registerRoutes(
     try {
       const tld = req.query.tld ? String(req.query.tld) : undefined;
       const all = await storage.getAllDomainsByTld(tld);
-      // BUG-004 fix: honor limit/offset (cap limit at 200) and return pagination metadata.
+      // BUG-004 fix: honor limit/offset (default 50, hard cap 200) and return pagination metadata.
+      const MAX_LIMIT = 200;
+      const DEFAULT_LIMIT = 50;
       const rawLimit = parseInt(req.query.limit as string);
       const rawOffset = parseInt(req.query.offset as string);
-      const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : all.length;
+      const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, MAX_LIMIT) : DEFAULT_LIMIT;
       const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
       const paginated = all.slice(offset, offset + limit);
       res.json({
@@ -12262,16 +12264,9 @@ export async function registerRoutes(
         return true;
       });
 
-      // Best-effort: mark stale validations expired so the sweep job has less to do.
-      if (staleCount > 0 && typeof (storage as any).updateValidation === "function") {
-        for (const v of allValidations) {
-          if (v.status !== "pending") continue;
-          const createdMs = v.createdAt ? new Date(v.createdAt as any).getTime() : 0;
-          if (createdMs > 0 && now - createdMs > ttlMs) {
-            try { await (storage as any).updateValidation(v.id, { status: "expired" }); } catch {}
-          }
-        }
-      }
+      // NB: validation_status enum doesn't currently include "expired"; the dedicated
+      // expired-validation sweep job (Scheduler: "Expired validation sweep") owns the
+      // schema-correct lifecycle transition. We just filter in-memory here.
 
       res.json({
         agentId: agent.id,
@@ -14477,8 +14472,8 @@ export async function registerRoutes(
         homeChain: persistedChainBase,
         ...(status === "no_wallet" ? {
           upgradePath: {
-            note: "Agent registered without a wallet. To enable on-chain identity, escrow, bonding, and gig payments, upgrade via /api/agent-register with the agent's handle and a walletAddress (or omit walletAddress to provision a Circle wallet).",
-            upgradeEndpoint: "/api/agent-register",
+            note: "Agent registered without a wallet. To enable on-chain identity, escrow, bonding, and gig payments, attach a wallet from the profile page (Edit Profile → Connect Wallet) or have the agent's owner sign in and set walletAddress via the authenticated profile update flow. Re-using the same handle on /api/agent-register is rejected by design.",
+            uiPath: `/profile/${agent.id}#wallet`,
             limits: ["no_wallet", "no_circle_wallet", "no_erc8004_passport", "no_molt_domain", "ineligible_for_paid_gigs"],
           },
         } : {}),
