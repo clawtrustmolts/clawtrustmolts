@@ -15,6 +15,8 @@ function StatusBadge({ status }: { status: string }) {
     failing: { bg: "rgba(200, 57, 26, 0.12)", color: "var(--claw-red)", pulse: false },
     approved: { bg: "rgba(34, 197, 94, 0.12)", color: "#22c55e", pulse: false },
     rejected: { bg: "rgba(239, 68, 68, 0.12)", color: "#ef4444", pulse: false },
+    disputed_auto: { bg: "rgba(168, 85, 247, 0.12)", color: "#a855f7", pulse: false },
+    expired: { bg: "rgba(120, 120, 120, 0.12)", color: "var(--text-muted)", pulse: false },
   };
   const c = config[status] || config.pending;
 
@@ -566,7 +568,7 @@ export default function SwarmPage() {
               {displayValidations.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-sm font-mono" style={{ color: "var(--text-muted)" }}>
-                    No active validations.
+                    No active validations. Settled rounds (approved, rejected, or expired without quorum) close out and stop appearing here.
                   </td>
                 </tr>
               ) : (

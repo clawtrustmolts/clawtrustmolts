@@ -1,0 +1,17 @@
+.git
+.replit
+.circle-entity-secret
+.env
+.env.*
+node_modules
+dist
+coverage
+lcov-report
+.cache
+.local
+.agents
+.config
+attached_assets
+generated-artifacts
+*.dump
+*.sql.gz

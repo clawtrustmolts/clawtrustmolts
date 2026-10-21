@@ -290,32 +290,39 @@ httpServer.listen(
 
   appReady = true;
 
-  startScheduler();
+  const backgroundJobsEnabled =
+    process.env.BACKGROUND_JOBS_ENABLED?.trim().toLowerCase() !== "false";
 
-  if (process.env.MOLTBOOK_API_KEY) {
-    log("Moltbook bot auto-starting...", "bot");
-    startBot();
-  }
+  if (backgroundJobsEnabled) {
+    startScheduler();
 
-  if (process.env.TELEGRAM_BOT_TOKEN && process.env.NODE_ENV === "production") {
-    log("Telegram bot auto-starting...", "telegram");
-    try {
-      const { startTelegramBot, stopTelegramBot } = await import("./telegram-bot");
-      startTelegramBot().catch((err: any) => {
-        log(`Telegram bot startup failed (non-fatal): ${err?.message || err}`, "telegram");
-      });
-
-      const shutdown = () => {
-        log("Shutting down...", "express");
-        try { stopTelegramBot(); } catch {}
-        httpServer.close(() => process.exit(0));
-        setTimeout(() => process.exit(0), 3000);
-      };
-
-      process.once("SIGTERM", shutdown);
-      process.once("SIGINT", shutdown);
-    } catch (err: any) {
-      log(`Telegram bot import failed (non-fatal): ${err?.message || err}`, "telegram");
+    if (process.env.MOLTBOOK_API_KEY) {
+      log("Moltbook bot auto-starting...", "bot");
+      startBot();
     }
+
+    if (process.env.TELEGRAM_BOT_TOKEN && process.env.NODE_ENV === "production") {
+      log("Telegram bot auto-starting...", "telegram");
+      try {
+        const { startTelegramBot, stopTelegramBot } = await import("./telegram-bot");
+        startTelegramBot().catch((err: any) => {
+          log(`Telegram bot startup failed (non-fatal): ${err?.message || err}`, "telegram");
+        });
+
+        const shutdown = () => {
+          log("Shutting down...", "express");
+          try { stopTelegramBot(); } catch {}
+          httpServer.close(() => process.exit(0));
+          setTimeout(() => process.exit(0), 3000);
+        };
+
+        process.once("SIGTERM", shutdown);
+        process.once("SIGINT", shutdown);
+      } catch (err: any) {
+        log(`Telegram bot import failed (non-fatal): ${err?.message || err}`, "telegram");
+      }
+    }
+  } else {
+    log("Background jobs and automatic bot startup are disabled by BACKGROUND_JOBS_ENABLED=false", "startup");
   }
 })();

@@ -89,6 +89,7 @@ export interface IStorage {
   getVotesByValidation(validationId: string): Promise<SwarmVote[]>;
   getVoteByVoterAndValidation(voterId: string, validationId: string): Promise<SwarmVote | undefined>;
   updateValidation(id: string, data: Partial<SwarmValidation>): Promise<SwarmValidation | undefined>;
+  expireValidationIfPending(id: string): Promise<SwarmValidation | undefined>;
   updateVote(id: string, data: Partial<SwarmVote>): Promise<SwarmVote | undefined>;
 
   getEscrowTransactions(): Promise<EscrowTransaction[]>;
@@ -483,6 +484,15 @@ export class DatabaseStorage implements IStorage {
 
   async updateValidation(id: string, data: Partial<SwarmValidation>): Promise<SwarmValidation | undefined> {
     const [updated] = await db.update(swarmValidations).set(data).where(eq(swarmValidations.id, id)).returning();
+    return updated;
+  }
+
+  async expireValidationIfPending(id: string): Promise<SwarmValidation | undefined> {
+    const [updated] = await db
+      .update(swarmValidations)
+      .set({ status: "expired" })
+      .where(and(eq(swarmValidations.id, id), eq(swarmValidations.status, "pending")))
+      .returning();
     return updated;
   }
 

@@ -327,6 +327,13 @@ export const REP_ADAPTER_ABI = [
     outputs: [{ name: "", type: "uint256" }],
   },
   {
+    name: "lastUpdateTime",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
     name: "setUpdateCooldown",
     type: "function",
     stateMutability: "nonpayable",

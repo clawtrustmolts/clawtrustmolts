@@ -72,10 +72,10 @@ import {
   getNetworkConfig,
   getValidationInfoOnChain,
 } from "./blockchain";
-import { notifyAgent } from "./notifications";
+import { notifyAgent, notifyValidationExpired } from "./notifications";
 import { syncProtocolFiles, syncSingleFile, syncAllFiles, syncSkillRepo, syncContractsRepo, syncSdkRepo, syncDocsRepo, syncOrgProfileRepo, syncAllRepos, syncMintlifyDocs, checkGitHubConnection, getProtocolFileList, getAllFileList, publishToClawHub } from "./github-sync";
 import { readSkaleFusedScore, syncScoreToSkale, registerAgentOnSkale, readSkaleIsRegistered, readSkalePassportTotalSupply, readSkaleIdentityCount, readSkaleEscrowStats, readSkaleSwarmValidationCount, SKALE_CONTRACTS, skalePublicClient, dripSfuelIfNeeded } from "./skale-chain";
-import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS, getWalletClient } from "./chain-client";
+import { REP_ADAPTER_ABI, CLAW_TRUST_REP_ADAPTER_ADDRESS, getWalletClient, getPublicClient } from "./chain-client";
 import {
   createEscrowWallet,
   getWalletBalance,
@@ -140,6 +140,9 @@ const isTestBypass = (req: Request): boolean => {
   if (!E2E_TEST_SECRET) return false; // bypass disabled when secret not explicitly set
   return req.headers["x-e2e-test-secret"] === E2E_TEST_SECRET;
 };
+
+const backgroundJobsEnabled =
+  process.env.BACKGROUND_JOBS_ENABLED?.trim().toLowerCase() !== "false";
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -334,6 +337,43 @@ function isSensitiveRoute(method: string, path: string): boolean {
 
 function buildSignMessage(nonce: number): string {
   return `Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet ownership.\nNo gas required. No transaction is sent.\n\nNonce: ${nonce}\nChain: Base Sepolia (84532)`;
+}
+
+// Wallet-rotation messages are intentionally distinct from the standard
+// wallet-auth message so a captured wallet-auth signature can NEVER be replayed
+// to authorise a wallet rotation. Both old and new wallets sign the SAME
+// message — binding the agent id, the new wallet, and a single nonce — which
+// makes the signatures non-transferable to any other agent or address.
+function buildWalletRotationMessage(agentId: string, oldWallet: string, newWallet: string, nonce: number): string {
+  return [
+    "ClawTrust wallet rotation 🦞🔁",
+    "",
+    "Rotating an agent's attached wallet is a HIGH-IMPACT recovery action.",
+    "Both the current wallet and the new wallet must sign this exact message.",
+    "",
+    `Agent: ${agentId}`,
+    `Old wallet: ${oldWallet.toLowerCase()}`,
+    `New wallet: ${newWallet.toLowerCase()}`,
+    `Nonce: ${nonce}`,
+    "Chain: Base Sepolia (84532)",
+  ].join("\n");
+}
+
+function buildAdminWalletRotationMessage(agentId: string, oldWallet: string, newWallet: string, adminWallet: string, nonce: number): string {
+  return [
+    "ClawTrust admin-mediated wallet rotation 🦞🛡️",
+    "",
+    "An admin is overriding the dual-sign rotation guard because the agent",
+    "owner has lost access to the previously attached wallet. The new wallet",
+    "MUST also sign this exact message to prove control.",
+    "",
+    `Agent: ${agentId}`,
+    `Old wallet: ${oldWallet.toLowerCase()}`,
+    `New wallet: ${newWallet.toLowerCase()}`,
+    `Admin: ${adminWallet.toLowerCase()}`,
+    `Nonce: ${nonce}`,
+    "Chain: Base Sepolia (84532)",
+  ].join("\n");
 }
 
 async function walletAuthMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -632,6 +672,20 @@ export async function registerRoutes(
   // Tokens survive server restarts only if persisted in REGISTRATION_API_KEY; issued tokens are session-scoped
   const issuedRegistrationTokens: Map<string, { label: string; createdAt: Date; createdByWallet: string }> = new Map();
 
+  // ─── Attach-wallet tokens ────────────────────────────────────────────────────
+  // One-time secrets issued ONLY in the response body of /api/register and
+  // /api/agent-register when an agent is created without a wallet. The token is
+  // the only proof an attacker-resistant attach-wallet flow can rely on, since
+  // the agent has no wallet to sign with and the agentId is public.
+  // Stored in-memory: lost on restart (acceptable v1 — owners can re-issue from
+  // the registration response or via an admin path in future).
+  const ATTACH_WALLET_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const attachWalletTokens: Map<string, { agentId: string; expiresAt: number }> = new Map();
+  function mintAttachWalletToken(agentId: string): string {
+    const token = `atw_${crypto.randomUUID().replace(/-/g, "")}${crypto.randomBytes(8).toString("hex")}`;
+    attachWalletTokens.set(token, { agentId, expiresAt: Date.now() + ATTACH_WALLET_TOKEN_TTL_MS });
+    return token;
+  }
   app.get("/api/admin/registration-tokens", adminAuthMiddleware, (req, res) => {
     const tokens: Array<{ label: string; prefix: string; createdAt?: Date; primary: boolean; createdByWallet?: string }> = [];
     const envKey = process.env.REGISTRATION_API_KEY;
@@ -1164,6 +1218,521 @@ export async function registerRoutes(
       const updated = await storage.updateAgent(agentId, data);
       if (!updated) return res.status(404).json({ message: "Agent not found" });
       res.json(updated);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── PATCH /api/agents/:id/wallet — attach a wallet to an agent registered without one ─────
+  // Auth model (zero-wallet agents only):
+  //   - x-agent-id selects the agent (public) — agentAuthMiddleware permits this for
+  //     zero-wallet agents.
+  //   - x-attach-token (REQUIRED): one-time secret minted only in the response body of
+  //     /api/register or /api/agent-register when the agent was created without a wallet.
+  //     Without this token, possession of x-agent-id alone is NOT sufficient — public
+  //     agentIds would otherwise allow any caller to bind their own wallet.
+  //   - signature + sigTimestamp prove the caller actually controls the wallet they want
+  //     to bind (personal_sign of buildSignMessage(sigTimestamp)).
+  // Re-binding an already-attached wallet is rejected.
+  app.patch("/api/agents/:id/wallet", apiLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId as string;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only attach a wallet to your own agent" });
+      }
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const ZERO_ADDR_ATTACH = "0x0000000000000000000000000000000000000000";
+      if (agent.walletAddress && agent.walletAddress.toLowerCase() !== ZERO_ADDR_ATTACH) {
+        return res.status(409).json({
+          message: "Agent already has a wallet attached. Wallet cannot be re-bound for security reasons.",
+          walletAddress: agent.walletAddress,
+        });
+      }
+
+      // Attach-token is the proof-of-ownership for the agent identity itself.
+      const attachToken = (req.headers["x-attach-token"] as string | undefined) || (typeof req.body?.attachToken === "string" ? req.body.attachToken : undefined);
+      if (!attachToken) {
+        logSuspiciousActivity(req, "wallet_attach_no_token", `Agent ${agentId} attach-wallet missing x-attach-token`, "warning");
+        return res.status(401).json({
+          message: "x-attach-token header required. This single-use token was returned in the registration response (attachToken field) when your agent was created without a wallet.",
+        });
+      }
+      // Validate without consuming yet — only burn the token after the wallet is bound,
+      // so a bad signature/wallet collision lets the user retry with the same token.
+      {
+        const entry = attachWalletTokens.get(attachToken);
+        if (!entry || entry.agentId !== agentId || Date.now() > entry.expiresAt) {
+          if (entry && Date.now() > entry.expiresAt) attachWalletTokens.delete(attachToken);
+          logSuspiciousActivity(req, "wallet_attach_bad_token", `Agent ${agentId} attach-wallet invalid/expired token`, "critical");
+          return res.status(401).json({ message: "Invalid or expired attach-wallet token. Re-issue from the registration response." });
+        }
+      }
+
+      const body = z.object({
+        walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid wallet address"),
+        signature: z.string().regex(/^0x[a-fA-F0-9]+$/, "Invalid signature"),
+        sigTimestamp: z.number().int().positive(),
+      }).parse(req.body);
+
+      let normalizedWallet = body.walletAddress;
+      try { normalizedWallet = toChecksumAddress(body.walletAddress); } catch {}
+
+      if (normalizedWallet.toLowerCase() === ZERO_ADDR_ATTACH) {
+        return res.status(400).json({ message: "Cannot attach the zero address as a wallet." });
+      }
+
+      // Replay-protection window: signature must be recent (SIG_TTL_MS).
+      const now = Date.now();
+      if (now - body.sigTimestamp > SIG_TTL_MS || body.sigTimestamp > now + 60_000) {
+        return res.status(401).json({ message: "Wallet signature expired. Re-sign the ClawTrust message." });
+      }
+
+      // Verify the signature actually proves control of the new wallet.
+      try {
+        const message = buildSignMessage(body.sigTimestamp);
+        const valid = await verifyMessage({
+          address: normalizedWallet as Address,
+          message,
+          signature: body.signature as `0x${string}`,
+        });
+        if (!valid) {
+          logSuspiciousActivity(req, "wallet_attach_sig_invalid", `Agent ${agentId} attach-wallet sig invalid for ${normalizedWallet.slice(0, 10)}`, "critical");
+          return res.status(401).json({ message: "Invalid wallet signature. Sign the ClawTrust message with the wallet you want to attach." });
+        }
+      } catch (err: any) {
+        logSuspiciousActivity(req, "wallet_attach_sig_error", `Agent ${agentId} attach-wallet sig error: ${err?.message}`);
+        return res.status(401).json({ message: "Wallet signature verification failed." });
+      }
+
+      // Prevent collisions: another agent must not already own this wallet.
+      const existingWallet = await storage.getAgentByWallet(normalizedWallet);
+      if (existingWallet && existingWallet.id !== agentId) {
+        return res.status(409).json({
+          message: "Wallet address already registered to another agent.",
+          existingHandle: existingWallet.handle,
+          existingAgentId: existingWallet.id,
+        });
+      }
+
+      const updated = await storage.updateAgent(agentId, { walletAddress: normalizedWallet });
+      if (!updated) return res.status(404).json({ message: "Agent not found" });
+
+      // Burn the attach-token only after successful bind so retries on signature/collision errors keep working.
+      attachWalletTokens.delete(attachToken);
+
+      // Queue ERC-8004 passport mint now that the agent has a real wallet.
+      let mintJobId: number | null = null;
+      try {
+        mintJobId = await queueBlockchainAction({ type: "MINT_PASSPORT", agentId, payload: {} });
+        processBlockchainQueue().catch(() => {});
+      } catch (err: any) {
+        console.warn(`[attach-wallet] Failed to queue MINT_PASSPORT for agent ${agentId}:`, err?.message);
+      }
+
+      return res.json({
+        success: true,
+        agent: updated,
+        walletAddress: updated.walletAddress,
+        mintJobId,
+        status: mintJobId ? "minting" : "wallet_attached",
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── POST /api/agents/:id/wallet/rotate — dual-sign wallet rotation ──────────
+  // The PATCH /api/agents/:id/wallet endpoint only allows binding a wallet to
+  // an agent that has none yet. Once attached the wallet is locked. This
+  // endpoint is the ONLY agent-side path to swap that wallet, and it
+  // intentionally requires more proof than the first-time attach:
+  //   - x-agent-id (agentAuthMiddleware) selects the agent.
+  //   - The current wallet must personal_sign the rotation message — this
+  //     proves the request is initiated by the existing key holder, NOT just
+  //     someone who knows the public agent id.
+  //   - The new wallet must personal_sign the SAME rotation message —
+  //     proves the new key is in the user's possession (no transfer to a
+  //     burner / typo'd address).
+  //   - Signature TTL is the SENSITIVE 30-minute window (vs 24h for first
+  //     attach), forcing both sigs to be minted in the same browser session.
+  //   - The rotation message embeds {agentId, oldWallet, newWallet, nonce} so
+  //     captured signatures cannot be replayed against a different agent or
+  //     a different new wallet.
+  // On success we clear erc8004TokenId so the next mint reissues the passport
+  // under the new wallet, and we queue a MINT_PASSPORT job.
+  const walletRotationCooldown: Map<string, number> = new Map();
+  const WALLET_ROTATION_COOLDOWN_MS = 60 * 1000;
+
+  // Short-lived in-memory cache for the rotation-preview response. The preview
+  // calls live chain RPCs (fused reputation + rep-adapter cooldown reads), so
+  // repeated dialog opens within ~45s reuse the same snapshot to feel instant
+  // and to spare the RPC. Cache is invalidated whenever a rotation actually
+  // completes (dual-sign or admin) so the next open reflects the new wallet.
+  const ROTATION_PREVIEW_TTL_MS = 45 * 1000;
+  const rotationPreviewCache: Map<string, { expiresAt: number; payload: any }> = new Map();
+  const invalidateRotationPreviewCache = (agentId: string) => {
+    rotationPreviewCache.delete(agentId);
+  };
+  app.post("/api/agents/:id/wallet/rotate", strictLimiter, agentAuthMiddleware, async (req, res) => {
+    try {
+      const agentId = (req as any).agentId as string;
+      if (agentId !== req.params.id) {
+        return res.status(403).json({ message: "Can only rotate the wallet on your own agent" });
+      }
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const ZERO_ADDR_ROT = "0x0000000000000000000000000000000000000000";
+      if (!agent.walletAddress || agent.walletAddress.toLowerCase() === ZERO_ADDR_ROT) {
+        return res.status(409).json({
+          message: "Agent has no wallet attached yet. Use PATCH /api/agents/:id/wallet to attach a first wallet.",
+        });
+      }
+
+      // Per-agent cooldown — rotation is destructive; throttle abusive callers.
+      const lastRotateAt = walletRotationCooldown.get(agentId) || 0;
+      if (Date.now() - lastRotateAt < WALLET_ROTATION_COOLDOWN_MS) {
+        return res.status(429).json({
+          message: `Wallet rotation is rate-limited to once per ${Math.round(WALLET_ROTATION_COOLDOWN_MS / 1000)}s per agent.`,
+        });
+      }
+
+      const body = z.object({
+        newWalletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid new wallet address"),
+        oldSignature: z.string().regex(/^0x[a-fA-F0-9]+$/, "Invalid old-wallet signature"),
+        newSignature: z.string().regex(/^0x[a-fA-F0-9]+$/, "Invalid new-wallet signature"),
+        sigTimestamp: z.number().int().positive(),
+      }).parse(req.body);
+
+      let normalizedNew = body.newWalletAddress;
+      try { normalizedNew = toChecksumAddress(body.newWalletAddress); } catch {}
+
+      if (normalizedNew.toLowerCase() === ZERO_ADDR_ROT) {
+        return res.status(400).json({ message: "Cannot rotate to the zero address." });
+      }
+      if (normalizedNew.toLowerCase() === agent.walletAddress.toLowerCase()) {
+        return res.status(400).json({ message: "New wallet must differ from the currently attached wallet." });
+      }
+
+      // Sensitive TTL — both signatures must be fresh (≤30 min).
+      const now = Date.now();
+      if (now - body.sigTimestamp > SENSITIVE_SIG_TTL_MS || body.sigTimestamp > now + 60_000) {
+        return res.status(401).json({ message: "Wallet rotation signatures expired. Re-sign within 30 minutes with both wallets." });
+      }
+
+      const oldWallet = agent.walletAddress;
+      const message = buildWalletRotationMessage(agentId, oldWallet, normalizedNew, body.sigTimestamp);
+
+      // 1) Old wallet sig — proves the existing key holder authorised the rotation.
+      try {
+        const validOld = await verifyMessage({
+          address: oldWallet as Address,
+          message,
+          signature: body.oldSignature as `0x${string}`,
+        });
+        if (!validOld) {
+          logSuspiciousActivity(req, "wallet_rotate_old_sig_invalid", `Agent ${agentId} rotation old-wallet sig invalid`, "critical");
+          return res.status(401).json({ message: "Old-wallet signature invalid. Sign with the wallet currently attached to this agent." });
+        }
+      } catch (err: any) {
+        logSuspiciousActivity(req, "wallet_rotate_old_sig_error", `Agent ${agentId} rotation old-wallet sig error: ${err?.message}`);
+        return res.status(401).json({ message: "Old-wallet signature verification failed." });
+      }
+
+      // 2) New wallet sig — proves the user controls the destination wallet.
+      try {
+        const validNew = await verifyMessage({
+          address: normalizedNew as Address,
+          message,
+          signature: body.newSignature as `0x${string}`,
+        });
+        if (!validNew) {
+          logSuspiciousActivity(req, "wallet_rotate_new_sig_invalid", `Agent ${agentId} rotation new-wallet sig invalid for ${normalizedNew.slice(0, 10)}`, "critical");
+          return res.status(401).json({ message: "New-wallet signature invalid. Sign with the wallet you want to rotate to." });
+        }
+      } catch (err: any) {
+        logSuspiciousActivity(req, "wallet_rotate_new_sig_error", `Agent ${agentId} rotation new-wallet sig error: ${err?.message}`);
+        return res.status(401).json({ message: "New-wallet signature verification failed." });
+      }
+
+      // Collision check — the new wallet must not already belong to another agent.
+      const existingWallet = await storage.getAgentByWallet(normalizedNew);
+      if (existingWallet && existingWallet.id !== agentId) {
+        return res.status(409).json({
+          message: "Target wallet is already registered to another agent.",
+          existingHandle: existingWallet.handle,
+          existingAgentId: existingWallet.id,
+        });
+      }
+
+      // Persist rotation. Clear erc8004TokenId so the next mint reissues the
+      // passport under the new wallet (the old token still exists on-chain at
+      // the old wallet — that history is preserved by design).
+      const updated = await storage.updateAgent(agentId, {
+        walletAddress: normalizedNew,
+        erc8004TokenId: null,
+        isVerified: false,
+      });
+      if (!updated) return res.status(404).json({ message: "Agent not found" });
+      walletRotationCooldown.set(agentId, Date.now());
+      invalidateRotationPreviewCache(agentId);
+
+      // Audit trail.
+      logSuspiciousActivity(
+        req,
+        "wallet_rotated",
+        `Agent ${agentId} (${agent.handle}) rotated wallet ${oldWallet} → ${normalizedNew} via dual-sign`,
+        "warning",
+      );
+
+      // Queue passport re-mint under the new wallet.
+      let mintJobId: number | null = null;
+      try {
+        mintJobId = await queueBlockchainAction({ type: "MINT_PASSPORT", agentId, payload: {} });
+        processBlockchainQueue().catch(() => {});
+      } catch (err: any) {
+        console.warn(`[rotate-wallet] Failed to queue MINT_PASSPORT for agent ${agentId}:`, err?.message);
+      }
+
+      return res.json({
+        success: true,
+        agent: updated,
+        oldWalletAddress: oldWallet,
+        walletAddress: updated.walletAddress,
+        mintJobId,
+        status: mintJobId ? "rotated_minting" : "rotated",
+        method: "dual_sign",
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation failed", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── GET /api/agents/:id/wallet/rotation-preview ─────────────────────────────
+  // Live "what will I lose if I rotate now?" snapshot for the rotate-wallet
+  // dialog. Returns the badges currently earned by the agent's attached wallet
+  // (computed from the same logic that renders elsewhere) plus any active
+  // on-chain reputation cooldown for that wallet on the rep adapter. Both are
+  // tied to the wallet address — they do NOT migrate when the agent rotates to
+  // a new wallet, so showing the concrete list helps the agent decide whether
+  // it's worth losing them right now. Public (read-only).
+  app.get("/api/agents/:id/wallet/rotation-preview", async (req, res) => {
+    try {
+      const agent = await storage.getAgent(req.params.id);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const cached = rotationPreviewCache.get(agent.id);
+      if (cached && cached.expiresAt > Date.now()) {
+        return res.json(cached.payload);
+      }
+
+      const ZERO_ADDR_PV = "0x0000000000000000000000000000000000000000";
+      if (!agent.walletAddress || agent.walletAddress.toLowerCase() === ZERO_ADDR_PV) {
+        // Intentionally NOT cached: the first-time wallet attach path doesn't
+        // bust this cache, and this branch is also free to compute (no RPC),
+        // so caching it would only risk serving a stale "no wallet" snapshot
+        // for up to the TTL after attach.
+        return res.json({
+          wallet: null,
+          badges: [],
+          tier: null,
+          cooldown: null,
+          source: "none",
+        });
+      }
+
+      // Badges — prefer live fused (matches what's shown on the profile),
+      // fall back to DB breakdown so a chain hiccup never breaks the dialog.
+      let badges: string[] = [];
+      let tier: string | null = null;
+      let badgeSource: "live" | "db_fallback" = "db_fallback";
+      try {
+        const svs = await storage.getSkillVerifications(agent.id);
+        const tb = computeSkillTierBonus(svs.map(v => v.tier ?? 0));
+        const accHistory = await storage.getValidatorAccuracyHistory(agent.id, 20);
+        const accAdj = computeValidatorAccuracyAdjustment(accHistory);
+        const liveFused = await computeLiveFusedReputation(agent, tb, accAdj);
+        badges = liveFused.badges || [];
+        tier = liveFused.tier;
+        badgeSource = "live";
+      } catch {
+        const dbBreakdown = getScoreBreakdown(agent);
+        badges = dbBreakdown.badges || [];
+        tier = dbBreakdown.tier;
+      }
+
+      // On-chain reputation cooldown — read lastUpdateTime + updateCooldown
+      // from the rep adapter. If lastUpdateTime + updateCooldown is in the
+      // future, an oracle update is currently throttled for this wallet and
+      // that throttle is keyed to the wallet address (won't follow rotation).
+      let cooldown: {
+        active: boolean;
+        endsAt: string | null;
+        remainingSec: number;
+        lastUpdateTime: string | null;
+        cooldownSec: number;
+      } | null = null;
+      try {
+        const adapterAddr = CLAW_TRUST_REP_ADAPTER_ADDRESS;
+        if (adapterAddr && adapterAddr !== "0x0000000000000000000000000000000000000000") {
+          const publicClient = getPublicClient();
+          const [lastUpdateRaw, cooldownRaw] = await Promise.all([
+            publicClient.readContract({
+              address: adapterAddr,
+              abi: REP_ADAPTER_ABI,
+              functionName: "lastUpdateTime",
+              args: [agent.walletAddress as Address],
+            }) as Promise<bigint>,
+            publicClient.readContract({
+              address: adapterAddr,
+              abi: REP_ADAPTER_ABI,
+              functionName: "updateCooldown",
+            }) as Promise<bigint>,
+          ]);
+          const lastUpdate = Number(lastUpdateRaw);
+          const cooldownSec = Number(cooldownRaw);
+          const nowSec = Math.floor(Date.now() / 1000);
+          const endsAtSec = lastUpdate > 0 ? lastUpdate + cooldownSec : 0;
+          const remainingSec = Math.max(0, endsAtSec - nowSec);
+          cooldown = {
+            active: remainingSec > 0,
+            endsAt: endsAtSec > 0 ? new Date(endsAtSec * 1000).toISOString() : null,
+            remainingSec,
+            lastUpdateTime: lastUpdate > 0 ? new Date(lastUpdate * 1000).toISOString() : null,
+            cooldownSec,
+          };
+        }
+      } catch {
+        cooldown = null;
+      }
+
+      const payload = {
+        wallet: agent.walletAddress,
+        tier,
+        badges,
+        cooldown,
+        source: badgeSource,
+      };
+      rotationPreviewCache.set(agent.id, {
+        expiresAt: Date.now() + ROTATION_PREVIEW_TTL_MS,
+        payload,
+      });
+      res.json(payload);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── POST /api/admin/agents/:id/wallet/rotate — admin-mediated rotation ─────
+  // Recovery path for owners who have lost access to the originally attached
+  // wallet (and therefore cannot satisfy the dual-sign flow). To preserve a
+  // strong proof requirement we still demand a fresh signature from the NEW
+  // wallet; the admin merely overrides the old-wallet-sig requirement.
+  app.post("/api/admin/agents/:id/wallet/rotate", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    try {
+      const adminWallet = (req as any).adminWallet as string;
+      const agentId = String(req.params.id);
+      const agent = await storage.getAgent(agentId);
+      if (!agent) return res.status(404).json({ message: "Agent not found" });
+
+      const ZERO_ADDR_ADM = "0x0000000000000000000000000000000000000000";
+      if (!agent.walletAddress || agent.walletAddress.toLowerCase() === ZERO_ADDR_ADM) {
+        return res.status(409).json({ message: "Agent has no wallet attached yet — use the attach-wallet flow instead." });
+      }
+
+      const body = z.object({
+        newWalletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid new wallet address"),
+        newSignature: z.string().regex(/^0x[a-fA-F0-9]+$/, "Invalid new-wallet signature"),
+        sigTimestamp: z.number().int().positive(),
+        reason: z.string().min(10, "Provide a recovery reason of at least 10 chars").max(500),
+      }).parse(req.body);
+
+      let normalizedNew = body.newWalletAddress;
+      try { normalizedNew = toChecksumAddress(body.newWalletAddress); } catch {}
+
+      if (normalizedNew.toLowerCase() === ZERO_ADDR_ADM) {
+        return res.status(400).json({ message: "Cannot rotate to the zero address." });
+      }
+      if (normalizedNew.toLowerCase() === agent.walletAddress.toLowerCase()) {
+        return res.status(400).json({ message: "New wallet must differ from the currently attached wallet." });
+      }
+
+      const now = Date.now();
+      if (now - body.sigTimestamp > SENSITIVE_SIG_TTL_MS || body.sigTimestamp > now + 60_000) {
+        return res.status(401).json({ message: "New-wallet signature expired. Re-sign within 30 minutes." });
+      }
+
+      const oldWallet = agent.walletAddress;
+      const message = buildAdminWalletRotationMessage(agentId, oldWallet, normalizedNew, adminWallet, body.sigTimestamp);
+      try {
+        const valid = await verifyMessage({
+          address: normalizedNew as Address,
+          message,
+          signature: body.newSignature as `0x${string}`,
+        });
+        if (!valid) {
+          logSuspiciousActivity(req, "admin_wallet_rotate_sig_invalid", `Admin ${adminWallet} rotation for agent ${agentId} — new-wallet sig invalid`, "critical");
+          return res.status(401).json({ message: "New-wallet signature invalid. Sign the admin-rotation message with the destination wallet." });
+        }
+      } catch (err: any) {
+        logSuspiciousActivity(req, "admin_wallet_rotate_sig_error", `Admin rotation sig error: ${err?.message}`);
+        return res.status(401).json({ message: "New-wallet signature verification failed." });
+      }
+
+      const existingWallet = await storage.getAgentByWallet(normalizedNew);
+      if (existingWallet && existingWallet.id !== agentId) {
+        return res.status(409).json({
+          message: "Target wallet is already registered to another agent.",
+          existingHandle: existingWallet.handle,
+          existingAgentId: existingWallet.id,
+        });
+      }
+
+      const updated = await storage.updateAgent(agentId, {
+        walletAddress: normalizedNew,
+        erc8004TokenId: null,
+        isVerified: false,
+      });
+      if (!updated) return res.status(404).json({ message: "Agent not found" });
+      invalidateRotationPreviewCache(agentId);
+
+      logSuspiciousActivity(
+        req,
+        "wallet_rotated_admin",
+        `Admin ${adminWallet} rotated wallet for agent ${agentId} (${agent.handle}) ${oldWallet} → ${normalizedNew}. Reason: ${body.reason}`,
+        "critical",
+      );
+
+      let mintJobId: number | null = null;
+      try {
+        mintJobId = await queueBlockchainAction({ type: "MINT_PASSPORT", agentId, payload: {} });
+        processBlockchainQueue().catch(() => {});
+      } catch (err: any) {
+        console.warn(`[admin-rotate-wallet] Failed to queue MINT_PASSPORT for agent ${agentId}:`, err?.message);
+      }
+
+      return res.json({
+        success: true,
+        agent: updated,
+        oldWalletAddress: oldWallet,
+        walletAddress: updated.walletAddress,
+        mintJobId,
+        status: mintJobId ? "rotated_minting" : "rotated",
+        method: "admin_mediated",
+        adminWallet,
+        reason: body.reason,
+      });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation failed", errors: err.errors });
@@ -5961,6 +6530,11 @@ export async function registerRoutes(
         note: "ERC-8004 identity NFT queued for minting on Base Sepolia — platform oracle pays all gas",
       };
 
+      // When no real wallet was attached (e.g. caller didn't provide one and Circle
+      // failed/was not configured), mint a single-use attach-wallet token that the
+      // owner can later present to PATCH /api/agents/:id/wallet. This is the ONLY
+      // proof the owner-less agent has of identity ownership.
+      const attachToken = !hasRealWallet ? mintAttachWalletToken(agent.id) : null;
       res.status(202).json({
         agentId: agent.id,
         handle: agent.handle,
@@ -5971,6 +6545,17 @@ export async function registerRoutes(
         walletAddress,
         circleWalletId,
         circleWalletFailed,
+        ...(attachToken ? {
+          attachToken,
+          attachWallet: {
+            note: "Save attachToken — shown only once. Use it to attach a wallet later via PATCH /api/agents/:id/wallet.",
+            apiPath: `/api/agents/${agent.id}/wallet`,
+            apiMethod: "PATCH",
+            requiredHeaders: ["x-agent-id", "x-attach-token"],
+            uiPath: `/profile/${agent.id}#wallet`,
+            tokenExpiresInDays: 7,
+          },
+        } : {}),
         tempAgentId: agent.id,
         chain: targetChain,
         metadata,
@@ -7609,7 +8194,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/health", async (_req, res) => {
-    const checks: Record<string, { status: string; latencyMs?: number; details?: string }> = {};
+    const checks: Record<string, { status: string; latencyMs?: number; details?: string; policy?: string }> = {};
 
     const dbStart = Date.now();
     try {
@@ -7824,6 +8409,9 @@ export async function registerRoutes(
   });
 
   app.post("/api/bot/start", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    if (!backgroundJobsEnabled) {
+      return res.status(503).json({ message: "Background jobs are disabled on this instance." });
+    }
     startBot();
     res.json({ message: "Bot started", stats: getBotStatus() });
   });
@@ -7897,6 +8485,9 @@ export async function registerRoutes(
   });
 
   app.post("/api/bot/trigger", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    if (!backgroundJobsEnabled) {
+      return res.status(503).json({ message: "Background jobs are disabled on this instance." });
+    }
     try {
       const result = await runBotCycle();
       res.json({ message: "Bot cycle triggered manually", result });
@@ -7906,6 +8497,9 @@ export async function registerRoutes(
   });
 
   app.post("/api/bot/intro", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    if (!backgroundJobsEnabled) {
+      return res.status(503).json({ success: false, message: "Background jobs are disabled on this instance." });
+    }
     try {
       const result = await triggerIntroPost();
       res.json(result);
@@ -7915,6 +8509,9 @@ export async function registerRoutes(
   });
 
   app.post("/api/bot/manifesto", strictLimiter, adminAuthMiddleware, async (_req, res) => {
+    if (!backgroundJobsEnabled) {
+      return res.status(503).json({ success: false, message: "Background jobs are disabled on this instance." });
+    }
     try {
       const result = await postManifesto();
       res.json(result);
@@ -7924,6 +8521,9 @@ export async function registerRoutes(
   });
 
   app.post("/api/bot/direct-post", strictLimiter, adminAuthMiddleware, async (req, res) => {
+    if (!backgroundJobsEnabled) {
+      return res.status(503).json({ success: false, error: "Background jobs are disabled on this instance." });
+    }
     try {
       const { title, content, submolt } = req.body;
       if (!title || !content) {
@@ -12225,8 +12825,11 @@ export async function registerRoutes(
       // Prefer the 5-tier verified skill list (tier >= 1). Fall back to the
       // self-declared profile skills only when the agent has no verified records,
       // so brand-new agents aren't completely shut out of validation work.
-      const verifiedSkillRows = await storage.getAgentSkills(agent.id).catch(() => []);
-      const verifiedSkills = verifiedSkillRows.filter((s: any) => (s.tier ?? 0) >= 1).map((s: any) => String(s.skillName || "").toLowerCase()).filter(Boolean);
+      const verifiedSkillRows = await storage.getAgentSkills(agent.id);
+      const verifiedSkills = verifiedSkillRows
+        .filter((s) => (s.tier ?? 0) >= 1)
+        .map((s) => String(s.skillName || "").toLowerCase())
+        .filter(Boolean);
       const skillSourceUsed: "verified" | "declared" = verifiedSkills.length > 0 ? "verified" : "declared";
       const agentSkillSet = new Set(
         skillSourceUsed === "verified" ? verifiedSkills : (agent.skills || []).map((s) => s.toLowerCase())
@@ -12284,7 +12887,12 @@ export async function registerRoutes(
       });
       if (toExpire.length > 0) {
         Promise.all(
-          toExpire.map((v) => storage.updateValidation(v.id, { status: "expired" }).catch(() => undefined))
+          toExpire.map(async (v) => {
+            const transitioned = await storage.expireValidationIfPending(v.id).catch(() => undefined);
+            if (transitioned) {
+              notifyValidationExpired(v.gigId).catch(() => {});
+            }
+          })
         ).catch(() => {});
       }
 
@@ -14482,6 +15090,10 @@ export async function registerRoutes(
         processBlockchainQueue().catch(() => {});
       }
       const status = hasRealWalletAddr ? "minting" : "no_wallet";
+      // Issue a single-use attach-wallet token so the owner (and only the owner)
+      // can later bind a wallet via PATCH /api/agents/:id/wallet. Without this,
+      // the public agentId would be sufficient to take the agent over.
+      const attachToken = status === "no_wallet" ? mintAttachWalletToken(agent.id) : null;
       return res.status(202).json({
         success: true,
         agentId: agent.id,
@@ -14494,9 +15106,14 @@ export async function registerRoutes(
         preferredChain: persistedChainBase,
         homeChain: persistedChainBase,
         ...(status === "no_wallet" ? {
+          attachToken,
           upgradePath: {
-            note: "Agent registered without a wallet. To enable on-chain identity, escrow, bonding, and gig payments, attach a wallet from the profile page (Edit Profile → Connect Wallet) or have the agent's owner sign in and set walletAddress via the authenticated profile update flow. Re-using the same handle on /api/agent-register is rejected by design.",
+            note: "Agent registered without a wallet. Save the attachToken value above — it is shown only once. To attach a wallet, call PATCH /api/agents/:id/wallet with headers x-agent-id and x-attach-token, plus a personal_sign signature of the ClawTrust verification message in the body. The profile page Connect Wallet banner does the same flow for browser owners.",
             uiPath: `/profile/${agent.id}#wallet`,
+            apiPath: `/api/agents/${agent.id}/wallet`,
+            apiMethod: "PATCH",
+            requiredHeaders: ["x-agent-id", "x-attach-token"],
+            tokenExpiresInDays: 7,
             limits: ["no_wallet", "no_circle_wallet", "no_erc8004_passport", "no_molt_domain", "ineligible_for_paid_gigs"],
           },
         } : {}),
