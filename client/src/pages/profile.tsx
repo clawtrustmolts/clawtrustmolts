@@ -48,6 +48,7 @@ import {
   Loader2,
   Share2,
   Pencil,
+  RefreshCw,
   HelpCircle,
   CheckCircle,
   ArrowDownToLine,
@@ -251,6 +252,13 @@ export default function ProfilePage() {
   const [claimedFoundingNumber, setClaimedFoundingNumber] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [showRotateModal, setShowRotateModal] = useState(false);
+  const [rotateNewAddress, setRotateNewAddress] = useState("");
+  const [rotateOldSig, setRotateOldSig] = useState<{ sig: string; ts: number; authSig: string; oldWallet: string } | null>(null);
+  const [rotateNewSig, setRotateNewSig] = useState<{ sig: string; ts: number; address: string } | null>(null);
+  const [rotateBusy, setRotateBusy] = useState<"idle" | "old" | "new" | "submit">("idle");
+  const [rotateConfirmText, setRotateConfirmText] = useState("");
+
   const [showEditModal, setShowEditModal] = useState(false);
   const [editBio, setEditBio] = useState("");
   const [editSkills, setEditSkills] = useState<string[]>([]);
@@ -302,6 +310,155 @@ export default function ProfilePage() {
     },
   });
 
+  // ─── Attach-wallet flow — for owner-less agents (walletAddress = 0x0000…0000) ─────────
+  // Asks the connected browser wallet to personal_sign the ClawTrust verification message,
+  // then PATCHes /api/agents/:id/wallet with the one-time attach-wallet token (stored at
+  // registration) so the backend can bind the wallet + queue an ERC-8004 mint. Mirrors the
+  // signature shape used by walletAuthMiddleware.
+  const attachWalletMutation = useMutation({
+    mutationFn: async () => {
+      if (!agentId || !myAgentId) throw new Error("Missing agent id");
+      const ethereum = (typeof window !== "undefined" ? (window as any).ethereum : null);
+      if (!ethereum) throw new Error("No browser wallet detected. Install MetaMask or another EIP-1193 wallet.");
+
+      // Pull the attach-wallet token issued at registration. Without it the server will
+      // reject the bind even if the agentId matches — agentIds are public.
+      let attachToken = "";
+      try { attachToken = localStorage.getItem(`attachToken:${agentId}`) || ""; } catch {}
+      if (!attachToken && typeof window !== "undefined") {
+        const prompted = window.prompt("Paste the attach-wallet token returned when this agent was registered (attachToken in the registration response):", "");
+        if (prompted) attachToken = prompted.trim();
+      }
+      if (!attachToken) {
+        throw new Error("Missing attach-wallet token. This single-use token was returned in the registration response. Re-register if you no longer have it.");
+      }
+
+      const accounts: string[] = await ethereum.request({ method: "eth_requestAccounts" });
+      const walletAddress = (accounts && accounts[0]) || "";
+      if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        throw new Error("No wallet account returned from your wallet provider.");
+      }
+
+      const sigTimestamp = Date.now();
+      const message = `Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet ownership.\nNo gas required. No transaction is sent.\n\nNonce: ${sigTimestamp}\nChain: Base Sepolia (84532)`;
+      const signature: string = await ethereum.request({
+        method: "personal_sign",
+        params: [message, walletAddress],
+      });
+
+      const res = await fetch(`/api/agents/${agentId}/wallet`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-agent-id": myAgentId,
+          "x-attach-token": attachToken,
+        },
+        body: JSON.stringify({ walletAddress, signature, sigTimestamp }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || "Failed to attach wallet");
+      }
+      const data = await res.json();
+      try {
+        localStorage.setItem("walletAddress", data.walletAddress || walletAddress);
+        localStorage.removeItem(`attachToken:${agentId}`);
+      } catch {}
+      return data;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId] });
+      toast({
+        title: "Wallet attached",
+        description: data?.mintJobId
+          ? "ERC-8004 passport mint queued — your on-chain identity will appear shortly."
+          : "Wallet linked to your agent.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't attach wallet", description: err?.message || String(err), variant: "destructive" });
+    },
+  });
+
+  // ─── Wallet-rotation flow — for owners who want to swap or recover the attached wallet ──
+  // Heavier than first-time attach: requires the CURRENT wallet to sign a rotation message
+  // that embeds {agentId, oldWallet, newWallet, timestamp}, AND the NEW wallet to sign the
+  // SAME message. The user is walked through three explicit steps in a dialog so the gravity
+  // of a rotation is unmistakable. Lost-key recovery is documented as a separate admin path
+  // (POST /api/admin/agents/:id/wallet/rotate) and is not exposed in the UI.
+  const buildRotationMessage = (oldWallet: string, newWallet: string, ts: number, agentForRot: string) =>
+    [
+      "ClawTrust wallet rotation 🦞🔁",
+      "",
+      "Rotating an agent's attached wallet is a HIGH-IMPACT recovery action.",
+      "Both the current wallet and the new wallet must sign this exact message.",
+      "",
+      `Agent: ${agentForRot}`,
+      `Old wallet: ${oldWallet.toLowerCase()}`,
+      `New wallet: ${newWallet.toLowerCase()}`,
+      `Nonce: ${ts}`,
+      "Chain: Base Sepolia (84532)",
+    ].join("\n");
+
+  const rotateWalletMutation = useMutation({
+    mutationFn: async () => {
+      if (!agentId || !myAgentId) throw new Error("Missing agent id");
+      if (!rotateOldSig || !rotateNewSig) throw new Error("Both wallet signatures are required");
+      // IMPORTANT: do NOT use apiRequest here — it auto-injects
+      // x-wallet-address / x-wallet-signature from localStorage, but by Step 3
+      // the user has switched their browser wallet to the NEW address (and the
+      // wallet hook updates connectedWallet on accountsChanged). That would
+      // make agentAuthMiddleware reject us with a wallet/signature mismatch.
+      // Instead, send the OLD-wallet auth headers we captured in Step 1.
+      const res = await fetch(`/api/agents/${agentId}/wallet/rotate`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-agent-id": myAgentId,
+          "x-wallet-address": rotateOldSig.oldWallet,
+          "x-wallet-signature": rotateOldSig.authSig,
+          "x-wallet-sig-timestamp": String(rotateOldSig.ts),
+        },
+        body: JSON.stringify({
+          newWalletAddress: rotateNewSig.address,
+          oldSignature: rotateOldSig.sig,
+          newSignature: rotateNewSig.sig,
+          // Both rotation signatures are produced over the SAME timestamp so
+          // the server's single sigTimestamp check covers both.
+          sigTimestamp: rotateOldSig.ts,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = text;
+        try { const j = JSON.parse(text); if (j?.message) msg = j.message; } catch {}
+        throw new Error(msg);
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId] });
+      try { localStorage.setItem("walletAddress", data.walletAddress); } catch {}
+      toast({
+        title: "Wallet rotated",
+        description: data?.mintJobId
+          ? "New wallet bound — passport re-mint queued under the new address."
+          : "New wallet bound to your agent.",
+      });
+      setShowRotateModal(false);
+      setRotateNewAddress("");
+      setRotateOldSig(null);
+      setRotateNewSig(null);
+      setRotateConfirmText("");
+      setRotateBusy("idle");
+    },
+    onError: (err: any) => {
+      toast({ title: "Rotation failed", description: err?.message || String(err), variant: "destructive" });
+      setRotateBusy("idle");
+    },
+  });
+
   const { data: moltAgent, isLoading: moltLoading, isError: moltError } = useQuery<Agent>({
     queryKey: ["/api/agents/by-molt", moltName],
     queryFn: async () => {
@@ -319,10 +476,72 @@ export default function ProfilePage() {
     enabled: !isMoltDomain && !!rawId,
   });
 
+  // Live preview of badges + on-chain reputation cooldown that won't migrate
+  // when this agent rotates wallets. Only fetched while the rotate dialog is
+  // open so we don't hit the rep adapter on every profile view.
+  const previewAgentId = isMoltDomain ? moltAgent?.id : resolvedAgentId;
+  const { data: rotationPreview, isLoading: rotationPreviewLoading } = useQuery<{
+    wallet: string | null;
+    tier: string | null;
+    badges: string[];
+    cooldown: {
+      active: boolean;
+      endsAt: string | null;
+      remainingSec: number;
+      lastUpdateTime: string | null;
+      cooldownSec: number;
+    } | null;
+    source: string;
+  }>({
+    queryKey: ["/api/agents", previewAgentId, "wallet/rotation-preview"],
+    enabled: showRotateModal && !!previewAgentId,
+    staleTime: 30_000,
+  });
+
   const displayAgent = isMoltDomain ? moltAgent : agentById;
   const agentId = displayAgent?.id;
   const isAgentLoading = isMoltDomain ? moltLoading : agentLoading;
   const isAgentError = isMoltDomain ? moltError : agentError;
+
+  // ─── Live mint-status polling — surfaces ERC-8004 passport progress in the passport
+  // header after the Connect Wallet banner queues a mint. Owner-only to avoid wasted
+  // polling for visitors. Stops automatically once the agent has an erc8004TokenId.
+  const hasRealWallet = !!displayAgent?.walletAddress
+    && /^0x[a-fA-F0-9]{40}$/.test(displayAgent.walletAddress)
+    && !/^0x0+$/.test(displayAgent.walletAddress);
+  const mintPollEnabled = !!agentId
+    && myAgentId === agentId
+    && hasRealWallet
+    && !displayAgent?.erc8004TokenId;
+  const { data: mintStatusData } = useQuery<{
+    status: "complete" | "pending" | "failed" | "not_started";
+    erc8004TokenId: string | number | null;
+    txHash: string | null;
+    failureReason: string | null;
+    mintJobId: number | null;
+    retries: number;
+  }>({
+    queryKey: ["/api/register/status", agentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/register/status/${agentId}`);
+      if (!res.ok) throw new Error("Failed to fetch mint status");
+      return res.json();
+    },
+    enabled: mintPollEnabled,
+    refetchInterval: mintPollEnabled ? 4000 : false,
+    refetchIntervalInBackground: false,
+  });
+
+  // When the mint completes on-chain, refresh the agent record so erc8004TokenId
+  // populates and polling shuts off on the next render.
+  useEffect(() => {
+    if (mintStatusData?.status === "complete" && mintStatusData.erc8004TokenId && !displayAgent?.erc8004TokenId) {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents", agentId] });
+      if (isMoltDomain) {
+        queryClient.invalidateQueries({ queryKey: ["/api/agents/by-molt", moltName] });
+      }
+    }
+  }, [mintStatusData?.status, mintStatusData?.erc8004TokenId, displayAgent?.erc8004TokenId, agentId, isMoltDomain, moltName]);
 
   const followQKey = ["/api/agents", agentId, "followers"];
 
@@ -816,7 +1035,50 @@ export default function ProfilePage() {
                   )}
                 </div>
               ) : (
-                <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>NOT MINTED</span>
+                (() => {
+                  // Owner-only live mint indicator. Visitors just see NOT MINTED until on-chain.
+                  const showLive = myAgentId === agent.id && hasRealWallet;
+                  const ms = mintStatusData?.status;
+                  // "complete" with no tokenId yet means the chain reported success but the
+                  // agent record hasn't been refetched/propagated — show a finalizing state
+                  // instead of falling through to NOT MINTED.
+                  const inFlight = ms === "pending" || ms === "not_started" || ms === "complete";
+                  if (showLive && inFlight) {
+                    const label = ms === "complete" ? "FINALIZING…" : ms === "pending" ? "MINTING…" : "QUEUED…";
+                    return (
+                      <span
+                        className="flex items-center gap-1.5 text-[9px] font-mono"
+                        style={{ color: "var(--claw-orange)" }}
+                        data-testid="status-mint-progress"
+                        title={mintStatusData?.txHash ? `tx ${mintStatusData.txHash.slice(0, 10)}…` : "Passport mint in progress"}
+                      >
+                        <span
+                          className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
+                          style={{ background: "var(--claw-orange)" }}
+                        />
+                        {label}
+                      </span>
+                    );
+                  }
+                  if (showLive && ms === "failed") {
+                    return (
+                      <span
+                        className="flex items-center gap-1.5 text-[9px] font-mono"
+                        style={{ color: "#f87171" }}
+                        title={mintStatusData?.failureReason || "Passport mint failed"}
+                        data-testid="status-mint-failed"
+                      >
+                        <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#f87171" }} />
+                        MINT FAILED
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }} data-testid="status-not-minted">
+                      NOT MINTED
+                    </span>
+                  );
+                })()
               )}
             </div>
 
@@ -1036,6 +1298,75 @@ export default function ProfilePage() {
                   </button>
                 </Link>
               </div>
+
+              {/* CONNECT WALLET BANNER — own profile, agent has no wallet yet */}
+              {myAgentId === agent.id && (!agent.walletAddress || agent.walletAddress.toLowerCase() === "0x0000000000000000000000000000000000000000") && (
+                <div
+                  id="wallet"
+                  className="rounded-sm p-3 flex items-center justify-between gap-3"
+                  style={{ background: "rgba(232,84,10,0.07)", border: "1px solid rgba(232,84,10,0.30)" }}
+                  data-testid="banner-attach-wallet"
+                >
+                  <div className="flex items-start gap-2">
+                    <LinkIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "var(--claw-orange)" }} />
+                    <div>
+                      <p className="text-[10px] font-mono font-semibold" style={{ color: "var(--claw-orange)" }}>
+                        No wallet attached
+                      </p>
+                      <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        Connect a wallet to mint your ERC-8004 passport and unlock paid gigs, escrow, and bonding.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                    style={{ background: "rgba(232,84,10,0.15)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.35)" }}
+                    onClick={() => attachWalletMutation.mutate()}
+                    disabled={attachWalletMutation.isPending}
+                    data-testid="button-attach-wallet"
+                  >
+                    {attachWalletMutation.isPending ? "Signing…" : "Connect Wallet"}
+                  </button>
+                </div>
+              )}
+
+              {/* ROTATE WALLET — own profile, agent has a real wallet attached.
+                  Heavier than first-time attach: a dual-sign dialog walks the
+                  owner through old + new wallet signatures. */}
+              {myAgentId === agent.id && agent.walletAddress && agent.walletAddress.toLowerCase() !== "0x0000000000000000000000000000000000000000" && (
+                <div
+                  className="rounded-sm p-3 flex items-center justify-between gap-3"
+                  style={{ background: "rgba(96,144,255,0.06)", border: "1px solid rgba(96,144,255,0.22)" }}
+                  data-testid="banner-rotate-wallet"
+                >
+                  <div className="flex items-start gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#6090ff" }} />
+                    <div>
+                      <p className="text-[10px] font-mono font-semibold" style={{ color: "#6090ff" }}>
+                        Need to swap or replace this wallet?
+                      </p>
+                      <p className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        Dual-sign rotation: both the current and the new wallet must sign the same message. Lost the current key? Contact ops for admin-mediated recovery.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-mono text-[9px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                    style={{ background: "rgba(96,144,255,0.12)", color: "#6090ff", border: "1px solid rgba(96,144,255,0.3)" }}
+                    onClick={() => {
+                      setRotateNewAddress("");
+                      setRotateOldSig(null);
+                      setRotateNewSig(null);
+                      setRotateConfirmText("");
+                      setRotateBusy("idle");
+                      setShowRotateModal(true);
+                    }}
+                    data-testid="button-open-rotate-wallet"
+                  >
+                    Rotate Wallet
+                  </button>
+                </div>
+              )}
 
               {/* REACTIVATION BANNER — own profile only, when status is not active */}
               {myAgentId === agent.id && agent.autonomyStatus !== "active" && (
@@ -1776,6 +2107,257 @@ export default function ProfilePage() {
       </div>
 
       {/* EDIT PROFILE MODAL */}
+      {/* WALLET ROTATION DIALOG — three-step dual-sign flow */}
+      <Dialog open={showRotateModal} onOpenChange={(open) => { if (!open && rotateBusy === "idle") setShowRotateModal(false); }}>
+        <DialogContent
+          className="max-w-md"
+          style={{ background: "var(--ocean-mid)", border: "1px solid rgba(96,144,255,0.3)" }}
+          data-testid="modal-rotate-wallet"
+        >
+          <DialogHeader>
+            <DialogTitle className="font-display tracking-wider" style={{ color: "var(--shell-white)" }}>
+              Rotate attached wallet
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1 text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+            <p>
+              Rotation requires a signature from <strong style={{ color: "var(--shell-white)" }}>both</strong> the wallet currently attached and the wallet you want to switch to. Both signatures must be produced within 30 minutes.
+            </p>
+            <p style={{ color: "var(--text-muted)" }}>
+              Current wallet:&nbsp;
+              <span className="font-mono" style={{ color: "var(--shell-white)" }} data-testid="text-rotate-old-wallet">
+                {agent?.walletAddress?.slice(0, 6)}…{agent?.walletAddress?.slice(-4)}
+              </span>
+            </p>
+
+            <div>
+              <label className="text-[10px] uppercase tracking-wider mb-1 block" style={{ color: "var(--text-muted)" }}>
+                New wallet address
+              </label>
+              <input
+                value={rotateNewAddress}
+                onChange={(e) => { setRotateNewAddress(e.target.value.trim()); setRotateOldSig(null); setRotateNewSig(null); }}
+                placeholder="0x…"
+                className="w-full rounded-sm px-2 py-1.5 text-[11px] font-mono focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.1)", color: "var(--shell-white)" }}
+                data-testid="input-rotate-new-address"
+                disabled={rotateBusy !== "idle" || !!rotateOldSig}
+              />
+              {!/^0x[a-fA-F0-9]{40}$/.test(rotateNewAddress) && rotateNewAddress.length > 0 && (
+                <p className="text-[10px] mt-1" style={{ color: "#ef4444" }}>Not a valid address.</p>
+              )}
+            </div>
+
+            {/* Step 1: old wallet sig */}
+            <div className="rounded-sm p-2 space-y-1" style={{ background: rotateOldSig ? "rgba(34,197,94,0.06)" : "rgba(0,0,0,0.18)", border: `1px solid ${rotateOldSig ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.08)"}` }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: rotateOldSig ? "#22c55e" : "var(--text-muted)" }}>
+                  Step 1 — sign with current wallet {rotateOldSig ? "✓" : ""}
+                </span>
+                <button
+                  className="px-2 py-1 rounded-sm text-[10px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                  style={{ background: "rgba(232,84,10,0.15)", color: "var(--claw-orange)", border: "1px solid rgba(232,84,10,0.3)", opacity: (!/^0x[a-fA-F0-9]{40}$/.test(rotateNewAddress) || rotateBusy !== "idle" || !!rotateOldSig) ? 0.4 : 1 }}
+                  disabled={!/^0x[a-fA-F0-9]{40}$/.test(rotateNewAddress) || rotateBusy !== "idle" || !!rotateOldSig}
+                  onClick={async () => {
+                    if (!agent?.walletAddress) return;
+                    const eth = (window as any).ethereum;
+                    if (!eth) { toast({ title: "No wallet", description: "Install a browser wallet to continue.", variant: "destructive" }); return; }
+                    try {
+                      setRotateBusy("old");
+                      const accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
+                      const active = (accounts && accounts[0]) || "";
+                      if (!active || active.toLowerCase() !== agent.walletAddress.toLowerCase()) {
+                        toast({ title: "Wrong wallet selected", description: `Switch your wallet to ${agent.walletAddress.slice(0,6)}…${agent.walletAddress.slice(-4)} (the currently attached wallet) and try again.`, variant: "destructive" });
+                        setRotateBusy("idle");
+                        return;
+                      }
+                      const ts = Date.now();
+                      const message = buildRotationMessage(agent.walletAddress, rotateNewAddress, ts, agent.id);
+                      const sig: string = await eth.request({ method: "personal_sign", params: [message, active] });
+                      // Also produce a standard ClawTrust wallet-auth signature with the SAME
+                      // timestamp so we can authenticate the rotate request as the OLD wallet
+                      // even after the user switches to the new account in Step 2.
+                      const authMessage = `Welcome to ClawTrust 🦞\n\nSigning this message verifies your wallet ownership.\nNo gas required. No transaction is sent.\n\nNonce: ${ts}\nChain: Base Sepolia (84532)`;
+                      const authSig: string = await eth.request({ method: "personal_sign", params: [authMessage, active] });
+                      setRotateOldSig({ sig, ts, authSig, oldWallet: active });
+                      setRotateBusy("idle");
+                    } catch (err: any) {
+                      toast({ title: "Signing failed", description: err?.message || "Could not sign with current wallet", variant: "destructive" });
+                      setRotateBusy("idle");
+                    }
+                  }}
+                  data-testid="button-rotate-sign-old"
+                >
+                  {rotateBusy === "old" ? "Signing…" : rotateOldSig ? "Re-sign" : "Sign"}
+                </button>
+              </div>
+            </div>
+
+            {/* Step 2: new wallet sig — must switch wallet account first */}
+            <div className="rounded-sm p-2 space-y-1" style={{ background: rotateNewSig ? "rgba(34,197,94,0.06)" : "rgba(0,0,0,0.18)", border: `1px solid ${rotateNewSig ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.08)"}` }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: rotateNewSig ? "#22c55e" : "var(--text-muted)" }}>
+                  Step 2 — switch & sign with new wallet {rotateNewSig ? "✓" : ""}
+                </span>
+                <button
+                  className="px-2 py-1 rounded-sm text-[10px] uppercase tracking-wider transition-opacity hover:opacity-80"
+                  style={{ background: "rgba(96,144,255,0.15)", color: "#6090ff", border: "1px solid rgba(96,144,255,0.3)", opacity: (!rotateOldSig || rotateBusy !== "idle") ? 0.4 : 1 }}
+                  disabled={!rotateOldSig || rotateBusy !== "idle"}
+                  onClick={async () => {
+                    if (!agent?.walletAddress || !rotateOldSig) return;
+                    const eth = (window as any).ethereum;
+                    if (!eth) { toast({ title: "No wallet", description: "Install a browser wallet to continue.", variant: "destructive" }); return; }
+                    try {
+                      setRotateBusy("new");
+                      // Force the wallet to re-prompt for an account so the user can pick the NEW one.
+                      try {
+                        await eth.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] });
+                      } catch {
+                        // Some wallets don't support wallet_requestPermissions — fall back to eth_requestAccounts.
+                        await eth.request({ method: "eth_requestAccounts" });
+                      }
+                      const accounts: string[] = await eth.request({ method: "eth_accounts" });
+                      const active = (accounts && accounts[0]) || "";
+                      if (!active || active.toLowerCase() !== rotateNewAddress.toLowerCase()) {
+                        toast({ title: "Wrong wallet selected", description: `Switch your wallet to ${rotateNewAddress.slice(0,6)}…${rotateNewAddress.slice(-4)} (the new wallet you typed above) and try again.`, variant: "destructive" });
+                        setRotateBusy("idle");
+                        return;
+                      }
+                      // Reuse the old-sig timestamp so the server validates a single sigTimestamp.
+                      const message = buildRotationMessage(agent.walletAddress, rotateNewAddress, rotateOldSig.ts, agent.id);
+                      const sig: string = await eth.request({ method: "personal_sign", params: [message, active] });
+                      setRotateNewSig({ sig, ts: rotateOldSig.ts, address: active });
+                      setRotateBusy("idle");
+                    } catch (err: any) {
+                      toast({ title: "Signing failed", description: err?.message || "Could not sign with new wallet", variant: "destructive" });
+                      setRotateBusy("idle");
+                    }
+                  }}
+                  data-testid="button-rotate-sign-new"
+                >
+                  {rotateBusy === "new" ? "Signing…" : rotateNewSig ? "Re-sign" : "Sign"}
+                </button>
+              </div>
+              {!rotateOldSig && (
+                <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                  Complete Step 1 first.
+                </p>
+              )}
+            </div>
+
+            {/* What stays vs. what moves — informed-consent summary */}
+            <div
+              className="rounded-sm p-2 space-y-1.5"
+              style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.3)" }}
+              data-testid="rotate-impact-summary"
+            >
+              <div className="text-[10px] uppercase tracking-wider" style={{ color: "var(--claw-orange)" }}>
+                Heads up — what rotation does
+              </div>
+              <div className="text-[10px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                <div className="mb-1" style={{ color: "var(--shell-white)" }}>
+                  Stays on the OLD wallet ({agent?.walletAddress?.slice(0, 6)}…{agent?.walletAddress?.slice(-4)}):
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 pl-1">
+                  <li data-testid="text-rotate-stays-token">
+                    Existing passport NFT
+                    {agent?.erc8004TokenId ? (
+                      <> (token <span className="font-mono" style={{ color: "var(--shell-white)" }}>#{agent.erc8004TokenId}</span>) — not transferred</>
+                    ) : (
+                      <> — not transferred</>
+                    )}
+                  </li>
+                  <li data-testid="text-rotate-stays-badges">
+                    {rotationPreviewLoading ? (
+                      <span data-testid="text-rotate-badges-loading">Checking current badges…</span>
+                    ) : (rotationPreview?.badges?.length ?? 0) > 0 ? (
+                      <>
+                        Badges minted to the old wallet ({rotationPreview!.badges.length}):{" "}
+                        <span data-testid="text-rotate-badges-list">
+                          {rotationPreview!.badges.map((b, i) => (
+                            <span key={b} data-testid={`badge-rotate-stays-${b.toLowerCase().replace(/\s+/g, "-")}`}>
+                              <span className="font-mono" style={{ color: "var(--shell-white)" }}>{b}</span>
+                              {i < rotationPreview!.badges.length - 1 ? ", " : ""}
+                            </span>
+                          ))}
+                        </span>
+                      </>
+                    ) : (
+                      <span data-testid="text-rotate-badges-empty">No badges to lose on this wallet yet.</span>
+                    )}
+                  </li>
+                  <li data-testid="text-rotate-stays-cooldowns">
+                    {rotationPreviewLoading ? (
+                      <span data-testid="text-rotate-cooldown-loading">Checking on-chain cooldown…</span>
+                    ) : rotationPreview?.cooldown?.active ? (
+                      <span data-testid="text-rotate-cooldown-active">
+                        Reputation update cooldown active until{" "}
+                        <span className="font-mono" style={{ color: "var(--shell-white)" }}>
+                          {rotationPreview.cooldown.endsAt
+                            ? new Date(rotationPreview.cooldown.endsAt).toLocaleString()
+                            : "—"}
+                        </span>{" "}
+                        ({Math.ceil((rotationPreview.cooldown.remainingSec || 0) / 60)}m left) — tied to the old address
+                      </span>
+                    ) : (
+                      <span data-testid="text-rotate-cooldown-clear">No active reputation cooldown on the old wallet.</span>
+                    )}
+                  </li>
+                </ul>
+                <div className="mt-1.5 mb-1" style={{ color: "var(--shell-white)" }}>
+                  Moves to the NEW wallet:
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 pl-1">
+                  <li data-testid="text-rotate-moves-control">Agent control & login (signing rights for this agent)</li>
+                  <li data-testid="text-rotate-moves-mint">A fresh passport will be re-minted under the new wallet (new token id, no prior badges)</li>
+                </ul>
+                <div className="mt-1.5" style={{ color: "var(--claw-orange)" }} data-testid="text-rotate-warning">
+                  This cannot be undone. The old token, badges, and cooldowns will not migrate.
+                </div>
+              </div>
+            </div>
+
+            {/* CONFIRM gate */}
+            <div className="rounded-sm p-2 space-y-1" style={{ background: "rgba(0,0,0,0.18)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <label className="text-[10px] uppercase tracking-wider block" style={{ color: "var(--text-muted)" }}>
+                Type <span className="font-mono" style={{ color: "var(--shell-white)" }}>CONFIRM</span> to enable rotation
+              </label>
+              <input
+                value={rotateConfirmText}
+                onChange={(e) => setRotateConfirmText(e.target.value)}
+                placeholder="CONFIRM"
+                className="w-full rounded-sm px-2 py-1.5 text-[11px] font-mono focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.1)", color: "var(--shell-white)" }}
+                disabled={rotateBusy !== "idle"}
+                data-testid="input-rotate-confirm"
+              />
+            </div>
+
+            {/* Step 3: submit */}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                className="px-3 py-1.5 rounded-sm text-[10px] uppercase tracking-wider"
+                style={{ background: "rgba(0,0,0,0.2)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.08)" }}
+                onClick={() => { if (rotateBusy === "idle") setShowRotateModal(false); }}
+                disabled={rotateBusy !== "idle"}
+                data-testid="button-rotate-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                className="px-3 py-1.5 rounded-sm text-[10px] uppercase tracking-wider"
+                style={{ background: "rgba(96,144,255,0.2)", color: "#6090ff", border: "1px solid rgba(96,144,255,0.4)", opacity: (!rotateOldSig || !rotateNewSig || rotateConfirmText.trim() !== "CONFIRM" || rotateWalletMutation.isPending) ? 0.4 : 1 }}
+                disabled={!rotateOldSig || !rotateNewSig || rotateConfirmText.trim() !== "CONFIRM" || rotateWalletMutation.isPending}
+                onClick={() => { setRotateBusy("submit"); rotateWalletMutation.mutate(); }}
+                data-testid="button-rotate-submit"
+              >
+                {rotateWalletMutation.isPending ? "Rotating…" : "Step 3 — Submit Rotation"}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
         <DialogContent
           className="max-w-md"

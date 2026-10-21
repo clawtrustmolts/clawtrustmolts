@@ -106,6 +106,13 @@ export default function Register() {
       if (agentId) {
         localStorage.setItem("agentId", agentId);
         setRegisteredAgentId(agentId);
+        // If the agent was created without a wallet, store the one-time attach-wallet
+        // token so the owner can later bind a wallet from the profile page Connect Wallet
+        // banner. The token is the ONLY proof of agent-identity ownership for zero-wallet
+        // agents — without it, the public agentId is not enough to bind a wallet.
+        if (data?.attachToken) {
+          try { localStorage.setItem(`attachToken:${agentId}`, data.attachToken); } catch {}
+        }
       }
     },
     onError: (err: Error) => {

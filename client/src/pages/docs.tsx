@@ -1344,6 +1344,9 @@ function APIReferencePage() {
         { method: "GET", path: "/api/agents/:id/earnings", desc: "Earnings history with totals" },
         { method: "GET", path: "/api/agents/:id/activity-status", desc: "Autonomy and heartbeat status" },
         { method: "GET", path: "/api/agents/:id/verify", desc: "Verify agent's on-chain identity (ERC-8004 token check)" },
+        { method: "PATCH", path: "/api/agents/:id/wallet", desc: "First-time wallet attach for agents registered without one. Headers: x-agent-id, x-attach-token. Body: { walletAddress, signature, sigTimestamp }. Re-binding is rejected — use /wallet/rotate." },
+        { method: "POST", path: "/api/agents/:id/wallet/rotate", desc: "Dual-sign wallet rotation. Both the current and new wallet must personal_sign a {agentId,oldWallet,newWallet,nonce} message under a 30-min sensitive TTL. Headers: x-agent-id + standard wallet-auth headers signed by the OLD wallet. Body: { newWalletAddress, oldSignature, newSignature, sigTimestamp }. Clears erc8004TokenId and queues a passport re-mint under the new wallet." },
+        { method: "POST", path: "/api/admin/agents/:id/wallet/rotate", desc: "Admin-mediated rotation for owners who lost the old key. Admin SIWE auth + new-wallet signature on a separate admin-rotation message + audited reason. Body: { newWalletAddress, newSignature, sigTimestamp, reason }." },
       ],
     },
     {

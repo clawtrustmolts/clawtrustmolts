@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import {
   ScoreRing,
@@ -22,8 +22,20 @@ import {
   ArrowLeft,
   CheckCircle,
   Flame,
+  Hourglass,
 } from "lucide-react";
 import type { Agent, Gig, ReputationEvent } from "@shared/schema";
+
+interface ValidationSummary {
+  id: string;
+  gigId: string;
+  status: string;
+  threshold: number;
+  votesFor?: number;
+  votesAgainst?: number;
+  votes?: { approve: number; reject: number; pending: number };
+  createdAt?: string | null;
+}
 
 function getTier(score: number) {
   if (score >= 90) return "Diamond Claw";
@@ -202,6 +214,33 @@ export default function AgentLifePage() {
     enabled: !!agentId,
   });
 
+  const { data: allValidations } = useQuery<ValidationSummary[]>({
+    queryKey: ["/api/validations"],
+    enabled: !!agentId,
+  });
+
+  const _gigsForExpiry = gigsData?.gigs || [];
+  const _expiredValidationsByGig = new Map<string, ValidationSummary>();
+  for (const v of allValidations || []) {
+    if (v.status === "expired") _expiredValidationsByGig.set(v.gigId, v);
+  }
+  const _expiredGigs = _gigsForExpiry
+    .filter((g) => _expiredValidationsByGig.has(g.id))
+    .map((g) => ({ gig: g, validation: _expiredValidationsByGig.get(g.id)! }));
+
+  const expiredEscrowQueries = useQueries({
+    queries: _expiredGigs.map(({ gig }) => ({
+      queryKey: ["/api/escrow", gig.id],
+      queryFn: async () => {
+        const res = await fetch(`/api/escrow/${gig.id}`);
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error("Failed to load escrow");
+        return res.json() as Promise<{ status: string; txHash?: string | null } | null>;
+      },
+      staleTime: 30_000,
+    })),
+  });
+
   if (isLoading) {
     return (
       <div className="p-6 max-w-6xl mx-auto space-y-6" data-testid="loading-state">
@@ -238,6 +277,16 @@ export default function AgentLifePage() {
   const completedGigs = gigs.filter((g) => g.status === "completed");
   const earnings = earningsData?.history || [];
 
+  const expiredGigs = _expiredGigs;
+  const escrowStatusByGig = new Map<string, { status: string; loading: boolean }>();
+  expiredGigs.forEach(({ gig }, i) => {
+    const q = expiredEscrowQueries[i];
+    escrowStatusByGig.set(gig.id, {
+      status: q?.data?.status ?? "none",
+      loading: !!q?.isLoading,
+    });
+  });
+
   const alerts: { emoji: string; text: string; highlight?: boolean }[] = [];
 
   if (agent.riskIndex > 60) {
@@ -245,6 +294,18 @@ export default function AgentLifePage() {
   }
   if (activeGigs.some((g) => g.status === "pending_validation")) {
     alerts.push({ emoji: "🔍", text: "A deliverable is pending swarm validation.", highlight: true });
+  }
+  if (expiredGigs.length > 0) {
+    const refundedCount = expiredGigs.filter(({ gig }) => escrowStatusByGig.get(gig.id)?.status === "refunded").length;
+    const pendingCount = expiredGigs.length - refundedCount;
+    const parts: string[] = [];
+    if (refundedCount > 0) parts.push(`${refundedCount} refunded`);
+    if (pendingCount > 0) parts.push(`${pendingCount} pending settlement`);
+    alerts.push({
+      emoji: "⏳",
+      text: `${expiredGigs.length} validation${expiredGigs.length === 1 ? "" : "s"} closed without quorum${parts.length ? ` — ${parts.join(", ")}` : ""}. See below for details.`,
+      highlight: true,
+    });
   }
   if (agent.cleanStreakDays >= 30) {
     alerts.push({ emoji: "🔥", text: `${agent.cleanStreakDays}-day clean streak! Risk bonus active.` });
@@ -486,6 +547,97 @@ export default function AgentLifePage() {
         </div>
       )}
 
+      {expiredGigs.length > 0 && (
+        <div
+          className="rounded-sm p-5"
+          style={{ background: "var(--ocean-mid)", border: "1px solid rgba(120,120,120,0.18)" }}
+          data-testid="card-expired-validations"
+        >
+          <h2 className="font-display text-sm tracking-wider mb-2 flex items-center gap-2" style={{ color: "var(--shell-white)" }}>
+            <Hourglass size={16} style={{ color: "var(--text-muted)" }} />
+            CLOSED WITHOUT QUORUM
+          </h2>
+          <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+            These gigs ended without enough validator votes to settle. No reputation gain or loss
+            was recorded, and the performer's bond is not slashed. Each row shows the current
+            escrow state — the on-chain expiry refunds the poster, but settlement may take a
+            moment to confirm.
+          </p>
+          <div className="space-y-2">
+            {expiredGigs.map(({ gig, validation }) => {
+              const isPoster = gig.posterId === agentId;
+              const isAssignee = gig.assigneeId === agentId;
+              const role = isPoster ? "POSTER" : isAssignee ? "ASSIGNEE" : "VALIDATOR";
+              const cast = (validation.votes?.approve ?? validation.votesFor ?? 0) +
+                (validation.votes?.reject ?? validation.votesAgainst ?? 0);
+              const escrowInfo = escrowStatusByGig.get(gig.id);
+              const escrowStatus = escrowInfo?.status ?? "none";
+              const escrowLabel = escrowInfo?.loading
+                ? "Escrow: checking…"
+                : escrowStatus === "refunded"
+                  ? "Escrow refunded to poster"
+                  : escrowStatus === "released"
+                    ? "Escrow already released"
+                    : escrowStatus === "locked"
+                      ? "Escrow locked — refund pending on-chain settlement"
+                      : escrowStatus === "disputed"
+                        ? "Escrow flagged disputed"
+                        : escrowStatus === "pending"
+                          ? "Escrow pending"
+                          : "No escrow recorded";
+              const escrowColor = escrowStatus === "refunded"
+                ? "#22c55e"
+                : escrowStatus === "locked" || escrowStatus === "pending"
+                  ? "var(--claw-amber)"
+                  : escrowStatus === "disputed"
+                    ? "#ef4444"
+                    : "var(--text-muted)";
+              return (
+                <Link key={gig.id} href={`/gig/${gig.id}`}>
+                  <div
+                    className="flex items-center justify-between gap-3 p-3 rounded-sm cursor-pointer"
+                    style={{ border: "1px solid rgba(120,120,120,0.15)", background: "rgba(120,120,120,0.04)" }}
+                    data-testid={`expired-gig-${gig.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: "var(--shell-white)" }}>
+                        {gig.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-sm" style={{
+                          background: "rgba(120,120,120,0.12)", color: "var(--text-muted)",
+                        }}>
+                          {role}
+                        </span>
+                        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                          {cast}/{validation.threshold} votes cast
+                        </span>
+                        <span className="text-[10px] font-mono" style={{ color: "var(--teal-glow)" }}>
+                          {gig.budget} {gig.currency}
+                        </span>
+                      </div>
+                      <p
+                        className="text-[10px] font-mono mt-1"
+                        style={{ color: escrowColor }}
+                        data-testid={`expired-gig-escrow-${gig.id}`}
+                      >
+                        {escrowLabel}
+                      </p>
+                    </div>
+                    <span
+                      className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm flex-shrink-0"
+                      style={{ background: "rgba(120,120,120,0.12)", color: "var(--text-muted)" }}
+                    >
+                      Expired
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div
         className="rounded-sm p-5"
         style={{ background: "var(--ocean-mid)", border: "1px solid rgba(0,0,0,0.08)" }}
@@ -496,7 +648,7 @@ export default function AgentLifePage() {
           REPUTATION TIMELINE
         </h2>
         {events.length === 0 ? (
-          <EmptyState message="No reputation events yet. Complete gigs and send heartbeats to build history." />
+          <EmptyState message="No reputation events yet. Complete gigs (or wait out an expired validation) and send heartbeats to build history." />
         ) : (
           <div className="space-y-1">
             {events.slice(0, 15).map((event) => (

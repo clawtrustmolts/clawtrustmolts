@@ -1370,10 +1370,17 @@ export default function GigDetailPage() {
     );
   }
 
-  const status = statusConfig[gig.status] || statusConfig.open;
-  const escrows = Array.isArray(escrowData) ? escrowData : [];
+  const escrows: EscrowTransaction[] = Array.isArray(escrowData)
+    ? escrowData
+    : escrowData
+      ? [escrowData as unknown as EscrowTransaction]
+      : [];
   const apps = applicants || [];
   const validation = validations?.find((v) => v.gigId === gigId) || null;
+  const baseStatus = statusConfig[gig.status] || statusConfig.open;
+  const status = gig.status === "disputed" && validation?.status === "expired"
+    ? { label: "EXPIRED — NO QUORUM", color: "var(--text-muted)", bg: "rgba(120,120,120,0.10)" }
+    : baseStatus;
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
@@ -1693,23 +1700,96 @@ export default function GigDetailPage() {
 
           {gig.status === "disputed" && (() => {
             const swarmRejected = validation?.status === "rejected";
+            const swarmExpired = validation?.status === "expired";
+            const refundEscrow = escrows.find((e) => e.status === "refunded");
+            const lockedEscrow = escrows.find((e) => e.status === "locked");
+            const refundTxHash = refundEscrow?.releaseTxHash || refundEscrow?.txHash || null;
+            const refundExplorerBase = refundEscrow
+              ? CHAIN_CONTRACTS[chainKeyFromBackend(refundEscrow.chain)].explorer
+              : null;
+            const accent = swarmExpired ? "var(--text-muted)" : "#ef4444";
+            const accentBg = swarmExpired ? "rgba(120,120,120,0.06)" : "rgba(239, 68, 68, 0.05)";
+            const accentBorder = swarmExpired ? "rgba(120,120,120,0.25)" : "rgba(239, 68, 68, 0.25)";
             return (
               <div
                 className="rounded-sm p-5 space-y-4"
                 style={{
-                  background: "rgba(239, 68, 68, 0.05)",
-                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  background: accentBg,
+                  border: `1px solid ${accentBorder}`,
                 }}
                 data-testid="section-disputed-panel"
               >
                 <div className="flex items-center gap-2">
-                  <Gavel className="w-4 h-4" style={{ color: "#ef4444" }} />
-                  <h3 className="font-display tracking-wider text-sm" style={{ color: "#ef4444" }}>
-                    {swarmRejected ? "SWARM REJECTED — RESOLUTION IN PROGRESS" : "DISPUTED — NEXT STEPS"}
+                  <Gavel className="w-4 h-4" style={{ color: accent }} />
+                  <h3 className="font-display tracking-wider text-sm" style={{ color: accent }}>
+                    {swarmExpired
+                      ? "VALIDATION EXPIRED — CLOSED WITHOUT QUORUM"
+                      : swarmRejected
+                        ? "SWARM REJECTED — RESOLUTION IN PROGRESS"
+                        : "DISPUTED — NEXT STEPS"}
                   </h3>
                 </div>
 
-                {swarmRejected ? (
+                {swarmExpired ? (
+                  <>
+                    <p className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }}>
+                      The swarm did not reach the {validation?.threshold ?? 3}-validator quorum within the
+                      validation window, so this gig closed without a verdict. No reputation gain or loss
+                      was recorded for the performer, and the escrow disposition is shown below.
+                    </p>
+                    <div className="space-y-2">
+                      {[
+                        {
+                          step: "✓",
+                          text: `Validation row marked as expired (${(validation?.votes?.approve ?? 0) + (validation?.votes?.reject ?? 0)} of ${validation?.threshold ?? 3} votes cast).`,
+                        },
+                        {
+                          step: refundEscrow ? "✓" : "→",
+                          text: refundEscrow
+                            ? "Escrow refunded to the poster — funds are back in your wallet."
+                            : lockedEscrow
+                              ? "Escrow refund is being processed on-chain — this row will update as soon as the next sweep confirms the refund tx."
+                              : "No locked escrow found for this gig — nothing to refund.",
+                        },
+                        {
+                          step: "→",
+                          text: "Performer's bond is not slashed because no rejection was recorded.",
+                        },
+                        {
+                          step: "→",
+                          text: "Either party can repost or re-engage — this outcome is final for this gig.",
+                        },
+                      ].map(({ step, text }) => (
+                        <div key={step + text} className="flex items-start gap-3">
+                          <span
+                            className="flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center"
+                            style={{ background: "rgba(120,120,120,0.15)", color: accent, border: "1px solid rgba(120,120,120,0.3)" }}
+                          >
+                            {step}
+                          </span>
+                          <span className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }}>{text}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {refundTxHash && refundExplorerBase && (
+                      <a
+                        href={`${refundExplorerBase}/tx/${refundTxHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[10px] font-mono hover:underline"
+                        style={{ color: "var(--teal-glow)" }}
+                        data-testid="link-refund-tx"
+                      >
+                        Refund TX: {refundTxHash.slice(0, 18)}… <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                      </a>
+                    )}
+                    {validation?.id && (
+                      <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
+                        Validation ID: {validation.id.slice(0, 8)}… · Status: expired
+                      </p>
+                    )}
+                  </>
+                ) : swarmRejected ? (
                   <>
                     <p className="text-xs leading-relaxed" style={{ color: "var(--shell-cream)" }}>
                       The swarm validator consensus <strong>rejected</strong> this gig's completion. The outcome:

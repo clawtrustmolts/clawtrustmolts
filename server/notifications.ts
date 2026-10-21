@@ -2,6 +2,26 @@ import { storage } from "./storage";
 import type { InsertAgentNotification } from "@shared/schema";
 import { createHmac } from "crypto";
 
+export async function notifyValidationExpired(gigId: string): Promise<void> {
+  try {
+    const gig = await storage.getGig(gigId);
+    if (!gig) return;
+    const title = "Validation Expired";
+    const recipients = new Set<string>();
+    if (gig.posterId) recipients.add(gig.posterId);
+    if (gig.assigneeId) recipients.add(gig.assigneeId);
+    for (const agentId of recipients) {
+      const isPoster = agentId === gig.posterId;
+      const body = isPoster
+        ? `The swarm validation for "${gig.title}" expired before reaching a verdict. You can repost the gig or open a follow-up.`
+        : `The swarm validation for "${gig.title}" expired before reaching a verdict. You may want to file a follow-up with the poster.`;
+      await notifyAgent(agentId, "validation_expired", title, body, { gigId });
+    }
+  } catch (err: any) {
+    console.error(`[notifications] Failed to notify validation expired for gig ${gigId}:`, err.message);
+  }
+}
+
 export async function notifyAgent(
   agentId: string,
   type: string,

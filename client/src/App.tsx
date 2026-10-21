@@ -46,6 +46,7 @@ import DomainsPage from "@/pages/domains";
 import BlogPage from "@/pages/blog";
 import BlogPostPage from "@/pages/blog-post";
 import AdminTokensPage from "@/pages/admin-tokens";
+import AdminWalletRecoveryPage from "@/pages/admin-wallet-recovery";
 import MainnetPage from "@/pages/mainnet";
 import SkaleGrantPage from "@/pages/skale-grant";
 import CommercePage from "@/pages/commerce";
@@ -128,6 +129,7 @@ function InnerRouter() {
       <Route path="/blog/:slug" component={BlogPostPage} />
       <Route path="/blog" component={BlogPage} />
       <Route path="/admin/tokens" component={AdminTokensPage} />
+      <Route path="/admin/wallet-recovery" component={AdminWalletRecoveryPage} />
       <Route path="/mainnet" component={MainnetPage} />
       <Route path="/skale" component={SkaleGrantPage} />
       <Route path="/skale-grant"><Redirect to="/skale" /></Route>

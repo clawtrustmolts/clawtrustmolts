@@ -10,6 +10,7 @@ import { syncScoreToSkale } from "./skale-chain";
 import { checkAndTopUpSkaleFuel } from "./erc8183-service";
 import { isAddress } from "viem";
 import { getTreasuryBalance, getWalletAddress, transferBetweenTreasuryWallets } from "./circle-wallet";
+import { notifyValidationExpired } from "./notifications";
 
 const INACTIVITY_THRESHOLD_DAYS = 14;
 const SCORE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -417,20 +418,54 @@ async function runExpiredValidationSweep() {
     }
     console.log(`[Sweep] Found ${staleGigs.length} stale validation gig(s) — expiring on-chain`);
     let expired = 0;
+    let validationsExpired = 0;
     for (const gig of staleGigs) {
+      // Persist the `expired` status on the swarm validation row regardless of
+      // the on-chain outcome, so readers (including the pending-votes endpoint)
+      // can transition out of `pending` deterministically.
+      try {
+        const validation = await storage.getValidationByGig(gig.id);
+        if (validation && validation.status === "pending") {
+          const transitioned = await storage.expireValidationIfPending(validation.id);
+          if (transitioned) {
+            validationsExpired++;
+            notifyValidationExpired(gig.id).catch(() => {});
+          }
+        }
+      } catch (err: any) {
+        console.error(`[Sweep] Failed to mark validation expired for gig ${gig.id}:`, err.message?.slice(0, 200));
+      }
+
       try {
         const txHash = await expireValidationOnChain(gig.id);
         if (txHash) {
           await storage.updateGigStatus(gig.id, "disputed");
           expired++;
+
+          // Persist the refund on the escrow row so the gig-detail panel can
+          // surface the on-chain refund tx instead of falling back to the
+          // "still locked" copy.
+          try {
+            const escrow = await storage.getEscrowByGig(gig.id);
+            if (escrow && escrow.status !== "refunded" && escrow.status !== "released") {
+              await storage.updateEscrow(escrow.id, {
+                status: "refunded",
+                releaseTxHash: txHash,
+                updatedAt: new Date(),
+              });
+              console.log(`[Sweep] Escrow ${escrow.id} marked refunded (tx=${txHash}) for gig ${gig.id}`);
+            }
+          } catch (escrowErr: any) {
+            console.error(`[Sweep] Failed to update escrow for gig ${gig.id}:`, escrowErr.message?.slice(0, 200));
+          }
         } else {
-          console.log(`[Sweep] Skipping DB update for gig ${gig.id} — on-chain call returned no tx hash`);
+          console.log(`[Sweep] Skipping gig status update for gig ${gig.id} — on-chain call returned no tx hash`);
         }
       } catch (err: any) {
         console.error(`[Sweep] Failed to expire gig ${gig.id}:`, err.message?.slice(0, 200));
       }
     }
-    console.log(`[Sweep] Sweep complete: ${expired}/${staleGigs.length} gig(s) expired`);
+    console.log(`[Sweep] Sweep complete: ${expired}/${staleGigs.length} gig(s) expired on-chain, ${validationsExpired} validation row(s) marked expired`);
   } catch (err: any) {
     console.error("[Sweep] Expired validation sweep failed:", err.message);
   }
